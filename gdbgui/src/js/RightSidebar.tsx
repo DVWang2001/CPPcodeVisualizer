@@ -16,6 +16,7 @@ import Registers from "./Registers";
 import Tree from "./Tree";
 import Threads from "./Threads";
 import ToolTipTourguide from "./ToolTipTourguide";
+import "../../static/css/reserch.css";
 
 let onmouseup_in_parent_callbacks: any = [],
   onmousemove_in_parent_callbacks: any = [];
@@ -254,6 +255,38 @@ class RightSidebar extends React.Component {
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
         <Collapser title="registers" collapsed={true} content={<Registers />} />
 
+
+        {/* 五個可勾選選項 */}
+      <div
+        style={{
+          marginTop: "10px",
+          padding: "10px",
+          border: "1px solid #ccc",
+          borderRadius: "6px",
+          background: "#f9f9f9"
+        }}
+      >
+        <h5 style={{ marginBottom: "8px", textAlign: "center" }}>選擇項目</h5>
+        <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap" }}>
+        <label>
+          <input type="radio" name="mode" style={{ marginRight: "5px" }} /> 無指導 
+        </label>
+        <label>
+          <input type="radio" id="Digitsum" name="mode" style={{ marginRight: "5px" }} /> 末位取和 
+        </label>
+        <label>
+          <input type="radio" id="Factorsum" name="mode" style={{ marginRight: "5px" }} /> 因數抽血 
+        </label>
+        <label>
+          <input type="radio" id="Gcd" name="mode" style={{ marginRight: "5px" }} /> 輾轉相除法 
+        </label>
+        <label>
+          <input type="radio" id="Factorpower" name="mode" style={{ marginRight: "5px" }} /> 標準分解 
+        </label>
+        </div>
+      </div>
+
+      <div id="grid-container"></div>
         {mi_output}
       </div>
     );

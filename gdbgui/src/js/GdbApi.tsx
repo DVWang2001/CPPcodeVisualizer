@@ -11,6 +11,7 @@ import constants from "./constants";
 import process_gdb_response from "./process_gdb_response";
 import React from "react";
 import io from "socket.io-client";
+import Visualizerhelper from "./Visualizerhelper";
 void React; // needed when using JSX, but not marked as used
 /* global debug */
 
@@ -66,6 +67,7 @@ const GdbApi = {
       clearTimeout(GdbApi._waiting_for_response_timeout);
       store.set("waiting_for_response", false);
       process_gdb_response(response_array);
+      Visualizerhelper.run(response_array);
     });
     socket.on("fatal_server_error", function(data: { message: null | string }) {
       Actions.add_console_entries(
