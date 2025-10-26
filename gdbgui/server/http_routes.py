@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from werkzeug.utils import secure_filename
 
 from flask import (
     Blueprint,
@@ -11,6 +12,7 @@ from flask import (
     request,
     session,
     Response,
+    url_for
 )
 from pygments.lexers import get_lexer_for_filename  # type: ignore
 
@@ -26,6 +28,31 @@ from .http_util import (
 
 logger = logging.getLogger(__file__)
 blueprint = Blueprint("http_routes", __name__, template_folder=str(TEMPLATE_DIR))
+
+@blueprint.route("/upload", methods=["GET", "POST"])
+@authenticate
+def upload():
+    """Upload a binary before showing main gdbgui UI."""
+    add_csrf_token_to_session()
+    if request.method == "POST":
+        uploaded = request.files.get("binary")
+        if not uploaded or uploaded.filename == "":
+            return client_error("No file uploaded")
+        filename = secure_filename(uploaded.filename)
+        upload_dir = current_app.config.get("upload_folder") or os.path.join(
+            current_app.root_path, "uploads"
+        )
+        os.makedirs(upload_dir, exist_ok=True)
+        dest_path = os.path.join(upload_dir, filename)
+        uploaded.save(dest_path)
+        # remember uploaded path for this session
+        session["uploaded_binary"] = dest_path
+        # optionally set initial_binary_and_args so gdbgui will use it
+        current_app.config["initial_binary_and_args"] = [dest_path]
+        return redirect(url_for(".gdbgui"))
+
+    return render_template("upload.html", csrf_token=session["csrf_token"])
+
 
 
 @blueprint.route("/read_file", methods=["GET"])

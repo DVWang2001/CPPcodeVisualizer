@@ -56,7 +56,7 @@ def run_server(
         # pass ssl_context to flask
         kwargs["ssl_context"] = ssl_context
 
-    url = "%s:%s" % (host, port)
+    url = "%s:%s" % (host, port) + '/upload'
     if kwargs.get("ssl_context"):
         protocol = "https://"
         url_with_prefix = "https://" + url

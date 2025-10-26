@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Upload binary</title>
+  </head>
+  <body>
+    <h3>Upload binary to debug</h3>
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="file" name="binary" accept="*/*" required />
+      <button type="submit">Upload</button>
+    </form>
+  </body>
+</html>
