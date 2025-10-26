@@ -76,6 +76,7 @@ def run_server(
             except Exception:
                 url = (host, port)
 
+        # if open_browser is requested, do it
         if open_browser is True and debug is False:
             browsertext = repr(browsername) if browsername else "default browser"
             args = (browsertext,) + url
@@ -85,9 +86,7 @@ def run_server(
             b.open(url_with_prefix)
         else:
             print(colorize(f"View gdbgui at {protocol}{url[0]}:{url[1]}"))
-        print(
-            colorize(f"View gdbgui dashboard at {protocol}{url[0]}:{url[1]}/dashboard")
-        )
+        
 
         print("exit gdbgui by pressing CTRL+C")
         try:

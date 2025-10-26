@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import subprocess
 from werkzeug.utils import secure_filename
 
 from flask import (
@@ -25,6 +26,8 @@ from .http_util import (
     client_error,
     csrf_protect,
 )
+from .share_function import require_uploaded_binary
+import uuid
 
 logger = logging.getLogger(__file__)
 blueprint = Blueprint("http_routes", __name__, template_folder=str(TEMPLATE_DIR))
@@ -32,25 +35,74 @@ blueprint = Blueprint("http_routes", __name__, template_folder=str(TEMPLATE_DIR)
 @blueprint.route("/upload", methods=["GET", "POST"])
 @authenticate
 def upload():
-    """Upload a binary before showing main gdbgui UI."""
+    """Upload a binary or source file. If C/C++ source is uploaded,
+    compile it to assembly (.s) and use that assembly for the session."""
     add_csrf_token_to_session()
+
     if request.method == "POST":
         uploaded = request.files.get("binary")
         if not uploaded or uploaded.filename == "":
-            return client_error("No file uploaded")
+            return client_error({"message": "No file uploaded"})
+
         filename = secure_filename(uploaded.filename)
+
+        # ensure a per-session prefix exists and use it to avoid filename collisions
+        if "uploaded_prefix" not in session:
+            session["uploaded_prefix"] = uuid.uuid4().hex
+        prefix = session["uploaded_prefix"]
+
         upload_dir = current_app.config.get("upload_folder") or os.path.join(
             current_app.root_path, "uploads"
         )
         os.makedirs(upload_dir, exist_ok=True)
-        dest_path = os.path.join(upload_dir, filename)
+
+        # store file with session prefix
+        stored_filename = f"{prefix}_{filename}"
+        dest_path = os.path.join(upload_dir, stored_filename)
         uploaded.save(dest_path)
-        # remember uploaded path for this session
-        session["uploaded_binary"] = dest_path
-        # optionally set initial_binary_and_args so gdbgui will use it
-        current_app.config["initial_binary_and_args"] = [dest_path]
+
+        name, ext = os.path.splitext(stored_filename)
+        ext = ext.lower()
+
+        # If C/C++ source -> compile to executable (g++ a.cpp -o a.a -g)
+        if ext in (".c", ".cpp", ".cc", ".cxx", ".c++"):
+            exec_filename = name + ".a"  # will produce e.g. a.a like your example
+            exec_path = os.path.join(upload_dir, exec_filename)
+            # choose compiler: prefer g++ for .cpp, gcc for .c (can be overridden via config)
+            compiler = current_app.config.get("c_compiler") or ("g++" if ext != ".c" else "gcc")
+            try:
+                res = subprocess.run(
+                    [compiler, "-g", "-O0", dest_path, "-o", exec_path],
+                    capture_output=True,
+                    text=True,
+                )
+                if res.returncode != 0:
+                    return client_error(
+                        {"message": "Compilation failed", "stderr": res.stderr}
+                    )
+                # ensure executable permission
+                try:
+                    os.chmod(exec_path, 0o755)
+                except Exception:
+                    # non-fatal; proceed even if chmod fails
+                    pass
+            except FileNotFoundError:
+                return client_error(
+                    {"message": f"Compiler not found: {compiler}. Install it or set app.config['c_compiler']"}
+                )
+            except Exception as e:
+                return client_error({"message": str(e)})
+
+            session["uploaded_binary"] = exec_path
+            current_app.config["initial_binary_and_args"] = [exec_path]
+        # If assembly uploaded (or other), use it directly
+        else:
+            session["uploaded_binary"] = dest_path
+            current_app.config["initial_binary_and_args"] = [dest_path]
+
         return redirect(url_for(".gdbgui"))
 
+    # render upload page - use template name relative to templates folder
     return render_template("upload.html", csrf_token=session["csrf_token"])
 
 
@@ -156,6 +208,9 @@ def help_route():
 @blueprint.route("/dashboard", methods=["GET"])
 @authenticate
 def dashboard():
+    resp = require_uploaded_binary()
+    if resp:
+        return resp
     manager = current_app.config.get("_manager")
 
     add_csrf_token_to_session()
@@ -174,6 +229,10 @@ def dashboard():
 @blueprint.route("/", methods=["GET"])
 @authenticate
 def gdbgui():
+    # check if user didn't upload file
+    resp = require_uploaded_binary()
+    if resp:
+        return resp
     """Render the main gdbgui interface"""
     gdbpid = request.args.get("gdbpid", 0)
     gdb_command = request.args.get("gdb_command", current_app.config["gdb_command"])
