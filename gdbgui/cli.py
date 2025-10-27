@@ -14,6 +14,13 @@ import re
 import shlex
 from typing import List, Optional
 
+import shlex
+from typing import List, Optional
+import atexit
+import shutil
+import signal
+
+
 from gdbgui import __version__
 from gdbgui.server.app import app, socketio
 from gdbgui.server.constants import DEFAULT_GDB_EXECUTABLE, DEFAULT_HOST, DEFAULT_PORT
@@ -23,6 +30,41 @@ from gdbgui.server.server import run_server
 logger = logging.getLogger(__name__)
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
+def clear_uploads_dir():
+    """Remove all files and subdirectories inside server/uploads."""
+    try:
+        uploads_dir = os.path.join(os.path.dirname(__file__), "server", "uploads")
+        if not os.path.exists(uploads_dir):
+            return
+        for name in os.listdir(uploads_dir):
+            path = os.path.join(uploads_dir, name)
+            try:
+                if os.path.isfile(path) or os.path.islink(path):
+                    os.remove(path)
+                elif os.path.isdir(path):
+                    shutil.rmtree(path)
+            except Exception:
+                logger.exception("Failed to remove upload path: %s", path)
+    except Exception:
+        logger.exception("Error while clearing uploads directory")
+
+# ensure cleanup on normal interpreter exit
+atexit.register(clear_uploads_dir)
+
+# ensure cleanup on SIGINT / SIGTERM (e.g. Ctrl-C, system stop)
+def _signal_handler(signum, frame):
+    logger.info("Received signal %s, clearing uploads and exiting", signum)
+    clear_uploads_dir()
+    # restore default handler and re-raise signal so process exits with expected status
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
+
+for _sig in (signal.SIGINT, signal.SIGTERM):
+    try:
+        signal.signal(_sig, _signal_handler)
+    except Exception:
+        # ignore platforms that don't support these signals
+        pass
 
 def get_gdbgui_auth_user_credentials(auth_file, user, password):
     if auth_file and (user or password):
