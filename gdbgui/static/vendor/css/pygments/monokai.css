@@ -5,9 +5,33 @@
 }
 
 /* when hovering, set background color of entire row */
-.monokai .paused_on_line {
+/* 先讓使用者看不到 */
+/* .monokai .paused_on_line {
     background-color: #444;
+} */
+
+.monokai .paused_on_line .line_num {
+    /* background-color: #ff0000; */
+    /* 保留定位參考給 ::before */
+    position: relative;
 }
+
+/* 在內部的 div 上建立箭頭，置中於數字上方 */
+.monokai .paused_on_line .line_num > div {
+    position: relative;
+}
+.monokai .paused_on_line .line_num > div::before {
+    content: "➝";
+    position: absolute;
+    top: -0.46875em;        /* 向上調整箭頭位置，視需要微調 */
+    left: 50%;
+    transform: translateX(-50%);
+    color: #ffffff;     /* 箭頭顏色，可改 */
+    font-size: 4em;  /* 大小可改 */
+    line-height: 1;
+    pointer-events: none;
+}
+
 
 .monokai .assembly { color: #d8d8d8; }
 

@@ -22,7 +22,7 @@ module.exports = {
           {
             loader: "ts-loader",
             options: {
-              experimentalFileCaching: true,
+              experimentalFileCaching: false,
               experimentalWatchApi: true,
               transpileOnly: true
             }
