@@ -66,8 +66,10 @@ const GdbApi = {
       // @ts-expect-error ts-migrate(2769) FIXME: Argument of type 'null' is not assignable to param... Remove this comment to see the full error message
       clearTimeout(GdbApi._waiting_for_response_timeout);
       store.set("waiting_for_response", false);
+      // 收到 gdb 真正回應時，取消任何待處理的「樂觀移動」狀態
+      GdbApi._optimistic_resume_pending = false;
       process_gdb_response(response_array);
-      Visualizerhelper.run(response_array);
+      // Visualizerhelper.run(response_array);
     });
     socket.on("fatal_server_error", function(data: { message: null | string }) {
       Actions.add_console_entries(
@@ -152,6 +154,8 @@ const GdbApi = {
     });
   },
   _waiting_for_response_timeout: null,
+  // 當第一下按 step 並只是做 UI 往後推時，這個 flag 會被設為 true
+  _optimistic_resume_pending: false,
   click_run_button: function() {
     Actions.inferior_program_starting();
     GdbApi.run_gdb_command("-exec-run");
@@ -177,14 +181,224 @@ const GdbApi = {
       "-exec-continue" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
   },
+  _should_optimistic_resume: function() {
+    try {
+      const pausedEl = document.querySelector('.paused_on_line') as Element | null;
+      if (!pausedEl) return false;
+
+      const looksLikeClose = (text: string) => {
+        const t = (text || "").trim();
+        if (t === "") return false;
+        return /^\s*[\}\)\]]/.test(t);
+      };
+
+      // 先嘗試以 tr.srccode 為單位：找 paused 行的最外層 tr，然後取下一個有 .srccode 的 tr
+      const tr = (pausedEl as Element).closest('tr.srccode') || (pausedEl as Element).closest('tr');
+      if (tr) {
+        let next = tr.nextElementSibling as Element | null;
+        while (next) {
+          if (next.classList && next.classList.contains('srccode')) {
+            // 找到下一個 srccode 行，檢查其 td.loc 的文字
+            const loc = next.querySelector('td.loc');
+            if (loc) {
+              const txt = (loc.textContent || "").trim();
+              return looksLikeClose(txt);
+            }
+            break;
+          }
+          next = next.nextElementSibling as Element | null;
+        }
+      }
+
+      // fallback：遍歷 document 順序尋找下一個有內容的節點（保留之前的保險處理）
+      const nextInDocument = (n: Node | null): Node | null => {
+        if (!n) return null;
+        if (n.firstChild) return n.firstChild;
+        while (n) {
+          if (n.nextSibling) return n.nextSibling;
+          n = n.parentNode as Node | null;
+        }
+        return null;
+      };
+
+      let cur: Node | null = nextInDocument(pausedEl);
+      while (cur) {
+        if (pausedEl.contains(cur)) {
+          cur = nextInDocument(cur);
+          continue;
+        }
+
+        let txt = "";
+        if (cur.nodeType === Node.TEXT_NODE) {
+          txt = (cur.nodeValue || "").trim();
+        } else if ((cur as Element).textContent !== undefined) {
+          txt = ((cur as Element).textContent || "").trim();
+        }
+
+        if (txt !== "") {
+          return looksLikeClose(txt);
+        }
+
+        cur = nextInDocument(cur);
+      }
+
+      return false;
+    } catch (e) {
+      console.error('_should_optimistic_resume error', e);
+      return false;
+    }
+  },
+  // 新增：清除先前樂觀移動的箭頭（只移除被標記過的）
+  _clear_optimistic_arrow: function() {
+    try {
+      const moved = Array.from(document.querySelectorAll('[data-optimistic-moved="1"]'));
+      for (const el of moved) {
+        try {
+          const tr = (el as Element).closest('tr');
+          if (tr && tr.classList && tr.classList.contains('paused_on_line')) {
+            // 將 class 設為空字串（產生 class=""）
+            (tr as HTMLElement).className = "";
+            // 移除可能的 scroll_to_line id
+            if (tr.id === 'scroll_to_line') {
+              tr.removeAttribute('id');
+            }
+          }
+        } catch (e) {
+          // ignore per-row cleanup errors
+        }
+
+        // 不刪除箭頭元素；只移除樂觀移動標記
+        try {
+          (el as Element).removeAttribute('data-optimistic-moved');
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // 額外保險：若有遺漏的 tr 仍帶有 srccode + paused_on_line，強制設為 class=""
+      try {
+        const leftovers = Array.from(document.querySelectorAll('tr.srccode.paused_on_line'));
+        for (const t of leftovers) {
+          (t as HTMLElement).className = "srccode";
+          if ((t as Element).id === 'scroll_to_line') {
+            (t as Element).removeAttribute('id');
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    } catch (e) {
+      console.error('_clear_optimistic_arrow error', e);
+    }
+  },
+
+  // 新增/修改：樂觀地把 paused_on_line 指標移到下一個 srccode 行
+  _optimistically_advance_paused_line: function() {
+    try {
+      const pausedEl = document.querySelector('tr.srccode.paused_on_line') as Element | null
+        || document.querySelector('.paused_on_line') as Element | null;
+      if (!pausedEl) return;
+
+      const tr = (pausedEl as Element).closest('tr') as Element | null;
+      if (!tr) return;
+
+      let next = tr.nextElementSibling as Element | null;
+      while (next) {
+        if (next.classList && next.classList.contains('srccode')) {
+          break;
+        }
+        next = next.nextElementSibling as Element | null;
+      }
+      if (!next) return;
+
+      // 移除舊的 paused_on_line，並加到下一行
+      tr.classList.remove('paused_on_line');
+      next.classList.add('paused_on_line');
+
+      // 若原本有 scroll_to_line id，一併搬過去
+      if (tr.id === 'scroll_to_line') {
+        tr.removeAttribute('id');
+        next.setAttribute('id', 'scroll_to_line');
+      }
+
+      // 嘗試把「顯示當前執行位置的箭頭」一併搬到下一行
+      try {
+        const arrowSelectors = [
+          '#current_line_arrow',
+          '.current-line-arrow',
+          '.current_execution_arrow',
+          '.exec_arrow',
+          '.arrow_indicator',
+          '.paused_arrow',
+          '.current-arrow'
+        ];
+        for (const sel of arrowSelectors) {
+          const arrow = document.querySelector(sel) as Element | null;
+          if (arrow && tr.contains(arrow)) {
+            // 標記為樂觀移動後再移動（以便稍後清除）
+            arrow.setAttribute('data-optimistic-moved', '1');
+            // 優先放到下一行的 td.loc，否則放到第一個 td
+            const targetTd = (next.querySelector('td.loc') || next.querySelector('td')) as Element | null;
+            if (targetTd) {
+              targetTd.appendChild(arrow);
+            } else {
+              next.appendChild(arrow);
+            }
+            break;
+          }
+        }
+      } catch (e) {
+        // ignore arrow moving errors
+      }
+
+      // 保持下一行可見
+      try {
+        (next as HTMLElement).scrollIntoView({ block: 'nearest', behavior: 'auto' });
+      } catch (e) {
+        // ignore in non-browser env
+      }
+    } catch (e) {
+      console.error('_optimistically_advance_paused_line error', e);
+    }
+  },
   click_next_button: function(reverse = false) {
-    Actions.inferior_program_resuming();
+    // 若下一行第一個非空白字元是 '}'：
+    // - 第一次按只做 UI 往後推（optimistic），不送指令（讓第二次按才送）
+    // - 第二次按才實際送 gdb 指令
+    Visualizerhelper.log('CLICKNEXT');
+    if (GdbApi._should_optimistic_resume()) {
+      if (!GdbApi._optimistic_resume_pending) {
+        Actions.inferior_program_resuming();
+        GdbApi._optimistic_resume_pending = true;
+        GdbApi._optimistically_advance_paused_line();
+        Visualizerhelper.log('WAIT!');
+        return;
+      }
+      Visualizerhelper.log('STEP!');
+      // 第二次按，清除 pending 並繼續執行指令
+      GdbApi._optimistic_resume_pending = false;
+      GdbApi._clear_optimistic_arrow();
+    }
+
     GdbApi.run_gdb_command(
       "-exec-next" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
   },
   click_step_button: function(reverse = false) {
-    Actions.inferior_program_resuming();
+    Visualizerhelper.log('CLICKSTEP');
+    if (GdbApi._should_optimistic_resume()) {
+      if (!GdbApi._optimistic_resume_pending) {
+        Actions.inferior_program_resuming();
+        GdbApi._optimistic_resume_pending = true;
+        GdbApi._optimistically_advance_paused_line();
+        Visualizerhelper.log('WAIT!');
+        return;
+      }
+      Visualizerhelper.log('STEP!');
+      GdbApi._optimistic_resume_pending = false;
+      GdbApi._clear_optimistic_arrow();
+    }
+
     GdbApi.run_gdb_command(
       "-exec-step" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );

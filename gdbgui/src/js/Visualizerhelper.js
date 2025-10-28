@@ -8,6 +8,9 @@ var Gridindex = 0;
 const gridMap = {};
 const divMap = {};
 const Visualizerhelper = {
+    log: function(data) {
+        console.log(data);
+    },
     run: function(data) {
         // 找到被選中的 radio
         const selected = document.querySelector('input[name="mode"]:checked');
