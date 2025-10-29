@@ -61,14 +61,14 @@ const GdbApi = {
         store.set("queuedGdbCommands", []);
       }
     });
-
+    
     socket.on("gdb_response", function(response_array: any) {
       // @ts-expect-error ts-migrate(2769) FIXME: Argument of type 'null' is not assignable to param... Remove this comment to see the full error message
       clearTimeout(GdbApi._waiting_for_response_timeout);
       store.set("waiting_for_response", false);
       // 收到 gdb 真正回應時，取消任何待處理的「樂觀移動」狀態
       GdbApi._optimistic_resume_pending = false;
-      process_gdb_response(response_array);
+      process_gdb_response(response_array,GdbApi._has_optimistic_resume);
       // Visualizerhelper.run(response_array);
     });
     socket.on("fatal_server_error", function(data: { message: null | string }) {
@@ -153,7 +153,9 @@ const GdbApi = {
       // }
     });
   },
+  _has_optimistic_resume: false,
   _waiting_for_response_timeout: null,
+  _temp_payload_frame_line: undefined,
   // 當第一下按 step 並只是做 UI 往後推時，這個 flag 會被設為 true
   _optimistic_resume_pending: false,
   click_run_button: function() {
@@ -252,37 +254,18 @@ const GdbApi = {
   _clear_optimistic_arrow: function() {
     try {
       const moved = Array.from(document.querySelectorAll('[data-optimistic-moved="1"]'));
-      for (const el of moved) {
-        try {
-          const tr = (el as Element).closest('tr');
-          if (tr && tr.classList && tr.classList.contains('paused_on_line')) {
-            // 將 class 設為空字串（產生 class=""）
-            (tr as HTMLElement).className = "";
-            // 移除可能的 scroll_to_line id
-            if (tr.id === 'scroll_to_line') {
-              tr.removeAttribute('id');
-            }
-          }
-        } catch (e) {
-          // ignore per-row cleanup errors
-        }
-
-        // 不刪除箭頭元素；只移除樂觀移動標記
-        try {
-          (el as Element).removeAttribute('data-optimistic-moved');
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      // 額外保險：若有遺漏的 tr 仍帶有 srccode + paused_on_line，強制設為 class=""
+      let the_arrow_will_be_remove = null;
+      // 若有 tr 帶有 srccode + paused_on_line，強制設為 class=""
       try {
         const leftovers = Array.from(document.querySelectorAll('tr.srccode.paused_on_line'));
         for (const t of leftovers) {
-          (t as HTMLElement).className = "srccode";
+          the_arrow_will_be_remove = (t as HTMLElement);
           if ((t as Element).id === 'scroll_to_line') {
             (t as Element).removeAttribute('id');
           }
+        }
+        if (the_arrow_will_be_remove) {
+          the_arrow_will_be_remove.className = "srccode";
         }
       } catch (e) {
         // ignore
@@ -362,22 +345,45 @@ const GdbApi = {
     }
   },
   click_next_button: function(reverse = false) {
-    // 若下一行第一個非空白字元是 '}'：
-    // - 第一次按只做 UI 往後推（optimistic），不送指令（讓第二次按才送）
-    // - 第二次按才實際送 gdb 指令
     Visualizerhelper.log('CLICKNEXT');
+    // - 第二次按僅定位不送gdb指令
+    if (GdbApi._has_optimistic_resume) {
+      GdbApi._optimistic_resume_pending = false;
+      GdbApi._has_optimistic_resume = false;
+      GdbApi._clear_optimistic_arrow();
+      console.log(`實際上的行數為${GdbApi._temp_payload_frame_line}`);
+      if (GdbApi._temp_payload_frame_line != undefined) {
+        // 取消 suppress（避免其他邏輯阻止更新）
+        store.set("suppress_paused_frame_update", false);
+        // 取得目前 paused_on_frame（若無則建立最小 frame）
+        const currentFrame = store.get("paused_on_frame") || {};
+        // 設定為真實行（需為字串，以符合其他使用者程式）
+        currentFrame.line = String(GdbApi._temp_payload_frame_line);
+        // 傳 true 讓 Actions 實際更新 line_of_source_to_flash 與相關狀態
+        Actions.inferior_program_paused(currentFrame, true);
+        console.log(`快更新！暫存的行數為${GdbApi._temp_payload_frame_line}`);
+        // 清掉暫存
+        GdbApi._temp_payload_frame_line = undefined;
+      }
+      return;
+    }
+    // 若下一行第一個非空白字元是 '}'：
+    // - 第一次按只做 UI 往後推（optimistic），送gdb指令
     if (GdbApi._should_optimistic_resume()) {
       if (!GdbApi._optimistic_resume_pending) {
-        Actions.inferior_program_resuming();
+        // Actions.inferior_program_resuming();
         GdbApi._optimistic_resume_pending = true;
         GdbApi._optimistically_advance_paused_line();
+        GdbApi._has_optimistic_resume = true;
         Visualizerhelper.log('WAIT!');
+        // 告訴前端在收到下一個 paused 回應時不要立刻用 payload 更新可見行
+        store.set("suppress_paused_frame_update", true);
+        GdbApi.run_gdb_command(
+          "-exec-next" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
+        );
         return;
       }
       Visualizerhelper.log('STEP!');
-      // 第二次按，清除 pending 並繼續執行指令
-      GdbApi._optimistic_resume_pending = false;
-      GdbApi._clear_optimistic_arrow();
     }
 
     GdbApi.run_gdb_command(
@@ -396,7 +402,7 @@ const GdbApi = {
       }
       Visualizerhelper.log('STEP!');
       GdbApi._optimistic_resume_pending = false;
-      GdbApi._clear_optimistic_arrow();
+      // GdbApi._clear_optimistic_arrow();
     }
 
     GdbApi.run_gdb_command(
@@ -566,31 +572,30 @@ const GdbApi = {
    * Get array of commands to send to gdb that refreshes everything in the
    * frontend
    */
-  _get_refresh_state_for_pause_cmds: function() {
-    let cmds = [
-      // get info on current thread
-      // TODO run -thread-list-ids to store list of thread id's and know
-      // which thread is the current thread
-      constants.IGNORE_ERRORS_TOKEN_STR + "-thread-info",
-      // print the name, type and value for simple data types,
-      // and the name and type for arrays, structures and unions.
-      constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-variables --simple-values"
-    ];
-    // update all user-defined variables in gdb
-    cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-var-update --all-values *");
-
-    // update registers
-    cmds = cmds.concat(Registers.get_update_cmds());
-
-    // re-fetch memory over desired range as specified by DOM inputs
-    cmds = cmds.concat(Memory.get_gdb_commands_from_state());
-
-    // refresh breakpoints
-    cmds.push(GdbApi.get_break_list_cmd());
-
-    // List the frames currently on the stack.
-    // avoid the "no registers" error
-    cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-frames");
+  _get_refresh_state_for_pause_cmds: function(inclue_frames = true) {
+    let cmds: string[] = []
+    if (inclue_frames) {
+      cmds = [
+        // get info on current thread
+        // TODO run -thread-list-ids to store list of thread id's and know
+        // which thread is the current thread
+        constants.IGNORE_ERRORS_TOKEN_STR + "-thread-info",
+        // print the name, type and value for simple data types,
+        // and the name and type for arrays, structures and unions.
+        constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-variables --simple-values"
+      ];
+      // update all user-defined variables in gdb
+      cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-var-update --all-values *");
+      // update registers
+      cmds = cmds.concat(Registers.get_update_cmds());
+      // re-fetch memory over desired range as specified by DOM inputs
+      cmds = cmds.concat(Memory.get_gdb_commands_from_state());
+      // refresh breakpoints
+      cmds.push(GdbApi.get_break_list_cmd());
+      // List the frames currently on the stack.
+      // avoid the "no registers" error
+      cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-frames");
+    }
     return cmds;
   },
   refresh_breakpoints: function() {

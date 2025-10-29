@@ -19,7 +19,7 @@ import Modal from "./GdbguiModal";
 import Actions from "./Actions";
 import { processFeatures } from "./processFeatures";
 
-const process_gdb_response = function(response_array: any) {
+const process_gdb_response = function(response_array: any,_has_optimistic_resume = false) {
   /**
    * Determines if response is an error and client does not want to be notified of errors for this particular response.
    * @param response: gdb mi response object
@@ -280,10 +280,32 @@ const process_gdb_response = function(response_array: any) {
             // @ts-expect-error ts-migrate(2339) FIXME: Property 'set_thread_id' does not exist on type 't... Remove this comment to see the full error message
             Threads.set_thread_id(r.payload["new-thread-id"]);
           }
-          Actions.inferior_program_paused(r.payload.frame);
+          if (_has_optimistic_resume || (GdbApi && (GdbApi as any)._suppress_paused_frame_update)) {
+            console.log('進到樂觀resume了');
+            Actions.inferior_program_paused(r.payload.frame,false);
+            // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
+            GdbApi._temp_payload_frame_line = parseInt(r.payload.frame.line);
+            if (GdbApi) {
+              (GdbApi as any)._suppress_paused_frame_update = false;
+            }
+            store.set("suppress_paused_frame_update", false);
+            console.log(`收到行數了${GdbApi._temp_payload_frame_line}`);
+          }
+          else {
+            console.log('進到非樂觀resume了');
+            Actions.inferior_program_paused(r.payload.frame);
+          }
         } else if (r.payload.reason === "signal-received") {
+          console.log('進到樂觀signal-received了');
           Actions.inferior_program_paused(r.payload.frame);
-
+          if (_has_optimistic_resume || store.get("suppress_paused_frame_update") || (GdbApi && (GdbApi as any)._suppress_paused_frame_update)) {
+            Actions.inferior_program_paused(r.payload.frame, false);
+            // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
+            GdbApi._temp_payload_frame_line = parseInt(r.payload.frame.line);
+            store.set("suppress_paused_frame_update", false);
+          } else {
+            Actions.inferior_program_paused(r.payload.frame);
+          }
           if (r.payload["signal-name"] !== "SIGINT") {
             Actions.add_console_entries(
               `Signal received: (${r.payload["signal-meaning"]}, ${r.payload["signal-name"]}).`,
@@ -301,6 +323,7 @@ const process_gdb_response = function(response_array: any) {
           console.warn(r);
         }
       } else {
+        console.log('進到不知道哪了流程了');
         Actions.inferior_program_paused(r.payload.frame);
       }
     } else if (r.message && r.message === "connected") {

@@ -167,7 +167,7 @@ class SourceCode extends React.Component<{}, State> {
     assembly_for_line: any,
     paused_addr: any
   ) {
-    let row_class = ["srccode"];
+    let row_class = ["srccode"]
 
     if (is_gdb_paused_on_this_line) {
       row_class.push("paused_on_line");

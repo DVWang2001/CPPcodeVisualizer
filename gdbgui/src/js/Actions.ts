@@ -25,7 +25,7 @@ const Actions = {
   inferior_program_resuming: function() {
     store.set("inferior_program", constants.inferior_states.running);
   },
-  inferior_program_paused: function(frame = {}) {
+  inferior_program_paused: function(frame = {},should_update_line = true) {
     store.set("inferior_program", constants.inferior_states.paused);
     store.set(
       "source_code_selection_state",
@@ -34,13 +34,28 @@ const Actions = {
     store.set("paused_on_frame", frame);
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'fullname' does not exist on type '{}'.
     store.set("fullname_to_render", frame.fullname);
-    // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
-    store.set("line_of_source_to_flash", parseInt(frame.line));
+    // don't override visible line when suppress flag set (optimistic flow)
+    const suppress = store.get("suppress_paused_frame_update");
+    const effective_update = should_update_line && !suppress;
+    if (effective_update) {
+      console.trace('更新 line_of_source_to_flash from inferior_program_paused');
+      // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
+      store.set("line_of_source_to_flash", parseInt(frame.line));
+      console.log('快更新！');
+    } else {
+      console.log('別更新！（suppress=', suppress, ' should_update_line=', should_update_line, ')');
+    }
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'addr' does not exist on type '{}'.
     store.set("current_assembly_address", frame.addr);
-    store.set("source_code_infinite_scrolling", false);
-    SourceCode.make_current_line_visible();
-    Actions.refresh_state_for_gdb_pause();
+    if (should_update_line) {
+      store.set("source_code_infinite_scrolling", false);
+      SourceCode.make_current_line_visible();
+      Actions.refresh_state_for_gdb_pause(); 
+    }
+    else {
+      // console.log('是不是你？');
+      Actions.refresh_state_for_gdb_pause(false); 
+    }
   },
   inferior_program_exited: function() {
     store.set("inferior_program", constants.inferior_states.exited);
@@ -54,8 +69,8 @@ const Actions = {
   /**
    * Request relevant store information from gdb to refresh UI
    */
-  refresh_state_for_gdb_pause: function() {
-    GdbApi.run_gdb_command(GdbApi._get_refresh_state_for_pause_cmds());
+  refresh_state_for_gdb_pause: function(include_frames = true) {
+    GdbApi.run_gdb_command(GdbApi._get_refresh_state_for_pause_cmds(include_frames));
   },
   execute_console_command: function(command: any) {
     if (store.get("refresh_state_after_sending_console_command")) {
