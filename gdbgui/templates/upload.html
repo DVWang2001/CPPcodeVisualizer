@@ -14,9 +14,71 @@
     <form id="pasteForm" method="post" action="/create_and_upload">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <p>The server will generate a unique filename and save the .cpp under <code>uploads/</code>.</p>
-      <textarea name="code" id="code" rows="15" cols="80" placeholder=""></textarea>
+      <!-- Keep textarea for form submission, hide it and use Monaco editor for editing -->
+      <textarea name="code" id="code" rows="15" cols="80" placeholder="" style="display:none"></textarea>
+      <!-- Monaco editor container -->
+      <div id="monaco_editor" style="width:100%;height:320px;border:1px solid #ddd"></div>
       <br/>
       <button type="submit">Create file and upload</button>
     </form>
+
+    <!-- Load Monaco Editor loader from local installation under static/vendor -->
+    <script>
+      (function(){
+        // local path inside the repo where npm installed monaco-editor
+        var localLoader = '/static/vendor/monaco-editor/node_modules/monaco-editor/min/vs/loader.js';
+        var localVsPath = '/static/vendor/monaco-editor/node_modules/monaco-editor/min/vs';
+
+        function loadScript(src, onload, onerror){
+          var s = document.createElement('script');
+          s.src = src;
+          s.onload = onload;
+          s.onerror = onerror;
+          document.head.appendChild(s);
+        }
+
+        function initMonaco(vsPath){
+          try{
+            if(typeof require !== 'undefined' && require.config){
+              require.config({ paths: { vs: vsPath } });
+            }
+          }catch(e){/* ignore */}
+
+          // load the editor
+          try{
+            require(['vs/editor/editor.main'], function() {
+              try{
+                var textarea = document.getElementById('code');
+                var initial = textarea ? textarea.value : '';
+
+                var editor = monaco.editor.create(document.getElementById('monaco_editor'), {
+                  value: initial,
+                  language: 'cpp',
+                  theme: 'vs',
+                  automaticLayout: true,
+                  minimap: { enabled: false }
+                });
+
+                var form = document.getElementById('pasteForm');
+                if(form){
+                  form.addEventListener('submit', function(){
+                    try{ textarea.value = editor.getValue(); }catch(e){}
+                  });
+                }
+              }catch(e){ console.error('Failed to initialize Monaco editor', e); }
+            });
+          }catch(e){ console.error('Require failed when initializing Monaco', e); }
+        }
+
+        // Try to load local loader.js first
+        loadScript(localLoader, function(){
+          // initialize using local vs path
+          initMonaco(localVsPath);
+        }, function(){
+          // If local not found, report error and do not fallback to CDN automatically
+          console.error('Local Monaco loader not found at ' + localLoader + '. Ensure you have installed monaco-editor and copied the `min` folder to the expected location.');
+        });
+      })();
+    </script>
   </body>
 </html>
