@@ -312,27 +312,27 @@ class TopBar extends React.Component<{}, State> {
       );
     }
 
-    let reverse_checkbox = (
-      <label
-        title={
-          "when clicking buttons to the right, pass the `--reverse` " +
-          "flag to gdb in an attempt to debug in reverse. This is not always supported. " +
-          "rr is known to support reverse debugging. Keyboard shortcuts go in " +
-          "reverse when pressed with the shift key."
-        }
-        style={{ fontWeight: "normal", fontSize: "0.9em", margin: "5px" }}
-      >
-        <input
-          type="checkbox"
-          disabled={!this.state.reverse_supported}
-          checked={store.get("debug_in_reverse")}
-          onChange={e => {
-            store.set("debug_in_reverse", e.target.checked);
-          }}
-        />
-        reverse
-      </label>
-    );
+    // let reverse_checkbox = (
+    //   <label
+    //     title={
+    //       "when clicking buttons to the right, pass the `--reverse` " +
+    //       "flag to gdb in an attempt to debug in reverse. This is not always supported. " +
+    //       "rr is known to support reverse debugging. Keyboard shortcuts go in " +
+    //       "reverse when pressed with the shift key."
+    //     }
+    //     style={{ fontWeight: "normal", fontSize: "0.9em", margin: "5px" }}
+    //   >
+    //     <input
+    //       type="checkbox"
+    //       disabled={!this.state.reverse_supported}
+    //       checked={store.get("debug_in_reverse")}
+    //       onChange={e => {
+    //         store.set("debug_in_reverse", e.target.checked);
+    //       }}
+    //     />
+    //     reverse
+    //   </label>
+    // );
 
     return (
       <div
@@ -340,10 +340,13 @@ class TopBar extends React.Component<{}, State> {
         style={{ background: "#f5f6f7", position: "absolute", width: "100%" }}
       >
         <div className="flexrow">
+          
           {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'initial_user_input' does not exist on ty... Remove this comment to see the full error message */}
+          
           <BinaryLoader initial_user_input={this.props.initial_user_input} />
+          
           {spinner}
-          {reverse_checkbox}
+          {/* {reverse_checkbox} */}
 
           {this.get_controls()}
 

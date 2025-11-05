@@ -49,127 +49,136 @@ class BinaryLoader extends React.Component<{}, State> {
   render() {
     let button_text, title, placeholder;
 
-    if (this.state.target_type === TARGET_TYPES.file) {
-      button_text = "Load Binary";
-      title =
-        "Loads the binary and any arguments present in the input to the right. Backslashes are treated as escape characters. Windows users can either use two backslashes in paths, or forward slashes.";
-      placeholder = "/path/to/target/executable -and -flags";
-    } else if (this.state.target_type === TARGET_TYPES.server) {
-      // https://sourceware.org/gdb/onlinedocs/gdb/GDB_002fMI-Target-Manipulation.html#GDB_002fMI-Target-Manipulation
-      // -target-select
-      button_text = "Connect to gdbserver";
-      title = "Connect GDB to the remote target.";
-      placeholder = "examples: 127.0.0.1:9999 | /dev/ttya";
-    } else if (this.state.target_type === TARGET_TYPES.process) {
-      // -target-attach
-      button_text = "Attach to Process";
-      title =
-        "Attach to a process pid or a file file outside of GDB, or a thread group gid. If attaching to a thread group, the id previously returned by ‘-list-thread-groups --available’ must be used. Note: to do this, you usually need to run gdbgui as sudo.";
-      placeholder = "pid | gid | file";
-    }
+    // if (this.state.target_type === TARGET_TYPES.file) {
+    //   button_text = "Load Binary";
+    //   title =
+    //     "Loads the binary and any arguments present in the input to the right. Backslashes are treated as escape characters. Windows users can either use two backslashes in paths, or forward slashes.";
+    //   placeholder = "/path/to/target/executable -and -flags";
+    // } else if (this.state.target_type === TARGET_TYPES.server) {
+    //   // https://sourceware.org/gdb/onlinedocs/gdb/GDB_002fMI-Target-Manipulation.html#GDB_002fMI-Target-Manipulation
+    //   // -target-select
+    //   button_text = "Connect to gdbserver";
+    //   title = "Connect GDB to the remote target.";
+    //   placeholder = "examples: 127.0.0.1:9999 | /dev/ttya";
+    // } else if (this.state.target_type === TARGET_TYPES.process) {
+    //   // -target-attach
+    //   button_text = "Attach to Process";
+    //   title =
+    //     "Attach to a process pid or a file file outside of GDB, or a thread group gid. If attaching to a thread group, the id previously returned by ‘-list-thread-groups --available’ must be used. Note: to do this, you usually need to run gdbgui as sudo.";
+    //   placeholder = "pid | gid | file";
+    // }
 
     return (
-      <form style={{ marginBottom: 1, flex: "2 0 0" }}>
-        <div className="input-group input-group-sm">
-          <div className="dropdown input-group-btn">
-            <button
-              className="btn btn-primary dropdown-toggle"
-              type="button"
-              data-toggle="dropdown"
-            >
-              <span className="caret" />
-            </button>
+      // <form style={{ marginBottom: 1, flex: "2 0 0" }}>
+      //   <div className="input-group input-group-sm">
+      //     <div className="dropdown input-group-btn">
+      //       <button
+      //         className="btn btn-primary dropdown-toggle"
+      //         type="button"
+      //         data-toggle="dropdown"
+      //       >
+      //         <span className="caret" />
+      //       </button>
 
-            <ul className="dropdown-menu">
-              <li>
-                <a
-                  className="pointer"
-                  onClick={() => this.setState({ target_type: TARGET_TYPES.file })}
-                >
-                  Load Binary
-                </a>
-              </li>
-              <li>
-                <a
-                  className="pointer"
-                  onClick={() => this.setState({ target_type: TARGET_TYPES.server })}
-                >
-                  Connect to gdbserver
-                </a>
-              </li>
-              <li>
-                <a
-                  className="pointer"
-                  onClick={() => this.setState({ target_type: TARGET_TYPES.process })}
-                >
-                  Attach to Process
-                </a>
-              </li>
-            </ul>
+      //       <ul className="dropdown-menu">
+      //         <li>
+      //           <a
+      //             className="pointer"
+      //             onClick={() => this.setState({ target_type: TARGET_TYPES.file })}
+      //           >
+      //             Load Binary
+      //           </a>
+      //         </li>
+      //         <li>
+      //           <a
+      //             className="pointer"
+      //             onClick={() => this.setState({ target_type: TARGET_TYPES.server })}
+      //           >
+      //             Connect to gdbserver
+      //           </a>
+      //         </li>
+      //         <li>
+      //           <a
+      //             className="pointer"
+      //             onClick={() => this.setState({ target_type: TARGET_TYPES.process })}
+      //           >
+      //             Attach to Process
+      //           </a>
+      //         </li>
+      //       </ul>
 
-            <button
-              type="button"
-              title={title}
-              onClick={this.click_set_target_app.bind(this)}
-              className="btn btn-primary"
-            >
-              {button_text}
-            </button>
-          </div>
+      //       <button
+      //         type="button"
+      //         title={title}
+      //         onClick={this.click_set_target_app.bind(this)}
+      //         className="btn btn-primary"
+      //       >
+      //         {button_text}
+      //       </button>
+      //     </div>
 
-          <input
-            type="text"
-            placeholder={placeholder}
-            list="past_binaries"
-            style={{ fontFamily: "courier" }}
-            className="form-control"
-            onKeyUp={this.onkeyup_user_input.bind(this)}
-            onChange={this.onchange_user_inpu.bind(this)}
-            value={this.state.user_input}
-          />
-        </div>
-        <ToolTipTourguide
-          // @ts-expect-error ts-migrate(2322) FIXME: Property 'step_num' does not exist on type 'Intrin... Remove this comment to see the full error message
-          step_num={1}
-          position={"bottomcenter"}
-          content={
-            <div>
-              <h5>Enter the path to the binary you wish to debug here.</h5>
-              <p>This is the first thing you should do.</p>
-              <p>
-                The path can be absolute, or relative to where gdbgui was launched from.
-              </p>
-            </div>
-          }
-        />
-        <ToolTipTourguide
-          // @ts-expect-error ts-migrate(2322) FIXME: Property 'step_num' does not exist on type 'Intrin... Remove this comment to see the full error message
-          step_num={2}
-          position={"bottomleft"}
-          content={
-            <div>
-              <h5>Press this button to load the executable specified in the input.</h5>
-              <p>This is the second thing you should do.</p>
+      //     { <input
+      //       type="text"
+      //       placeholder={placeholder}
+      //       list="past_binaries"
+      //       style={{ fontFamily: "courier" }}
+      //       className="form-control"
+      //       onKeyUp={this.onkeyup_user_input.bind(this)}
+      //       onChange={this.onchange_user_inpu.bind(this)}
+      //       value={this.state.user_input}
+      //     /> }
+      //   </div>
+      //   <ToolTipTourguide
+      //     // @ts-expect-error ts-migrate(2322) FIXME: Property 'step_num' does not exist on type 'Intrin... Remove this comment to see the full error message
+      //     step_num={1}
+      //     position={"bottomcenter"}
+      //     content={
+      //       <div>
+      //         <h5>Enter the path to the binary you wish to debug here.</h5>
+      //         <p>This is the first thing you should do.</p>
+      //         <p>
+      //           The path can be absolute, or relative to where gdbgui was launched from.
+      //         </p>
+      //       </div>
+      //     }
+      //   />
+      //   <ToolTipTourguide
+      //     // @ts-expect-error ts-migrate(2322) FIXME: Property 'step_num' does not exist on type 'Intrin... Remove this comment to see the full error message
+      //     step_num={2}
+      //     position={"bottomleft"}
+      //     content={
+      //       <div>
+      //         <h5>Press this button to load the executable specified in the input.</h5>
+      //         <p>This is the second thing you should do.</p>
 
-              <p>
-                Debugging won't start, but you will be able to set breakpoints. If
-                present,{" "}
-                <a href="https://en.wikipedia.org/wiki/Debug_symbol">debugging symbols</a>{" "}
-                in the binary are also loaded.
-              </p>
-              <p>
-                If you don't want to debug a binary, click the dropdown to choose a
-                different target type.
-              </p>
-            </div>
-          }
-        />
-        <datalist id="past_binaries">
-          {this.state.past_binaries.map((b: any, i: any) => (
-            <option key={i}>{b}</option>
-          ))}
-        </datalist>
-      </form>
+      //         <p>
+      //           Debugging won't start, but you will be able to set breakpoints. If
+      //           present,{" "}
+      //           <a href="https://en.wikipedia.org/wiki/Debug_symbol">debugging symbols</a>{" "}
+      //           in the binary are also loaded.
+      //         </p>
+      //         <p>
+      //           If you don't want to debug a binary, click the dropdown to choose a
+      //           different target type.
+      //         </p>
+      //       </div>
+      //     }
+      //   />
+      //   <datalist id="past_binaries">
+      //     {this.state.past_binaries.map((b: any, i: any) => (
+      //       <option key={i}>{b}</option>
+      //     ))}
+      //   </datalist>
+      // </form>
+      <button
+        id="upload_button"
+        onClick={() => (window.location.href = "/upload")}
+        type="button"
+        title="Open upload page"
+        className="btn"
+      >
+        <span className="glyphicon glyphicon-upload" />
+      </button>
     );
   }
   componentDidMount() {

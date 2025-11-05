@@ -317,7 +317,10 @@ def gdbgui():
     gdb_command = request.args.get("gdb_command", current_app.config["gdb_command"])
     add_csrf_token_to_session()
 
-    THEMES = ["monokai", "light"]
+    # Make 'light' the default theme by listing it first. The frontend
+    # uses initial_data.themes[0] as the default when no stored preference
+    # exists in localStorage.
+    THEMES = ["light", "monokai"]
     initial_data = {
         "csrf_token": session["csrf_token"],
         "gdbgui_version": __version__,
