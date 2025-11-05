@@ -32,6 +32,10 @@ import uuid
 logger = logging.getLogger(__file__)
 blueprint = Blueprint("http_routes", __name__, template_folder=str(TEMPLATE_DIR))
 
+# @blueprint.route("/upload", methods=["GET", "POST"])
+# def upload_source_code():
+
+
 @blueprint.route("/upload", methods=["GET", "POST"])
 @authenticate
 def upload():
@@ -104,6 +108,81 @@ def upload():
 
     # render upload page - use template name relative to templates folder
     return render_template("upload.html", csrf_token=session["csrf_token"])
+
+
+
+@blueprint.route("/create_and_upload", methods=["POST"])
+@authenticate
+def create_and_upload():
+    """Create a source file from posted code, compile it (if C/C++),
+    save resulting executable in session and redirect to gdbgui.
+    Expects form fields:
+      - code: the source code
+      - filename: optional filename (e.g. pasted.cpp). If missing, uses pasted_code.cpp
+      - csrf_token: csrf token (checked by before_request)
+    """
+    add_csrf_token_to_session()
+
+    code = request.form.get("code")
+    if not code:
+        return client_error({"message": "No code submitted"})
+
+    # auto-generate a unique filename for the pasted source; ignore any provided filename
+    filename = f"pasted_{uuid.uuid4().hex}.cpp"
+    ext = ".cpp"
+
+    # ensure a per-session prefix exists and use it to avoid filename collisions
+    if "uploaded_prefix" not in session:
+        session["uploaded_prefix"] = uuid.uuid4().hex
+    prefix = session["uploaded_prefix"]
+
+    upload_dir = current_app.config.get("upload_folder") or os.path.join(
+        current_app.root_path, "uploads"
+    )
+    os.makedirs(upload_dir, exist_ok=True)
+
+    stored_filename = f"{prefix}_{filename}"
+    src_path = os.path.join(upload_dir, stored_filename)
+    try:
+        with open(src_path, "w") as f:
+            f.write(code)
+    except Exception as e:
+        return client_error({"message": "Failed to write source file", "detail": str(e)})
+
+    # If C/C++ source -> compile to executable
+    if ext.lower() in (".c", ".cpp", ".cc", ".cxx", ".c++"):
+        name_only, _ = os.path.splitext(stored_filename)
+        exec_filename = name_only + ".a"
+        exec_path = os.path.join(upload_dir, exec_filename)
+        compiler = current_app.config.get("c_compiler") or ("g++" if ext.lower() != ".c" else "gcc")
+        try:
+            res = subprocess.run(
+                [compiler, "-g", "-O0", src_path, "-o", exec_path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if res.returncode != 0:
+                return client_error({"message": "Compilation failed", "stderr": res.stderr})
+            try:
+                os.chmod(exec_path, 0o755)
+            except Exception:
+                pass
+        except FileNotFoundError:
+            return client_error({"message": f"Compiler not found: {compiler}."})
+        except subprocess.TimeoutExpired as e:
+            return client_error({"message": "Compilation timed out", "detail": str(e)})
+        except Exception as e:
+            return client_error({"message": str(e)})
+
+        session["uploaded_binary"] = exec_path
+        current_app.config["initial_binary_and_args"] = [exec_path]
+    else:
+        # non-C source: just register the source file as uploaded_binary
+        session["uploaded_binary"] = src_path
+        current_app.config["initial_binary_and_args"] = [src_path]
+
+    return redirect(url_for(".gdbgui"))
 
 
 

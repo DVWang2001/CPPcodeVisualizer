@@ -11,5 +11,12 @@
       <input type="file" name="binary" accept="*/*" required />
       <button type="submit">Upload</button>
     </form>
+    <form id="pasteForm" method="post" action="/create_and_upload">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <p>The server will generate a unique filename and save the .cpp under <code>uploads/</code>.</p>
+      <textarea name="code" id="code" rows="15" cols="80" placeholder=""></textarea>
+      <br/>
+      <button type="submit">Create file and upload</button>
+    </form>
   </body>
 </html>
