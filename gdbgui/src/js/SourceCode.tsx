@@ -52,15 +52,50 @@ class SourceCode extends React.Component<{}, State> {
   }
 
   render() {
+    const bodyRows = this.get_body();
+    const numRows = Array.isArray(bodyRows) ? bodyRows.length : 1; // 確保是數組，否則默認為1
+    const numDivs = Math.max(0, numRows - 1); // 比 code_body 少一個 div
+
     return (
-      <div className={this.state.current_theme} style={{ height: "100%" }}>
-        <table
-          id="code_table"
-          className={this.state.current_theme}
-          style={{ width: "100%" }}
-        >
-          <tbody id="code_body">{this.get_body()}</tbody>
-        </table>
+      <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex" }}>
+        <div style={{ flex: "0 0 70%", overflow: "auto" }}>
+          <table
+            id="code_table"
+            className={this.state.current_theme}
+            style={{ width: "100%"}}
+          >
+            <tbody id="code_body">{bodyRows}</tbody>
+          </table>
+        </div>
+        <div style={{ width: "1px", backgroundColor: "black" }}></div>
+        <div style={{ flex: "0 0 30%", overflow: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              {Array.from({ length: numDivs }, (_, index) => (
+                <tr key={index} className="srccode" style={{ verticalAlign: "top", width: "30px", border: "1px solid black" }}>
+                  <td style={{ verticalAlign: "top", width: "30px"}} className="line_num">
+                    <div>{index + 1}</div>
+                  </td>
+                  <td style={{ verticalAlign: "top", border: "1px solid black", minWidth: "100px" }} className="loc">
+                    <span
+                      className="wsp"
+                      contentEditable="true"
+                      style={{ minWidth: "100px", display: "inline-block" }}
+                      onInput={(e) => {
+                        const target = e.target as HTMLElement;
+                        if (!target.textContent || target.textContent.trim() === '') {
+                          target.textContent = ' ';
+                        }
+                      }}
+                    >
+                      {' '}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }
