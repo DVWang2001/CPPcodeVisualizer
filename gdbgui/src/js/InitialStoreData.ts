@@ -112,7 +112,7 @@ const initial_store_data = {
 
   show_filesystem: false,
   middle_panes_split_obj: {},
-  gdbguiPty: null
+  gdbguiPty: null,
 };
 
 function get_stored(key: any, default_val: any) {

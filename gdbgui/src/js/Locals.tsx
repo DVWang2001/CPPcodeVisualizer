@@ -25,6 +25,7 @@ class Locals extends React.Component {
     for (let local of sorted_local_objs) {
       let obj = this.get_autocreated_obj_from_expr(local.name);
       if (obj) {
+        // console.log(obj);
         content.push(
           <GdbVariable
             // @ts-expect-error ts-migrate(2769) FIXME: Property 'obj' does not exist on type 'IntrinsicAt... Remove this comment to see the full error message

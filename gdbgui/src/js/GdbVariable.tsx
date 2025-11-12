@@ -10,7 +10,8 @@ import constants from "./constants";
 import { store } from "statorgfc";
 import GdbApi from "./GdbApi";
 import CopyToClipboard from "./CopyToClipboard";
-import Actions from "./Actions";
+import Actions from "./Actions";  
+import { global_variable } from "./global_variable";
 
 /**
  * Simple object to manage fetching of child variables. Maintains a queue of parent expressions
@@ -68,7 +69,7 @@ let VarCreator = {
         expression = obj.expression,
         // @ts-expect-error ts-migrate(2532) FIXME: Object is possibly 'undefined'.
         expr_type = obj.expr_type;
-
+      console.log(`expression出來是 ${JSON.stringify(obj)}`);
       VarCreator._is_fetching = true;
 
       VarCreator.expr_being_created = expression;
@@ -87,7 +88,7 @@ let VarCreator = {
       // * means evaluate it at the current frame
       let var_create_cmd = constants.CREATE_VAR_STR + `-var-create - * ${expression}`;
       cmds.push(var_create_cmd);
-
+      console.log(`Running GDB command: ${cmds}`);
       GdbApi.run_gdb_command(cmds);
     } else {
       VarCreator._clear_state();
@@ -200,8 +201,7 @@ class GdbVariable extends React.Component {
       onclick = can_be_expanded
         ? () => GdbVariable.create_variable(local.name, "local")
         : () => {};
-
-    return (
+      return (
       <div>
         <span onClick={onclick} className={can_be_expanded ? "pointer" : ""}>
           {can_be_expanded ? "+" : ""} {local.name}&nbsp;

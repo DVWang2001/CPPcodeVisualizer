@@ -358,9 +358,10 @@ class TopBar extends React.Component<{}, State> {
           />
           {menu}
         </div>
-
+        
         {/* @ts-expect-error ts-migrate(2322) FIXME: Object literal may only specify known properties, ... Remove this comment to see the full error message */}
         <div style={{ marginTop: 3, whitespace: "nowrap" }} className="flexrow">
+          {/*
           <div
             role="group"
             style={{ height: "25px", marginRight: "10px" }}
@@ -417,7 +418,7 @@ class TopBar extends React.Component<{}, State> {
             {reload_button}
             {toggle_assm_button}
           </div>
-
+          */}
           <input
             onKeyUp={onkeyup_jump_to_line}
             autoComplete="on"
@@ -440,9 +441,10 @@ class TopBar extends React.Component<{}, State> {
             }}
             className="lighttext"
           >
-            <SourceCodeHeading />
+            {/* <SourceCodeHeading /> */}
           </div>
         </div>
+        
       </div>
     );
   }

@@ -5,6 +5,8 @@ import Locals from "./Locals";
 import Memory from "./Memory";
 import constants from "./constants";
 import React from "react";
+import VisualizerHelper from "./VisualizerHelper";
+import Visualizer from "./Visualizer";
 void React; // using jsx implicity uses React
 
 const Actions = {
@@ -17,6 +19,7 @@ const Actions = {
     store.set("threads", []);
     Memory.clear_cache();
     Locals.clear();
+    Visualizer.clear();
   },
   inferior_program_starting: function() {
     store.set("inferior_program", constants.inferior_states.running);
@@ -36,6 +39,9 @@ const Actions = {
     store.set("fullname_to_render", frame.fullname);
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
     store.set("line_of_source_to_flash", parseInt(frame.line));
+    // 讀取指導，如果存在指導並且當前的frame有line這個資訊
+    // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
+    VisualizerHelper.processing_guide(frame.line);
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'addr' does not exist on type '{}'.
     store.set("current_assembly_address", frame.addr);
     store.set("source_code_infinite_scrolling", false);

@@ -85,7 +85,7 @@ class ControlButtons extends React.Component<{}, State> {
         >
           <span className="glyphicon glyphicon-arrow-up" />
         </button>
-        <div role="group" className="btn-group btn-group-xs">
+        {/* <div role="group" className="btn-group btn-group-xs">
           <button
             id="next_instruction_button"
             onClick={() => GdbApi.click_next_instruction_button()}
@@ -110,7 +110,7 @@ class ControlButtons extends React.Component<{}, State> {
           >
             SI
           </button>
-        </div>
+        </div> */}
       </React.Fragment>
     );
   }

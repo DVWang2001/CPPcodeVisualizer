@@ -120,9 +120,13 @@ const process_gdb_response = function(response_array: any) {
         GdbApi.refresh_breakpoints();
       }
       if ("BreakpointTable" in r.payload) {
+        
         Breakpoints.save_breakpoints(r.payload);
       }
+      // 這裡有行資訊，可以在這裡面寫visualizer的繪圖。
       if ("stack" in r.payload) {
+        // console.log(`stack = ${JSON.stringify(r.payload.stack)}`);
+        // console.trace();
         Threads.update_stack(r.payload.stack);
       }
       if ("threads" in r.payload) {
@@ -203,10 +207,12 @@ const process_gdb_response = function(response_array: any) {
       // in gdb with '-var-create'. *Those* types of variables are referred to as "expressions" in gdbgui, and
       // are returned by gdbgui as "changelist", or have the keys "has_more", "numchild", "children", or "name".
       if ("variables" in r.payload) {
+        // console.log(`local = ${JSON.stringify(r.payload.variables)}`);
         Locals.save_locals(r.payload.variables);
       }
       // gdbgui expression (aka a gdb variable was changed)
       if ("changelist" in r.payload) {
+        console.log(`changelist = ${JSON.stringify(r.payload.changelist)}`);
         GdbVariable.handle_changelist(r.payload.changelist);
       }
       // gdbgui expression was evaluated for the first time for a child variable

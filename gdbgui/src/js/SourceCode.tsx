@@ -10,6 +10,7 @@ import Memory from "./Memory";
 import MemoryLink from "./MemoryLink";
 import constants from "./constants";
 import Actions from "./Actions";
+import { global_variable } from "./global_variable";
 
 type State = any;
 
@@ -23,6 +24,9 @@ class SourceCode extends React.Component<{}, State> {
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
+    this.state = {
+      inputValues: {},
+    };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
       "fullname_to_render",
@@ -40,7 +44,7 @@ class SourceCode extends React.Component<{}, State> {
       "source_linenum_to_display_start",
       "source_linenum_to_display_end",
       "max_lines_of_code_to_fetch",
-      "source_code_infinite_scrolling"
+      "source_code_infinite_scrolling",
     ]);
 
     // bind methods
@@ -49,15 +53,37 @@ class SourceCode extends React.Component<{}, State> {
     this._get_assm_row = this._get_assm_row.bind(this);
     this.click_gutter = this.click_gutter.bind(this);
     this.is_gdb_paused_on_this_line = this.is_gdb_paused_on_this_line.bind(this);
+    this.handleInputChange = this.handleInputChange.bind(this);
   }
 
+  handleInputChange(index: number, value: string) {
+    // console.log(`Changing input for line ${index} to: ${value}`);
+    // 更新組件狀態以支持受控 input
+    this.setState({
+      inputValues: {
+        ...this.state.inputValues,
+        [index]: value,
+      },
+    });
+
+    // 用global_variable儲存每個line的資訊。
+    if (!('__line' in global_variable)) {
+      (global_variable as any).__line = {};
+    }
+    // console.log(`第${index}行儲存的指導為${value}`);
+    (global_variable as any).__line[index] = value;
+  }
+  tempFullname = '';
   render() {
+    if (this.tempFullname !== this.state.fullname_to_render) {
+      this.tempFullname = this.state.fullname_to_render;
+      console.log(this.tempFullname);
+    }
     const bodyRows = this.get_body();
-    const numRows = Array.isArray(bodyRows) ? bodyRows.length : 1; // 確保是數組，否則默認為1
-    const numDivs = Math.max(0, numRows - 1); // 比 code_body 少一個 div
+    const inputRows = this.get_input_rows();
 
     return (
-      <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex" }}>
+      <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex",fontFamily: "monospace"}}>
         <div style={{ flex: "0 0 70%", overflow: "auto" }}>
           <table
             id="code_table"
@@ -67,32 +93,11 @@ class SourceCode extends React.Component<{}, State> {
             <tbody id="code_body">{bodyRows}</tbody>
           </table>
         </div>
-        <div style={{ width: "1px", backgroundColor: "black" }}></div>
-        <div style={{ flex: "0 0 30%", overflow: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={{backgroundColor: "black" }}></div>
+        <div style={{ flex: "0 0 30%"}}>
+          <table className={this.state.current_theme} style={{ width: "100%" }}>
             <tbody>
-              {Array.from({ length: numDivs }, (_, index) => (
-                <tr key={index} className="srccode" style={{ verticalAlign: "top", width: "30px", border: "1px solid black" }}>
-                  <td style={{ verticalAlign: "top", width: "30px"}} className="line_num">
-                    <div>{index + 1}</div>
-                  </td>
-                  <td style={{ verticalAlign: "top", border: "1px solid black", minWidth: "100px" }} className="loc">
-                    <span
-                      className="wsp"
-                      contentEditable="true"
-                      style={{ minWidth: "100px", display: "inline-block" }}
-                      onInput={(e) => {
-                        const target = e.target as HTMLElement;
-                        if (!target.textContent || target.textContent.trim() === '') {
-                          target.textContent = ' ';
-                        }
-                      }}
-                    >
-                      {' '}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {inputRows}
             </tbody>
           </table>
         </div>
@@ -100,7 +105,7 @@ class SourceCode extends React.Component<{}, State> {
     );
   }
 
-  componentDidUpdate() {
+  componentDidUpdate(prevProps: any, prevState: any) {
     let source_is_displayed =
       this.state.source_code_state === constants.source_code_states.SOURCE_CACHED ||
       this.state.source_code_state ===
@@ -112,6 +117,11 @@ class SourceCode extends React.Component<{}, State> {
           store.set("make_current_line_visible", false);
         }
       }
+    }
+
+    // 清空 inputValues 當 gdb_pid 改變時 (例如 run 時)
+    if (prevState && prevState.gdb_pid !== this.state.gdb_pid) {
+      this.setState({ inputValues: {} });
     }
   }
 
@@ -250,7 +260,7 @@ class SourceCode extends React.Component<{}, State> {
       <tr id={id} key={line_num_being_rendered} className={`${row_class.join(" ")}`}>
         {this.get_linenum_td(line_num_being_rendered, gutter_cls)}
 
-        <td style={{ verticalAlign: "top" }} className="loc">
+          <td style={{ verticalAlign: "top" }} className="loc">
           <span className="wsp" dangerouslySetInnerHTML={{ __html: source }} />
         </td>
 
@@ -506,6 +516,117 @@ class SourceCode extends React.Component<{}, State> {
         <td>no source code or assembly to display</td>
       </tr>
     );
+  }
+
+  get_input_source_rows(
+    fullname: any,
+    source_code_obj: any,
+    start_linenum: any,
+    end_linenum: any,
+    num_lines_in_file: any
+  ) {
+    let body = [];
+
+    const {
+      start_linenum_to_render,
+      end_linenum_to_render
+    } = this.get_line_nums_to_render(
+      source_code_obj,
+      start_linenum,
+      this.state.line_of_source_to_flash,
+      end_linenum
+    );
+
+    let line_num_being_rendered;
+    for (line_num_being_rendered = start_linenum_to_render; line_num_being_rendered <= end_linenum_to_render; line_num_being_rendered++) {
+      // console.log(`Rendering input for line ${line_num_being_rendered}`);
+      body.push(
+        <tr key={line_num_being_rendered} className="srccode">
+          {/* <td style={{ verticalAlign: "top" }} className="loc"> */}
+            <input
+              key={line_num_being_rendered}
+              data-line={line_num_being_rendered}
+              defaultValue={this.state.inputValues[line_num_being_rendered] || ''}
+              onChange={(e) => {
+                const idx = parseInt((e.target as HTMLInputElement).dataset.line!);
+                this.handleInputChange(idx, e.target.value);
+              }}
+            />
+          {/* </td> */}
+        </tr>
+      );
+    }
+
+    // add "view more" buttons if necessary, but for inputs, make empty
+    if (start_linenum_to_render > start_linenum) {
+      body.unshift(
+        <tr key={start_linenum_to_render - 1} className="srccode">
+          <td />
+        </tr>
+      );
+    } else if (start_linenum !== 1) {
+      body.unshift(
+        <tr key={start_linenum - 1} className="srccode">
+          <td />
+        </tr>
+      );
+    }
+
+    if (end_linenum_to_render < end_linenum) {
+      body.push(
+        <tr key={end_linenum_to_render + 1} className="srccode">
+          <td />
+        </tr>
+      );
+    } else if (end_linenum < num_lines_in_file) {
+      body.push(
+        <tr key={line_num_being_rendered} className="srccode">
+          <td />
+        </tr>
+      );
+    }
+
+    if (end_linenum_to_render === num_lines_in_file) {
+      body.push(
+        <tr key={num_lines_in_file + 1}>
+          <td />
+        </tr>
+      );
+    }
+    return body;
+  }
+
+  get_input_empty() {
+    return (
+      <tr>
+        <td></td>
+      </tr>
+    );
+  }
+
+  get_input_rows() {
+    const states = constants.source_code_states;
+    switch (this.state.source_code_state) {
+      case states.ASSM_AND_SOURCE_CACHED: // fallthrough
+      case states.SOURCE_CACHED: {
+        let obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
+        if (!obj) {
+          return this.get_input_empty();
+        }
+        let start_linenum = store.get("source_linenum_to_display_start"),
+          end_linenum = store.get("source_linenum_to_display_end");
+        return this.get_input_source_rows(
+          obj.fullname,
+          obj.source_code_obj,
+          start_linenum,
+          end_linenum,
+          obj.num_lines_in_file
+        );
+      }
+      default: {
+        return this.get_input_empty();
+      }
+    }
   }
   static make_current_line_visible() {
     return SourceCode._make_jq_selector_visible($("#scroll_to_line"));

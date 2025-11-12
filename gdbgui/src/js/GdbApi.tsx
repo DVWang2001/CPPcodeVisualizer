@@ -11,7 +11,7 @@ import constants from "./constants";
 import process_gdb_response from "./process_gdb_response";
 import React from "react";
 import io from "socket.io-client";
-import Visualizerhelper from "./Visualizerhelper";
+import { global_variable } from "./global_variable";
 void React; // needed when using JSX, but not marked as used
 /* global debug */
 
@@ -66,8 +66,8 @@ const GdbApi = {
       // @ts-expect-error ts-migrate(2769) FIXME: Argument of type 'null' is not assignable to param... Remove this comment to see the full error message
       clearTimeout(GdbApi._waiting_for_response_timeout);
       store.set("waiting_for_response", false);
+      // console.log(`讀到的回傳陣列是${JSON.stringify(response_array)}`);
       process_gdb_response(response_array);
-      Visualizerhelper.run(response_array);
     });
     socket.on("fatal_server_error", function(data: { message: null | string }) {
       Actions.add_console_entries(
@@ -157,6 +157,8 @@ const GdbApi = {
     GdbApi.run_gdb_command("-exec-run");
   },
   run_initial_commands: function() {
+    // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'global_variable'.
+    Object.keys(global_variable).forEach(key => delete global_variable[key]);
     const cmds = ["-list-features", "-list-target-features"];
     for (const src in initial_data.remap_sources) {
       const dst = initial_data.remap_sources[src];
@@ -318,6 +320,7 @@ const GdbApi = {
     }
 
     if (socket.connected) {
+      console.log(`傳送封包到伺服器${JSON.stringify(cmd)}`);
       socket.emit("run_gdb_command", { cmd: cmds });
       GdbApi.waiting_for_response();
       // add the send command to the console to show commands that are
