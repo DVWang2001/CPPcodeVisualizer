@@ -21,6 +21,8 @@ class SourceCode extends React.Component<{}, State> {
   static view_more_top_node = null;
   static view_more_bottom_node = null;
 
+  private initialFullname: string | null = null;
+
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
@@ -79,39 +81,61 @@ class SourceCode extends React.Component<{}, State> {
       this.tempFullname = this.state.fullname_to_render;
       console.log(this.tempFullname);
     }
+    if (this.initialFullname === null) {
+      this.initialFullname = this.state.fullname_to_render;
+    }
     const bodyRows = this.get_body();
-    const inputRows = this.get_input_rows();
+    const inputRows = this.state.fullname_to_render === this.initialFullname ? this.get_input_rows() : [];
 
-    return (
-      <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex",fontFamily: "monospace"}}>
-        <div style={{ flex: "0 0 70%", overflow: "auto" }}>
-          <table
-            id="code_table"
-            className={this.state.current_theme}
-            style={{ width: "100%"}}
-          >
-            <tbody id="code_body">{bodyRows}</tbody>
-          </table>
+    if (this.state.fullname_to_render === this.initialFullname) {
+      return (
+        <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex",fontFamily: "monospace"}}>
+          <div style={{ flex: "0 0 70%", overflow: "auto" }}>
+            <table
+              id="code_table"
+              className={this.state.current_theme}
+              style={{ width: "100%"}}
+            >
+              <tbody id="code_body">{bodyRows}</tbody>
+            </table>
+          </div>
+          <div style={{backgroundColor: "black" }}></div>
+          <div style={{ flex: "0 0 30%", overflow: "auto" }}>
+            <table className={this.state.current_theme} style={{ width: "100%" }}>
+              <tbody>
+                {inputRows}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div style={{backgroundColor: "black" }}></div>
-        <div style={{ flex: "0 0 30%"}}>
-          <table className={this.state.current_theme} style={{ width: "100%" }}>
-            <tbody>
-              {inputRows}
-            </tbody>
-          </table>
+      );
+    } else {
+      return (
+        <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex",fontFamily: "monospace"}}>
+          <div style={{ flex: "1", overflow: "auto" }}>
+            <table
+              id="code_table"
+              className={this.state.current_theme}
+              style={{ width: "100%"}}
+            >
+              <tbody id="code_body">{bodyRows}</tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   }
 
-  componentDidUpdate(prevProps: any, prevState: any) {
+  componentDidUpdate(prevState: any) {
     let source_is_displayed =
       this.state.source_code_state === constants.source_code_states.SOURCE_CACHED ||
       this.state.source_code_state ===
         constants.source_code_states.ASSM_AND_SOURCE_CACHED;
+    
     if (source_is_displayed) {
       if (this.state.make_current_line_visible) {
+        console.log(`還沒捲動過`);
+        console.trace();
         let success = SourceCode.make_current_line_visible();
         if (success) {
           store.set("make_current_line_visible", false);
@@ -632,6 +656,7 @@ class SourceCode extends React.Component<{}, State> {
     return SourceCode._make_jq_selector_visible($("#scroll_to_line"));
   }
   static is_source_line_visible(jq_selector: any) {
+    // console.trace();
     if (jq_selector.length !== 1) {
       // make sure something is selected before trying to scroll to it
       throw "Unexpected jquery selector";
