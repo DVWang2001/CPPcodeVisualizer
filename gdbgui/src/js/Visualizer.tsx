@@ -22,7 +22,7 @@ class Visualizer extends React.Component {
     if (!guide || guide.size === 0) {
       return <div>No guide data available</div>;
     }
-    // 原來的水平表格
+    // 水平表格
     const maxValues = Math.max(...Array.from(guide.values()).map(v => v.length));
     const rows = Array.from(guide.entries()).map(([key, values]) => {
       const cells = [<td key="expr" style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{key}</td>];

@@ -5,21 +5,18 @@ class VisualizerHelper {
     if (!('__line' in global_variable && (parseInt(frame_line) !== NaN)))return;
     // 尋找該line是否有指導
     if (!(frame_line in global_variable.__line)) return;
-    const regex = /(T)?\s*\(\s*([a-zA-Z_0-9+\-*/=<>!&|%()\s,]+)\s*\)/;
-    const match = global_variable.__line[frame_line].match(regex);
-    if (!match) return;
-    console.log(`實際上的內容：${global_variable.__line[frame_line]}`)
-    console.log(`match[1] = ${match[1]}`);
-    const instructions = match[2].split(',');
-    console.log(`成功讀取指導︰${instructions}`);
-    // 處理每個指令
-    VisualizerHelper.graphics_instruction(instructions);
+    const content = VisualizerHelper.extractBalancedBraces(global_variable.__line[frame_line]);
+    VisualizerHelper.graphics_instruction(content,frame_line);
   }
-  static async graphics_instruction(instruction) {
+  static async graphics_instruction(instruction,frame_line) {
     if (!("__guide" in global_variable)) global_variable.__guide = new Map();
-    
+    let outputArray = [];
     for (const inst of instruction) {
-      const trimmedInst = inst.trim();
+      if (!(inst.startsWith('{') && inst.endsWith('}'))) {
+        outputArray.push(inst);
+        continue;
+      }
+      const trimmedInst = inst.slice(1, -1).trim();
       const expressions = store.get("expressions");
       const existingVar = expressions.find(obj => obj.expression === trimmedInst && obj.in_scope === "true");
       if (existingVar) {
@@ -42,12 +39,42 @@ class VisualizerHelper {
         };
         checkStore();
       });
-
       console.log(`單獨結果 for ${trimmedInst}: ${result}`);
-      if (!(global_variable.__guide.has(trimmedInst)))global_variable.__guide.set(trimmedInst, []);
-      global_variable.__guide.get(trimmedInst).push(result);
-      console.log(JSON.stringify(Object.fromEntries(global_variable.__guide)));
+      outputArray.push(result);
     }
+    const outputString = outputArray.join(' ');
+    //若該行指導還沒建立，先建立
+    if (!(global_variable.__guide.has(frame_line)))global_variable.__guide.set(frame_line, []);
+    global_variable.__guide.get(frame_line).push(outputString);
+    console.log(JSON.stringify(Object.fromEntries(global_variable.__guide)));
+  }
+
+  static extractBalancedBraces(str) {
+    const parts = [];
+    let i = 0;
+    while (i < str.length) {
+      if (str[i] === '{') {
+        let braceCount = 1;
+        let start = i + 1;
+        i++;
+        while (i < str.length && braceCount > 0) {
+          if (str[i] === '{') {
+            braceCount++;
+          } else if (str[i] === '}') {
+            braceCount--;
+          }
+          i++;
+        }
+        if (braceCount === 0) {
+          const content = str.substring(start, i - 1);
+          parts.push(`{${content}}`);
+        }
+      } else {
+        parts.push(str[i]);
+        i++;
+      }
+    }
+    return parts;
   }
 }
 
