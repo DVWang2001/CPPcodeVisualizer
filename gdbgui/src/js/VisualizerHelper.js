@@ -8,18 +8,14 @@ class VisualizerHelper {
     const regex = /(T)?\s*\(\s*([a-zA-Z_0-9+\-*/=<>!&|%()\s,]+)\s*\)/;
     const match = global_variable.__line[frame_line].match(regex);
     if (!match) return;
-    const hasLeadingT = !!match[1]; // 如果 match[1] 存在，則有前導 T
     console.log(`實際上的內容：${global_variable.__line[frame_line]}`)
     console.log(`match[1] = ${match[1]}`);
-    console.log(`是否有前導 T: ${hasLeadingT}`);
     const instructions = match[2].split(',');
     console.log(`成功讀取指導︰${instructions}`);
-    // 設置標記
-    global_variable.__hasLeadingT = hasLeadingT;
     // 處理每個指令
-    VisualizerHelper.graphics_instruction(instructions,hasLeadingT);
+    VisualizerHelper.graphics_instruction(instructions);
   }
-  static async graphics_instruction(instruction, hasLeadingT = false) {
+  static async graphics_instruction(instruction) {
     if (!("__guide" in global_variable)) global_variable.__guide = new Map();
     
     for (const inst of instruction) {

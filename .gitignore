@@ -1,6 +1,6 @@
 dist
 *egg*
-# node_modules
+node_modules
 build
 executable
 .DS_Store
