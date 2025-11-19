@@ -133,9 +133,16 @@ class SourceCode extends React.Component<{}, State> {
         constants.source_code_states.ASSM_AND_SOURCE_CACHED;
     
     if (source_is_displayed) {
+      // 將源代碼存儲到global_variable以供Visualizer使用
+      let obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
+      if (obj && obj.source_code_obj && obj.fullname === this.initialFullname) {
+        (global_variable as any).__source_code = obj.source_code_obj;
+        (global_variable as any).__source_code_fullname = obj.fullname;
+      }
+
       if (this.state.make_current_line_visible) {
-        console.log(`還沒捲動過`);
-        console.trace();
+        // console.log(`還沒捲動過`);
+        // console.trace();
         let success = SourceCode.make_current_line_visible();
         if (success) {
           store.set("make_current_line_visible", false);
