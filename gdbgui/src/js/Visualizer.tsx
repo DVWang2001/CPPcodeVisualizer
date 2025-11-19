@@ -4,13 +4,19 @@ Animations.tsx就是用來給我弄視覺化的
 
 import React from "react";
 import { global_variable } from "./global_variable";
+import { store } from "statorgfc";
 
-class Visualizer extends React.Component {
+type State = any;
+
+class Visualizer extends React.Component<{}, State> {
   updateInterval: any;
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
-    
+    // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
+    store.connectComponentState(this, [
+      "current_theme",
+    ]);
   }
   static clear() {
     if ("__guide" in global_variable) {
@@ -37,8 +43,47 @@ class Visualizer extends React.Component {
       </table>
     );
   }
+
+  renderSourceCode() {
+    const sourceCode = (global_variable as any).__source_code;
+    const fullname = (global_variable as any).__source_code_fullname;
+    const guide = (global_variable as any).__guide as Map<string, any[]>;
+    if (!sourceCode) {
+      return <div>No source code available</div>;
+    }
+    // Calculate max guide length
+    const allGuideData = Object.keys(sourceCode).map(lineNum => guide ? guide.get(lineNum) : undefined).filter(g => g && g.length > 0);
+    const maxGuideLength = allGuideData.length > 0 ? Math.max(...allGuideData.map(g => g!.length)) : 0;
+    const rows = Object.entries(sourceCode).map(([lineNum, code]) => {
+      const guideData = guide ? guide.get(lineNum) : undefined;
+      const guideCells = [];
+      for (let i = 0; i < maxGuideLength; i++) {
+        const value = guideData && guideData[i] ? guideData[i] : '';
+        guideCells.push(<td key={i} style={{ padding: '4px', fontFamily: 'monospace', color: 'blue', whiteSpace: 'pre' }}>{value}</td>);
+      }
+      return (
+        <tr key={lineNum}>
+          <td style={{ padding: '4px', textAlign: 'right', width: '50px' }}>{lineNum}</td>
+          <td style={{ padding: '4px', fontFamily: 'monospace', whiteSpace: 'pre' }}><span className="wsp" dangerouslySetInnerHTML={{ __html: code as string }} /></td>
+          {guideCells}
+        </tr>
+      );
+    });
+    return (
+      <div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <tbody>{rows}</tbody>
+        </table>
+      </div>
+    );
+  }
+
   render() {
-    return this.renderGuideTable();
+    return (
+      <div className={this.state.current_theme}>
+        {this.renderSourceCode()}
+      </div>
+    );
   }
   componentDidMount() {
     this.updateInterval = setInterval(() => this.forceUpdate(), 1000);
