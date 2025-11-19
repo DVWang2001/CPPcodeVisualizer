@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+# Install build tools (g++), gdb and clean apt lists
+RUN set -eux \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends build-essential g++ gdb \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+
+# Upgrade pip so installing requirements later is smoother
+RUN pip install --upgrade pip
+
+# Copy and make executable the entry script
+COPY gdbgui-entry.sh /app/gdbgui-entry.sh
+RUN chmod +x /app/gdbgui-entry.sh
