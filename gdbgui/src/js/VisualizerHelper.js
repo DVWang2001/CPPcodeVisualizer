@@ -42,7 +42,9 @@ class VisualizerHelper {
       console.log(`單獨結果 for ${trimmedInst}: ${result}`);
       outputArray.push(result);
     }
-    const outputString = outputArray.join(' ');
+    const outputString = outputArray.join('');
+    // 將字面上的 \n 替換為實際的換行符 \n
+    const processedString = outputString.replace(/\\n/g, '\n');
     //若該行指導還沒建立，先建立
     if (!(global_variable.__guide.has(frame_line)))global_variable.__guide.set(frame_line, []);
     
@@ -55,12 +57,19 @@ class VisualizerHelper {
       }
     }
     
-    // 如果當前陣列的最後一個元素為 ' '，則 pop 再 push，否則直接 push
-    const currentArray = global_variable.__guide.get(frame_line);
-    if (currentArray.length > 0 && currentArray[currentArray.length - 1] === ' ') {
-      currentArray.pop();
+    // 如果 processedString 包含 \n，就 split 成多個部分，每個部分 push 到對應的行
+    const parts = processedString.split('\n');
+    for (let i = 0; i < parts.length; i++) {
+      const targetFrame = (parseInt(frame_line) + i).toString();
+      if (!(global_variable.__guide.has(targetFrame))) global_variable.__guide.set(targetFrame, []);
+      const targetArray = global_variable.__guide.get(targetFrame);
+      const part = parts[i];
+      // 如果目標陣列的最後一個元素為 ' '，則 pop 再 push，否則直接 push
+      if (targetArray.length > 0 && targetArray[targetArray.length - 1] === ' ') {
+        targetArray.pop();
+      }
+      targetArray.push(part);
     }
-    currentArray.push(outputString);
     console.log(JSON.stringify(Object.fromEntries(global_variable.__guide)));
   }
 

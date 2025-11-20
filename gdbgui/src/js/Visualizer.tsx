@@ -59,7 +59,7 @@ class Visualizer extends React.Component<{}, State> {
       const guideCells = [];
       for (let i = 0; i < maxGuideLength; i++) {
         const value = guideData && guideData[i] ? guideData[i] : '';
-        guideCells.push(<td key={i} style={{ padding: '4px', fontFamily: 'monospace', color: 'blue', whiteSpace: 'pre' }}>{value}</td>);
+        guideCells.push(<td key={i} style={{ padding: '4px', fontFamily: 'monospace', color: 'blue' }}>{value}</td>);
       }
       return (
         <tr key={lineNum}>
