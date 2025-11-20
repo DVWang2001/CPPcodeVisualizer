@@ -45,7 +45,22 @@ class VisualizerHelper {
     const outputString = outputArray.join(' ');
     //若該行指導還沒建立，先建立
     if (!(global_variable.__guide.has(frame_line)))global_variable.__guide.set(frame_line, []);
-    global_variable.__guide.get(frame_line).push(outputString);
+    
+    // 在 push 之前，填充所有 key 的陣列到最長陣列的長度
+    const allArrays = Array.from(global_variable.__guide.values());
+    const maxLength = Math.max(...allArrays.map(arr => arr.length));
+    for (const arr of allArrays) {
+      while (arr.length < maxLength) {
+        arr.push(' ');
+      }
+    }
+    
+    // 如果當前陣列的最後一個元素為 ' '，則 pop 再 push，否則直接 push
+    const currentArray = global_variable.__guide.get(frame_line);
+    if (currentArray.length > 0 && currentArray[currentArray.length - 1] === ' ') {
+      currentArray.pop();
+    }
+    currentArray.push(outputString);
     console.log(JSON.stringify(Object.fromEntries(global_variable.__guide)));
   }
 
