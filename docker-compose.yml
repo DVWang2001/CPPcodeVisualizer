@@ -19,7 +19,7 @@ services:
       - ./:/app
       - ./gdbgui/server/uploads:/app/gdbgui/server/uploads
     working_dir: /app
-    command: ["/app/gdbgui-entry.sh"]
+    command: ["sh","-c",'pip install -r /app/requirements.txt || pip install -e /app || true && python -m gdbgui --host="0.0.0.0" --port="5000"']
     ports:
       - "5000:5000"
     environment:
