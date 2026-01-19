@@ -1,14 +1,15 @@
 import { global_variable } from "./global_variable";
+import { store } from "statorgfc";
 import GdbVariable from "./GdbVariable";
 class VisualizerHelper {
   static processing_guide(frame_line) {
-    if (!('__line' in global_variable && (parseInt(frame_line) !== NaN)))return;
+    if (!('__line' in global_variable && (parseInt(frame_line) !== NaN))) return;
     // 尋找該line是否有指導
     if (!(frame_line in global_variable.__line)) return;
     const content = VisualizerHelper.extractBalancedBraces(global_variable.__line[frame_line]);
-    VisualizerHelper.graphics_instruction(content,frame_line);
+    VisualizerHelper.graphics_instruction(content, frame_line);
   }
-  static async graphics_instruction(instruction,frame_line) {
+  static async graphics_instruction(instruction, frame_line) {
     if (!("__guide" in global_variable)) global_variable.__guide = new Map();
     let outputArray = [];
     for (const inst of instruction) {
@@ -32,12 +33,34 @@ class VisualizerHelper {
           const expressions = store.get("expressions");
           const varObj = expressions.find(obj => obj.expression === trimmedInst && obj.in_scope === "true");
           if (varObj) {
-            resolve(varObj.value);
+            console.log(`[VisualizerHelper] Found variable: ${trimmedInst}, numchild: ${varObj.numchild}, value: ${varObj.value}`);
+            if (varObj.value.includes("std::vector of length 0")) {
+              resolve("{}");
+            } else if (varObj.numchild > 0) {
+              // 如果有子元素（如 vector），等待子元素載入完成
+              if (varObj.children && varObj.children.length > 0) {
+                const values = varObj.children.map(child => child.value).join(', ');
+                resolve(`{${values}}`);
+              } else {
+                // 子元素還沒載入，繼續等待
+                setTimeout(checkStore, 100);
+              }
+            } else {
+              resolve(varObj.value);
+            }
           } else {
+            // Debug logging (throttled to avoid spam)
+            if (!global_variable._debug_counter) global_variable._debug_counter = 0;
+            global_variable._debug_counter++;
+            if (global_variable._debug_counter % 10 === 0) {
+              const exprs = expressions.map(e => `"${e.expression}"`).join(', ');
+              console.log(`[VisualizerHelper] Waiting for variable "${trimmedInst}"... Available expressions: [${exprs}]`);
+            }
             setTimeout(checkStore, 100);  // 每 100ms 檢查一次
           }
         };
         checkStore();
+        console.log(`總有跑checkStore了吧`);
       });
       console.log(`單獨結果 for ${trimmedInst}: ${result}`);
       outputArray.push(result);
@@ -46,8 +69,8 @@ class VisualizerHelper {
     // 將字面上的 \n 替換為實際的換行符 \n
     const processedString = outputString.replace(/\\n/g, '\n');
     //若該行指導還沒建立，先建立
-    if (!(global_variable.__guide.has(frame_line)))global_variable.__guide.set(frame_line, []);
-    
+    if (!(global_variable.__guide.has(frame_line))) global_variable.__guide.set(frame_line, []);
+
     // 在 push 之前，填充所有 key 的陣列到最長陣列的長度
     const allArrays = Array.from(global_variable.__guide.values());
     const maxLength = Math.max(...allArrays.map(arr => arr.length));
@@ -56,7 +79,7 @@ class VisualizerHelper {
         arr.push(' ');
       }
     }
-    
+
     // 如果 processedString 包含 \n，就 split 成多個部分，每個部分 push 到對應的行
     const parts = processedString.split('\n');
     for (let i = 0; i < parts.length; i++) {
