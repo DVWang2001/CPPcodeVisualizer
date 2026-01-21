@@ -63,6 +63,15 @@ class SourceCode extends React.Component<{}, State> {
   editorInstance: any = null;
   monaco: any = null;
   decorations: any[] = [];
+  inputContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
+  containerRef: React.RefObject<HTMLDivElement> = React.createRef();
+
+  state: any = {
+    inputValues: {},
+    splitPos: -1, // -1 means uninitialized/auto
+    isDragging: false,
+    lineCount: 0,
+  };
 
   handleEditorDidMount = (_getValue: any, editor: any) => {
     this.editorInstance = editor;
@@ -70,6 +79,36 @@ class SourceCode extends React.Component<{}, State> {
     // Expose editor content getter for GdbApi to use
     (window as any).gdbgui_get_editor_value = () => this.editorInstance.getValue();
     this.updateDecorations();
+
+    // Sync scroll
+    editor.onDidScrollChange((e: any) => {
+      if (this.inputContainerRef.current) {
+        this.inputContainerRef.current.scrollTop = e.scrollTop;
+      }
+    });
+
+    // Dynamic line count sync
+    const updateLineCount = () => {
+      const model = editor.getModel();
+      if (model) {
+        this.setState({ lineCount: model.getLineCount() });
+      }
+    };
+    // Initial set
+    updateLineCount();
+    // Listen for changes
+    editor.onDidChangeModelContent(() => {
+      updateLineCount();
+    });
+
+    // Auto-size split position to 50%
+    setTimeout(() => {
+      if (this.containerRef.current) {
+        // Default to 50% of container width
+        const halfWidth = this.containerRef.current.clientWidth / 2;
+        this.setState({ splitPos: halfWidth });
+      }
+    }, 100);
 
     // In v3 we might need to listen to mouse events differently or it works the same on editor instance
     editor.onMouseDown((e: any) => {
@@ -79,6 +118,36 @@ class SourceCode extends React.Component<{}, State> {
         this.click_gutter(lineNum);
       }
     });
+  };
+
+  startDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    this.setState({ isDragging: true });
+    document.addEventListener('mousemove', this.doDrag);
+    document.addEventListener('mouseup', this.stopDrag);
+
+    // Overlay iframe protection if needed? No iframes here.
+  };
+
+  doDrag = (e: MouseEvent) => {
+    if (this.containerRef.current) {
+      const rect = this.containerRef.current.getBoundingClientRect();
+      let newSplit = e.clientX - rect.left;
+
+      // Min/Max constraints
+      if (newSplit < 100) newSplit = 100;
+      if (newSplit > rect.width - 50) newSplit = rect.width - 50;
+
+      this.setState({ splitPos: newSplit });
+      // Layout monaco
+      if (this.editorInstance) this.editorInstance.layout();
+    }
+  };
+
+  stopDrag = () => {
+    this.setState({ isDragging: false });
+    document.removeEventListener('mousemove', this.doDrag);
+    document.removeEventListener('mouseup', this.stopDrag);
   };
 
   updateDecorations = () => {
@@ -207,24 +276,91 @@ class SourceCode extends React.Component<{}, State> {
     if (showMonaco && obj && obj.source_code_obj) {
       const value = this.get_monaco_value(obj.source_code_obj, obj.num_lines_in_file);
       const theme = this.state.current_theme === 'dark' ? 'vs-dark' : 'light';
+      const LINE_HEIGHT = 19;
+      // Use dynamic line count if available, otherwise fallback to static
+      const numLines = this.state.lineCount > 0 ? this.state.lineCount : obj.num_lines_in_file;
+
+      // Generate inputs
+      const inputs = [];
+      for (let i = 1; i <= numLines; i++) {
+        inputs.push(
+          <div key={i} style={{ height: `${LINE_HEIGHT}px`, borderBottom: "1px solid #eee", boxSizing: "border-box" }}>
+            <input
+              style={{
+                width: "100%",
+                height: "100%",
+                border: "none",
+                background: "transparent",
+                fontFamily: "monospace",
+                fontSize: "inherit"
+              }}
+              data-line={i}
+              defaultValue={this.state.inputValues[i] || ''}
+              placeholder={`Guide for line ${i}`}
+              onChange={(e) => {
+                this.handleInputChange(i, e.target.value);
+              }}
+            />
+          </div>
+        );
+      }
+
+      // Calculate Styles
+      const splitPos = this.state.splitPos;
+      const leftStyle: React.CSSProperties = splitPos !== -1
+        ? { width: `${splitPos}px`, height: "100%", flexShrink: 0 }
+        : { flex: "0 0 50%", height: "100%" }; // Default 50% until mounted
 
       return (
-        <div className={this.state.current_theme} style={{ height: "100%", width: "100%", overflow: 'hidden' }}>
-          <MonacoEditor
-            height="100%"
-            language="cpp"
-            theme={theme}
-            value={value}
-            editorDidMount={this.handleEditorDidMount}
-            options={{
-              readOnly: false,
-              glyphMargin: true,
-              lineNumbers: 'on',
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              fontFamily: "monospace"
+        <div ref={this.containerRef} className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex", overflow: 'hidden' }}>
+          <div style={leftStyle}>
+            <MonacoEditor
+              height="100%"
+              language="cpp"
+              theme={theme}
+              value={value}
+              editorDidMount={(getValue: any, editor: any) => {
+                this.handleEditorDidMount(getValue, editor);
+              }}
+              options={{
+                readOnly: false,
+                glyphMargin: true,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                fontFamily: "monospace",
+                lineHeight: LINE_HEIGHT
+              }}
+            />
+          </div>
+
+          {/* Drag Handle */}
+          <div
+            onMouseDown={this.startDrag}
+            style={{
+              width: "5px",
+              height: "100%",
+              cursor: "col-resize",
+              backgroundColor: "#e0e0e0",
+              zIndex: 10,
+              flexShrink: 0
             }}
+            title="Drag to resize"
           />
+
+          <div style={{ flex: "1", height: "100%", borderLeft: "1px solid #ccc", backgroundColor: "#fdfdfd", minWidth: 0 }}>
+            <div
+              ref={this.inputContainerRef}
+              style={{
+                height: "100%",
+                overflow: "hidden", // Hide scrollbar, controlled by Monaco
+                fontFamily: "monospace",
+                fontSize: "14px" // Match Monaco default approx
+              }}
+            >
+              {inputs}
+            </div>
+          </div>
         </div>
       );
     }
