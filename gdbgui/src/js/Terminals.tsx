@@ -6,6 +6,7 @@ import { store } from "statorgfc";
 import "xterm/css/xterm.css";
 import constants from "./constants";
 import Actions from "./Actions";
+import MonacoEditor from "@monaco-editor/react";
 
 function customKeyEventHandler(config: {
   pty_name: string;
@@ -39,41 +40,76 @@ function customKeyEventHandler(config: {
     return true;
   };
 }
-export class Terminals extends React.Component {
+
+const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+
+export class Terminals extends React.Component<any, { programOutput: string }> {
   userPtyRef: React.RefObject<any>;
   programPtyRef: React.RefObject<any>;
   gdbguiPtyRef: React.RefObject<any>;
+
   constructor(props: any) {
     super(props);
     this.userPtyRef = React.createRef();
     this.programPtyRef = React.createRef();
     this.gdbguiPtyRef = React.createRef();
     this.terminal = this.terminal.bind(this);
+
+    this.state = {
+      programOutput: "Program output -- Programs being debugged are connected to this terminal.\nYou can read output here.\n\n"
+    };
   }
 
   terminal(ref: React.RefObject<any>) {
-    let className = " bg-black p-0 m-0 h-full align-baseline ";
+    let className = "relative bg-black p-0 m-0 h-full align-baseline ";
     return (
       <div className={className}>
-        <div className="absolute h-full w-1/3 align-baseline  " ref={ref}></div>
+        <div className="absolute h-full w-full align-baseline  " ref={ref}></div>
       </div>
     );
   }
+
   render() {
-    let terminalsClass = "w-full h-full relative grid grid-cols-3 ";
+    let terminalsClass = "w-full h-full relative grid grid-cols-3 gap-2";
     return (
       <div className={terminalsClass}>
         {this.terminal(this.userPtyRef)}
         {/* <GdbGuiTerminal /> */}
         {this.terminal(this.gdbguiPtyRef)}
-        {this.terminal(this.programPtyRef)}
+
+        {/* Replaced Program Pty with Monaco Editor */}
+        <div className="h-full w-full overflow-hidden bg-white relative">
+          <div className="absolute top-0 left-0 bg-gray-100 text-xs px-2 py-1 z-10 border-b border-gray-300">Standard Output</div>
+          <MonacoEditor
+            height="100%"
+            language="plaintext"
+            theme="light"
+            value={this.state.programOutput}
+            editorDidMount={(getValue: any, editor: any) => {
+              editor.onDidChangeModelContent(() => {
+                this.setState({ programOutput: getValue() });
+              });
+            }}
+            options={{
+              readOnly: false,
+              minimap: { enabled: false },
+              wordWrap: "on",
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              fontFamily: "monospace",
+              renderLineHighlight: "all",
+              hideCursorInOverviewRuler: true,
+              overviewRulerLanes: 0
+            }}
+          />
+        </div>
       </div>
     );
   }
 
   componentDidMount() {
     const fitAddon = new FitAddon();
-    const programFitAddon = new FitAddon();
+    // const programFitAddon = new FitAddon(); // No longer needed
     const gdbguiFitAddon = new FitAddon();
 
     const userPty = new Terminal({
@@ -82,7 +118,7 @@ export class Terminals extends React.Component {
       scrollback: 9999
     });
     userPty.loadAddon(fitAddon);
-    userPty.open(this.userPtyRef.current);
+    userPty.open(this.userPtyRef.current!);
     userPty.writeln(`running command: ${store.get("gdb_command")}`);
     userPty.writeln("");
     userPty.attachCustomKeyEventHandler(
@@ -94,7 +130,7 @@ export class Terminals extends React.Component {
         pidStoreKey: "gdb_pid"
       })
     );
-    GdbApi.getSocket().on("user_pty_response", function(data: string) {
+    GdbApi.getSocket().on("user_pty_response", function (data: string) {
       userPty.write(data);
     });
     userPty.onKey((data, ev) => {
@@ -106,35 +142,13 @@ export class Terminals extends React.Component {
       }
     });
 
-    const programPty = new Terminal({
-      cursorBlink: true,
-      macOptionIsMeta: true,
-      scrollback: 9999
-    });
-    programPty.loadAddon(programFitAddon);
-    programPty.open(this.programPtyRef.current);
-    programPty.attachCustomKeyEventHandler(
-      // @ts-expect-error
-      customKeyEventHandler({
-        pty_name: "program_pty",
-        pty: programPty,
-        canPaste: true,
-        pidStoreKey: "inferior_pid"
-      })
-    );
-    programPty.write(constants.xtermColors.grey);
-    programPty.write(
-      "Program output -- Programs being debugged are connected to this terminal. " +
-        "You can read output and send input to the program from here."
-    );
-    programPty.writeln(constants.xtermColors.reset);
-    GdbApi.getSocket().on("program_pty_response", function(pty_response: string) {
-      programPty.write(pty_response);
-    });
-    programPty.onKey((data, ev) => {
-      GdbApi.getSocket().emit("pty_interaction", {
-        data: { pty_name: "program_pty", key: data.key, action: "write" }
-      });
+    // Program Pty Replacement Logic
+    GdbApi.getSocket().on("program_pty_response", (pty_response: string) => {
+      // Strip ANSI codes for plain text editor
+      const cleanText = pty_response.replace(ansiRegex, '');
+      this.setState(prevState => ({
+        programOutput: prevState.programOutput + cleanText
+      }));
     });
 
     const gdbguiPty = new Terminal({
@@ -157,13 +171,13 @@ export class Terminals extends React.Component {
     );
 
     gdbguiPty.loadAddon(gdbguiFitAddon);
-    gdbguiPty.open(this.gdbguiPtyRef.current);
+    gdbguiPty.open(this.gdbguiPtyRef.current!);
     // gdbguiPty is written to elsewhere
     store.set("gdbguiPty", gdbguiPty);
 
     const interval = setInterval(() => {
       fitAddon.fit();
-      programFitAddon.fit();
+      // programFitAddon.fit(); // No longer needed
       gdbguiFitAddon.fit();
       const socket = GdbApi.getSocket();
 
@@ -179,19 +193,14 @@ export class Terminals extends React.Component {
         }
       });
 
-      socket.emit("pty_interaction", {
-        data: {
-          pty_name: "program_pty",
-          rows: programPty.rows,
-          cols: programPty.cols,
-          action: "set_winsize"
-        }
-      });
+      // Program Pty resizing is no longer relevant for Monaco, 
+      // but maybe keep backend happy? Or just omit.
+      // Omit since we are not displaying it via xterm.
     }, 2000);
 
     setTimeout(() => {
       fitAddon.fit();
-      programFitAddon.fit();
+      // programFitAddon.fit();
       gdbguiFitAddon.fit();
     }, 0);
   }

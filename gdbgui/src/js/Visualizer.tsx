@@ -64,7 +64,7 @@ class Visualizer extends React.Component<{}, State> {
       return (
         <tr key={lineNum}>
           <td style={{ padding: '4px', textAlign: 'right', width: '50px' }}>{lineNum}</td>
-          <td style={{ padding: '4px', fontFamily: 'monospace', whiteSpace: 'pre' }}><span className="wsp" dangerouslySetInnerHTML={{ __html: code as string }} /></td>
+          <td style={{ padding: '4px', fontFamily: 'monospace', whiteSpace: 'pre' }}><span className="wsp">{code as string}</span></td>
           {guideCells}
         </tr>
       );

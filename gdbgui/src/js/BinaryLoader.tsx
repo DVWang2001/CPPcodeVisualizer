@@ -176,6 +176,7 @@ class BinaryLoader extends React.Component<{}, State> {
         type="button"
         title="Open upload page"
         className="btn"
+        style={{ display: "none" }}
       >
         <span className="glyphicon glyphicon-upload" />
       </button>

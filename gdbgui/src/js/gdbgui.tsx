@@ -45,7 +45,7 @@ if (debug) {
   // log call store changes in console except if changed key was in
   // constants.keys_to_not_log_changes_in_console
   // @ts-expect-error ts-migrate(2339) FIXME: Property 'use' does not exist on type '{ get(key: ... Remove this comment to see the full error message
-  store.use(function(key: any, oldval: any, newval: any) {
+  store.use(function (key: any, oldval: any, newval: any) {
     if (constants.keys_to_not_log_changes_in_console.indexOf(key) === -1) {
       middleware.logChanges(key, oldval, newval);
     }
@@ -68,7 +68,7 @@ class Gdbgui extends React.PureComponent {
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'initial_user_input' does not exist on ty... Remove this comment to see the full error message */}
         <TopBar initial_user_input={initial_data.initial_binary_and_args} />
 
-        <div id="middle" style={{ paddingTop: "60px" }}>
+        <div id="middle" style={{ paddingTop: "32px" }}>
           <div id="folders_view" className="content" style={{ backgroundColor: "#333" }}>
             <FoldersView />
           </div>

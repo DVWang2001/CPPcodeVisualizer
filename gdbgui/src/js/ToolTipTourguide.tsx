@@ -23,6 +23,12 @@ class ToolTipTourguide extends React.Component<{}, State> {
   componentWillMount() {
     store.set("num_tour_guide_steps", store.get("num_tour_guide_steps") + 1);
   }
+  componentWillUnmount() {
+    // @ts-expect-error
+    if (store.disconnectComponentState) {
+      store.disconnectComponentState(this);
+    }
+  }
   static dismiss() {
     store.set("show_tour_guide", false);
     store.set("tour_guide_step", 0);

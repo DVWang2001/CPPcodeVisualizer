@@ -18,7 +18,7 @@ let onkeyup_jump_to_line = (e: any) => {
   }
 };
 
-let show_license = function() {
+let show_license = function () {
   Actions.show_modal(
     "gdbgui license",
     <React.Fragment>
@@ -42,7 +42,7 @@ let show_license = function() {
 };
 
 let About = {
-  show_about: function() {
+  show_about: function () {
     Actions.show_modal(
       "About gdbgui",
       <div>
@@ -56,7 +56,7 @@ let About = {
   }
 };
 
-let show_session_info = function() {
+let show_session_info = function () {
   Actions.show_modal(
     "session information",
     <React.Fragment>
@@ -261,7 +261,7 @@ class TopBar extends React.Component<{}, State> {
     let toggle_assm_button = "";
     if (
       this.state.source_code_state ===
-        constants.source_code_states.ASSM_AND_SOURCE_CACHED ||
+      constants.source_code_states.ASSM_AND_SOURCE_CACHED ||
       this.state.source_code_state === constants.source_code_states.ASSM_CACHED
     ) {
       // @ts-expect-error ts-migrate(2322) FIXME: Type 'Element' is not assignable to type 'string'.
@@ -284,7 +284,7 @@ class TopBar extends React.Component<{}, State> {
     let reload_button_disabled = "disabled";
     if (
       this.state.source_code_state ===
-        constants.source_code_states.ASSM_AND_SOURCE_CACHED ||
+      constants.source_code_states.ASSM_AND_SOURCE_CACHED ||
       this.state.source_code_state === constants.source_code_states.SOURCE_CACHED
     ) {
       reload_button_disabled = "";
@@ -340,11 +340,11 @@ class TopBar extends React.Component<{}, State> {
         style={{ background: "#f5f6f7", position: "absolute", width: "100%" }}
       >
         <div className="flexrow">
-          
+
           {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'initial_user_input' does not exist on ty... Remove this comment to see the full error message */}
-          
+
           <BinaryLoader initial_user_input={this.props.initial_user_input} />
-          
+
           {spinner}
           {/* {reverse_checkbox} */}
 
@@ -358,7 +358,7 @@ class TopBar extends React.Component<{}, State> {
           />
           {menu}
         </div>
-        
+
         {/* @ts-expect-error ts-migrate(2322) FIXME: Object literal may only specify known properties, ... Remove this comment to see the full error message */}
         <div style={{ marginTop: 3, whitespace: "nowrap" }} className="flexrow">
           {/*
@@ -424,7 +424,7 @@ class TopBar extends React.Component<{}, State> {
             autoComplete="on"
             title="Enter line number, then press enter"
             placeholder="jump to line"
-            style={{ width: 150, height: 25, marginLeft: 10 }}
+            style={{ width: 150, height: 25, marginLeft: 10, display: "none" }}
             className="form-control dropdown-input"
           />
 
@@ -444,7 +444,7 @@ class TopBar extends React.Component<{}, State> {
             {/* <SourceCodeHeading /> */}
           </div>
         </div>
-        
+
       </div>
     );
   }

@@ -149,6 +149,8 @@ def create_and_upload():
     except Exception as e:
         return client_error({"message": "Failed to write source file", "detail": str(e)})
 
+    binary_path_result = None
+
     # If C/C++ source -> compile to executable
     if ext.lower() in (".c", ".cpp", ".cc", ".cxx", ".c++"):
         name_only, _ = os.path.splitext(stored_filename)
@@ -176,13 +178,21 @@ def create_and_upload():
             return client_error({"message": str(e)})
 
         session["uploaded_binary"] = exec_path
+        binary_path_result = exec_path
         current_app.config["initial_binary_and_args"] = [exec_path]
     else:
         # non-C source: just register the source file as uploaded_binary
         session["uploaded_binary"] = src_path
+        binary_path_result = src_path
         current_app.config["initial_binary_and_args"] = [src_path]
 
+    if request.headers.get("Accept") == "application/json":
+        return jsonify({"status": "success", "binary_path": binary_path_result})
+        
     return redirect(url_for(".gdbgui"))
+
+
+
 
 
 
@@ -309,9 +319,84 @@ def dashboard():
 @authenticate
 def gdbgui():
     # check if user didn't upload file
+    # check if user didn't upload file, OR if the uploaded file is missing from disk
     resp = require_uploaded_binary()
+    should_create_default = False
+    
     if resp:
-        return resp
+        # Case 1: No file in session
+        should_create_default = True
+    else:
+        # Case 2: File in session, but check if it exists on disk
+        bin_path = session.get("uploaded_binary")
+        upload_dir = current_app.config.get("upload_folder") or os.path.join(
+            current_app.root_path, "uploads"
+        )
+        # Determine if we should check for missing source
+        # Only check if the binary is inside our uploads folder (don't mess with external local debug targets)
+        if bin_path and os.path.abspath(bin_path).startswith(os.path.abspath(upload_dir)):
+            if not os.path.exists(bin_path):
+                should_create_default = True
+            else:
+                # Also check if corresponding source exists (assuming .a -> .cpp/.c mapping from uploads)
+                # If it's a .a file we created, we expect a source file
+                base, ext = os.path.splitext(bin_path)
+                if ext == '.a':
+                     # Check common extensions
+                     found_source = False
+                     for src_ext in ['.cpp', '.c', '.cc', '.cxx', '.c++']:
+                         if os.path.exists(base + src_ext):
+                             found_source = True
+                             break
+                     if not found_source:
+                         logger.info(f"Binary {bin_path} exists but source missing. Recreating default.")
+                         should_create_default = True
+
+    if should_create_default:
+        # Create a default hello world cpp
+        upload_dir = current_app.config.get("upload_folder") or os.path.join(
+            current_app.root_path, "uploads"
+        )
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        filename = f"default_hello_{uuid.uuid4().hex}.cpp"
+        src_path = os.path.join(upload_dir, filename)
+        
+        default_code = '#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}\n'
+        
+        with open(src_path, "w") as f:
+            f.write(default_code)
+            
+        # Compile it
+        name_only, _ = os.path.splitext(filename)
+        exec_filename = name_only + ".a"
+        exec_path = os.path.join(upload_dir, exec_filename)
+        compiler = current_app.config.get("c_compiler") or "g++"
+        
+        try:
+            res = subprocess.run(
+                [compiler, "-g", "-O0", src_path, "-o", exec_path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if res.returncode == 0:
+                try:
+                    os.chmod(exec_path, 0o755)
+                except Exception:
+                    pass
+                
+                # Set session variables
+                session["uploaded_binary"] = exec_path
+                current_app.config["initial_binary_and_args"] = [exec_path]
+            else:
+                 # If compilation fails, log and fallback to redirect if strictly needed
+                 logger.error(f"Default hello world compilation failed: {res.stderr}")
+                 if resp: return resp 
+        except Exception as e:
+            logger.error(f"Default hello world generation failed: {e}")
+            if resp: return resp
+
     """Render the main gdbgui interface"""
     gdbpid = request.args.get("gdbpid", 0)
     gdb_command = request.args.get("gdb_command", current_app.config["gdb_command"])

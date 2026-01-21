@@ -9,7 +9,7 @@ import constants from "./constants";
 
 const BreakpointSourceLineCache = {
   _cache: {},
-  get_line: function(fullname: any, linenum: any) {
+  get_line: function (fullname: any, linenum: any) {
     if (
       // @ts-expect-error ts-migrate(7053) FIXME: Property 'fullname' does not exist on type '{}'.
       BreakpointSourceLineCache._cache["fullname"] !== undefined &&
@@ -21,7 +21,7 @@ const BreakpointSourceLineCache = {
     }
     return null;
   },
-  add_line: function(fullname: any, linenum: any, escaped_text: any) {
+  add_line: function (fullname: any, linenum: any, escaped_text: any) {
     // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name '_'.
     if (!_.isObject(BreakpointSourceLineCache._cache["fullname"])) {
       // @ts-expect-error ts-migrate(7053) FIXME: Property 'fullname' does not exist on type '{}'.
@@ -164,7 +164,7 @@ class Breakpoint extends React.Component<{}, BreakpointState> {
           className="inline"
           title={`${
             this.state.breakpoint_condition ? "Modify or remove" : "Add"
-          } breakpoint condition`}
+            } breakpoint condition`}
         >
           <span className="glyphicon glyphicon-edit"></span>
           <span className={`italic ${this.state.breakpoint_condition ? "bold" : ""}`}>
@@ -267,6 +267,12 @@ class Breakpoints extends React.Component {
     super();
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, ["breakpoints"]);
+  }
+  componentWillUnmount() {
+    // @ts-expect-error
+    if (store.disconnectComponentState) {
+      store.disconnectComponentState(this);
+    }
   }
   render() {
     let breakpoints_jsx = [];

@@ -29,11 +29,16 @@ module.exports = {
           }
         ],
         exclude: /node_modules/
+      },
+      {
+        test: /\.mjs$/,
+        include: /node_modules/,
+        type: "javascript/auto"
       }
     ]
   },
   plugins: [new ForkTsCheckerWebpackPlugin({})],
   resolve: {
-    extensions: [".js", ".ts", ".tsx", ".css"]
+    extensions: [".js", ".ts", ".tsx", ".css", ".mjs"]
   }
 };

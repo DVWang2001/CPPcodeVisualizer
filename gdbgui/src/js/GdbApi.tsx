@@ -26,7 +26,7 @@ let log: {
 if (debug) {
   log = console.info;
 } else {
-  log = function() {
+  log = function () {
     // stubbed out
   };
 }
@@ -39,10 +39,10 @@ if (debug) {
 const initial_data = window.initial_data;
 let socket: SocketIOClient.Socket;
 const GdbApi = {
-  getSocket: function() {
+  getSocket: function () {
     return socket;
   },
-  init: function() {
+  init: function () {
     const TIMEOUT_MIN = 5;
     socket = io.connect(`/gdb_listener`, {
       timeout: TIMEOUT_MIN * 60 * 1000,
@@ -53,7 +53,7 @@ const GdbApi = {
       }
     });
 
-    socket.on("connect", function() {
+    socket.on("connect", function () {
       log("connected");
       const queuedGdbCommands = store.get("queuedGdbCommands");
       if (queuedGdbCommands) {
@@ -62,21 +62,21 @@ const GdbApi = {
       }
     });
 
-    socket.on("gdb_response", function(response_array: any) {
+    socket.on("gdb_response", function (response_array: any) {
       // @ts-expect-error ts-migrate(2769) FIXME: Argument of type 'null' is not assignable to param... Remove this comment to see the full error message
       clearTimeout(GdbApi._waiting_for_response_timeout);
       store.set("waiting_for_response", false);
       // console.log(`讀到的回傳陣列是${JSON.stringify(response_array)}`);
       process_gdb_response(response_array);
     });
-    socket.on("fatal_server_error", function(data: { message: null | string }) {
+    socket.on("fatal_server_error", function (data: { message: null | string }) {
       Actions.add_console_entries(
         `Message from server: ${data.message}`,
         constants.console_entry_type.STD_ERR
       );
       socket.close();
     });
-    socket.on("error_running_gdb_command", function(data: { message: any }) {
+    socket.on("error_running_gdb_command", function (data: { message: any }) {
       Actions.add_console_entries(
         `Error occurred on server when running gdb command: ${data.message}`,
         constants.console_entry_type.STD_ERR
@@ -84,14 +84,14 @@ const GdbApi = {
       socket.close();
     });
 
-    socket.on("server_error", function(data: { message: any }) {
+    socket.on("server_error", function (data: { message: any }) {
       Actions.add_console_entries(
         `Server message: ${data.message}`,
         constants.console_entry_type.STD_ERR
       );
     });
 
-    socket.on("debug_session_connection_event", function(gdb_pid_obj: {
+    socket.on("debug_session_connection_event", function (gdb_pid_obj: {
       pid: number;
       message: string | void;
       ok: boolean;
@@ -123,7 +123,7 @@ const GdbApi = {
       }
     });
 
-    socket.on("disconnect", function() {
+    socket.on("disconnect", function () {
       // we no longer need to warn the user before they exit the page since the gdb process
       // on the server is already gone
       window.onbeforeunload = () => null;
@@ -152,11 +152,123 @@ const GdbApi = {
     });
   },
   _waiting_for_response_timeout: null,
-  click_run_button: function() {
+  click_run_button: function () {
+    // Check if we have editor content to save
+    const getEditorValue = (window as any).gdbgui_get_editor_value;
+    if (getEditorValue) {
+      const code = getEditorValue();
+      const csrf_token = (window as any).initial_data.csrf_token;
+
+      Actions.add_console_entries(
+        "Compiling and uploading code...",
+        constants.console_entry_type.GDBGUI_OUTPUT
+      );
+
+      // Call create_and_upload endpoint
+      $.ajax({
+        url: "/create_and_upload",
+        type: "POST",
+        data: {
+          code: code,
+          csrf_token: csrf_token
+        },
+        headers: {
+          "Accept": "application/json"
+        },
+        success: function (response: any) {
+          console.log("Compile response:", response); // Browser console
+
+          // Debug logging to GDBGUI console
+          let responseType = typeof response;
+          if (responseType === 'string') {
+            const preview = response.substring(0, 100).replace(/\n/g, ' ');
+            Actions.add_console_entries(
+              `Debug: Received string response (likely HTML): "${preview}..."`,
+              constants.console_entry_type.GDBGUI_OUTPUT
+            );
+          } else {
+            Actions.add_console_entries(
+              `Debug: Received JSON response: ${JSON.stringify(response)}`,
+              constants.console_entry_type.GDBGUI_OUTPUT
+            );
+          }
+
+          let binaryPath = null;
+          if (response && response.status === "success" && response.binary_path) {
+            binaryPath = response.binary_path;
+          } else if (typeof response === 'string') {
+            // Fallback: HTML returned
+            const match = response.match(/initial_data\s*=\s*({[\s\S]*?})\n/);
+            if (match && match[1]) {
+              try {
+                const initData = JSON.parse(match[1]);
+                if (initData.initial_binary_and_args && initData.initial_binary_and_args.length > 0) {
+                  binaryPath = initData.initial_binary_and_args[0];
+                  Actions.add_console_entries(
+                    `Debug: Extracted binary path from HTML: ${binaryPath}`,
+                    constants.console_entry_type.GDBGUI_OUTPUT
+                  );
+                }
+              } catch (e) {
+                console.error("Failed to parse initial_data from HTML", e);
+              }
+            }
+          }
+
+          if (binaryPath) {
+            Actions.add_console_entries(
+              `Compilation successful. Loading binary: ${binaryPath}`,
+              constants.console_entry_type.GDBGUI_OUTPUT
+            );
+
+            // Reload binary and run
+            let cmds = [
+              `-file-exec-and-symbols ${binaryPath}`,
+              store.get("auto_add_breakpoint_to_main") ? "-break-insert main" : "",
+              "-break-list",
+              "-exec-run"
+            ].filter(c => c !== "");
+
+            GdbApi.run_gdb_command(cmds);
+
+            Actions.inferior_program_starting();
+          } else {
+            Actions.add_console_entries(
+              "Error: Compilation succeeded but no binary path returned.",
+              constants.console_entry_type.STD_ERR
+            );
+          }
+        },
+        error: function (xhr: any) {
+          let msg = "Unknown error during compilation.";
+          if (xhr.responseJSON && xhr.responseJSON.message) {
+            msg = xhr.responseJSON.message;
+          } else if (xhr.responseText) {
+            try {
+              const r = JSON.parse(xhr.responseText);
+              if (r.message) msg = r.message;
+            } catch (e) { }
+          }
+          Actions.add_console_entries(
+            `Compilation failed: ${msg}`,
+            constants.console_entry_type.STD_ERR
+          );
+          if (xhr.responseJSON && xhr.responseJSON.stderr) {
+            Actions.add_console_entries(
+              xhr.responseJSON.stderr,
+              constants.console_entry_type.STD_ERR
+            );
+          }
+        }
+      });
+      return;
+    }
+
+    // Fallback if no editor logic
     Actions.inferior_program_starting();
     GdbApi.run_gdb_command("-exec-run");
   },
-  run_initial_commands: function() {
+  run_initial_commands: function () {
     // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'global_variable'.
     Object.keys(global_variable).forEach(key => delete global_variable[key]);
     const cmds = ["-list-features", "-list-target-features"];
@@ -166,32 +278,32 @@ const GdbApi = {
     }
     GdbApi.run_gdb_command(cmds);
   },
-  inferior_is_paused: function() {
+  inferior_is_paused: function () {
     return (
       [constants.inferior_states.unknown, constants.inferior_states.paused].indexOf(
         store.get("inferior_program")
       ) !== -1
     );
   },
-  click_continue_button: function(reverse = false) {
+  click_continue_button: function (reverse = false) {
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-continue" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
   },
-  click_next_button: function(reverse = false) {
+  click_next_button: function (reverse = false) {
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-next" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
   },
-  click_step_button: function(reverse = false) {
+  click_step_button: function (reverse = false) {
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-step" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
   },
-  click_return_button: function() {
+  click_return_button: function () {
     // From gdb mi docs (https://sourceware.org/gdb/onlinedocs/gdb/GDB_002fMI-Program-Execution.html#GDB_002fMI-Program-Execution):
     // `-exec-return` Makes current function return immediately. Doesn't execute the inferior.
     // That means we do NOT dispatch the event `event_inferior_program_resuming`, because it's not, in fact, running.
@@ -199,29 +311,29 @@ const GdbApi = {
     GdbApi.run_gdb_command("-exec-return");
     Actions.inferior_program_paused();
   },
-  click_next_instruction_button: function(reverse = false) {
+  click_next_instruction_button: function (reverse = false) {
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-next-instruction" +
-        (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
+      (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
   },
-  click_step_instruction_button: function(reverse = false) {
+  click_step_instruction_button: function (reverse = false) {
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-step-instruction" +
-        (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
+      (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
   },
-  click_send_interrupt_button: function() {
+  click_send_interrupt_button: function () {
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command("-exec-interrupt");
   },
-  send_autocomplete_command: function(command: string) {
+  send_autocomplete_command: function (command: string) {
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command("complete " + command);
   },
-  click_gdb_cmd_button: function(e: {
+  click_gdb_cmd_button: function (e: {
     currentTarget: { dataset: { [x: string]: any; cmd: undefined; cmd0: undefined } };
   }) {
     if (e.currentTarget.dataset.cmd !== undefined) {
@@ -248,12 +360,12 @@ const GdbApi = {
       );
     }
   },
-  select_frame: function(framenum: any) {
+  select_frame: function (framenum: any) {
     // TODO this command is deprecated (https://sourceware.org/gdb/onlinedocs/gdb/GDB_002fMI-Stack-Manipulation.html)
     // This command in deprecated in favor of passing the ‘--frame’ option to every command.
     GdbApi.run_command_and_refresh_state(`-stack-select-frame ${framenum}`);
   },
-  select_thread_id: function(thread_id: any) {
+  select_thread_id: function (thread_id: any) {
     // TODO this command is deprecated (http://www.sourceware.org/gdb/current/onlinedocs/gdb/GDB_002fMI-Thread-Commands.html)
     // This command is deprecated in favor of explicitly using the ‘--thread’ option to each command.
     GdbApi.run_command_and_refresh_state(`-thread-select ${thread_id}`);
@@ -262,7 +374,7 @@ const GdbApi = {
    * Before sending a command, set a timeout to notify the user that something might be wrong
    * if a response from gdb is not received
    */
-  waiting_for_response: function() {
+  waiting_for_response: function () {
     store.set("waiting_for_response", true);
     const WAIT_TIME_SEC = 10;
     // @ts-expect-error ts-migrate(2769) FIXME: Argument of type 'null' is not assignable to param... Remove this comment to see the full error message
@@ -290,13 +402,13 @@ const GdbApi = {
 
       Actions.add_console_entries(
         "2) gdb or the inferior process is busy running and needs to be " +
-          "interrupted (press the pause button up top).",
+        "interrupted (press the pause button up top).",
         constants.console_entry_type.GDBGUI_OUTPUT
       );
 
       Actions.add_console_entries(
         "3) Something is just taking a long time to finish and respond back to " +
-          "this browser window, in which case you can just keep waiting.",
+        "this browser window, in which case you can just keep waiting.",
         constants.console_entry_type.GDBGUI_OUTPUT
       );
     }, WAIT_TIME_SEC * 1000);
@@ -307,7 +419,7 @@ const GdbApi = {
    * @param cmd: a string or array of strings, that are directly evaluated by gdb
    * @return nothing
    */
-  run_gdb_command: function(cmd: any) {
+  run_gdb_command: function (cmd: any) {
     // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name '_'.
     if (_.trim(cmd) === "") {
       return;
@@ -334,7 +446,7 @@ const GdbApi = {
       store.set("queuedGdbCommands", queuedGdbCommands);
     }
   },
-  run_command_and_refresh_state: function(user_cmd: string | any[]) {
+  run_command_and_refresh_state: function (user_cmd: string | any[]) {
     let cmds: any[] = [];
     if (Array.isArray(user_cmd)) {
       cmds = cmds.concat(user_cmd);
@@ -345,7 +457,7 @@ const GdbApi = {
     cmds = cmds.concat(GdbApi._get_refresh_state_for_pause_cmds());
     GdbApi.run_gdb_command(cmds);
   },
-  backtrace: function() {
+  backtrace: function () {
     let cmds = ["backtrace"];
     cmds = cmds.concat(GdbApi._get_refresh_state_for_pause_cmds());
     store.set("inferior_program", constants.inferior_states.paused);
@@ -355,7 +467,7 @@ const GdbApi = {
    * Get array of commands to send to gdb that refreshes everything in the
    * frontend
    */
-  _get_refresh_state_for_pause_cmds: function() {
+  _get_refresh_state_for_pause_cmds: function () {
     let cmds = [
       // get info on current thread
       // TODO run -thread-list-ids to store list of thread id's and know
@@ -382,12 +494,12 @@ const GdbApi = {
     cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-frames");
     return cmds;
   },
-  refresh_breakpoints: function() {
+  refresh_breakpoints: function () {
     GdbApi.run_gdb_command([GdbApi.get_break_list_cmd()]);
   },
   get_inferior_binary_last_modified_unix_sec(path: any) {
     $.ajax({
-      beforeSend: function(xhr: { setRequestHeader: (arg0: string, arg1: any) => void }) {
+      beforeSend: function (xhr: { setRequestHeader: (arg0: string, arg1: any) => void }) {
         xhr.setRequestHeader("x-csrftoken", initial_data.csrf_token);
       },
       url: "/get_last_modified_unix_sec",
@@ -398,13 +510,13 @@ const GdbApi = {
       error: GdbApi._error_getting_last_modified_unix_sec
     });
   },
-  get_insert_break_cmd: function(fullname: any, line: any) {
+  get_insert_break_cmd: function (fullname: any, line: any) {
     return [`-break-insert "${fullname}:${line}"`];
   },
-  get_delete_break_cmd: function(bkpt_num: any) {
+  get_delete_break_cmd: function (bkpt_num: any) {
     return `-break-delete ${bkpt_num}`;
   },
-  get_break_list_cmd: function() {
+  get_break_list_cmd: function () {
     return "-break-list";
   },
   get_load_binary_and_arguments_cmds(binary: any, args: any) {

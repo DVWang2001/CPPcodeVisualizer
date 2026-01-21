@@ -4,6 +4,7 @@
 
 import { store } from "statorgfc";
 import React from "react";
+import MonacoEditor from "@monaco-editor/react";
 import FileOps from "./FileOps";
 import Breakpoints from "./Breakpoints";
 import Memory from "./Memory";
@@ -58,6 +59,114 @@ class SourceCode extends React.Component<{}, State> {
     this.handleInputChange = this.handleInputChange.bind(this);
   }
 
+
+  editorInstance: any = null;
+  monaco: any = null;
+  decorations: any[] = [];
+
+  handleEditorDidMount = (_getValue: any, editor: any) => {
+    this.editorInstance = editor;
+    this.monaco = (window as any).monaco;
+    // Expose editor content getter for GdbApi to use
+    (window as any).gdbgui_get_editor_value = () => this.editorInstance.getValue();
+    this.updateDecorations();
+
+    // In v3 we might need to listen to mouse events differently or it works the same on editor instance
+    editor.onMouseDown((e: any) => {
+      // Need to check if this.monaco is available yet. Sometimes it takes a moment if loaded via CDN asynchronously
+      if (this.monaco && e.target.type === this.monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+        const lineNum = e.target.position.lineNumber;
+        this.click_gutter(lineNum);
+      }
+    });
+  };
+
+  updateDecorations = () => {
+    if (!this.editorInstance || !this.monaco) return;
+
+    const { paused_on_frame, fullname_to_render } = this.state;
+
+    const bkpt_lines = Breakpoints.get_breakpoint_lines_for_file(fullname_to_render) || [];
+    const disabled_bkpt_lines = Breakpoints.get_disabled_breakpoint_lines_for_file(fullname_to_render) || [];
+    const conditional_bkpt_lines = Breakpoints.get_conditional_breakpoint_lines_for_file(fullname_to_render) || [];
+
+    const newDecorations: any[] = [];
+
+    // Current execution line
+    if (paused_on_frame && paused_on_frame.fullname === fullname_to_render) {
+      const line = parseInt(paused_on_frame.line);
+      newDecorations.push({
+        range: new this.monaco.Range(line, 1, line, 1),
+        options: {
+          isWholeLine: true,
+          className: "paused_on_line",
+          glyphMarginClassName: "fas fa-arrow-right"
+        },
+      });
+    }
+
+    // Breakpoints
+    bkpt_lines.forEach((line: any) => {
+      newDecorations.push({
+        range: new this.monaco.Range(line, 1, line, 1),
+        options: {
+          glyphMarginClassName: "monaco-breakpoint",
+        },
+      });
+    });
+
+    // Disabled Breakpoints
+    disabled_bkpt_lines.forEach((line: any) => {
+      newDecorations.push({
+        range: new this.monaco.Range(line, 1, line, 1),
+        options: {
+          glyphMarginClassName: "monaco-disabled-breakpoint",
+        },
+      });
+    });
+
+    // Conditional Breakpoints
+    conditional_bkpt_lines.forEach((line: any) => {
+      newDecorations.push({
+        range: new this.monaco.Range(line, 1, line, 1),
+        options: {
+          glyphMarginClassName: "monaco-conditional-breakpoint",
+        },
+      });
+    });
+
+    this.decorations = this.editorInstance.deltaDecorations(this.decorations, newDecorations);
+  };
+
+  get_monaco_value(source_code_obj: any, num_lines: any) {
+    if (!source_code_obj) return "";
+    const lines = [];
+
+    // Helper to strip HTML tags
+    const stripHtml = (html: string) => {
+      if (!html) return "";
+
+      // Heuristic: If it contains span tags or common HTML entities, treat as HTML and decode.
+      // Otherwise treat as raw text (to preserve #include <iostream> etc.)
+      // Pygments usually wraps in span.
+      if (html.includes('<span') || html.includes('&lt;') || html.includes('&gt;') || html.includes('&amp;')) {
+        let tmp = html;
+        tmp = tmp.replace(/<[^>]*>?/gm, '');
+        // Decode basic entities
+        tmp = tmp.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ');
+        return tmp;
+      }
+
+      return html;
+    };
+
+    for (let i = 1; i <= num_lines; i++) {
+      let lineContent = source_code_obj[i] || "";
+      lines.push(stripHtml(lineContent));
+    }
+    return lines.join("\n");
+  }
+
   handleInputChange(index: number, value: string) {
     // console.log(`Changing input for line ${index} to: ${value}`);
     // 更新組件狀態以支持受控 input
@@ -84,22 +193,58 @@ class SourceCode extends React.Component<{}, State> {
     if (this.initialFullname === null) {
       this.initialFullname = this.state.fullname_to_render;
     }
+
+    const showMonaco =
+      this.state.source_code_state === constants.source_code_states.SOURCE_CACHED ||
+      this.state.source_code_state === constants.source_code_states.ASSM_AND_SOURCE_CACHED;
+
+    // Check if we have the file object
+    let obj = null;
+    if (showMonaco) {
+      obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
+    }
+
+    if (showMonaco && obj && obj.source_code_obj) {
+      const value = this.get_monaco_value(obj.source_code_obj, obj.num_lines_in_file);
+      const theme = this.state.current_theme === 'dark' ? 'vs-dark' : 'light';
+
+      return (
+        <div className={this.state.current_theme} style={{ height: "100%", width: "100%", overflow: 'hidden' }}>
+          <MonacoEditor
+            height="100%"
+            language="cpp"
+            theme={theme}
+            value={value}
+            editorDidMount={this.handleEditorDidMount}
+            options={{
+              readOnly: false,
+              glyphMargin: true,
+              lineNumbers: 'on',
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              fontFamily: "monospace"
+            }}
+          />
+        </div>
+      );
+    }
+
     const bodyRows = this.get_body();
     const inputRows = this.state.fullname_to_render === this.initialFullname ? this.get_input_rows() : [];
 
     if (this.state.fullname_to_render === this.initialFullname) {
       return (
-        <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex",fontFamily: "monospace"}}>
+        <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex", fontFamily: "monospace" }}>
           <div style={{ flex: "0 0 70%", overflow: "auto" }}>
             <table
               id="code_table"
               className={this.state.current_theme}
-              style={{ width: "100%"}}
+              style={{ width: "100%" }}
             >
               <tbody id="code_body">{bodyRows}</tbody>
             </table>
           </div>
-          <div style={{backgroundColor: "black" }}></div>
+          <div style={{ backgroundColor: "black" }}></div>
           <div style={{ flex: "0 0 30%", overflow: "auto" }}>
             <table className={this.state.current_theme} style={{ width: "100%" }}>
               <tbody>
@@ -111,12 +256,12 @@ class SourceCode extends React.Component<{}, State> {
       );
     } else {
       return (
-        <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex",fontFamily: "monospace"}}>
+        <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex", fontFamily: "monospace" }}>
           <div style={{ flex: "1", overflow: "auto" }}>
             <table
               id="code_table"
               className={this.state.current_theme}
-              style={{ width: "100%"}}
+              style={{ width: "100%" }}
             >
               <tbody id="code_body">{bodyRows}</tbody>
             </table>
@@ -127,11 +272,13 @@ class SourceCode extends React.Component<{}, State> {
   }
 
   componentDidUpdate(prevState: any) {
+    this.updateDecorations();
+
     let source_is_displayed =
       this.state.source_code_state === constants.source_code_states.SOURCE_CACHED ||
       this.state.source_code_state ===
-        constants.source_code_states.ASSM_AND_SOURCE_CACHED;
-    
+      constants.source_code_states.ASSM_AND_SOURCE_CACHED;
+
     if (source_is_displayed) {
       // 將源代碼存儲到global_variable以供Visualizer使用
       let obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
@@ -167,8 +314,8 @@ class SourceCode extends React.Component<{}, State> {
           return this.get_body_empty();
         }
         let paused_addr = this.state.paused_on_frame
-            ? this.state.paused_on_frame.addr
-            : null,
+          ? this.state.paused_on_frame.addr
+          : null,
           start_linenum = store.get("source_linenum_to_display_start"),
           end_linenum = store.get("source_linenum_to_display_end");
         return this.get_body_source_and_assm(
@@ -190,8 +337,8 @@ class SourceCode extends React.Component<{}, State> {
       }
       case states.ASSM_CACHED: {
         let paused_addr = this.state.paused_on_frame
-            ? this.state.paused_on_frame.addr
-            : null,
+          ? this.state.paused_on_frame.addr
+          : null,
           assm_array = this.state.disassembly_for_missing_file;
         return this.get_body_assembly_only(assm_array, paused_addr);
       }
@@ -291,8 +438,8 @@ class SourceCode extends React.Component<{}, State> {
       <tr id={id} key={line_num_being_rendered} className={`${row_class.join(" ")}`}>
         {this.get_linenum_td(line_num_being_rendered, gutter_cls)}
 
-          <td style={{ verticalAlign: "top" }} className="loc">
-          <span className="wsp" dangerouslySetInnerHTML={{ __html: source }} />
+        <td style={{ verticalAlign: "top" }} className="loc">
+          <span className="wsp" contentEditable={true} suppressContentEditableWarning={true} dangerouslySetInnerHTML={{ __html: source }} />
         </td>
 
         <td className="assembly">{assembly_content}</td>
@@ -318,8 +465,8 @@ class SourceCode extends React.Component<{}, State> {
    */
   static _get_assm_content(key: any, assm: any, paused_addr: any) {
     let opcodes = assm.opcodes ? (
-        <span className="instrContent">{`(${assm.opcodes})`}</span>
-      ) : (
+      <span className="instrContent">{`(${assm.opcodes})`}</span>
+    ) : (
         ""
       ),
       instruction = Memory.make_addrs_into_links_react(assm.inst),
@@ -334,8 +481,8 @@ class SourceCode extends React.Component<{}, State> {
           style={{ width: "10px", display: "inline-block" }}
         />
       ) : (
-        <span style={{ width: "10px", display: "inline-block" }}> </span>
-      );
+          <span style={{ width: "10px", display: "inline-block" }}> </span>
+        );
     return (
       <span key={key} style={{ whiteSpace: "nowrap" }} className={cls}>
         {/* @ts-expect-error ts-migrate(2769) FIXME: Property 'fontFamily' is missing in type '{ paddin... Remove this comment to see the full error message */}
@@ -347,8 +494,8 @@ class SourceCode extends React.Component<{}, State> {
             {func_name}+{offset}
           </span>
         ) : (
-          ""
-        )}
+            ""
+          )}
       </span>
     );
   }
@@ -444,8 +591,8 @@ class SourceCode extends React.Component<{}, State> {
     let body = [];
 
     let bkpt_lines = Breakpoints.get_breakpoint_lines_for_file(
-        this.state.fullname_to_render
-      ),
+      this.state.fullname_to_render
+    ),
       disabled_breakpoint_lines = Breakpoints.get_disabled_breakpoint_lines_for_file(
         this.state.fullname_to_render
       ),
@@ -574,15 +721,15 @@ class SourceCode extends React.Component<{}, State> {
       body.push(
         <tr key={line_num_being_rendered} className="srccode">
           {/* <td style={{ verticalAlign: "top" }} className="loc"> */}
-            <input
-              key={line_num_being_rendered}
-              data-line={line_num_being_rendered}
-              defaultValue={this.state.inputValues[line_num_being_rendered] || ''}
-              onChange={(e) => {
-                const idx = parseInt((e.target as HTMLInputElement).dataset.line!);
-                this.handleInputChange(idx, e.target.value);
-              }}
-            />
+          <input
+            key={line_num_being_rendered}
+            data-line={line_num_being_rendered}
+            defaultValue={this.state.inputValues[line_num_being_rendered] || ''}
+            onChange={(e) => {
+              const idx = parseInt((e.target as HTMLInputElement).dataset.line!);
+              this.handleInputChange(idx, e.target.value);
+            }}
+          />
           {/* </td> */}
         </tr>
       );

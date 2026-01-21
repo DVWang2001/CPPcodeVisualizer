@@ -11,7 +11,7 @@ if (debug) {
   /* global debug */
   debug_print = console.info;
 } else {
-  debug_print = function() {
+  debug_print = function () {
     // stubbed out
   };
 }
@@ -19,7 +19,7 @@ if (debug) {
 let FileFetcher = {
   _is_fetching: false,
   _queue: [],
-  _fetch: function(fullname: any, start_line: any, end_line: any) {
+  _fetch: function (fullname: any, start_line: any, end_line: any) {
     if (FileOps.is_missing_file(fullname)) {
       // file doesn't exist and we already know about it
       // don't keep trying to fetch disassembly
@@ -43,11 +43,11 @@ let FileFetcher = {
       start_line: start_line,
       end_line: end_line,
       path: fullname,
-      highlight: store.get("highlight_source_code")
+      highlight: false
     };
 
     $.ajax({
-      beforeSend: function(xhr) {
+      beforeSend: function (xhr) {
         xhr.setRequestHeader(
           "x-csrftoken",
           // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'initial_data'.
@@ -58,7 +58,7 @@ let FileFetcher = {
       cache: false,
       type: "GET",
       data: data,
-      success: function(response) {
+      success: function (response) {
         response.source_code;
         let source_code_obj = {};
         let linenum = response.start_line;
@@ -75,7 +75,7 @@ let FileFetcher = {
           response.num_lines_in_file
         );
       },
-      error: function(response) {
+      error: function (response) {
         if (response.responseJSON && response.responseJSON.message) {
           Actions.add_console_entries(
             // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name '_'.
@@ -90,7 +90,7 @@ let FileFetcher = {
         }
         FileOps.add_missing_file(fullname);
       },
-      complete: function() {
+      complete: function () {
         FileFetcher._is_fetching = false;
 
         // @ts-expect-error ts-migrate(2339) FIXME: Property 'fullname' does not exist on type 'never'... Remove this comment to see the full error message
@@ -100,7 +100,7 @@ let FileFetcher = {
       }
     });
   },
-  _fetch_next: function() {
+  _fetch_next: function () {
     if (FileFetcher._is_fetching) {
       return;
     }
@@ -114,7 +114,7 @@ let FileFetcher = {
     FileFetcher._is_fetching = false;
     FileFetcher._fetch_next();
   },
-  fetch: function(fullname: any, start_line: any, end_line: any) {
+  fetch: function (fullname: any, start_line: any, end_line: any) {
     if (!start_line) {
       start_line = 1;
       console.warn("expected start line");
@@ -141,7 +141,7 @@ const FileOps = {
   warning_shown_for_old_binary: false,
   unfetchable_disassembly_addresses: {},
   disassembly_addr_being_fetched: null,
-  init: function() {
+  init: function () {
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'subscribeToKeys' does not exist on type ... Remove this comment to see the full error message
     store.subscribeToKeys(
       [
@@ -162,7 +162,7 @@ const FileOps = {
       FileOps._store_change_callback
     );
   },
-  user_select_file_to_view: function(fullname: any, line: any) {
+  user_select_file_to_view: function (fullname: any, line: any) {
     store.set(
       "source_code_selection_state",
       constants.source_code_selection_states.USER_SELECTION
@@ -172,7 +172,7 @@ const FileOps = {
     store.set("make_current_line_visible", true);
     store.set("source_code_infinite_scrolling", false);
   },
-  _store_change_callback: function() {
+  _store_change_callback: function () {
     if (store.get("inferior_program") === constants.inferior_states.running) {
       return;
     }
@@ -315,7 +315,7 @@ const FileOps = {
       store.set("source_code_state", states.NONE_AVAILABLE);
     }
   },
-  get_num_lines_in_file: function(fullname: any, source_file_obj: any) {
+  get_num_lines_in_file: function (fullname: any, source_file_obj: any) {
     if (!source_file_obj) {
       source_file_obj = FileOps.get_source_file_obj_from_cache(fullname);
     }
@@ -329,7 +329,7 @@ const FileOps = {
     }
     return source_file_obj.num_lines_in_file;
   },
-  lines_are_cached: function(fullname: any, start_line: any, end_line: any) {
+  lines_are_cached: function (fullname: any, start_line: any, end_line: any) {
     let source_file_obj = FileOps.get_source_file_obj_from_cache(fullname),
       linenum = start_line;
     if (!source_file_obj) {
@@ -351,7 +351,7 @@ const FileOps = {
     }
     return true;
   },
-  line_is_cached: function(fullname: any, linenum: any, source_file_obj: any) {
+  line_is_cached: function (fullname: any, linenum: any, source_file_obj: any) {
     if (!source_file_obj) {
       source_file_obj = FileOps.get_source_file_obj_from_cache(fullname);
     }
@@ -361,14 +361,14 @@ const FileOps = {
       source_file_obj.source_code_obj[linenum] !== undefined
     );
   },
-  get_line_from_file: function(fullname: any, linenum: any) {
+  get_line_from_file: function (fullname: any, linenum: any) {
     let source_file_obj = FileOps.get_source_file_obj_from_cache(fullname);
     if (!source_file_obj) {
       return null;
     }
     return source_file_obj.source_code_obj[linenum];
   },
-  assembly_is_cached: function(fullname: any) {
+  assembly_is_cached: function (fullname: any) {
     let source_file_obj = FileOps.get_source_file_obj_from_cache(fullname);
     return (
       source_file_obj &&
@@ -376,7 +376,7 @@ const FileOps = {
       Object.keys(source_file_obj.assembly).length
     );
   },
-  get_source_file_obj_from_cache: function(fullname: any) {
+  get_source_file_obj_from_cache: function (fullname: any) {
     let cached_files = store.get("cached_source_files");
     for (let sf of cached_files) {
       if (sf.fullname === fullname) {
@@ -385,7 +385,7 @@ const FileOps = {
     }
     return null;
   },
-  add_source_file_to_cache: function(
+  add_source_file_to_cache: function (
     fullname: any,
     source_code_obj: any,
     last_modified_unix_sec: any,
@@ -395,13 +395,13 @@ const FileOps = {
     if (cached_file_obj === null) {
       // nothing cached in the front end, add a new entry
       let new_source_file = {
-          fullname: fullname,
-          source_code_obj: source_code_obj,
-          assembly: {},
-          last_modified_unix_sec: last_modified_unix_sec,
-          num_lines_in_file: num_lines_in_file,
-          exists: true
-        },
+        fullname: fullname,
+        source_code_obj: source_code_obj,
+        assembly: {},
+        last_modified_unix_sec: last_modified_unix_sec,
+        num_lines_in_file: num_lines_in_file,
+        exists: true
+      },
         cached_source_files = store.get("cached_source_files");
 
       cached_source_files.push(new_source_file);
@@ -427,7 +427,7 @@ const FileOps = {
     if (store.get("inferior_binary_path")) {
       if (
         src_last_modified_unix_sec >
-          store.get("inferior_binary_path_last_modified_unix_sec") &&
+        store.get("inferior_binary_path_last_modified_unix_sec") &&
         FileOps.warning_shown_for_old_binary === false
       ) {
         Actions.show_modal(
@@ -454,7 +454,7 @@ const FileOps = {
       }
     }
   },
-  get_cached_assembly_for_file: function(fullname: any) {
+  get_cached_assembly_for_file: function (fullname: any) {
     for (let file of store.get("cached_source_files")) {
       if (file.fullname === fullname) {
         return file.assembly;
@@ -462,10 +462,10 @@ const FileOps = {
     }
     return [];
   },
-  refresh_cached_source_files: function() {
+  refresh_cached_source_files: function () {
     FileOps.clear_cached_source_files();
   },
-  clear_cached_source_files: function() {
+  clear_cached_source_files: function () {
     store.set("cached_source_files", []);
   },
   fetch_more_source_at_beginning() {
@@ -476,7 +476,7 @@ const FileOps = {
       "source_linenum_to_display_start",
       Math.max(
         store.get("source_linenum_to_display_start") -
-          Math.floor(store.get("max_lines_of_code_to_fetch") / 2),
+        Math.floor(store.get("max_lines_of_code_to_fetch") / 2),
         1
       )
     );
@@ -484,7 +484,7 @@ const FileOps = {
       "source_linenum_to_display_end",
       Math.ceil(
         store.get("source_linenum_to_display_start") +
-          store.get("max_lines_of_code_to_fetch")
+        store.get("max_lines_of_code_to_fetch")
       )
     );
     Actions.view_file(fullname, center_on_line);
@@ -519,10 +519,10 @@ const FileOps = {
       store.get("source_linenum_to_display_end")
     );
   },
-  is_missing_file: function(fullname: any) {
+  is_missing_file: function (fullname: any) {
     return store.get("missing_files").indexOf(fullname) !== -1;
   },
-  add_missing_file: function(fullname: any) {
+  add_missing_file: function (fullname: any) {
     let missing_files = store.get("missing_files");
     missing_files.push(fullname);
     store.set("missing_files", missing_files);
@@ -533,7 +533,7 @@ const FileOps = {
    * TODO not sure which version this change occured in. I know in 7.7 it needs the '3' option,
    * and in 7.11 it needs the '4' option. I should test the various version at some point.
    */
-  get_dissasembly_format_num: function(gdb_version_array: any) {
+  get_dissasembly_format_num: function (gdb_version_array: any) {
     if (gdb_version_array.length === 0) {
       // assuming new version, but we shouldn't ever not know the version...
       return 4;
@@ -547,7 +547,7 @@ const FileOps = {
       return 4;
     }
   },
-  get_fetch_disassembly_command: function(
+  get_fetch_disassembly_command: function (
     fullname: any,
     start_line: any,
     mi_response_format: any
@@ -565,7 +565,7 @@ const FileOps = {
   /**
    * Fetch disassembly for current file/line.
    */
-  fetch_assembly_cur_line: function(mi_response_format = null) {
+  fetch_assembly_cur_line: function (mi_response_format = null) {
     // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name '_'.
     if (mi_response_format === null || !_.isNumber(mi_response_format)) {
       // try to determine response format based on our guess of the gdb version being used
@@ -582,7 +582,7 @@ const FileOps = {
     }
     FileOps.fetch_disassembly(fullname, line, mi_response_format);
   },
-  fetch_disassembly: function(fullname: any, start_line: any, mi_response_format: any) {
+  fetch_disassembly: function (fullname: any, start_line: any, mi_response_format: any) {
     let cmd = FileOps.get_fetch_disassembly_command(
       fullname,
       start_line,
@@ -592,7 +592,7 @@ const FileOps = {
       GdbApi.run_gdb_command(cmd);
     }
   },
-  fetch_disassembly_for_missing_file: function(hex_addr: any) {
+  fetch_disassembly_for_missing_file: function (hex_addr: any) {
     // https://sourceware.org/gdb/onlinedocs/gdb/GDB_002fMI-Data-Manipulation.html
     if (window.isNaN(hex_addr)) {
       return;
@@ -606,10 +606,10 @@ const FileOps = {
     FileOps.disassembly_addr_being_fetched = hex_addr;
     GdbApi.run_gdb_command(
       constants.DISASSEMBLY_FOR_MISSING_FILE_STR +
-        `-data-disassemble -s 0x${start.toString(16)} -e 0x${end.toString(16)} -- 0`
+      `-data-disassemble -s 0x${start.toString(16)} -e 0x${end.toString(16)} -- 0`
     );
   },
-  fetch_disassembly_for_missing_file_failed: function() {
+  fetch_disassembly_for_missing_file_failed: function () {
     let addr_being_fetched = FileOps.disassembly_addr_being_fetched;
     // @ts-expect-error ts-migrate(2538) FIXME: Type 'null' cannot be used as an index type.
     FileOps.unfetchable_disassembly_addresses[addr_being_fetched] = true;
@@ -625,7 +625,7 @@ const FileOps = {
    * @param mi_token (int): corresponds to either null (when src file is known and exists),
    *  constants.DISASSEMBLY_FOR_MISSING_FILE_INT when source file is undefined or does not exist on filesystem
    */
-  save_new_assembly: function(mi_assembly: any, mi_token: any) {
+  save_new_assembly: function (mi_assembly: any, mi_token: any) {
     FileOps.disassembly_addr_being_fetched = null;
 
     if (!Array.isArray(mi_assembly) || mi_assembly.length === 0) {

@@ -10,6 +10,8 @@
     "lint": "prettier ./gdbgui/src/js/** --check"
   },
   "dependencies": {
+    "@monaco-editor/react": "^3.7.5",
+    "monaco-editor": "^0.21.2",
     "react": "^16.8",
     "react-dom": "^16.4",
     "socket.io": "^4.1",
