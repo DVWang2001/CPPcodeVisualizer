@@ -79,7 +79,7 @@ export class Terminals extends React.Component<any, { programOutput: string }> {
 
         {/* Replaced Program Pty with Monaco Editor */}
         <div className="h-full w-full overflow-hidden bg-white relative">
-          <div className="absolute top-0 left-0 bg-gray-100 text-xs px-2 py-1 z-10 border-b border-gray-300">Standard Output</div>
+
           <MonacoEditor
             height="100%"
             language="plaintext"
