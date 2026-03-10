@@ -13,20 +13,23 @@ import InferiorProgramInfo from "./InferiorProgramInfo";
 import Locals from "./Locals";
 import Memory from "./Memory";
 import Registers from "./Registers";
-import Tree from "./Tree";
-import Threads from "./Threads";
 import ToolTipTourguide from "./ToolTipTourguide";
 import "../../static/css/reserch.css";
 import Visualizer from "./Visualizer";
+import ContainerVisualizer from "./ContainerVisualizer";
+import CallGraph from "./CallGraph";
+import WatchTable from "./WatchTable";
+import MemoryWatch from "./MemoryWatch";
+
 
 let onmouseup_in_parent_callbacks: any = [],
   onmousemove_in_parent_callbacks: any = [];
 
-let onmouseup_in_parent_callback = function() {
+let onmouseup_in_parent_callback = function () {
   // @ts-expect-error ts-migrate(7006) FIXME: Parameter 'fn' implicitly has an 'any' type.
   onmouseup_in_parent_callbacks.map(fn => fn());
 };
-let onmousemove_in_parent_callback = function(e: any) {
+let onmousemove_in_parent_callback = function (e: any) {
   // @ts-expect-error ts-migrate(7006) FIXME: Parameter 'fn' implicitly has an 'any' type.
   onmousemove_in_parent_callbacks.map(fn => {
     fn(e);
@@ -38,7 +41,7 @@ type OwnCollapserState = any;
 type CollapserState = OwnCollapserState & typeof Collapser.defaultProps;
 
 class Collapser extends React.Component<{}, CollapserState> {
-  static defaultProps = { collapsed: false, id: "" };
+  static defaultProps = { collapsed: true, id: "" };
   _height_when_clicked: any;
   _page_y_orig: any;
   _resizing: any;
@@ -138,7 +141,7 @@ class Collapser extends React.Component<{}, CollapserState> {
           <span
             className={`glyphicon glyphicon-chevron-${
               this.state.collapsed ? "right" : "down"
-            }`}
+              }`}
             style={{ marginRight: "6px" }}
           />
           {/* @ts-expect-error ts-migrate(2339) FIXME: Property 'title' does not exist on type 'Readonly<... Remove this comment to see the full error message */}
@@ -165,12 +168,12 @@ class Collapser extends React.Component<{}, CollapserState> {
 class RightSidebar extends React.Component {
   render() {
     let input_style = {
-        display: "inline",
-        width: "100px",
-        padding: "6px 6px",
-        height: "25px",
-        fontSize: "1em"
-      },
+      display: "inline",
+      width: "100px",
+      padding: "6px 6px",
+      height: "25px",
+      fontSize: "1em"
+    },
       mi_output = "";
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'debug' does not exist on type 'Readonly<... Remove this comment to see the full error message
     if (this.props.debug) {
@@ -215,60 +218,31 @@ class RightSidebar extends React.Component {
           step_num={5}
         />
 
-          {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message
-          <Collapser title="threads" content={<Threads />} /> */}
+        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+        <Collapser id="memory_watch" title="記憶體與指標追蹤 (Memory Watch)" content={<MemoryWatch />} />
+
+        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+        <Collapser id="callgraph" title="call graph (歷史呼叫圖)" content={<CallGraph />} />
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
         <Collapser id="visualizer" title="visualizer" content={<Visualizer />} />
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="locals" title="local variables" content={<Locals />} />
+        <Collapser id="container" title="container" content={<ContainerVisualizer />} />
+
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="expressions" title="expressions" content={<Expressions />} />
-        
-        <Collapser
-          
-          // @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message
-          title="Tree"
-          collapsed={true}
-          content={
-            <div>
-              <input
-                id="tree_width"
-                className="form-control"
-                placeholder="width (px)"
-                style={input_style}
-              />
-              <input
-                id="tree_height"
-                className="form-control"
-                placeholder="height (px)"
-                style={input_style}
-              />
-              <div id={constants.tree_component_id} />
-            </div>
-          }
-        />
+        <Collapser id="locals" title="local variables" collapsed={true} content={<Locals />} />
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="memory" title="memory" collapsed={true} content={<Memory />} />
+        <Collapser id="watch_table" title="teaching dashboard (table)" content={<WatchTable />} />
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
         <Collapser title="breakpoints" collapsed={true} content={<Breakpoints />} />
-        <Collapser
-          // @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message
-          title="signals"
-          collapsed={true}
-          // @ts-expect-error ts-migrate(2322) FIXME: Property 'signals' does not exist on type 'Intrins... Remove this comment to see the full error message
-          content={<InferiorProgramInfo signals={this.props.signals} />}
-        />
-        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser title="registers" collapsed={true} content={<Registers />} />
 
-      <div id="grid-container"></div>
+        <div id="grid-container"></div>
         {mi_output}
       </div>
     );
   }
-  
+
   componentDidMount() {
-    Tree.init();
+    // Tree module is removed, no longer need to init
   }
 }
 export default RightSidebar;

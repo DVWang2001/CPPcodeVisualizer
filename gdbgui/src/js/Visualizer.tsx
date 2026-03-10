@@ -22,6 +22,9 @@ class Visualizer extends React.Component<{}, State> {
     if ("__guide" in global_variable) {
       (global_variable as any).__guide.clear();
     }
+    if ("__containers_guide" in global_variable) {
+      (global_variable as any).__containers_guide.clear();
+    }
   }
   renderGuideTable() {
     const guide = (global_variable as any).__guide as Map<string, any[]>;
@@ -44,6 +47,7 @@ class Visualizer extends React.Component<{}, State> {
     );
   }
 
+
   renderSourceCode() {
     const sourceCode = (global_variable as any).__source_code;
     const fullname = (global_variable as any).__source_code_fullname;
@@ -51,6 +55,7 @@ class Visualizer extends React.Component<{}, State> {
     if (!sourceCode) {
       return <div>No source code available</div>;
     }
+
     // Calculate max guide length
     const allGuideData = Object.keys(sourceCode).map(lineNum => guide ? guide.get(lineNum) : undefined).filter(g => g && g.length > 0);
     const maxGuideLength = allGuideData.length > 0 ? Math.max(...allGuideData.map(g => g!.length)) : 0;
@@ -58,19 +63,37 @@ class Visualizer extends React.Component<{}, State> {
       const guideData = guide ? guide.get(lineNum) : undefined;
       const guideCells = [];
       for (let i = 0; i < maxGuideLength; i++) {
-        const value = guideData && guideData[i] ? guideData[i] : '';
-        guideCells.push(<td key={i} style={{ padding: '4px', fontFamily: 'monospace', color: 'blue' }}>{value}</td>);
+        const valueStr = guideData && guideData[i] ? guideData[i] : '';
+        let cellContent: any = valueStr;
+
+        if (typeof valueStr === 'string' && valueStr.startsWith('{') && valueStr.includes('"type"')) {
+          try {
+            const data = JSON.parse(valueStr);
+            if (data.values) {
+              cellContent = <span style={{ fontFamily: 'monospace', color: 'blue' }}>{`{${data.values.join(', ')}}`}</span>;
+            } else {
+              cellContent = <span style={{ fontFamily: 'monospace', color: 'blue' }}>{valueStr}</span>;
+            }
+          } catch (e) {
+            // JSON 解析失敗，回退成純字串
+            cellContent = <span style={{ fontFamily: 'monospace', color: 'blue' }}>{valueStr}</span>;
+          }
+        } else if (valueStr) {
+          cellContent = <span style={{ fontFamily: 'monospace', color: 'blue' }}>{valueStr}</span>;
+        }
+
+        guideCells.push(<td key={i} style={{ padding: '8px' }}>{cellContent}</td>);
       }
       return (
         <tr key={lineNum}>
           <td style={{ padding: '4px', textAlign: 'right', width: '50px' }}>{lineNum}</td>
-          <td style={{ padding: '4px', fontFamily: 'monospace', whiteSpace: 'pre' }}><span className="wsp">{code as string}</span></td>
+          <td style={{ padding: '4px', fontFamily: 'monospace', whiteSpace: 'pre' }}><span className="wsp" dangerouslySetInnerHTML={{ __html: code as string }} /></td>
           {guideCells}
         </tr>
       );
     });
     return (
-      <div>
+      <div style={{ padding: '4px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <tbody>{rows}</tbody>
         </table>

@@ -43,7 +43,7 @@ function customKeyEventHandler(config: {
 
 const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 
-export class Terminals extends React.Component<any, { programOutput: string }> {
+export class Terminals extends React.Component<any, { programOutput: string; programInput: string }> {
   userPtyRef: React.RefObject<any>;
   programPtyRef: React.RefObject<any>;
   gdbguiPtyRef: React.RefObject<any>;
@@ -56,14 +56,15 @@ export class Terminals extends React.Component<any, { programOutput: string }> {
     this.terminal = this.terminal.bind(this);
 
     this.state = {
-      programOutput: "Program output -- Programs being debugged are connected to this terminal.\nYou can read output here.\n\n"
+      programOutput: "",
+      programInput: store.get("program_input") || ""
     };
   }
 
   terminal(ref: React.RefObject<any>) {
     let className = "relative bg-black p-0 m-0 h-full align-baseline ";
     return (
-      <div className={className}>
+      <div className={className} >
         <div className="absolute h-full w-full align-baseline  " ref={ref}></div>
       </div>
     );
@@ -77,31 +78,80 @@ export class Terminals extends React.Component<any, { programOutput: string }> {
         {/* <GdbGuiTerminal /> */}
         {this.terminal(this.gdbguiPtyRef)}
 
-        {/* Replaced Program Pty with Monaco Editor */}
-        <div className="h-full w-full overflow-hidden bg-white relative">
+        {/* Replaced Program Pty with Dual Monaco Editors (Top: Input, Bottom: Output) */}
+        <div className="h-full w-full overflow-hidden bg-white relative flex flex-col">
+          {/* Top Half: Standard Input */}
+          <div className="flex-1 border-b-2 border-gray-300 flex flex-col">
+            <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 uppercase tracking-wider">
+              Standard Input
+            </div>
+            <div className="flex-1 relative">
+              <MonacoEditor
+                height="100%"
+                language="plaintext"
+                theme="light"
+                value={this.state.programInput}
+                editorDidMount={(getValue: any, editor: any) => {
+                  editor.onDidChangeModelContent(() => {
+                    const val = getValue();
+                    this.setState({ programInput: val });
+                    store.set("program_input", val);
+                  });
+                }}
+                options={{
+                  readOnly: false,
+                  minimap: { enabled: false },
+                  wordWrap: "on",
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  fontFamily: "monospace",
+                  renderLineHighlight: "none",
+                  cursorBlink: "solid",
+                  matchBrackets: "never",
+                  hideCursorInOverviewRuler: true,
+                  overviewRulerLanes: 0
+                } as any}
+              />
+            </div>
+          </div>
 
-          <MonacoEditor
-            height="100%"
-            language="plaintext"
-            theme="light"
-            value={this.state.programOutput}
-            editorDidMount={(getValue: any, editor: any) => {
-              editor.onDidChangeModelContent(() => {
-                this.setState({ programOutput: getValue() });
-              });
-            }}
-            options={{
-              readOnly: false,
-              minimap: { enabled: false },
-              wordWrap: "on",
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              fontFamily: "monospace",
-              renderLineHighlight: "all",
-              hideCursorInOverviewRuler: true,
-              overviewRulerLanes: 0
-            }}
-          />
+          {/* Bottom Half: Standard Output */}
+          <div className="flex-1 flex flex-col">
+            <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 flex justify-between uppercase tracking-wider">
+              <span>Standard Output</span>
+              <button
+                className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase"
+                onClick={() => this.setState({ programOutput: "" })}
+                title="Clear Output"
+              >
+                clear
+              </button>
+            </div>
+            <div className="flex-1 relative">
+              <MonacoEditor
+                height="100%"
+                language="plaintext"
+                theme="light"
+                value={this.state.programOutput}
+                editorDidMount={(getValue: any, editor: any) => {
+                  // Make it strictly Read-only since we moved input to the top pane
+                }}
+                options={{
+                  readOnly: true,
+                  minimap: { enabled: false },
+                  wordWrap: "on",
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  fontFamily: "monospace",
+                  renderLineHighlight: "none",
+                  cursorBlink: "solid",
+                  matchBrackets: "never",
+                  hideCursorInOverviewRuler: true,
+                  overviewRulerLanes: 0
+                } as any}
+              />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -145,10 +195,30 @@ export class Terminals extends React.Component<any, { programOutput: string }> {
     // Program Pty Replacement Logic
     GdbApi.getSocket().on("program_pty_response", (pty_response: string) => {
       // Strip ANSI codes for plain text editor
-      const cleanText = pty_response.replace(ansiRegex, '');
-      this.setState(prevState => ({
-        programOutput: prevState.programOutput + cleanText
-      }));
+      let cleanText = pty_response.replace(ansiRegex, '');
+
+      this.setState(prevState => {
+        let newOutput = prevState.programOutput + cleanText;
+
+        // Try to filter out echoed standard input.
+        // PTYs naturally echo back everything written to them.
+        const currentInput = this.state.programInput;
+        if (currentInput && currentInput.length > 0) {
+          // A simple approach is to see if the beginning of the new output matches the input.
+          // Because execution clearing might happen earlier, we just replace the precise input string if it's there.
+          // Replace it only once (the first occurrence) to prevent replacing legitimate identical payload output.
+          // To be safe with newlines (which might be converted to \r\n by the PTY):
+          const normalizedInput = currentInput.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+          // Also check plain input
+          if (newOutput.includes(normalizedInput)) {
+            newOutput = newOutput.replace(normalizedInput, "");
+          } else if (newOutput.includes(currentInput)) {
+            newOutput = newOutput.replace(currentInput, "");
+          }
+        }
+
+        return { programOutput: newOutput };
+      });
     });
 
     const gdbguiPty = new Terminal({
@@ -176,9 +246,8 @@ export class Terminals extends React.Component<any, { programOutput: string }> {
     store.set("gdbguiPty", gdbguiPty);
 
     const interval = setInterval(() => {
-      fitAddon.fit();
-      // programFitAddon.fit(); // No longer needed
-      gdbguiFitAddon.fit();
+      try { fitAddon.fit(); } catch (e) { }
+      try { gdbguiFitAddon.fit(); } catch (e) { }
       const socket = GdbApi.getSocket();
 
       if (socket.disconnected) {

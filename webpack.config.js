@@ -22,7 +22,7 @@ module.exports = {
           {
             loader: "ts-loader",
             options: {
-              experimentalFileCaching: true,
+              experimentalFileCaching: false,
               experimentalWatchApi: true,
               transpileOnly: true
             }
@@ -37,7 +37,7 @@ module.exports = {
       }
     ]
   },
-  plugins: [new ForkTsCheckerWebpackPlugin({})],
+  plugins: [],
   resolve: {
     extensions: [".js", ".ts", ".tsx", ".css", ".mjs"]
   }

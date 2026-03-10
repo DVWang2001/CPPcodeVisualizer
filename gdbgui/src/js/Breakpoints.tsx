@@ -288,6 +288,16 @@ class Breakpoints extends React.Component {
     }
   }
   static enable_or_disable_bkpt(checked: any, bkpt_num: any) {
+    if (typeof bkpt_num === 'string' && bkpt_num.startsWith('frontend_')) {
+      let bkpts = store.get("breakpoints");
+      for (let b of bkpts) {
+        if (b.number === bkpt_num) {
+          b.enabled = checked ? "n" : "y";
+        }
+      }
+      store.set("breakpoints", bkpts);
+      return;
+    }
     if (checked) {
       GdbApi.run_gdb_command([`-break-disable ${bkpt_num}`, GdbApi.get_break_list_cmd()]);
     } else {
@@ -295,6 +305,16 @@ class Breakpoints extends React.Component {
     }
   }
   static set_breakpoint_condition(condition: any, bkpt_num: any) {
+    if (typeof bkpt_num === 'string' && bkpt_num.startsWith('frontend_')) {
+      let bkpts = store.get("breakpoints");
+      for (let b of bkpts) {
+        if (b.number === bkpt_num) {
+          b.cond = condition;
+        }
+      }
+      store.set("breakpoints", bkpts);
+      return;
+    }
     GdbApi.run_gdb_command([
       `-break-condition ${bkpt_num} ${condition}`,
       GdbApi.get_break_list_cmd()
@@ -303,8 +323,7 @@ class Breakpoints extends React.Component {
   static remove_breakpoint_if_present(fullname: any, line: any) {
     if (Breakpoints.has_breakpoint(fullname, line)) {
       let number = Breakpoints.get_breakpoint_number(fullname, line);
-      let cmd = [GdbApi.get_delete_break_cmd(number), GdbApi.get_break_list_cmd()];
-      GdbApi.run_gdb_command(cmd);
+      Breakpoints.delete_breakpoint(number);
     }
   }
   static add_or_remove_breakpoint(fullname: any, line: any) {
@@ -315,7 +334,22 @@ class Breakpoints extends React.Component {
     }
   }
   static add_breakpoint(fullname: any, line: any) {
-    GdbApi.run_gdb_command(GdbApi.get_insert_break_cmd(fullname, line));
+    let inferior_program = store.get("inferior_program");
+    if (inferior_program === constants.inferior_states.unknown || inferior_program === constants.inferior_states.exited) {
+      let bkpt = {
+        fullname: fullname,
+        fullname_to_display: fullname,
+        line: line,
+        number: `frontend_${Math.random().toString(36).substr(2, 9)}`,
+        enabled: "y",
+        is_parent_breakpoint: false,
+        is_child_breakpoint: false,
+        is_normal_breakpoint: true
+      };
+      Breakpoints.save_breakpoint(bkpt);
+    } else {
+      GdbApi.run_gdb_command(GdbApi.get_insert_break_cmd(fullname, line));
+    }
   }
   static has_breakpoint(fullname: any, line: any) {
     let bkpts = store.get("breakpoints");
@@ -336,6 +370,12 @@ class Breakpoints extends React.Component {
     console.error(`could not find breakpoint for ${fullname}:${line}`);
   }
   static delete_breakpoint(breakpoint_number: any) {
+    if (typeof breakpoint_number === 'string' && breakpoint_number.startsWith('frontend_')) {
+      let bkpts = store.get("breakpoints");
+      bkpts = bkpts.filter((b: any) => b.number !== breakpoint_number);
+      store.set("breakpoints", bkpts);
+      return;
+    }
     GdbApi.run_gdb_command([
       GdbApi.get_delete_break_cmd(breakpoint_number),
       GdbApi.get_break_list_cmd()

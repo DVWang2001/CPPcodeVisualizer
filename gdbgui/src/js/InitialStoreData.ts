@@ -57,6 +57,8 @@ const initial_store_data = {
   stack: [],
   locals: [],
   threads: [],
+  call_graph_updated: 0,
+
 
   // source files
   source_file_paths: [], // all the paths gdb says were used to compile the target binary
@@ -113,6 +115,8 @@ const initial_store_data = {
   show_filesystem: false,
   middle_panes_split_obj: {},
   gdbguiPty: null,
+  tts_subtitle: null,
+  program_input: "",
 };
 
 function get_stored(key: any, default_val: any) {
@@ -145,6 +149,7 @@ if (localStorage.hasOwnProperty("max_lines_of_code_to_fetch")) {
   let savedval = JSON.parse(localStorage.getItem("max_lines_of_code_to_fetch"));
   // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name '_'.
   if (_.isInteger(savedval) && savedval > 0) {
+    if (savedval > 150) savedval = 150; // 強制蓋過舊有的過大快取值
     initial_store_data["max_lines_of_code_to_fetch"] = savedval;
   }
 }

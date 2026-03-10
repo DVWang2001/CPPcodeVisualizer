@@ -123,26 +123,40 @@ def create_and_upload():
     """
     add_csrf_token_to_session()
 
+    import uuid
+    import os
+    
     code = request.form.get("code")
+    filepath = request.form.get("filepath")
+    program_input = request.form.get("program_input", "")
+    
     if not code:
         return client_error({"message": "No code submitted"})
 
-    # auto-generate a unique filename for the pasted source; ignore any provided filename
-    filename = f"pasted_{uuid.uuid4().hex}.cpp"
-    ext = ".cpp"
+    # Determine where to save the code
+    if filepath and os.path.exists(filepath):
+        src_path = filepath
+        ext = os.path.splitext(src_path)[1]
+        stored_filename = os.path.basename(src_path)
+        upload_dir = os.path.dirname(src_path)
+    else:
+        # Fallback to auto-generate a unique filename for the pasted source
+        filename = f"pasted_{uuid.uuid4().hex}.cpp"
+        ext = ".cpp"
 
-    # ensure a per-session prefix exists and use it to avoid filename collisions
-    if "uploaded_prefix" not in session:
-        session["uploaded_prefix"] = uuid.uuid4().hex
-    prefix = session["uploaded_prefix"]
+        # ensure a per-session prefix exists and use it to avoid filename collisions
+        if "uploaded_prefix" not in session:
+            session["uploaded_prefix"] = uuid.uuid4().hex
+        prefix = session["uploaded_prefix"]
 
-    upload_dir = current_app.config.get("upload_folder") or os.path.join(
-        current_app.root_path, "uploads"
-    )
-    os.makedirs(upload_dir, exist_ok=True)
+        upload_dir = current_app.config.get("upload_folder") or os.path.join(
+            current_app.root_path, "uploads"
+        )
+        os.makedirs(upload_dir, exist_ok=True)
 
-    stored_filename = f"{prefix}_{filename}"
-    src_path = os.path.join(upload_dir, stored_filename)
+        stored_filename = f"{prefix}_{filename}"
+        src_path = os.path.join(upload_dir, stored_filename)
+
     try:
         with open(src_path, "w") as f:
             f.write(code)
@@ -186,8 +200,19 @@ def create_and_upload():
         binary_path_result = src_path
         current_app.config["initial_binary_and_args"] = [src_path]
 
+    # Write the program input to a .in file
+    input_filename = f"{prefix}_input.in"
+    input_path = os.path.join(upload_dir, input_filename)
+    try:
+        with open(input_path, "w") as f:
+            f.write(program_input)
+    except Exception as e:
+        logger.warning(f"Failed to write input file: {e}")
+
+    session["uploaded_input"] = input_path
+
     if request.headers.get("Accept") == "application/json":
-        return jsonify({"status": "success", "binary_path": binary_path_result})
+        return jsonify({"status": "success", "binary_path": binary_path_result, "input_path": input_path})
         
     return redirect(url_for(".gdbgui"))
 
@@ -419,9 +444,10 @@ def gdbgui():
         "using_windows": USING_WINDOWS,
     }
 
+    import time
     return render_template(
         "gdbgui.html",
-        version=__version__,
+        version=__version__ + str(time.time()),
         debug=current_app.debug,
         initial_data=initial_data,
         themes=THEMES,

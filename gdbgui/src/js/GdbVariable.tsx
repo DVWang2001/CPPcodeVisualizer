@@ -10,7 +10,7 @@ import constants from "./constants";
 import { store } from "statorgfc";
 import GdbApi from "./GdbApi";
 import CopyToClipboard from "./CopyToClipboard";
-import Actions from "./Actions";  
+import Actions from "./Actions";
 import { global_variable } from "./global_variable";
 
 /**
@@ -21,7 +21,7 @@ let ChildVarFetcher = {
   expr_gdb_parent_var_currently_fetching_children: null, // parent gdb variable name (i.e. var7)
   _is_fetching: false,
   _queue: [], // objects with keys 'expr_gdb_parent_var_currently_fetching_children' and 'expr_type'
-  _fetch_next_in_queue: function() {
+  _fetch_next_in_queue: function () {
     if (ChildVarFetcher._is_fetching) {
       return;
     }
@@ -58,8 +58,9 @@ let VarCreator = {
   _is_fetching: false,
   expr_being_created: null,
   expr_type: null,
+  display_name: null,
 
-  _fetch_next_in_queue: function() {
+  _fetch_next_in_queue: function () {
     if (VarCreator._is_fetching) {
       return;
     }
@@ -72,7 +73,8 @@ let VarCreator = {
       console.log(`expression出來是 ${JSON.stringify(obj)}`);
       VarCreator._is_fetching = true;
 
-      VarCreator.expr_being_created = expression;
+      // @ts-expect-error ts-migrate(2532) FIXME: Object is possibly 'undefined'.
+      VarCreator.expr_being_created = obj.display_name || expression;
       VarCreator.expr_type = expr_type;
 
       // surround in quotes if we found a quote
@@ -98,9 +100,9 @@ let VarCreator = {
    * Create a new variable in gdb. gdb automatically chooses and assigns
    * a unique variable name.
    */
-  create_variable: function(expression: any, expr_type: any) {
+  create_variable: function (expression: any, expr_type: any, display_name: any = undefined) {
     // @ts-expect-error ts-migrate(2322) FIXME: Type 'any' is not assignable to type 'never'.
-    VarCreator._queue.push({ expression: expression, expr_type: expr_type });
+    VarCreator._queue.push({ expression: expression, expr_type: expr_type, display_name: display_name });
     VarCreator._fetch_next_in_queue();
   },
   /**
@@ -146,7 +148,7 @@ let VarCreator = {
     VarCreator._clear_state();
     VarCreator._fetch_next_in_queue();
   },
-  _clear_state: function() {
+  _clear_state: function () {
     VarCreator._is_fetching = false;
   }
 };
@@ -200,8 +202,8 @@ class GdbVariable extends React.Component {
         : local.value,
       onclick = can_be_expanded
         ? () => GdbVariable.create_variable(local.name, "local")
-        : () => {};
-      return (
+        : () => { };
+    return (
       <div>
         <span onClick={onclick} className={can_be_expanded ? "pointer" : ""}>
           {can_be_expanded ? "+" : ""} {local.name}&nbsp;
@@ -327,8 +329,8 @@ class GdbVariable extends React.Component {
             onClick={() => GdbVariable.delete_gdb_variable(mi_obj.name)}
           />
         ) : (
-          ""
-        ),
+            ""
+          ),
       has_children = numchild > 0,
       can_draw_tree = has_children && (expr_type === "expr" || expr_type === "local"), // hover var can't draw tree
       tree = can_draw_tree ? (
@@ -338,14 +340,14 @@ class GdbVariable extends React.Component {
           onClick={() => GdbVariable.click_draw_tree_gdb_variable(mi_obj.name)}
         />
       ) : (
-        ""
-      ),
+          ""
+        ),
       toggle_classes = has_children ? "pointer" : "",
       plot_content = "",
       plot_button = "",
       plusminus_click_callback = has_children
         ? () => GdbVariable.click_toggle_children_visibility(mi_obj.name)
-        : () => {};
+        : () => { };
     if (mi_obj.can_plot && mi_obj.show_plot) {
       // dots are not allowed in the dom as id's. replace with '-'.
       let id = mi_obj.dom_id_for_plot;
@@ -432,8 +434,12 @@ class GdbVariable extends React.Component {
     }
     return path;
   }
-  static create_variable(expression: any, expr_type: any) {
-    VarCreator.create_variable(expression, expr_type);
+  static create_variable(expression: any, expr_type: any, display_name: any = undefined) {
+    if (typeof display_name === "boolean") {
+      // Handle backwards compatibility for HoverVar.tsx which passes ignore_errors as 3rd param
+      display_name = undefined;
+    }
+    VarCreator.create_variable(expression, expr_type, display_name);
   }
   static gdb_created_root_variable(r: any) {
     VarCreator.created_variable(r);
@@ -617,7 +623,7 @@ class GdbVariable extends React.Component {
     );
 
     // add hover event to show tooltip
-    jq.bind("plothover", function(event, pos, item) {
+    jq.bind("plothover", function (event, pos, item) {
       if (item) {
         let x = item.datapoint[0],
           y = item.datapoint[1];

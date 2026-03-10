@@ -48,7 +48,7 @@ let constants = {
 
   tree_component_id: "tree",
 
-  default_max_lines_of_code_to_fetch: 500,
+  default_max_lines_of_code_to_fetch: 150,
 
   keys_to_not_log_changes_in_console: ["gdb_mi_output"],
   xtermColors: {

@@ -55,7 +55,7 @@ class Threads extends React.Component<{}, ThreadsState> {
   }
 
   render() {
-    if (this.state.threads.length <= 0) {
+    if (!this.state.threads || this.state.threads.length <= 0) {
       return <span className="placeholder" />;
     }
 
@@ -66,7 +66,7 @@ class Threads extends React.Component<{}, ThreadsState> {
         parseInt(thread.id) === this.state.current_thread_id;
       let stack = Threads.get_stack_for_thread(
         thread.frame,
-        this.state.stack,
+        this.state.stack || [],
         is_current_thread_being_rendered
       );
       let row_data;
@@ -170,7 +170,7 @@ class Threads extends React.Component<{}, ThreadsState> {
 
     if (is_selected_frame) {
       // current frame, current thread
-      onclick = () => {};
+      onclick = () => { };
       classes.push("bold");
       title = `this is the active frame of the selected thread (frame id ${frame_num})`;
     } else if (is_current_thread_being_rendered) {
@@ -238,6 +238,61 @@ class Threads extends React.Component<{}, ThreadsState> {
     store.set("line_of_source_to_flash", parseInt(store.get("paused_on_frame").line));
     store.set("current_assembly_address", store.get("paused_on_frame").addr);
     store.set("make_current_line_visible", true);
+
+    // Call Graph Tracking Logic
+    if (stack && stack.length >= 1) {
+      let global_variable = (window as any).gdbgui_global_variable;
+      if (!global_variable) return;
+
+      if (!global_variable.__call_graph_nodes) global_variable.__call_graph_nodes = [];
+      if (!global_variable.__call_graph_edges) global_variable.__call_graph_edges = [];
+
+      const L = stack.length;
+
+      // Mark which node is currently active (deepest/top frame)
+      const topFuncStr = String(stack[0].func);
+      global_variable.__active_node_id = `${topFuncStr}_${L - 1}`;
+
+      // Helper: find or create a node and always update its line number and args
+      const upsertNode = (id: string, funcName: string, line: string | number, args?: any[]) => {
+        const existing = global_variable.__call_graph_nodes.find((n: any) => n.id === id);
+        if (existing) {
+          // Always update line and args to reflect latest observed position for this frame slot
+          existing.line = line;
+          if (args) existing.args = args;
+        } else {
+          global_variable.__call_graph_nodes.push({ id, label: funcName, func_name: funcName, line, args: args || [] });
+        }
+      };
+
+      // Process every frame in the stack
+      for (let i = 0; i < L; i++) {
+        const frame = stack[i];
+        const funcStr = String(frame.func);
+        const depth = L - 1 - i;
+        const nodeId = `${funcStr}_${depth}`;
+        upsertNode(nodeId, funcStr, frame.line, frame.args);
+      }
+
+      // Register edges for every caller→callee pair
+      for (let i = 0; i < L - 1; i++) {
+        const calleeStr = String(stack[i].func);
+        const callerStr = String(stack[i + 1].func);
+        const calleeDepth = L - 1 - i;
+        const callerDepth = L - 1 - (i + 1);
+        const calleeId = `${calleeStr}_${calleeDepth}`;
+        const callerId = `${callerStr}_${callerDepth}`;
+
+        const edgeId = `${callerId}->${calleeId}`;
+        const hasEdge = global_variable.__call_graph_edges.some((e: any) => e.id === edgeId);
+        if (!hasEdge) {
+          global_variable.__call_graph_edges.push({ id: edgeId, from: callerId, to: calleeId });
+        }
+      }
+
+      // Trigger a re-render signal for CallGraph
+      store.set("call_graph_updated", Date.now());
+    }
   }
   set_thread_id(id: any) {
     store.set("current_thread_id", parseInt(id));

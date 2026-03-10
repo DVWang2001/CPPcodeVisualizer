@@ -157,111 +157,227 @@ const GdbApi = {
     const getEditorValue = (window as any).gdbgui_get_editor_value;
     if (getEditorValue) {
       const code = getEditorValue();
-      const csrf_token = (window as any).initial_data.csrf_token;
+      const program_input = store.get("program_input") || "";
+      if (code && code.trim() !== "") {
+        // [Optimization] Check if code and input have actually changed, avoid re-compiling if unchanged
+        if ((window as any).last_compiled_code === code && (window as any).last_program_input === program_input) {
+          Actions.add_console_entries(
+            "Code unchanged. Restarting program without recompiling.",
+            constants.console_entry_type.GDBGUI_OUTPUT
+          );
 
-      Actions.add_console_entries(
-        "Compiling and uploading code...",
-        constants.console_entry_type.GDBGUI_OUTPUT
-      );
-
-      // Call create_and_upload endpoint
-      $.ajax({
-        url: "/create_and_upload",
-        type: "POST",
-        data: {
-          code: code,
-          csrf_token: csrf_token
-        },
-        headers: {
-          "Accept": "application/json"
-        },
-        success: function (response: any) {
-          console.log("Compile response:", response); // Browser console
-
-          // Debug logging to GDBGUI console
-          let responseType = typeof response;
-          if (responseType === 'string') {
-            const preview = response.substring(0, 100).replace(/\n/g, ' ');
-            Actions.add_console_entries(
-              `Debug: Received string response (likely HTML): "${preview}..."`,
-              constants.console_entry_type.GDBGUI_OUTPUT
-            );
-          } else {
-            Actions.add_console_entries(
-              `Debug: Received JSON response: ${JSON.stringify(response)}`,
-              constants.console_entry_type.GDBGUI_OUTPUT
-            );
+          if (global_variable) {
+            (global_variable as any).__guide = new Map();
+            (global_variable as any).__containers_guide = new Map();
+            (global_variable as any).__source_code = null;
+            (global_variable as any).__source_code_fullname = null;
           }
 
-          let binaryPath = null;
-          if (response && response.status === "success" && response.binary_path) {
-            binaryPath = response.binary_path;
-          } else if (typeof response === 'string') {
-            // Fallback: HTML returned
-            const match = response.match(/initial_data\s*=\s*({[\s\S]*?})\n/);
-            if (match && match[1]) {
-              try {
-                const initData = JSON.parse(match[1]);
-                if (initData.initial_binary_and_args && initData.initial_binary_and_args.length > 0) {
-                  binaryPath = initData.initial_binary_and_args[0];
-                  Actions.add_console_entries(
-                    `Debug: Extracted binary path from HTML: ${binaryPath}`,
-                    constants.console_entry_type.GDBGUI_OUTPUT
-                  );
+          let cmds: string[] = [];
+          // Insert frontend breakpoints even when restarting without recompiling
+          let bkpts = store.get("breakpoints") || [];
+          let frontend_bkpts = bkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
+
+          if (frontend_bkpts.length > 0) {
+            Actions.add_console_entries(`Found ${frontend_bkpts.length} frontend breakpoints to inject before run.`, constants.console_entry_type.GDBGUI_OUTPUT);
+          }
+
+          for (let b of frontend_bkpts) {
+            let cmd = "-break-insert -f";
+            if (b.enabled !== "y") {
+              cmd += " -d";
+            }
+            if (b.cond) {
+              cmd += ` -c "${b.cond}"`;
+            }
+            cmd += ` "${b.fullname_to_display}:${b.line}"`;
+            cmds.push(cmd);
+          }
+          store.set("breakpoints", bkpts.filter((b: any) => !(typeof b.number === 'string' && b.number.startsWith('frontend_'))));
+
+          cmds = cmds.concat([
+            "-break-list",
+            "-exec-run"
+          ]).filter((c: string) => c !== "");
+
+          Actions.inferior_program_starting();
+          GdbApi.run_gdb_command(cmds);
+
+          // Inject input after execution starts
+          if (program_input) {
+            setTimeout(() => {
+              const socket = GdbApi.getSocket();
+              if (socket && !socket.disconnected) {
+                socket.emit("pty_interaction", {
+                  data: { pty_name: "program_pty", key: program_input + "\n", action: "write" }
+                });
+              }
+            }, 500); // delay allows GDB to spawn the inferior and bind the PTY before flushing chars
+          }
+
+          return;
+        }
+
+        // Cache the newly compiling code and input
+        (window as any).last_compiled_code = code;
+        (window as any).last_program_input = program_input;
+
+        const csrf_token = (window as any).initial_data.csrf_token;
+        const getEditorFilename = (window as any).gdbgui_get_editor_filename;
+        const filepath = getEditorFilename ? getEditorFilename() : null;
+
+        Actions.add_console_entries(
+          "Compiling and uploading code...",
+          constants.console_entry_type.GDBGUI_OUTPUT
+        );
+
+        // Call create_and_upload endpoint
+        $.ajax({
+          url: "/create_and_upload",
+          type: "POST",
+          data: {
+            code: code,
+            filepath: filepath,
+            program_input: program_input,
+            csrf_token: csrf_token
+          },
+          headers: {
+            "Accept": "application/json"
+          },
+          success: function (response: any) {
+            console.log("Compile response:", response); // Browser console
+
+            // Debug logging to GDBGUI console
+            let responseType = typeof response;
+            if (responseType === 'string') {
+              const preview = response.substring(0, 100).replace(/\n/g, ' ');
+              Actions.add_console_entries(
+                `Debug: Received string response (likely HTML): "${preview}..."`,
+                constants.console_entry_type.GDBGUI_OUTPUT
+              );
+            } else {
+              Actions.add_console_entries(
+                `Debug: Received JSON response: ${JSON.stringify(response)}`,
+                constants.console_entry_type.GDBGUI_OUTPUT
+              );
+            }
+
+            let binaryPath = null;
+            if (response && response.status === "success" && response.binary_path) {
+              binaryPath = response.binary_path;
+            } else if (typeof response === 'string') {
+              // Fallback: HTML returned
+              const match = response.match(/initial_data\s*=\s*({[\s\S]*?})\n/);
+              if (match && match[1]) {
+                try {
+                  const initData = JSON.parse(match[1]);
+                  if (initData.initial_binary_and_args && initData.initial_binary_and_args.length > 0) {
+                    binaryPath = initData.initial_binary_and_args[0];
+                    Actions.add_console_entries(
+                      `Debug: Extracted binary path from HTML: ${binaryPath}`,
+                      constants.console_entry_type.GDBGUI_OUTPUT
+                    );
+                  }
+                } catch (e) {
+                  console.error("Failed to parse initial_data from HTML", e);
                 }
-              } catch (e) {
-                console.error("Failed to parse initial_data from HTML", e);
               }
             }
-          }
+            if (global_variable) {
+              (global_variable as any).__guide = new Map();
+              (global_variable as any).__containers_guide = new Map();
+              (global_variable as any).__source_code = null;
+              (global_variable as any).__source_code_fullname = null;
+            }
 
-          if (binaryPath) {
+            if (binaryPath) {
+              Actions.add_console_entries(
+                `Compilation successful. Loading binary: ${binaryPath}`,
+                constants.console_entry_type.GDBGUI_OUTPUT
+              );
+
+              // Reload binary and run
+              let cmds: string[] = [
+                `-file-exec-and-symbols ${binaryPath}`,
+                store.get("auto_add_breakpoint_to_main") ? "-break-insert main" : ""
+              ];
+
+              // Insert frontend breakpoints
+              let bkpts = store.get("breakpoints") || [];
+              let frontend_bkpts = bkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
+              for (let b of frontend_bkpts) {
+                let cmd = "-break-insert -f";
+                if (b.enabled !== "y") {
+                  cmd += " -d";
+                }
+                if (b.cond) {
+                  cmd += ` -c "${b.cond}"`;
+                }
+                cmd += ` "${b.fullname_to_display}:${b.line}"`;
+                cmds.push(cmd);
+              }
+              // Remove frontend breakpoints from store so they don't duplicate when GDB returns real ones
+              store.set("breakpoints", bkpts.filter((b: any) => !(typeof b.number === 'string' && b.number.startsWith('frontend_'))));
+
+              cmds = cmds.concat([
+                "-break-list",
+                "-exec-run"
+              ]).filter((c: string) => c !== "");
+
+              // Clear Visualizer panel state
+              if (global_variable) {
+                (global_variable as any).__guide = new Map();
+                (global_variable as any).__containers_guide = new Map();
+                (global_variable as any).__source_code = null;
+                (global_variable as any).__source_code_fullname = null;
+              }
+
+              GdbApi.run_gdb_command(cmds);
+
+              // Inject input after execution starts
+              if (program_input) {
+                setTimeout(() => {
+                  const socket = GdbApi.getSocket();
+                  if (socket && !socket.disconnected) {
+                    socket.emit("pty_interaction", {
+                      data: { pty_name: "program_pty", key: program_input + "\n", action: "write" }
+                    });
+                  }
+                }, 500); // Wait half a second for GDB to actually launch the program
+              }
+
+              Actions.inferior_program_starting();
+            } else {
+              Actions.add_console_entries(
+                "Error: Compilation succeeded but no binary path returned.",
+                constants.console_entry_type.STD_ERR
+              );
+            }
+          },
+          error: function (xhr: any) {
+            let msg = "Unknown error during compilation.";
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+              msg = xhr.responseJSON.message;
+            } else if (xhr.responseText) {
+              try {
+                const r = JSON.parse(xhr.responseText);
+                if (r.message) msg = r.message;
+              } catch (e) { }
+            }
             Actions.add_console_entries(
-              `Compilation successful. Loading binary: ${binaryPath}`,
-              constants.console_entry_type.GDBGUI_OUTPUT
-            );
-
-            // Reload binary and run
-            let cmds = [
-              `-file-exec-and-symbols ${binaryPath}`,
-              store.get("auto_add_breakpoint_to_main") ? "-break-insert main" : "",
-              "-break-list",
-              "-exec-run"
-            ].filter(c => c !== "");
-
-            GdbApi.run_gdb_command(cmds);
-
-            Actions.inferior_program_starting();
-          } else {
-            Actions.add_console_entries(
-              "Error: Compilation succeeded but no binary path returned.",
+              `Compilation failed: ${msg}`,
               constants.console_entry_type.STD_ERR
             );
+            if (xhr.responseJSON && xhr.responseJSON.stderr) {
+              Actions.add_console_entries(
+                xhr.responseJSON.stderr,
+                constants.console_entry_type.STD_ERR
+              );
+            }
           }
-        },
-        error: function (xhr: any) {
-          let msg = "Unknown error during compilation.";
-          if (xhr.responseJSON && xhr.responseJSON.message) {
-            msg = xhr.responseJSON.message;
-          } else if (xhr.responseText) {
-            try {
-              const r = JSON.parse(xhr.responseText);
-              if (r.message) msg = r.message;
-            } catch (e) { }
-          }
-          Actions.add_console_entries(
-            `Compilation failed: ${msg}`,
-            constants.console_entry_type.STD_ERR
-          );
-          if (xhr.responseJSON && xhr.responseJSON.stderr) {
-            Actions.add_console_entries(
-              xhr.responseJSON.stderr,
-              constants.console_entry_type.STD_ERR
-            );
-          }
-        }
-      });
-      return;
+        });
+        return;
+      }
     }
 
     // Fallback if no editor logic
@@ -269,8 +385,7 @@ const GdbApi = {
     GdbApi.run_gdb_command("-exec-run");
   },
   run_initial_commands: function () {
-    // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'global_variable'.
-    Object.keys(global_variable).forEach(key => delete global_variable[key]);
+    Object.keys(global_variable).forEach(key => delete (global_variable as any)[key]);
     const cmds = ["-list-features", "-list-target-features"];
     for (const src in initial_data.remap_sources) {
       const dst = initial_data.remap_sources[src];
@@ -304,12 +419,12 @@ const GdbApi = {
     );
   },
   click_return_button: function () {
-    // From gdb mi docs (https://sourceware.org/gdb/onlinedocs/gdb/GDB_002fMI-Program-Execution.html#GDB_002fMI-Program-Execution):
-    // `-exec-return` Makes current function return immediately. Doesn't execute the inferior.
-    // That means we do NOT dispatch the event `event_inferior_program_resuming`, because it's not, in fact, running.
-    // The return also doesn't even indicate that it's paused, so we need to manually trigger the event here.
-    GdbApi.run_gdb_command("-exec-return");
-    Actions.inferior_program_paused();
+    // Modified: Previously ran `-exec-return` and `Actions.inferior_program_paused();`
+    // which caused a race condition and React UI crashes (black screen) because `paused`
+    // was forcefully triggered before GDB replied. Now uses the proper Step Out
+    // implementation `-exec-finish` which executes the rest of the frame.
+    Actions.inferior_program_resuming();
+    GdbApi.run_gdb_command("-exec-finish");
   },
   click_next_instruction_button: function (reverse = false) {
     Actions.inferior_program_resuming();
@@ -475,7 +590,9 @@ const GdbApi = {
       constants.IGNORE_ERRORS_TOKEN_STR + "-thread-info",
       // print the name, type and value for simple data types,
       // and the name and type for arrays, structures and unions.
-      constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-variables --simple-values"
+      constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-variables --simple-values",
+      // Fetch arguments for all frames
+      constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-arguments 1"
     ];
     // update all user-defined variables in gdb
     cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-var-update --all-values *");
@@ -521,7 +638,7 @@ const GdbApi = {
   },
   get_load_binary_and_arguments_cmds(binary: any, args: any) {
     // tell gdb which arguments to use when calling the binary, before loading the binary
-    let cmds = [
+    let cmds: string[] = [
       `-exec-arguments ${args}`, // Set the inferior program arguments, to be used in the next `-exec-run`
       `-file-exec-and-symbols ${binary}` // Specify the executable file to be debugged. This file is the one from which the symbol table is also read.
     ];
@@ -529,6 +646,18 @@ const GdbApi = {
     if (store.get("auto_add_breakpoint_to_main")) {
       cmds.push("-break-insert main");
     }
+
+    let bkpts = store.get("breakpoints") || [];
+    let frontend_bkpts = bkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
+    for (let b of frontend_bkpts) {
+      let cmd = "-break-insert -f";
+      if (b.enabled !== "y") cmd += " -d";
+      if (b.cond) cmd += ` -c "${b.cond}"`;
+      cmd += ` "${b.fullname_to_display}:${b.line}"`;
+      cmds.push(cmd);
+    }
+    store.set("breakpoints", bkpts.filter((b: any) => !(typeof b.number === 'string' && b.number.startsWith('frontend_'))));
+
     cmds.push(GdbApi.get_break_list_cmd());
     return cmds;
   },

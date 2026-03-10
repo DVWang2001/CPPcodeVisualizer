@@ -10,7 +10,7 @@ import Visualizer from "./Visualizer";
 void React; // using jsx implicity uses React
 
 const Actions = {
-  clear_program_state: function() {
+  clear_program_state: function () {
     store.set("line_of_source_to_flash", undefined);
     store.set("paused_on_frame", undefined);
     store.set("selected_frame_num", 0);
@@ -21,14 +21,14 @@ const Actions = {
     Locals.clear();
     Visualizer.clear();
   },
-  inferior_program_starting: function() {
+  inferior_program_starting: function () {
     store.set("inferior_program", constants.inferior_states.running);
     Actions.clear_program_state();
   },
-  inferior_program_resuming: function() {
+  inferior_program_resuming: function () {
     store.set("inferior_program", constants.inferior_states.running);
   },
-  inferior_program_paused: function(frame = {}) {
+  inferior_program_paused: function (frame = {}) {
     store.set("inferior_program", constants.inferior_states.paused);
     store.set(
       "source_code_selection_state",
@@ -41,14 +41,17 @@ const Actions = {
     store.set("line_of_source_to_flash", parseInt(frame.line));
     // 讀取指導，如果存在指導並且當前的frame有line這個資訊
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
-    VisualizerHelper.processing_guide(frame.line);
+    VisualizerHelper.processing_guide(frame.line, frame.func);
+    // 播放 TTS 語音
+    // @ts-expect-error
+    VisualizerHelper.play_tts(frame.line, frame.func);
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'addr' does not exist on type '{}'.
     store.set("current_assembly_address", frame.addr);
     store.set("source_code_infinite_scrolling", false);
     SourceCode.make_current_line_visible();
     Actions.refresh_state_for_gdb_pause();
   },
-  inferior_program_exited: function() {
+  inferior_program_exited: function () {
     store.set("inferior_program", constants.inferior_states.exited);
     store.set("disassembly_for_missing_file", []);
     store.set("root_gdb_tree_var", null);
@@ -60,25 +63,25 @@ const Actions = {
   /**
    * Request relevant store information from gdb to refresh UI
    */
-  refresh_state_for_gdb_pause: function() {
+  refresh_state_for_gdb_pause: function () {
     GdbApi.run_gdb_command(GdbApi._get_refresh_state_for_pause_cmds());
   },
-  execute_console_command: function(command: any) {
+  execute_console_command: function (command: any) {
     if (store.get("refresh_state_after_sending_console_command")) {
       GdbApi.run_command_and_refresh_state(command);
     } else {
       GdbApi.run_gdb_command(command);
     }
   },
-  onConsoleCommandRun: function() {
+  onConsoleCommandRun: function () {
     if (store.get("refresh_state_after_sending_console_command")) {
       GdbApi.run_gdb_command(GdbApi._get_refresh_state_for_pause_cmds());
     }
   },
-  clear_console: function() {
+  clear_console: function () {
     store.set("gdb_console_entries", []);
   },
-  add_console_entries: function(entries: any, type: any) {
+  add_console_entries: function (entries: any, type: any) {
     if (type === constants.console_entry_type.STD_OUT) {
       // ignore
       return;
@@ -226,7 +229,7 @@ const Actions = {
   },
   send_signal(signal_name: any, pid: any) {
     $.ajax({
-      beforeSend: function(xhr) {
+      beforeSend: function (xhr) {
         xhr.setRequestHeader(
           "x-csrftoken",
           // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'initial_data'.
@@ -237,13 +240,13 @@ const Actions = {
       cache: false,
       type: "POST",
       data: { signal_name: signal_name, pid: pid },
-      success: function(response) {
+      success: function (response) {
         Actions.add_console_entries(
           response.message,
           constants.console_entry_type.GDBGUI_OUTPUT
         );
       },
-      error: function(response) {
+      error: function (response) {
         if (response.responseJSON && response.responseJSON.message) {
           Actions.add_console_entries(
             // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name '_'.
@@ -258,7 +261,7 @@ const Actions = {
         }
         console.error(response);
       },
-      complete: function() {}
+      complete: function () { }
     });
   }
 };

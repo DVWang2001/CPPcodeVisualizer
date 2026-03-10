@@ -2,14 +2,114 @@ import { global_variable } from "./global_variable";
 import { store } from "statorgfc";
 import GdbVariable from "./GdbVariable";
 class VisualizerHelper {
-  static processing_guide(frame_line) {
-    if (!('__line' in global_variable && (parseInt(frame_line) !== NaN))) return;
-    // 尋找該line是否有指導
-    if (!(frame_line in global_variable.__line)) return;
-    const content = VisualizerHelper.extractBalancedBraces(global_variable.__line[frame_line]);
-    VisualizerHelper.graphics_instruction(content, frame_line);
+  static processing_guide(frame_line, funcName) {
+    if (!('__line' in global_variable)) return;
+    const lineNum = parseInt(frame_line);
+    if (isNaN(lineNum)) return;
+    // 同時支援數字 key 與字串 key（localStorage 儲存的 key 是字串，handleInputChange 是數字）
+    const guideContent = global_variable.__line[lineNum] || global_variable.__line[String(lineNum)];
+    if (!guideContent) return;
+    const content = VisualizerHelper.extractBalancedBraces(guideContent);
+    VisualizerHelper.graphics_instruction(content, frame_line, funcName);
   }
-  static async graphics_instruction(instruction, frame_line) {
+
+  static async play_tts(frame_line, funcName) {
+    console.log(`[play_tts] Called with frame_line: ${frame_line}, funcName: ${funcName}`);
+    if (!('__tts' in global_variable)) {
+      console.log(`[play_tts] __tts not found in global_variable`);
+      return;
+    }
+    const lineNum = parseInt(frame_line);
+    if (isNaN(lineNum)) return;
+    const ttsContent = global_variable.__tts[lineNum] || global_variable.__tts[String(lineNum)];
+    console.log(`[play_tts] Extracted ttsContent: ${ttsContent}`);
+    if (!ttsContent) return;
+
+    // 將 TTS 取出的字串依照大括號進行拆分
+    const instruction = VisualizerHelper.extractBalancedBraces(ttsContent);
+    let outputArray = [];
+    console.log(`[play_tts] Extracted array:`, instruction);
+
+    // 依序查詢所有的部分
+    for (const inst of instruction) {
+      // 1. 一般字串直接加進去
+      if (!(inst.startsWith('{') && inst.endsWith('}'))) {
+        outputArray.push(inst);
+        continue;
+      }
+
+      // 2. 遇到 {變數}，先解析
+      const trimmedInst = inst.slice(1, -1).trim();
+      // 使用 tts:: 前綴，避免與 graphics_instruction 的變數抓取產生 Race Condition
+      const displayKey = funcName ? `tts::${funcName}::${trimmedInst}` : `tts::${trimmedInst}`;
+
+      const expressions = store.get("expressions");
+      const existingVar = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
+      if (existingVar) {
+        GdbVariable.delete_gdb_variable(existingVar.name);
+      }
+      GdbVariable.create_variable(trimmedInst, "expr", displayKey);
+
+      // 非同步輪詢獲取結果
+      const result = await new Promise((resolve) => {
+        let checkTicks = 0;
+        const checkStore = () => {
+          checkTicks++;
+          if (checkTicks > 50) {
+            console.warn(`[VisualizerHelper] play_tts TIMEOUT for expression: ${trimmedInst}`);
+            resolve(trimmedInst); // 超時則發音原本的變數名
+            return;
+          }
+          const exprs = store.get("expressions");
+          const varObj = exprs.find(obj => obj.expression === displayKey && obj.in_scope === "true");
+          if (varObj) {
+            if (varObj.value !== undefined) {
+              // 無論是容器還是一般變數，TTS 儘量發音其值 
+              // 如果是字串或容器，這裡簡單的處理為直接取值
+              resolve(varObj.value);
+            } else {
+              setTimeout(checkStore, 100);
+            }
+          } else {
+            setTimeout(checkStore, 100);
+          }
+        };
+        checkStore();
+      });
+      console.log(`[play_tts] Evaluated expression ${trimmedInst} -> ${result}`);
+      // 收錄非同步查詢到的值
+      outputArray.push(result);
+    }
+
+    // 合併所有被替換成實值的字串
+    const evaluateSpokenText = outputArray.join('');
+    console.log(`[play_tts] Formatted text across evaluated array: ${evaluateSpokenText}`);
+
+    // 處理自定義發音 "字[音]" 轉換為 "音"
+    // 例如： "白[柏]起打了一套拳" -> "柏起打了一套拳"
+    const regex = /([^\[\]]+)\[([^\[\]]+)\]/g;
+    const finalSpokenText = evaluateSpokenText.replace(regex, (match, prefix, pronunciation) => {
+      return prefix.slice(0, -1) + pronunciation;
+    });
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel(); // 停止目前播放的語音
+      const utterance = new window.SpeechSynthesisUtterance(finalSpokenText);
+      utterance.lang = 'zh-TW'; // 設定語言為繁體中文
+      window.speechSynthesis.speak(utterance);
+    } else {
+      console.warn("此瀏覽器不支援 Web Speech API (TTS語音播放)");
+    }
+
+    // 發送給介面顯示對話泡泡
+    store.set("tts_subtitle", {
+      text: finalSpokenText,
+      line: parseInt(frame_line),
+      timestamp: Date.now()
+    });
+  }
+
+  static async graphics_instruction(instruction, frame_line, funcName) {
     if (!("__guide" in global_variable)) global_variable.__guide = new Map();
     let outputArray = [];
     for (const inst of instruction) {
@@ -18,51 +118,178 @@ class VisualizerHelper {
         continue;
       }
       const trimmedInst = inst.slice(1, -1).trim();
+      const displayKey = funcName ? `${funcName}::${trimmedInst}` : trimmedInst;
       const expressions = store.get("expressions");
-      const existingVar = expressions.find(obj => obj.expression === trimmedInst && obj.in_scope === "true");
+
+      const indexMatch = trimmedInst.match(/^([^\[\]]+)\[([^\[\]]+)\]$/);
+      let baseContainer = null;
+      let indexExpr = null;
+      let idxDisplayKey = null;
+      if (indexMatch) {
+        baseContainer = indexMatch[1].trim();
+        indexExpr = indexMatch[2].trim();
+
+        if (/^\d+$/.test(indexExpr)) {
+          if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
+          if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
+
+          const baseContainerKey = funcName ? `${funcName}::${baseContainer}` : baseContainer;
+          global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parseInt(indexExpr);
+          indexExpr = null;
+        } else {
+          idxDisplayKey = funcName ? `${funcName}::${indexExpr}` : indexExpr;
+          const existingIdxVar = expressions.find(obj => obj.expression === idxDisplayKey && obj.in_scope === "true");
+          if (existingIdxVar) {
+            GdbVariable.delete_gdb_variable(existingIdxVar.name);
+          }
+          GdbVariable.create_variable(indexExpr, "expr", idxDisplayKey);
+        }
+      }
+
+      const existingVar = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
       if (existingVar) {
         // 如果已存在，先刪除以確保獲取最新值
         GdbVariable.delete_gdb_variable(existingVar.name);
       }
       // 總是創建新的變數對象以獲取最新值
-      GdbVariable.create_variable(trimmedInst, "expr");
+      GdbVariable.create_variable(trimmedInst, "expr", displayKey);
+
+      if (!global_variable.__active_visualizer_exprs) {
+        global_variable.__active_visualizer_exprs = new Set();
+      }
+      global_variable.__active_visualizer_exprs.add(displayKey);
+
+      const addrExpr = `&(${trimmedInst})`;
+      const addrDisplayKey = `&(${displayKey})`;
+      const existingAddrVar = expressions.find(obj => obj.expression === addrDisplayKey && obj.in_scope === "true");
+      if (existingAddrVar) {
+        GdbVariable.delete_gdb_variable(existingAddrVar.name);
+      }
+      GdbVariable.create_variable(addrExpr, "expr", addrDisplayKey);
 
       // 等待並獲取結果
       const result = await new Promise((resolve) => {
+        let checkTicks = 0;
         const checkStore = () => {
+          checkTicks++;
+          if (checkTicks > 50) {
+            console.warn(`[VisualizerHelper] Promise TIMEOUT for expression: ${trimmedInst}`);
+            resolve(trimmedInst);
+            return;
+          }
           const expressions = store.get("expressions");
-          const varObj = expressions.find(obj => obj.expression === trimmedInst && obj.in_scope === "true");
-          if (varObj) {
-            console.log(`[VisualizerHelper] Found variable: ${trimmedInst}, numchild: ${varObj.numchild}, value: ${varObj.value}`);
-            if (varObj.value.includes("std::vector of length 0")) {
+
+          let highlightIndexReady = true;
+          if (indexExpr) {
+            const idxObj = expressions.find(obj => obj.expression === idxDisplayKey && obj.in_scope === "true");
+            if (!idxObj || idxObj.value === undefined) {
+              highlightIndexReady = false;
+            } else {
+              const parsedIdx = parseInt(idxObj.value);
+              if (!isNaN(parsedIdx)) {
+                if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
+                if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
+                const baseContainerKey = funcName ? `${funcName}::${baseContainer}` : baseContainer;
+                global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parsedIdx;
+              }
+              indexExpr = null;
+            }
+          }
+
+          const varObj = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
+          if (varObj && highlightIndexReady) {
+            console.log(`[VisualizerHelper] Found variable: ${displayKey}, numchild: ${varObj.numchild}, value: ${varObj.value}`);
+
+            // ── 判斷容器類型 ──
+            const ty = varObj.type || "";
+            let containerName = "unknown";
+            let expectsCapacity = false;
+            if (ty.includes("std::stack")) containerName = "stack";
+            else if (ty.includes("std::queue") || ty.includes("std::priority_queue")) containerName = "queue";
+            else if (ty.includes("std::deque")) containerName = "deque";
+            else if (ty.includes("std::vector")) { containerName = "vector"; expectsCapacity = true; }
+            else if (ty.includes("std::__cxx11::basic_string") || ty.includes("std::string")) { containerName = "string"; }
+            else if (ty.includes("std::__cxx11::list") || ty.includes("std::list")) containerName = "list";
+            else if (ty.includes("std::array")) containerName = "array";
+            else if (ty.includes("std::set") || ty.includes("std::multiset")) containerName = "set";
+            else if (ty.includes("std::map") || ty.includes("std::multimap")) containerName = "map";
+
+            // ── 建立 payload 函數 ──
+            const buildPayload = (valuesArr) => {
+              const payload = { name: displayKey, type: containerName, values: valuesArr, isContainer: true };
+              return payload;
+            };
+
+            if (containerName === "unknown") {
+              resolve(varObj.value);
+            } else if (containerName === "string") {
+              let strVal = varObj.value || "";
+              if (strVal.startsWith('"') && strVal.endsWith('"')) strVal = strVal.slice(1, -1);
+              const payload = buildPayload(strVal.split(''));
+              // 寫入 containers_guide
+              if (!global_variable.__containers_guide) global_variable.__containers_guide = new Map();
+              if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
+              global_variable.__containers_guide.get(frame_line).push(payload);
+              resolve(`{${strVal}}`);
+            } else if ((varObj.value || "").includes("of length 0") ||
+              (varObj.numchild === 0 && !(varObj.value || "").match(/(length|size)\s+[1-9]/i))) {
+              // 空容器
+              const payload = buildPayload([]);
+              if (!global_variable.__containers_guide) global_variable.__containers_guide = new Map();
+              if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
+              global_variable.__containers_guide.get(frame_line).push(payload);
               resolve("{}");
             } else if (varObj.numchild > 0) {
-              // 如果有子元素（如 vector），等待子元素載入完成
               if (varObj.children && varObj.children.length > 0) {
-                const values = varObj.children.map(child => child.value).join(', ');
-                resolve(`{${values}}`);
+                const childValues = varObj.children.map(child => child.value);
+                const payload = buildPayload(childValues);
+
+                // 嘗試抓 capacity（非阻塞）
+                if (expectsCapacity) {
+                  const capExpr = `${trimmedInst}.capacity()`;
+                  const capObj = expressions.find(obj => obj.expression === capExpr);
+                  if (capObj && capObj.value !== undefined) {
+                    const parsedCap = parseInt(capObj.value);
+                    if (!isNaN(parsedCap)) payload.capacity = parsedCap;
+                  } else {
+                    // 建立 capacity 查詢（非阻塞，下次會拿到）
+                    if (!global_variable.__asking_capacity_for) global_variable.__asking_capacity_for = new Set();
+                    if (!global_variable.__asking_capacity_for.has(capExpr)) {
+                      global_variable.__asking_capacity_for.add(capExpr);
+                      GdbVariable.create_variable(capExpr, "watch");
+                    }
+                  }
+                }
+
+                // 寫入 containers_guide
+                if (!global_variable.__containers_guide) global_variable.__containers_guide = new Map();
+                if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
+                global_variable.__containers_guide.get(frame_line).push(payload);
+
+                const valStr = childValues.join(', ');
+                resolve(`{${valStr}}`);
               } else {
-                // 子元素還沒載入，繼續等待
+                // children 未載入，繼續等待
+                GdbVariable.fetch_and_show_children_for_var(varObj.name);
                 setTimeout(checkStore, 100);
               }
             } else {
               resolve(varObj.value);
             }
           } else {
-            // Debug logging (throttled to avoid spam)
             if (!global_variable._debug_counter) global_variable._debug_counter = 0;
             global_variable._debug_counter++;
             if (global_variable._debug_counter % 10 === 0) {
               const exprs = expressions.map(e => `"${e.expression}"`).join(', ');
-              console.log(`[VisualizerHelper] Waiting for variable "${trimmedInst}"... Available expressions: [${exprs}]`);
+              console.log(`[VisualizerHelper] Waiting for variable "${displayKey}" or index "${idxDisplayKey}"... Available expressions: [${exprs}]`);
             }
-            setTimeout(checkStore, 100);  // 每 100ms 檢查一次
+            setTimeout(checkStore, 100);
           }
         };
         checkStore();
         console.log(`總有跑checkStore了吧`);
       });
-      console.log(`單獨結果 for ${trimmedInst}: ${result}`);
+      console.log(`單獨結果 for ${displayKey}: ${result}`);
       outputArray.push(result);
     }
     const outputString = outputArray.join('');

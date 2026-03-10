@@ -43,7 +43,7 @@ let FileFetcher = {
       start_line: start_line,
       end_line: end_line,
       path: fullname,
-      highlight: false
+      highlight: store.get("highlight_source_code")
     };
 
     $.ajax({
@@ -556,7 +556,7 @@ const FileOps = {
     if (_.isString(fullname)) {
       return (
         constants.INLINE_DISASSEMBLY_STR +
-        `-data-disassemble -f ${fullname} -l ${start_line} -n 1000 -- ${mi_response_format}`
+        `-data-disassemble -f ${fullname} -l ${start_line} -n 150 -- ${mi_response_format}`
       );
     } else {
       console.warn("not fetching undefined file");

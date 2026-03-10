@@ -19,7 +19,7 @@ import Modal from "./GdbguiModal";
 import Actions from "./Actions";
 import { processFeatures } from "./processFeatures";
 
-const process_gdb_response = function(response_array: any) {
+const process_gdb_response = function (response_array: any) {
   /**
    * Determines if response is an error and client does not want to be notified of errors for this particular response.
    * @param response: gdb mi response object
@@ -82,6 +82,18 @@ const process_gdb_response = function(response_array: any) {
           constants.console_entry_type.GDBGUI_OUTPUT_RAW
         );
         continue;
+      } else if (
+        r.payload &&
+        r.payload.msg &&
+        r.payload.msg.includes('"finish" not meaningful')
+      ) {
+        // We tried to step out (-exec-finish) but we are in the outermost frame (like main)
+        Actions.add_console_entries(
+          `Cannot step out: ${r.payload.msg}`,
+          constants.console_entry_type.STD_ERR
+        );
+        Actions.inferior_program_paused(); // unfreeze UI
+        continue;
       }
     }
 
@@ -120,7 +132,7 @@ const process_gdb_response = function(response_array: any) {
         GdbApi.refresh_breakpoints();
       }
       if ("BreakpointTable" in r.payload) {
-        
+
         Breakpoints.save_breakpoints(r.payload);
       }
       // 這裡有行資訊，可以在這裡面寫visualizer的繪圖。
@@ -128,6 +140,28 @@ const process_gdb_response = function(response_array: any) {
         // console.log(`stack = ${JSON.stringify(r.payload.stack)}`);
         // console.trace();
         Threads.update_stack(r.payload.stack);
+      }
+      if ("stack-args" in r.payload) {
+        // Update args for nodes matching frame level
+        let global_variable = (window as any).gdbgui_global_variable;
+        if (global_variable && global_variable.__call_graph_nodes) {
+          let argsByLevel = r.payload["stack-args"];
+          if (Array.isArray(argsByLevel)) {
+            for (let frameInfo of argsByLevel) {
+              let level = frameInfo.level;
+              let args = frameInfo.args;
+              let depth = argsByLevel.length - 1 - parseInt(level);
+
+              // Find all nodes that might match this depth and give them args
+              let node = global_variable.__call_graph_nodes.find((n: any) => n.id.endsWith(`_${depth}`));
+              if (node) {
+                node.args = args;
+              }
+            }
+            // Trigger a re-render signal for CallGraph
+            store.set("call_graph_updated", Date.now());
+          }
+        }
       }
       if ("threads" in r.payload) {
         store.set("threads", r.payload.threads);
@@ -280,7 +314,8 @@ const process_gdb_response = function(response_array: any) {
           Actions.inferior_program_exited();
         } else if (
           r.payload.reason.includes("breakpoint-hit") ||
-          r.payload.reason.includes("end-stepping-range")
+          r.payload.reason.includes("end-stepping-range") ||
+          r.payload.reason.includes("function-finished")
         ) {
           if (r.payload["new-thread-id"]) {
             // @ts-expect-error ts-migrate(2339) FIXME: Property 'set_thread_id' does not exist on type 't... Remove this comment to see the full error message
@@ -297,8 +332,8 @@ const process_gdb_response = function(response_array: any) {
             );
             Actions.add_console_entries(
               "If the program exited due to a fault, you can attempt to re-enter " +
-                "the state of the program when the fault occurred by running the " +
-                "command 'backtrace' in the gdb terminal.",
+              "the state of the program when the fault occurred by running the " +
+              "command 'backtrace' in the gdb terminal.",
               constants.console_entry_type.GDBGUI_OUTPUT
             );
           }

@@ -27,8 +27,29 @@ class SourceCode extends React.Component<{}, State> {
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
+    let savedInputValues = {};
+    let savedTtsValues = {};
+    try {
+      const stored = localStorage.getItem("gdbgui_guide_inputs");
+      if (stored) {
+        savedInputValues = JSON.parse(stored);
+        (global_variable as any).__line = { ...savedInputValues };
+      }
+      const storedTts = localStorage.getItem("gdbgui_tts_inputs");
+      if (storedTts) {
+        savedTtsValues = JSON.parse(storedTts);
+        (global_variable as any).__tts = { ...savedTtsValues };
+      }
+    } catch (e) {
+      console.error("Failed to load guide inputs from localStorage:", e);
+    }
+
     this.state = {
-      inputValues: {},
+      inputValues: savedInputValues,
+      ttsValues: savedTtsValues,
+      splitPos: -1, // -1 means uninitialized/auto
+      isDragging: false,
+      lineCount: 0,
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
@@ -48,6 +69,7 @@ class SourceCode extends React.Component<{}, State> {
       "source_linenum_to_display_end",
       "max_lines_of_code_to_fetch",
       "source_code_infinite_scrolling",
+      "tts_subtitle",
     ]);
 
     // bind methods
@@ -57,6 +79,7 @@ class SourceCode extends React.Component<{}, State> {
     this.click_gutter = this.click_gutter.bind(this);
     this.is_gdb_paused_on_this_line = this.is_gdb_paused_on_this_line.bind(this);
     this.handleInputChange = this.handleInputChange.bind(this);
+    this.handleTtsChange = this.handleTtsChange.bind(this);
   }
 
 
@@ -65,19 +88,72 @@ class SourceCode extends React.Component<{}, State> {
   decorations: any[] = [];
   inputContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
   containerRef: React.RefObject<HTMLDivElement> = React.createRef();
+  fileInputRef: React.RefObject<HTMLInputElement> = React.createRef();
 
-  state: any = {
-    inputValues: {},
-    splitPos: -1, // -1 means uninitialized/auto
-    isDragging: false,
-    lineCount: 0,
-  };
+  ttsWidget: any = null;
+  ttsTimeout: any = null;
+
+  showTtsBubble() {
+    console.log("[SourceCode] showTtsBubble called with:", this.state.tts_subtitle);
+    if (!this.editorInstance || !this.monaco || !this.state.tts_subtitle) {
+      console.log("[SourceCode] showTtsBubble aborted due to missing editor or monaco.", this.editorInstance, this.monaco);
+      return;
+    }
+    const { text, line } = this.state.tts_subtitle;
+
+    if (this.ttsWidget) {
+      console.log("[SourceCode] Removing old TTS widget");
+      this.editorInstance.removeContentWidget(this.ttsWidget);
+      this.ttsWidget = null;
+    }
+
+    const domNode = document.createElement('div');
+    domNode.innerText = text;
+    domNode.style.background = '#2d2d30'; // 改用深灰色，與編輯器主題比較配
+    domNode.style.color = '#d4d4d4';
+    domNode.style.padding = '8px 12px';
+    domNode.style.borderRadius = '8px';
+    domNode.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.4)';
+    domNode.style.fontSize = '14px';
+    domNode.style.fontFamily = 'sans-serif';
+    domNode.style.border = '1px solid #454545';
+    domNode.style.whiteSpace = 'nowrap'; // 強制不隨意換行，避免變成直行文字
+    domNode.style.width = 'max-content'; // 自動根據內容延展寬度
+    domNode.style.maxWidth = '400px';
+    domNode.style.overflow = 'hidden';
+    domNode.style.textOverflow = 'ellipsis';
+    domNode.style.zIndex = '99999';
+    // domNode.style.pointerEvents = 'none';
+
+    this.ttsWidget = {
+      getDomNode: () => domNode,
+      getId: () => 'my.tts.bubble',
+      getPosition: () => ({
+        position: { lineNumber: line, column: 1 },
+        preference: [this.monaco.editor.ContentWidgetPositionPreference.ABOVE, this.monaco.editor.ContentWidgetPositionPreference.BELOW]
+      })
+    };
+
+    console.log(`[SourceCode] Adding ContentWidget at line ${line}`);
+    this.editorInstance.addContentWidget(this.ttsWidget);
+
+    if (this.ttsTimeout) clearTimeout(this.ttsTimeout);
+    this.ttsTimeout = setTimeout(() => {
+      console.log("[SourceCode] Auto-removing TTS widget");
+      if (this.editorInstance && this.ttsWidget) {
+        this.editorInstance.removeContentWidget(this.ttsWidget);
+        this.ttsWidget = null;
+      }
+    }, 5000);
+  }
 
   handleEditorDidMount = (_getValue: any, editor: any) => {
     this.editorInstance = editor;
     this.monaco = (window as any).monaco;
     // Expose editor content getter for GdbApi to use
     (window as any).gdbgui_get_editor_value = () => this.editorInstance.getValue();
+    (window as any).gdbgui_get_editor_filename = () => this.state.fullname_to_render;
+    (window as any).last_compiled_code = this.editorInstance.getValue(); // NEW optimization
     this.updateDecorations();
 
     // Sync scroll
@@ -172,6 +248,10 @@ class SourceCode extends React.Component<{}, State> {
           glyphMarginClassName: "fas fa-arrow-right"
         },
       });
+      // Scroll Monaco to the current line if make_current_line_visible is true
+      if (this.state.make_current_line_visible) {
+        this.editorInstance.revealLineInCenter(line);
+      }
     }
 
     // Breakpoints
@@ -211,19 +291,17 @@ class SourceCode extends React.Component<{}, State> {
     if (!source_code_obj) return "";
     const lines = [];
 
-    // Helper to strip HTML tags
+    // Helper to strip HTML tags and decode HTML entities
     const stripHtml = (html: string) => {
       if (!html) return "";
 
-      // Heuristic: If it contains span tags or common HTML entities, treat as HTML and decode.
-      // Otherwise treat as raw text (to preserve #include <iostream> etc.)
-      // Pygments usually wraps in span.
-      if (html.includes('<span') || html.includes('&lt;') || html.includes('&gt;') || html.includes('&amp;')) {
-        let tmp = html;
-        tmp = tmp.replace(/<[^>]*>?/gm, '');
-        // Decode basic entities
-        tmp = tmp.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ');
-        return tmp;
+      if (html.includes('<span') || html.includes('&lt;') || html.includes('&gt;') || html.includes('&amp;') || html.includes('&quot;') || html.includes('&#39;')) {
+        let temp_el = document.createElement("div");
+        temp_el.innerHTML = html;
+        let text = temp_el.textContent || temp_el.innerText || "";
+        // Replace non-breaking spaces with normal spaces if Pygments added them
+        text = text.replace(/\u00A0/g, ' ');
+        return text;
       }
 
       return html;
@@ -231,20 +309,25 @@ class SourceCode extends React.Component<{}, State> {
 
     for (let i = 1; i <= num_lines; i++) {
       let lineContent = source_code_obj[i] || "";
+      if (typeof lineContent === 'string' && lineContent.endsWith('\n')) {
+        lineContent = lineContent.slice(0, -1);
+      }
       lines.push(stripHtml(lineContent));
     }
     return lines.join("\n");
   }
 
   handleInputChange(index: number, value: string) {
-    // console.log(`Changing input for line ${index} to: ${value}`);
-    // 更新組件狀態以支持受控 input
+    const newInputValues = {
+      ...this.state.inputValues,
+      [index]: value,
+    };
+
+    // Save to state and persistent storage
     this.setState({
-      inputValues: {
-        ...this.state.inputValues,
-        [index]: value,
-      },
+      inputValues: newInputValues,
     });
+    localStorage.setItem("gdbgui_guide_inputs", JSON.stringify(newInputValues));
 
     // 用global_variable儲存每個line的資訊。
     if (!('__line' in global_variable)) {
@@ -253,6 +336,104 @@ class SourceCode extends React.Component<{}, State> {
     // console.log(`第${index}行儲存的指導為${value}`);
     (global_variable as any).__line[index] = value;
   }
+
+  handleTtsChange(index: number, value: string) {
+    const newTtsValues = {
+      ...this.state.ttsValues,
+      [index]: value,
+    };
+
+    this.setState({
+      ttsValues: newTtsValues,
+    });
+    localStorage.setItem("gdbgui_tts_inputs", JSON.stringify(newTtsValues));
+
+    if (!('__tts' in global_variable)) {
+      (global_variable as any).__tts = {};
+    }
+    (global_variable as any).__tts[index] = value;
+  }
+
+  exportProject = () => {
+    const source_code = this.editorInstance ? this.editorInstance.getValue() : "";
+    const line_data: any = {};
+    const inputValues = this.state.inputValues || {};
+    const ttsValues = this.state.ttsValues || {};
+
+    const allLines = new Set([...Object.keys(inputValues), ...Object.keys(ttsValues)]);
+    allLines.forEach(line => {
+      line_data[line] = {
+        guide: inputValues[line] || "",
+        tts: ttsValues[line] || ""
+      };
+    });
+
+    const projectData = {
+      version: "1.0",
+      project_name: "gdbgui_project",
+      source_code: source_code,
+      line_data: line_data
+    };
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(projectData, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "project.gdbgui.json");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
+  triggerImport = () => {
+    if (this.fileInputRef && this.fileInputRef.current) {
+      this.fileInputRef.current.click();
+    }
+  };
+
+  handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const projectData = JSON.parse(content);
+
+        if (projectData.source_code && this.editorInstance) {
+          this.editorInstance.setValue(projectData.source_code);
+        }
+
+        const newInputValues: any = {};
+        const newTtsValues: any = {};
+        if (projectData.line_data) {
+          for (const line in projectData.line_data) {
+            newInputValues[line] = projectData.line_data[line].guide || "";
+            newTtsValues[line] = projectData.line_data[line].tts || "";
+          }
+        }
+
+        this.setState({
+          inputValues: newInputValues,
+          ttsValues: newTtsValues
+        });
+
+        localStorage.setItem("gdbgui_guide_inputs", JSON.stringify(newInputValues));
+        localStorage.setItem("gdbgui_tts_inputs", JSON.stringify(newTtsValues));
+
+        (global_variable as any).__line = { ...newInputValues };
+        (global_variable as any).__tts = { ...newTtsValues };
+
+        Actions.add_console_entries("Project imported successfully. Please click Run/Restart to recompile.", constants.console_entry_type.GDBGUI_OUTPUT);
+
+      } catch (err) {
+        console.error("Error parsing project file", err);
+        Actions.add_console_entries("Error parsing project file", constants.console_entry_type.STD_ERR);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
   tempFullname = '';
   render() {
     if (this.tempFullname !== this.state.fullname_to_render) {
@@ -267,13 +448,14 @@ class SourceCode extends React.Component<{}, State> {
       this.state.source_code_state === constants.source_code_states.SOURCE_CACHED ||
       this.state.source_code_state === constants.source_code_states.ASSM_AND_SOURCE_CACHED;
 
+
     // Check if we have the file object
     let obj = null;
     if (showMonaco) {
       obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
     }
 
-    if (showMonaco && obj && obj.source_code_obj) {
+    if (showMonaco && obj && obj.source_code_obj && obj.fullname === this.initialFullname) {
       const value = this.get_monaco_value(obj.source_code_obj, obj.num_lines_in_file);
       const theme = this.state.current_theme === 'dark' ? 'vs-dark' : 'light';
       const LINE_HEIGHT = 19;
@@ -284,22 +466,43 @@ class SourceCode extends React.Component<{}, State> {
       const inputs = [];
       for (let i = 1; i <= numLines; i++) {
         inputs.push(
-          <div key={i} style={{ height: `${LINE_HEIGHT}px`, borderBottom: "1px solid #eee", boxSizing: "border-box" }}>
+          <div key={i} style={{ height: `${LINE_HEIGHT}px`, borderBottom: "1px solid #eee", boxSizing: "border-box", display: "flex" }}>
             <input
               style={{
-                width: "100%",
+                width: "50%",
                 height: "100%",
                 border: "none",
                 background: "transparent",
                 fontFamily: "monospace",
-                fontSize: "inherit"
+                fontSize: "inherit",
+                paddingLeft: "4px"
               }}
               data-line={i}
               defaultValue={this.state.inputValues[i] || ''}
-              placeholder={`Guide for line ${i}`}
+              placeholder={`Guide L${i}`}
               onChange={(e) => {
                 this.handleInputChange(i, e.target.value);
               }}
+              title="Memory Watch Guide"
+            />
+            <input
+              style={{
+                width: "50%",
+                height: "100%",
+                border: "none",
+                borderLeft: "1px solid #ccc",
+                background: "transparent",
+                fontFamily: "monospace",
+                fontSize: "inherit",
+                paddingLeft: "4px"
+              }}
+              data-line={i}
+              defaultValue={this.state.ttsValues[i] || ''}
+              placeholder={`TTS L${i}`}
+              onChange={(e) => {
+                this.handleTtsChange(i, e.target.value);
+              }}
+              title="TTS Script"
             />
           </div>
         );
@@ -312,53 +515,79 @@ class SourceCode extends React.Component<{}, State> {
         : { flex: "0 0 50%", height: "100%" }; // Default 50% until mounted
 
       return (
-        <div ref={this.containerRef} className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex", overflow: 'hidden' }}>
-          <div style={leftStyle}>
-            <MonacoEditor
-              height="100%"
-              language="cpp"
-              theme={theme}
-              value={value}
-              editorDidMount={(getValue: any, editor: any) => {
-                this.handleEditorDidMount(getValue, editor);
-              }}
-              options={{
-                readOnly: false,
-                glyphMargin: true,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                fontFamily: "monospace",
-                lineHeight: LINE_HEIGHT
-              }}
-            />
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
+          <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <strong>{this.state.fullname_to_render}</strong>
+            <div>
+              <button
+                onClick={this.triggerImport}
+                className="btn btn-default btn-sm"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                Import JSON
+              </button>
+              <input
+                type="file"
+                accept=".json"
+                style={{ display: "none" }}
+                ref={this.fileInputRef}
+                onChange={this.handleImport}
+              />
+              <button
+                onClick={this.exportProject}
+                className="btn btn-default btn-sm"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px" }}>
+                Export JSON
+              </button>
+            </div>
           </div>
+          <div ref={this.containerRef} className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", overflow: 'hidden' }}>
+            <div style={leftStyle}>
+              <MonacoEditor
+                height="100%"
+                language="cpp"
+                theme={theme}
+                value={value}
+                editorDidMount={(getValue: any, editor: any) => {
+                  this.handleEditorDidMount(getValue, editor);
+                }}
+                options={{
+                  readOnly: false,
+                  glyphMargin: true,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  fontFamily: "monospace",
+                  lineHeight: LINE_HEIGHT
+                }}
+              />
+            </div>
 
-          {/* Drag Handle */}
-          <div
-            onMouseDown={this.startDrag}
-            style={{
-              width: "5px",
-              height: "100%",
-              cursor: "col-resize",
-              backgroundColor: "#e0e0e0",
-              zIndex: 10,
-              flexShrink: 0
-            }}
-            title="Drag to resize"
-          />
-
-          <div style={{ flex: "1", height: "100%", borderLeft: "1px solid #ccc", backgroundColor: "#fdfdfd", minWidth: 0 }}>
+            {/* Drag Handle */}
             <div
-              ref={this.inputContainerRef}
+              onMouseDown={this.startDrag}
               style={{
+                width: "5px",
                 height: "100%",
-                overflow: "hidden", // Hide scrollbar, controlled by Monaco
-                fontFamily: "monospace",
-                fontSize: "14px" // Match Monaco default approx
+                cursor: "col-resize",
+                backgroundColor: "#e0e0e0",
+                zIndex: 10,
+                flexShrink: 0
               }}
-            >
-              {inputs}
+              title="Drag to resize"
+            />
+
+            <div style={{ flex: "1", height: "100%", borderLeft: "1px solid #ccc", backgroundColor: "#fdfdfd", minWidth: 0 }}>
+              <div
+                ref={this.inputContainerRef}
+                style={{
+                  height: "100%",
+                  overflow: "hidden", // Hide scrollbar, controlled by Monaco
+                  fontFamily: "monospace",
+                  fontSize: "14px" // Match Monaco default approx
+                }}
+              >
+                {inputs}
+              </div>
             </div>
           </div>
         </div>
@@ -366,49 +595,78 @@ class SourceCode extends React.Component<{}, State> {
     }
 
     const bodyRows = this.get_body();
-    const inputRows = this.state.fullname_to_render === this.initialFullname ? this.get_input_rows() : [];
 
-    if (this.state.fullname_to_render === this.initialFullname) {
+    // Determine if this is the main editable file (to show input rows and Monaco)
+    const ftr = this.state.fullname_to_render || "";
+    let isMainEditorFile = (this.initialFullname === null) || (ftr === this.initialFullname) || (ftr.includes("uploaded_scripts") || ftr.includes("uploads/"));
+
+    // Update initialFullname early during render if we detect a new main upload
+    if (isMainEditorFile && this.state.fullname_to_render) {
+      this.initialFullname = this.state.fullname_to_render;
+    }
+
+    const inputRows = isMainEditorFile ? this.get_input_rows() : [];
+
+    if (isMainEditorFile) {
       return (
-        <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex", fontFamily: "monospace" }}>
-          <div style={{ flex: "0 0 70%", overflow: "auto" }}>
-            <table
-              id="code_table"
-              className={this.state.current_theme}
-              style={{ width: "100%" }}
-            >
-              <tbody id="code_body">{bodyRows}</tbody>
-            </table>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
+          <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0 }}>
+            <strong>{this.state.fullname_to_render}</strong>
           </div>
-          <div style={{ backgroundColor: "black" }}></div>
-          <div style={{ flex: "0 0 30%", overflow: "auto" }}>
-            <table className={this.state.current_theme} style={{ width: "100%" }}>
-              <tbody>
-                {inputRows}
-              </tbody>
-            </table>
+          <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", fontFamily: "monospace", overflow: 'hidden' }}>
+            <div style={{ flex: "0 0 70%", overflow: "auto" }}>
+              <table
+                id="code_table"
+                className={this.state.current_theme}
+                style={{ width: "100%" }}
+              >
+                <tbody id="code_body">{bodyRows}</tbody>
+              </table>
+            </div>
+            <div style={{ backgroundColor: "black" }}></div>
+            <div style={{ flex: "0 0 30%", overflow: "auto" }}>
+              <table className={this.state.current_theme} style={{ width: "100%" }}>
+                <tbody>
+                  {inputRows}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       );
     } else {
       return (
-        <div className={this.state.current_theme} style={{ height: "100%", width: "100%", display: "flex", fontFamily: "monospace" }}>
-          <div style={{ flex: "1", overflow: "auto" }}>
-            <table
-              id="code_table"
-              className={this.state.current_theme}
-              style={{ width: "100%" }}
-            >
-              <tbody id="code_body">{bodyRows}</tbody>
-            </table>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
+          <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0 }}>
+            <strong>{this.state.fullname_to_render}</strong>
+          </div>
+          <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", fontFamily: "monospace", overflow: 'hidden' }}>
+            <div style={{ flex: "1", overflow: "auto" }}>
+              <table
+                id="code_table"
+                className={this.state.current_theme}
+                style={{ width: "100%" }}
+              >
+                <tbody id="code_body">{bodyRows}</tbody>
+              </table>
+            </div>
           </div>
         </div>
       );
     }
   }
 
-  componentDidUpdate(prevState: any) {
+  componentDidUpdate(prevProps: any, prevState: any) {
     this.updateDecorations();
+
+    // 檢查是否有新的 TTS 語音發送過來
+    if (this.state.tts_subtitle) {
+      const isNew = !prevState.tts_subtitle || prevState.tts_subtitle.timestamp !== this.state.tts_subtitle.timestamp;
+      if (isNew) {
+        console.log("[SourceCode] New tts_subtitle detected:", this.state.tts_subtitle);
+        this.showTtsBubble();
+      }
+    }
 
     let source_is_displayed =
       this.state.source_code_state === constants.source_code_states.SOURCE_CACHED ||
@@ -418,7 +676,14 @@ class SourceCode extends React.Component<{}, State> {
     if (source_is_displayed) {
       // 將源代碼存儲到global_variable以供Visualizer使用
       let obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
-      if (obj && obj.source_code_obj && obj.fullname === this.initialFullname) {
+
+      // If the rendered file is the main program (rendered in Monaco editor instead of static code_body)
+      let isMainEditorFile = (this.initialFullname === null) || (this.state.fullname_to_render === this.initialFullname) || (this.state.fullname_to_render.includes("uploaded_scripts") || this.state.fullname_to_render.includes("uploads/"));
+
+      if (obj && obj.source_code_obj && isMainEditorFile) {
+        // Dynamically update the known main file to support re-compilation
+        this.initialFullname = obj.fullname;
+
         (global_variable as any).__source_code = obj.source_code_obj;
         (global_variable as any).__source_code_fullname = obj.fullname;
       }
@@ -656,6 +921,8 @@ class SourceCode extends React.Component<{}, State> {
       return false;
     }
   }
+
+
   get_view_more_tr(fullname: any, linenum: any, node_key: any) {
     return (
       // @ts-expect-error ts-migrate(7053) FIXME: Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
@@ -946,29 +1213,24 @@ class SourceCode extends React.Component<{}, State> {
     return SourceCode._make_jq_selector_visible($("#scroll_to_line"));
   }
   static is_source_line_visible(jq_selector: any) {
-    // console.trace();
     if (jq_selector.length !== 1) {
-      // make sure something is selected before trying to scroll to it
       throw "Unexpected jquery selector";
     }
 
-    // @ts-expect-error ts-migrate(2531) FIXME: Object is possibly 'null'.
-    let top_of_container = SourceCode.el_code_container.position().top,
-      // @ts-expect-error ts-migrate(2531) FIXME: Object is possibly 'null'.
-      height_of_container = SourceCode.el_code_container.height(),
-      bottom_of_container = top_of_container + height_of_container,
-      top_of_line = jq_selector.position().top,
-      bottom_of_line = top_of_line + jq_selector.height(),
-      top_of_table = jq_selector.closest("table").position().top,
-      is_visible =
-        top_of_line >= top_of_container && bottom_of_line <= bottom_of_container;
+    let scroll_container = jq_selector.closest("div");
+    let container_top = scroll_container.offset() ? scroll_container.offset().top : 0;
+    let container_height = scroll_container.height() || 100;
+    let container_bottom = container_top + container_height;
 
-    if (is_visible) {
-      return { is_visible: true, top_of_line, top_of_table, height_of_container };
-    } else {
-      return { is_visible: false, top_of_line, top_of_table, height_of_container };
-    }
+    let line_top = jq_selector.offset() ? jq_selector.offset().top : 0;
+    let line_height = jq_selector.height() || 20;
+    let line_bottom = line_top + line_height;
+
+    let is_visible = line_top >= container_top && line_bottom <= container_bottom;
+
+    return { is_visible, line_top, container_top, height_of_container: container_height, scroll_container };
   }
+
   /**
    * Scroll to a jQuery selection in the source code table
    * Used to jump around to various lines
@@ -979,17 +1241,19 @@ class SourceCode extends React.Component<{}, State> {
       // make sure something is selected before trying to scroll to it
       const {
         is_visible,
-        top_of_line,
-        top_of_table,
-        height_of_container
+        line_top,
+        container_top,
+        height_of_container,
+        scroll_container
       } = SourceCode.is_source_line_visible(jq_selector);
 
       if (!is_visible) {
         // line is out of view, scroll so it's in the middle of the table
         const time_to_scroll = 0;
-        let scroll_top = top_of_line - (top_of_table + height_of_container / 2);
-        // @ts-expect-error ts-migrate(2531) FIXME: Object is possibly 'null'.
-        SourceCode.el_code_container.animate({ scrollTop: scroll_top }, time_to_scroll);
+        let scroll_adjustment = line_top - container_top - (height_of_container / 2);
+        let new_scroll_top = scroll_container.scrollTop() + scroll_adjustment;
+
+        scroll_container.animate({ scrollTop: new_scroll_top }, time_to_scroll);
       }
       return true;
     } else {
