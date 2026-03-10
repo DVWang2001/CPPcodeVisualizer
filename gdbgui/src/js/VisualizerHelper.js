@@ -9,7 +9,42 @@ class VisualizerHelper {
     // 同時支援數字 key 與字串 key（localStorage 儲存的 key 是字串，handleInputChange 是數字）
     const guideContent = global_variable.__line[lineNum] || global_variable.__line[String(lineNum)];
     if (!guideContent) return;
-    const content = VisualizerHelper.extractBalancedBraces(guideContent);
+
+    // --- 攔截 [自訂標籤#顏色] 語法給 Call Graph 使用 ---
+    // 支援 `[標籤名稱#顏色] {變數}` 或是 `[標籤名稱] {變數}`
+    const labelRegex = /^\[([^\]#]+)(?:#([^\]]+))?\](.*)/;
+    const labelMatch = guideContent.match(labelRegex);
+    
+    if (!global_variable.__call_graph_custom_labels) {
+      global_variable.__call_graph_custom_labels = {};
+    }
+
+    let graphicsContent = guideContent;
+    if (labelMatch) {
+      const labelName = labelMatch[1].trim();
+      const color = labelMatch[2] ? labelMatch[2].trim() : null; // 可選的顏色
+      const remainingContent = labelMatch[3].trim();
+      
+      // 提取該行要監聽的所有 {變數}
+      const varsToWatch = VisualizerHelper.extractBalancedBraces(remainingContent)
+        .filter(v => v.startsWith('{') && v.endsWith('}'))
+        .map(v => v.slice(1, -1).trim());
+
+      global_variable.__call_graph_custom_labels[lineNum] = {
+        labelName,
+        color,
+        vars: varsToWatch, // 變數名稱清單，稍後在 CallGraph 中取得其值
+        originalLine: lineNum
+      };
+      
+      graphicsContent = remainingContent; // 後續交給 graphics_instruction 處理畫圖的部分
+    } else {
+        // 如果沒有匹配到，就清除該行的自訂標籤 (避免殘留舊的執行狀態)
+        delete global_variable.__call_graph_custom_labels[lineNum];
+    }
+    // ----------------------------------------------------
+
+    const content = VisualizerHelper.extractBalancedBraces(graphicsContent);
     VisualizerHelper.graphics_instruction(content, frame_line, funcName);
   }
 
@@ -135,6 +170,8 @@ class VisualizerHelper {
 
           const baseContainerKey = funcName ? `${funcName}::${baseContainer}` : baseContainer;
           global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parseInt(indexExpr);
+          if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
+          global_variable.__latest_highlights.set(baseContainerKey, parseInt(indexExpr));
           indexExpr = null;
         } else {
           idxDisplayKey = funcName ? `${funcName}::${indexExpr}` : indexExpr;
@@ -191,6 +228,8 @@ class VisualizerHelper {
                 if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
                 const baseContainerKey = funcName ? `${funcName}::${baseContainer}` : baseContainer;
                 global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parsedIdx;
+                if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
+                global_variable.__latest_highlights.set(baseContainerKey, parsedIdx);
               }
               indexExpr = null;
             }
@@ -230,6 +269,8 @@ class VisualizerHelper {
               if (!global_variable.__containers_guide) global_variable.__containers_guide = new Map();
               if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
               global_variable.__containers_guide.get(frame_line).push(payload);
+              if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
+              global_variable.__latest_containers.set(displayKey, payload);
               resolve(`{${strVal}}`);
             } else if ((varObj.value || "").includes("of length 0") ||
               (varObj.numchild === 0 && !(varObj.value || "").match(/(length|size)\s+[1-9]/i))) {
@@ -238,6 +279,8 @@ class VisualizerHelper {
               if (!global_variable.__containers_guide) global_variable.__containers_guide = new Map();
               if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
               global_variable.__containers_guide.get(frame_line).push(payload);
+              if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
+              global_variable.__latest_containers.set(displayKey, payload);
               resolve("{}");
             } else if (varObj.numchild > 0) {
               if (varObj.children && varObj.children.length > 0) {
@@ -265,6 +308,8 @@ class VisualizerHelper {
                 if (!global_variable.__containers_guide) global_variable.__containers_guide = new Map();
                 if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
                 global_variable.__containers_guide.get(frame_line).push(payload);
+                if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
+                global_variable.__latest_containers.set(displayKey, payload);
 
                 const valStr = childValues.join(', ');
                 resolve(`{${valStr}}`);

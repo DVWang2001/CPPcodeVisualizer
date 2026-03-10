@@ -180,40 +180,12 @@ class ContainerVisualizer extends React.Component<{}, State> {
     }
 
     render() {
-        const containerGuide = (global_variable as any).__containers_guide as Map<string, any[]>;
-        if (!containerGuide || containerGuide.size === 0) {
+        const latestContainers = (global_variable as any).__latest_containers as Map<string, any>;
+        if (!latestContainers || latestContainers.size === 0) {
             return <div style={{ padding: "10px", color: "#666", fontStyle: "italic" }}>No container data available. Run and trace code to see containers.</div>;
         }
 
-        // Accumulate the latest state of each unique container across all traced lines
-        const latestContainers = new Map<string, any>();
-
-        for (const [, payloads] of containerGuide.entries()) {
-            if (payloads && payloads.length > 0) {
-                for (const data of payloads) {
-                    if (data && data.isContainer && data.type !== "unknown" && data.name) {
-                        latestContainers.set(data.name, data);
-                    }
-                }
-            }
-        }
-
-        if (latestContainers.size === 0) {
-            return <div style={{ padding: "10px", color: "#666", fontStyle: "italic" }}>No containers detected in current trace.</div>;
-        }
-
-        const containerHighlights = (global_variable as any).__container_highlights as Map<string, Record<string, number>>;
-        const latestHighlights = new Map<string, number>();
-
-        if (containerHighlights) {
-            for (const [, highlightMap] of containerHighlights.entries()) {
-                if (highlightMap) {
-                    for (const [containerName, indexVal] of Object.entries(highlightMap)) {
-                        latestHighlights.set(containerName, indexVal as number);
-                    }
-                }
-            }
-        }
+        const latestHighlights = (global_variable as any).__latest_highlights as Map<string, number> || new Map<string, number>();
 
         const containerElements = Array.from(latestContainers.entries()).map(([name, data]) => {
             const highlightIndex = latestHighlights.get(name);

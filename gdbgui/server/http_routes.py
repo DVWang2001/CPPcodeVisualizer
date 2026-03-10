@@ -133,6 +133,11 @@ def create_and_upload():
     if not code:
         return client_error({"message": "No code submitted"})
 
+    # ensure a per-session prefix exists and use it to avoid filename collisions
+    if "uploaded_prefix" not in session:
+        session["uploaded_prefix"] = uuid.uuid4().hex
+    prefix = session["uploaded_prefix"]
+
     # Determine where to save the code
     if filepath and os.path.exists(filepath):
         src_path = filepath
@@ -143,11 +148,6 @@ def create_and_upload():
         # Fallback to auto-generate a unique filename for the pasted source
         filename = f"pasted_{uuid.uuid4().hex}.cpp"
         ext = ".cpp"
-
-        # ensure a per-session prefix exists and use it to avoid filename collisions
-        if "uploaded_prefix" not in session:
-            session["uploaded_prefix"] = uuid.uuid4().hex
-        prefix = session["uploaded_prefix"]
 
         upload_dir = current_app.config.get("upload_folder") or os.path.join(
             current_app.root_path, "uploads"

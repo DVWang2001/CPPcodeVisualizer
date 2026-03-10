@@ -51,7 +51,7 @@ class Pty:
     def set_echo(self, echo_on: bool) -> None:
         (iflag, oflag, cflag, lflag, ispeed, ospeed, cc) = termios.tcgetattr(self.stdin)
         if echo_on:
-            lflag = lflag & termios.ECHO  # type: ignore
+            lflag = lflag | termios.ECHO  # type: ignore
         else:
             lflag = lflag & ~termios.ECHO  # type: ignore
         termios.tcsetattr(

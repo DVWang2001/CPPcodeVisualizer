@@ -25,6 +25,12 @@ class Visualizer extends React.Component<{}, State> {
     if ("__containers_guide" in global_variable) {
       (global_variable as any).__containers_guide.clear();
     }
+    if ("__latest_containers" in global_variable) {
+      (global_variable as any).__latest_containers.clear();
+    }
+    if ("__latest_highlights" in global_variable) {
+      (global_variable as any).__latest_highlights.clear();
+    }
   }
   renderGuideTable() {
     const guide = (global_variable as any).__guide as Map<string, any[]>;

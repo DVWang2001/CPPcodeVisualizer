@@ -23,6 +23,7 @@ const Actions = {
   },
   inferior_program_starting: function () {
     store.set("inferior_program", constants.inferior_states.running);
+    window.dispatchEvent(new Event('gdbgui:clear_program_output'));
     Actions.clear_program_state();
   },
   inferior_program_resuming: function () {

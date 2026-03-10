@@ -57,8 +57,40 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
 
     this.state = {
       programOutput: "",
-      programInput: store.get("program_input") || ""
+      programInput: localStorage.getItem("gdbgui_program_input") || store.get("program_input") || ""
     };
+
+    this.sendInputToPty = this.sendInputToPty.bind(this);
+  }
+
+  sendInputToPty() {
+    const input = this.state.programInput || store.get("program_input") || "";
+    if (!input) {
+      return;
+    }
+    const GdbApi = require("./GdbApi").default;
+    const socket = GdbApi.getSocket();
+    if (socket && !socket.disconnected) {
+      socket.emit("pty_interaction", {
+        data: { pty_name: "program_pty", key: input + "\n", action: "write" }
+      });
+    }
+  }
+
+  componentDidMount() {
+    // Expose flush function globally so GdbApi can call it
+    (window as any).gdbgui_flush_program_input = () => {
+      this.sendInputToPty();
+    };
+
+    // Sync localStorage program_input to the global store on mount.
+    // The constructor loads from localStorage into component state, but the
+    // global store (used by GdbApi for auto-injection) is never updated unless
+    // the user edits the input. This ensures store has the correct value on load.
+    const savedInput = localStorage.getItem("gdbgui_program_input") || "";
+    if (savedInput) {
+      store.set("program_input", savedInput);
+    }
   }
 
   terminal(ref: React.RefObject<any>) {
@@ -82,8 +114,15 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
         <div className="h-full w-full overflow-hidden bg-white relative flex flex-col">
           {/* Top Half: Standard Input */}
           <div className="flex-1 border-b-2 border-gray-300 flex flex-col">
-            <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 uppercase tracking-wider">
-              Standard Input
+            <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 uppercase tracking-wider flex justify-between items-center">
+              <span>Standard Input</span>
+              <button
+                className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase"
+                onClick={this.sendInputToPty}
+                title="Send input to the running program (useful if program is waiting on cin)"
+              >
+                send input
+              </button>
             </div>
             <div className="flex-1 relative">
               <MonacoEditor
@@ -96,6 +135,7 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
                     const val = getValue();
                     this.setState({ programInput: val });
                     store.set("program_input", val);
+                    localStorage.setItem("gdbgui_program_input", val);
                   });
                 }}
                 options={{
@@ -158,6 +198,11 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
   }
 
   componentDidMount() {
+    // Add event listener to clear output on new run
+    window.addEventListener('gdbgui:clear_program_output', () => {
+      this.setState({ programOutput: "" });
+    });
+
     const fitAddon = new FitAddon();
     // const programFitAddon = new FitAddon(); // No longer needed
     const gdbguiFitAddon = new FitAddon();
@@ -199,24 +244,6 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
 
       this.setState(prevState => {
         let newOutput = prevState.programOutput + cleanText;
-
-        // Try to filter out echoed standard input.
-        // PTYs naturally echo back everything written to them.
-        const currentInput = this.state.programInput;
-        if (currentInput && currentInput.length > 0) {
-          // A simple approach is to see if the beginning of the new output matches the input.
-          // Because execution clearing might happen earlier, we just replace the precise input string if it's there.
-          // Replace it only once (the first occurrence) to prevent replacing legitimate identical payload output.
-          // To be safe with newlines (which might be converted to \r\n by the PTY):
-          const normalizedInput = currentInput.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
-          // Also check plain input
-          if (newOutput.includes(normalizedInput)) {
-            newOutput = newOutput.replace(normalizedInput, "");
-          } else if (newOutput.includes(currentInput)) {
-            newOutput = newOutput.replace(currentInput, "");
-          }
-        }
-
         return { programOutput: newOutput };
       });
     });

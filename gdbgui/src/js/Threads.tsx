@@ -290,6 +290,22 @@ class Threads extends React.Component<{}, ThreadsState> {
         }
       }
 
+      // Prune nodes and edges that represent backtracked (returned) functions
+      const maxAllowedDepth = L - 1;
+      global_variable.__call_graph_nodes = global_variable.__call_graph_nodes.filter((n: any) => {
+        const parts = n.id.split('_');
+        const depth = parseInt(parts[parts.length - 1], 10);
+        return depth <= maxAllowedDepth;
+      });
+
+      global_variable.__call_graph_edges = global_variable.__call_graph_edges.filter((e: any) => {
+        const fromParts = e.from.split('_');
+        const toParts = e.to.split('_');
+        const fromDepth = parseInt(fromParts[fromParts.length - 1], 10);
+        const toDepth = parseInt(toParts[toParts.length - 1], 10);
+        return fromDepth <= maxAllowedDepth && toDepth <= maxAllowedDepth;
+      });
+
       // Trigger a re-render signal for CallGraph
       store.set("call_graph_updated", Date.now());
     }

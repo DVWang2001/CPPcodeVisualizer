@@ -84,7 +84,7 @@ class SessionManager(object):
     def add_new_debug_session(
         self, *, gdb_command: str, mi_version: str, client_id: str
     ) -> DebugSession:
-        pty_for_debugged_program = Pty()
+        pty_for_debugged_program = Pty(echo=False)
         pty_for_gdbgui = Pty(echo=False)
         gdbgui_startup_cmds = [
             f"new-ui {mi_version} {pty_for_gdbgui.name}",

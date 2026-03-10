@@ -38,6 +38,7 @@ if (debug) {
 // @ts-expect-error ts-migrate(2339) FIXME: Property 'initial_data' does not exist on type 'Wi... Remove this comment to see the full error message
 const initial_data = window.initial_data;
 let socket: SocketIOClient.Socket;
+let _pending_input_injection = false;
 const GdbApi = {
   getSocket: function () {
     return socket;
@@ -150,17 +151,68 @@ const GdbApi = {
       //   window.location.reload(true);
       // }
     });
+
+    // State-driven input injection via polling:
+    // When _pending_input_injection is set, poll every 300ms until the program pauses,
+    // then inject the program_input to the PTY and stop polling.
+    setInterval(() => {
+      const state = store.get("inferior_program");
+      if (_pending_input_injection) {
+        console.log("[input-inject] polling: state=" + state + ", pending=" + _pending_input_injection);
+      }
+      if (_pending_input_injection && state === constants.inferior_states.paused) {
+        _pending_input_injection = false;
+        const input = store.get("program_input") || localStorage.getItem("gdbgui_program_input") || "";
+        console.log("[input-inject] INJECTING input: '" + input + "'");
+        if (input) {
+          const s = GdbApi.getSocket();
+          if (s && !s.disconnected) {
+            s.emit("pty_interaction", {
+              data: { pty_name: "program_pty", key: input + "\n", action: "write" }
+            });
+            console.log("[input-inject] Sent to PTY successfully");
+          } else {
+            console.log("[input-inject] Socket not available");
+          }
+        }
+      }
+    }, 300);
   },
   _waiting_for_response_timeout: null,
   click_run_button: function () {
     // Check if we have editor content to save
     const getEditorValue = (window as any).gdbgui_get_editor_value;
-    if (getEditorValue) {
-      const code = getEditorValue();
-      const program_input = store.get("program_input") || "";
-      if (code && code.trim() !== "") {
-        // [Optimization] Check if code and input have actually changed, avoid re-compiling if unchanged
-        if ((window as any).last_compiled_code === code && (window as any).last_program_input === program_input) {
+    const getEditorFilename = (window as any).gdbgui_get_editor_filename;
+    let code = getEditorValue ? getEditorValue() : null;
+    const program_input = store.get("program_input") || "";
+
+    // Fallback: if code is empty (e.g. Monaco editor unmounted after program exit/assembly view),
+    // try to recover the last saved code from localStorage
+    if (!code || code.trim() === "") {
+      const fn = getEditorFilename ? getEditorFilename() : null;
+      if (fn) {
+        const savedCode = localStorage.getItem("gdbgui_editor_code_" + fn);
+        if (savedCode && savedCode.trim() !== "") {
+          code = savedCode;
+        }
+      }
+      // If still no code, try to find any saved editor code in localStorage
+      if (!code || code.trim() === "") {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("gdbgui_editor_code_")) {
+            const savedCode = localStorage.getItem(key);
+            if (savedCode && savedCode.trim() !== "") {
+              code = savedCode;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (code && code.trim() !== "") {
+      if ((window as any).last_compiled_code === code) {
           Actions.add_console_entries(
             "Code unchanged. Restarting program without recompiling.",
             constants.console_entry_type.GDBGUI_OUTPUT
@@ -201,26 +253,14 @@ const GdbApi = {
           ]).filter((c: string) => c !== "");
 
           Actions.inferior_program_starting();
+          _pending_input_injection = true; // will inject when program first pauses
           GdbApi.run_gdb_command(cmds);
-
-          // Inject input after execution starts
-          if (program_input) {
-            setTimeout(() => {
-              const socket = GdbApi.getSocket();
-              if (socket && !socket.disconnected) {
-                socket.emit("pty_interaction", {
-                  data: { pty_name: "program_pty", key: program_input + "\n", action: "write" }
-                });
-              }
-            }, 500); // delay allows GDB to spawn the inferior and bind the PTY before flushing chars
-          }
 
           return;
         }
 
-        // Cache the newly compiling code and input
+        // Cache the newly compiling code
         (window as any).last_compiled_code = code;
-        (window as any).last_program_input = program_input;
 
         const csrf_token = (window as any).initial_data.csrf_token;
         const getEditorFilename = (window as any).gdbgui_get_editor_filename;
@@ -334,17 +374,7 @@ const GdbApi = {
 
               GdbApi.run_gdb_command(cmds);
 
-              // Inject input after execution starts
-              if (program_input) {
-                setTimeout(() => {
-                  const socket = GdbApi.getSocket();
-                  if (socket && !socket.disconnected) {
-                    socket.emit("pty_interaction", {
-                      data: { pty_name: "program_pty", key: program_input + "\n", action: "write" }
-                    });
-                  }
-                }, 500); // Wait half a second for GDB to actually launch the program
-              }
+              _pending_input_injection = true; // will inject when program first pauses
 
               Actions.inferior_program_starting();
             } else {
@@ -378,14 +408,17 @@ const GdbApi = {
         });
         return;
       }
-    }
 
     // Fallback if no editor logic
     Actions.inferior_program_starting();
     GdbApi.run_gdb_command("-exec-run");
   },
   run_initial_commands: function () {
-    Object.keys(global_variable).forEach(key => delete (global_variable as any)[key]);
+    Object.keys(global_variable).forEach(key => {
+      if (key !== "__line" && key !== "__tts") {
+        delete (global_variable as any)[key];
+      }
+    });
     const cmds = ["-list-features", "-list-target-features"];
     for (const src in initial_data.remap_sources) {
       const dst = initial_data.remap_sources[src];

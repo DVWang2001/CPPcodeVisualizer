@@ -12,6 +12,7 @@ import MemoryLink from "./MemoryLink";
 import constants from "./constants";
 import Actions from "./Actions";
 import { global_variable } from "./global_variable";
+import VisualizerHelper from "./VisualizerHelper";
 
 type State = any;
 
@@ -29,20 +30,7 @@ class SourceCode extends React.Component<{}, State> {
     super();
     let savedInputValues = {};
     let savedTtsValues = {};
-    try {
-      const stored = localStorage.getItem("gdbgui_guide_inputs");
-      if (stored) {
-        savedInputValues = JSON.parse(stored);
-        (global_variable as any).__line = { ...savedInputValues };
-      }
-      const storedTts = localStorage.getItem("gdbgui_tts_inputs");
-      if (storedTts) {
-        savedTtsValues = JSON.parse(storedTts);
-        (global_variable as any).__tts = { ...savedTtsValues };
-      }
-    } catch (e) {
-      console.error("Failed to load guide inputs from localStorage:", e);
-    }
+    // Previously loaded globally, now loaded dynamically in componentDidUpdate per file 
 
     this.state = {
       inputValues: savedInputValues,
@@ -50,6 +38,7 @@ class SourceCode extends React.Component<{}, State> {
       splitPos: -1, // -1 means uninitialized/auto
       isDragging: false,
       lineCount: 0,
+      hoverLine: null as number | null,
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
@@ -82,6 +71,24 @@ class SourceCode extends React.Component<{}, State> {
     this.handleTtsChange = this.handleTtsChange.bind(this);
   }
 
+  componentDidMount() {
+    if (this.state.fullname_to_render) {
+      const fn = this.state.fullname_to_render;
+      let newInputs = {};
+      let newTts = {};
+      try {
+        const storedInputs = localStorage.getItem("gdbgui_guide_inputs_" + fn);
+        if (storedInputs) newInputs = JSON.parse(storedInputs);
+        const storedTts = localStorage.getItem("gdbgui_tts_inputs_" + fn);
+        if (storedTts) newTts = JSON.parse(storedTts);
+      } catch (e) {
+        console.error("Failed to load initial project state", e);
+      }
+      this.setState({ inputValues: newInputs, ttsValues: newTts });
+      (global_variable as any).__line = { ...newInputs };
+      (global_variable as any).__tts = { ...newTts };
+    }
+  }
 
   editorInstance: any = null;
   monaco: any = null;
@@ -167,14 +174,26 @@ class SourceCode extends React.Component<{}, State> {
     const updateLineCount = () => {
       const model = editor.getModel();
       if (model) {
-        this.setState({ lineCount: model.getLineCount() });
+        const newLineCount = model.getLineCount();
+        if (newLineCount !== this.state.lineCount) {
+          this.setState({ lineCount: newLineCount });
+        }
       }
     };
     // Initial set
     updateLineCount();
     // Listen for changes
+    let saveTimeout: any;
     editor.onDidChangeModelContent(() => {
       updateLineCount();
+      if (saveTimeout) clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(() => {
+        if (this.editorInstance && this.state.fullname_to_render) {
+          const fn = this.state.fullname_to_render;
+          localStorage.setItem("gdbgui_editor_code_" + fn, this.editorInstance.getValue());
+          localStorage.setItem("gdbgui_editor_filename_" + fn, fn);
+        }
+      }, 500);
     });
 
     // Auto-size split position to 50%
@@ -192,6 +211,25 @@ class SourceCode extends React.Component<{}, State> {
       if (this.monaco && e.target.type === this.monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
         const lineNum = e.target.position.lineNumber;
         this.click_gutter(lineNum);
+      }
+    });
+
+    editor.onMouseMove((e: any) => {
+      if (this.monaco && e.target.type === this.monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+        const lineNum = e.target.position.lineNumber;
+        if (this.state.hoverLine !== lineNum) {
+          this.setState({ hoverLine: lineNum });
+        }
+      } else {
+        if (this.state.hoverLine !== null) {
+          this.setState({ hoverLine: null });
+        }
+      }
+    });
+
+    editor.onMouseLeave(() => {
+      if (this.state.hoverLine !== null) {
+        this.setState({ hoverLine: null });
       }
     });
   };
@@ -284,10 +322,35 @@ class SourceCode extends React.Component<{}, State> {
       });
     });
 
+    // Hover Hint
+    const { hoverLine } = this.state;
+    if (hoverLine !== null) {
+      const hasAnyBkpt = bkpt_lines.includes(hoverLine) || 
+                         disabled_bkpt_lines.includes(hoverLine) || 
+                         conditional_bkpt_lines.includes(hoverLine);
+      if (!hasAnyBkpt) {
+        newDecorations.push({
+          range: new this.monaco.Range(hoverLine, 1, hoverLine, 1),
+          options: {
+            glyphMarginClassName: "monaco-breakpoint-hover",
+          },
+        });
+      }
+    }
+
     this.decorations = this.editorInstance.deltaDecorations(this.decorations, newDecorations);
   };
 
   get_monaco_value(source_code_obj: any, num_lines: any) {
+    const fn = this.state.fullname_to_render;
+    if (fn) {
+        const savedCode = localStorage.getItem("gdbgui_editor_code_" + fn);
+        const savedFilename = localStorage.getItem("gdbgui_editor_filename_" + fn);
+        if (savedCode !== null && savedFilename === fn) {
+            return savedCode;
+        }
+    }
+
     if (!source_code_obj) return "";
     const lines = [];
 
@@ -327,7 +390,8 @@ class SourceCode extends React.Component<{}, State> {
     this.setState({
       inputValues: newInputValues,
     });
-    localStorage.setItem("gdbgui_guide_inputs", JSON.stringify(newInputValues));
+    const fn = this.state.fullname_to_render || "default";
+    localStorage.setItem("gdbgui_guide_inputs_" + fn, JSON.stringify(newInputValues));
 
     // 用global_variable儲存每個line的資訊。
     if (!('__line' in global_variable)) {
@@ -335,6 +399,10 @@ class SourceCode extends React.Component<{}, State> {
     }
     // console.log(`第${index}行儲存的指導為${value}`);
     (global_variable as any).__line[index] = value;
+    
+    // 即時解析指導 (抽出 [標籤#顏色] 等資訊)，並打亂 store 讓 CallGraph 重新刷新
+    VisualizerHelper.processing_guide(index, null);
+    store.set("call_graph_updated", Math.random());
   }
 
   handleTtsChange(index: number, value: string) {
@@ -346,7 +414,8 @@ class SourceCode extends React.Component<{}, State> {
     this.setState({
       ttsValues: newTtsValues,
     });
-    localStorage.setItem("gdbgui_tts_inputs", JSON.stringify(newTtsValues));
+    const fn = this.state.fullname_to_render || "default";
+    localStorage.setItem("gdbgui_tts_inputs_" + fn, JSON.stringify(newTtsValues));
 
     if (!('__tts' in global_variable)) {
       (global_variable as any).__tts = {};
@@ -368,11 +437,16 @@ class SourceCode extends React.Component<{}, State> {
       };
     });
 
+    const programInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
+    const breakpoints = store.get("breakpoints") || [];
+
     const projectData = {
       version: "1.0",
       project_name: "gdbgui_project",
       source_code: source_code,
-      line_data: line_data
+      line_data: line_data,
+      program_input: programInput,
+      breakpoints: breakpoints
     };
 
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(projectData, null, 2));
@@ -418,11 +492,22 @@ class SourceCode extends React.Component<{}, State> {
           ttsValues: newTtsValues
         });
 
-        localStorage.setItem("gdbgui_guide_inputs", JSON.stringify(newInputValues));
-        localStorage.setItem("gdbgui_tts_inputs", JSON.stringify(newTtsValues));
+        const fn = this.state.fullname_to_render || "default";
+        localStorage.setItem("gdbgui_guide_inputs_" + fn, JSON.stringify(newInputValues));
+        localStorage.setItem("gdbgui_tts_inputs_" + fn, JSON.stringify(newTtsValues));
 
         (global_variable as any).__line = { ...newInputValues };
         (global_variable as any).__tts = { ...newTtsValues };
+
+        if (projectData.program_input !== undefined) {
+          localStorage.setItem("gdbgui_program_input", projectData.program_input);
+          store.set("program_input", projectData.program_input);
+        }
+
+        if (projectData.breakpoints !== undefined && Array.isArray(projectData.breakpoints)) {
+          store.set("breakpoints", projectData.breakpoints);
+          localStorage.setItem("breakpoints", JSON.stringify(projectData.breakpoints));
+        }
 
         Actions.add_console_entries("Project imported successfully. Please click Run/Restart to recompile.", constants.console_entry_type.GDBGUI_OUTPUT);
 
@@ -435,6 +520,7 @@ class SourceCode extends React.Component<{}, State> {
     event.target.value = '';
   };
   tempFullname = '';
+  lastLoadedFilename: string | null = null;
   render() {
     if (this.tempFullname !== this.state.fullname_to_render) {
       this.tempFullname = this.state.fullname_to_render;
@@ -448,6 +534,11 @@ class SourceCode extends React.Component<{}, State> {
       this.state.source_code_state === constants.source_code_states.SOURCE_CACHED ||
       this.state.source_code_state === constants.source_code_states.ASSM_AND_SOURCE_CACHED;
 
+    // When Monaco is NOT shown (e.g. assembly view after program exit),
+    // invalidate lastLoadedFilename so next render forces fresh load from localStorage
+    if (!showMonaco) {
+      this.lastLoadedFilename = null;
+    }
 
     // Check if we have the file object
     let obj = null;
@@ -456,7 +547,24 @@ class SourceCode extends React.Component<{}, State> {
     }
 
     if (showMonaco && obj && obj.source_code_obj && obj.fullname === this.initialFullname) {
-      const value = this.get_monaco_value(obj.source_code_obj, obj.num_lines_in_file);
+      let value = "";
+      if (this.editorInstance && this.lastLoadedFilename === this.state.fullname_to_render) {
+        try {
+          value = this.editorInstance.getValue();
+        } catch (e) {
+          value = "";
+        }
+        // Safety: if editor returned empty but we have saved code, use the saved code
+        // This happens when the editor was unmounted (assembly view) and re-mounted
+        if (!value || value.trim() === "") {
+          value = this.get_monaco_value(obj.source_code_obj, obj.num_lines_in_file);
+          this.lastLoadedFilename = this.state.fullname_to_render;
+        }
+      } else {
+        value = this.get_monaco_value(obj.source_code_obj, obj.num_lines_in_file);
+        this.lastLoadedFilename = this.state.fullname_to_render;
+      }
+
       const theme = this.state.current_theme === 'dark' ? 'vs-dark' : 'light';
       const LINE_HEIGHT = 19;
       // Use dynamic line count if available, otherwise fallback to static
@@ -659,6 +767,25 @@ class SourceCode extends React.Component<{}, State> {
   componentDidUpdate(prevProps: any, prevState: any) {
     this.updateDecorations();
 
+    // Check if filename changed to load appropriate project state for the new file
+    if (prevState.fullname_to_render !== this.state.fullname_to_render && this.state.fullname_to_render) {
+      const fn = this.state.fullname_to_render;
+      let newInputs = {};
+      let newTts = {};
+      try {
+        const storedInputs = localStorage.getItem("gdbgui_guide_inputs_" + fn);
+        if (storedInputs) newInputs = JSON.parse(storedInputs);
+        const storedTts = localStorage.getItem("gdbgui_tts_inputs_" + fn);
+        if (storedTts) newTts = JSON.parse(storedTts);
+      } catch (e) {
+        console.error("Failed to load project state", e);
+      }
+      this.setState({ inputValues: newInputs, ttsValues: newTts });
+      (global_variable as any).__line = { ...newInputs };
+      (global_variable as any).__tts = { ...newTts };
+      store.set("call_graph_updated", Math.random());
+    }
+
     // 檢查是否有新的 TTS 語音發送過來
     if (this.state.tts_subtitle) {
       const isNew = !prevState.tts_subtitle || prevState.tts_subtitle.timestamp !== this.state.tts_subtitle.timestamp;
@@ -684,7 +811,16 @@ class SourceCode extends React.Component<{}, State> {
         // Dynamically update the known main file to support re-compilation
         this.initialFullname = obj.fullname;
 
-        (global_variable as any).__source_code = obj.source_code_obj;
+        if (this.editorInstance) {
+          const lines = this.editorInstance.getValue().split(/\r?\n/);
+          const source_obj: any = {};
+          for (let i = 0; i < lines.length; i++) {
+            source_obj[i + 1] = lines[i] + "\n";
+          }
+          (global_variable as any).__source_code = source_obj;
+        } else {
+          (global_variable as any).__source_code = obj.source_code_obj;
+        }
         (global_variable as any).__source_code_fullname = obj.fullname;
       }
 
@@ -700,7 +836,7 @@ class SourceCode extends React.Component<{}, State> {
 
     // 清空 inputValues 當 gdb_pid 改變時 (例如 run 時)
     if (prevState && prevState.gdb_pid !== this.state.gdb_pid) {
-      this.setState({ inputValues: {} });
+      // 不清空以保留指導與 TTS: this.setState({ inputValues: {} });
     }
   }
 

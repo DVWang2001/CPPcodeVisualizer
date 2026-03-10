@@ -262,17 +262,27 @@ class Breakpoint extends React.Component<{}, BreakpointState> {
 }
 
 class Breakpoints extends React.Component {
+  private storeSubscriptionCallback: any;
+
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, ["breakpoints"]);
+
+    this.storeSubscriptionCallback = (key: any, val: any) => {
+      if (key === "breakpoints") {
+        localStorage.setItem("breakpoints", JSON.stringify(val));
+      }
+    };
+    store.subscribeToKeys(["breakpoints"], this.storeSubscriptionCallback);
   }
   componentWillUnmount() {
     // @ts-expect-error
     if (store.disconnectComponentState) {
       store.disconnectComponentState(this);
     }
+    store.unsubscribeFromKeys(["breakpoints"], this.storeSubscriptionCallback);
   }
   render() {
     let breakpoints_jsx = [];
@@ -335,7 +345,13 @@ class Breakpoints extends React.Component {
   }
   static add_breakpoint(fullname: any, line: any) {
     let inferior_program = store.get("inferior_program");
-    if (inferior_program === constants.inferior_states.unknown || inferior_program === constants.inferior_states.exited) {
+    let currentCode = null;
+    if (typeof (window as any).gdbgui_get_editor_value === "function") {
+        currentCode = (window as any).gdbgui_get_editor_value();
+    }
+    const codeChanged = currentCode !== null && currentCode !== (window as any).last_compiled_code;
+
+    if (inferior_program === constants.inferior_states.unknown || inferior_program === constants.inferior_states.exited || codeChanged) {
       let bkpt = {
         fullname: fullname,
         fullname_to_display: fullname,
