@@ -59,6 +59,7 @@ class SourceCode extends React.Component<{}, State> {
       "max_lines_of_code_to_fetch",
       "source_code_infinite_scrolling",
       "tts_subtitle",
+      "edit_mode",
     ]);
 
     // bind methods
@@ -101,57 +102,25 @@ class SourceCode extends React.Component<{}, State> {
   ttsTimeout: any = null;
 
   showTtsBubble() {
-    console.log("[SourceCode] showTtsBubble called with:", this.state.tts_subtitle);
-    if (!this.editorInstance || !this.monaco || !this.state.tts_subtitle) {
-      console.log("[SourceCode] showTtsBubble aborted due to missing editor or monaco.", this.editorInstance, this.monaco);
-      return;
-    }
-    const { text, line } = this.state.tts_subtitle;
+    if (!this.state.tts_subtitle) return;
 
-    if (this.ttsWidget) {
-      console.log("[SourceCode] Removing old TTS widget");
+    // 清除舊的 ContentWidget（相容舊版殘留）
+    if (this.ttsWidget && this.editorInstance) {
       this.editorInstance.removeContentWidget(this.ttsWidget);
       this.ttsWidget = null;
     }
+    if (this.ttsTimeout) { clearTimeout(this.ttsTimeout); this.ttsTimeout = null; }
 
-    const domNode = document.createElement('div');
-    domNode.innerText = text;
-    domNode.style.background = '#2d2d30'; // 改用深灰色，與編輯器主題比較配
-    domNode.style.color = '#d4d4d4';
-    domNode.style.padding = '8px 12px';
-    domNode.style.borderRadius = '8px';
-    domNode.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.4)';
-    domNode.style.fontSize = '14px';
-    domNode.style.fontFamily = 'sans-serif';
-    domNode.style.border = '1px solid #454545';
-    domNode.style.whiteSpace = 'nowrap'; // 強制不隨意換行，避免變成直行文字
-    domNode.style.width = 'max-content'; // 自動根據內容延展寬度
-    domNode.style.maxWidth = '400px';
-    domNode.style.overflow = 'hidden';
-    domNode.style.textOverflow = 'ellipsis';
-    domNode.style.zIndex = '99999';
-    // domNode.style.pointerEvents = 'none';
-
-    this.ttsWidget = {
-      getDomNode: () => domNode,
-      getId: () => 'my.tts.bubble',
-      getPosition: () => ({
-        position: { lineNumber: line, column: 1 },
-        preference: [this.monaco.editor.ContentWidgetPositionPreference.ABOVE, this.monaco.editor.ContentWidgetPositionPreference.BELOW]
-      })
+    // TTS 結束時清除字幕 state，React 會自動隱藏字幕列
+    const clearSubtitle = () => {
+      store.set("tts_subtitle", null);
+      if (this.ttsTimeout) { clearTimeout(this.ttsTimeout); this.ttsTimeout = null; }
+      (window as any).gdbgui_on_tts_end = null;
     };
 
-    console.log(`[SourceCode] Adding ContentWidget at line ${line}`);
-    this.editorInstance.addContentWidget(this.ttsWidget);
-
-    if (this.ttsTimeout) clearTimeout(this.ttsTimeout);
-    this.ttsTimeout = setTimeout(() => {
-      console.log("[SourceCode] Auto-removing TTS widget");
-      if (this.editorInstance && this.ttsWidget) {
-        this.editorInstance.removeContentWidget(this.ttsWidget);
-        this.ttsWidget = null;
-      }
-    }, 5000);
+    (window as any).gdbgui_on_tts_end = clearSubtitle;
+    // Fallback：若 onend 未觸發，15 秒後自動清除
+    this.ttsTimeout = setTimeout(clearSubtitle, 15000);
   }
 
   handleEditorDidMount = (_getValue: any, editor: any) => {
@@ -160,8 +129,17 @@ class SourceCode extends React.Component<{}, State> {
     // Expose editor content getter for GdbApi to use
     (window as any).gdbgui_get_editor_value = () => this.editorInstance.getValue();
     (window as any).gdbgui_get_editor_filename = () => this.state.fullname_to_render;
-    (window as any).last_compiled_code = this.editorInstance.getValue(); // NEW optimization
+    // 只在非 import 觸發的掛載時才更新 last_compiled_code
+    // import 後會把 last_compiled_code 設為 null，此處不覆蓋以強制重新 compile
+    if ((window as any).last_compiled_code !== null) {
+      (window as any).last_compiled_code = this.editorInstance.getValue();
+    }
     this.updateDecorations();
+
+    // 若 editor 掛載前已有 tts_subtitle（第一次 TTS 時 editor 尚未 ready），補顯字幕
+    if (this.state.tts_subtitle) {
+      setTimeout(() => this.showTtsBubble(), 100);
+    }
 
     // Sync scroll
     editor.onDidScrollChange((e: any) => {
@@ -207,23 +185,31 @@ class SourceCode extends React.Component<{}, State> {
 
     // In v3 we might need to listen to mouse events differently or it works the same on editor instance
     editor.onMouseDown((e: any) => {
-      // Need to check if this.monaco is available yet. Sometimes it takes a moment if loaded via CDN asynchronously
-      if (this.monaco && e.target.type === this.monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
-        const lineNum = e.target.position.lineNumber;
-        this.click_gutter(lineNum);
+      if (this.monaco && e.target.position) {
+        const t = e.target.type;
+        const M = this.monaco.editor.MouseTargetType;
+        // 允許點擊 glyph margin 或行號區域都能切換斷點
+        if (t === M.GUTTER_GLYPH_MARGIN || t === M.GUTTER_LINE_NUMBERS || t === M.GUTTER_LINE_DECORATIONS) {
+          const lineNum = e.target.position.lineNumber;
+          this.click_gutter(lineNum);
+        }
       }
     });
 
     editor.onMouseMove((e: any) => {
-      if (this.monaco && e.target.type === this.monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
-        const lineNum = e.target.position.lineNumber;
-        if (this.state.hoverLine !== lineNum) {
-          this.setState({ hoverLine: lineNum });
+      if (this.monaco && e.target.position) {
+        const t = e.target.type;
+        const M = this.monaco.editor.MouseTargetType;
+        if (t === M.GUTTER_GLYPH_MARGIN || t === M.GUTTER_LINE_NUMBERS || t === M.GUTTER_LINE_DECORATIONS) {
+          const lineNum = e.target.position.lineNumber;
+          if (this.state.hoverLine !== lineNum) {
+            this.setState({ hoverLine: lineNum });
+          }
+          return;
         }
-      } else {
-        if (this.state.hoverLine !== null) {
-          this.setState({ hoverLine: null });
-        }
+      }
+      if (this.state.hoverLine !== null) {
+        this.setState({ hoverLine: null });
       }
     });
 
@@ -474,8 +460,29 @@ class SourceCode extends React.Component<{}, State> {
         const content = e.target?.result as string;
         const projectData = JSON.parse(content);
 
-        if (projectData.source_code && this.editorInstance) {
-          this.editorInstance.setValue(projectData.source_code);
+        if (projectData.source_code) {
+          if (this.editorInstance) {
+            this.editorInstance.setValue(projectData.source_code);
+          } else {
+            // Monaco 尚未掛載（FILE_MISSING / NONE_AVAILABLE 狀態）
+            // 將 source_code 直接注入 FileOps cache，讓 Monaco 立刻顯示
+            const lines = projectData.source_code.split("\n");
+            const source_code_obj: any = {};
+            lines.forEach((line: string, idx: number) => {
+              source_code_obj[idx + 1] = line;
+            });
+            const numLines = lines.length;
+            // 用現有 fullname 或建立一個合成名稱
+            const syntheticFullname = this.state.fullname_to_render || "imported_code.cpp";
+            FileOps.add_source_file_to_cache(syntheticFullname, source_code_obj, Date.now() / 1000, numLines);
+            store.set("fullname_to_render", syntheticFullname);
+            store.set("source_code_state", constants.source_code_states.SOURCE_CACHED);
+            store.set("source_code_selection_state", constants.source_code_selection_states.USER_SELECTION);
+            // 存入 localStorage，讓 click_run_button 的 fallback 也能找到
+            localStorage.setItem("gdbgui_editor_code_" + syntheticFullname, projectData.source_code);
+            // 清除 last_compiled_code，避免 Run 誤判「程式碼未變」而跳過重新 compile
+            (window as any).last_compiled_code = null;
+          }
         }
 
         const newInputValues: any = {};
@@ -504,9 +511,35 @@ class SourceCode extends React.Component<{}, State> {
           store.set("program_input", projectData.program_input);
         }
 
+        // import 後的 fullname_to_render（可能是合成名稱或舊路徑）
+        const currentFullname = this.state.fullname_to_render || syntheticFullname || "imported_code.cpp";
+
+        const normalizeBkpts = (bkpts: any[]) =>
+          bkpts
+            .filter((b: any) => b.is_normal_breakpoint !== false && !b.is_child_breakpoint)
+            .map((b: any, idx: number) => ({
+              ...b,
+              // 統一 fullname / fullname_to_display → 目前畫面的路徑，
+              // 使 has_breakpoint 與 get_breakpoint_lines_for_file 都能正確匹配
+              fullname: currentFullname,
+              fullname_to_display: currentFullname,
+              // 轉為 frontend_* 格式，讓 Run 時能重新注入 GDB
+              number: typeof b.number === 'string' && b.number.startsWith('frontend_')
+                ? b.number
+                : `frontend_${idx + 1}`
+            }));
+
         if (projectData.breakpoints !== undefined && Array.isArray(projectData.breakpoints)) {
-          store.set("breakpoints", projectData.breakpoints);
-          localStorage.setItem("breakpoints", JSON.stringify(projectData.breakpoints));
+          // JSON 有 breakpoints 欄位：使用 JSON 裡的斷點
+          const frontendBkpts = normalizeBkpts(projectData.breakpoints);
+          store.set("breakpoints", frontendBkpts);
+          localStorage.setItem("breakpoints", JSON.stringify(frontendBkpts));
+        } else {
+          // JSON 沒有 breakpoints 欄位：保留並正規化 store 裡現有的斷點
+          const existing = store.get("breakpoints") || [];
+          const normalized = normalizeBkpts(existing);
+          store.set("breakpoints", normalized);
+          localStorage.setItem("breakpoints", JSON.stringify(normalized));
         }
 
         Actions.add_console_entries("Project imported successfully. Please click Run/Restart to recompile.", constants.console_entry_type.GDBGUI_OUTPUT);
@@ -649,7 +682,7 @@ class SourceCode extends React.Component<{}, State> {
             </div>
           </div>
           <div ref={this.containerRef} className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", overflow: 'hidden' }}>
-            <div style={leftStyle}>
+            <div style={this.state.edit_mode ? leftStyle : { flex: 1, height: "100%" }}>
               <MonacoEditor
                 height="100%"
                 language="cpp"
@@ -670,34 +703,44 @@ class SourceCode extends React.Component<{}, State> {
               />
             </div>
 
-            {/* Drag Handle */}
-            <div
-              onMouseDown={this.startDrag}
-              style={{
-                width: "5px",
-                height: "100%",
-                cursor: "col-resize",
-                backgroundColor: "#e0e0e0",
-                zIndex: 10,
-                flexShrink: 0
-              }}
-              title="Drag to resize"
-            />
-
-            <div style={{ flex: "1", height: "100%", borderLeft: "1px solid #ccc", backgroundColor: "#fdfdfd", minWidth: 0 }}>
+            {/* Drag Handle — 僅在編輯模式顯示 */}
+            {this.state.edit_mode && (
               <div
-                ref={this.inputContainerRef}
+                onMouseDown={this.startDrag}
                 style={{
+                  width: "5px",
                   height: "100%",
-                  overflow: "hidden", // Hide scrollbar, controlled by Monaco
-                  fontFamily: "monospace",
-                  fontSize: "14px" // Match Monaco default approx
+                  cursor: "col-resize",
+                  backgroundColor: "#e0e0e0",
+                  zIndex: 10,
+                  flexShrink: 0
                 }}
-              >
-                {inputs}
+                title="Drag to resize"
+              />
+            )}
+
+            {/* Guide / TTS 輸入欄 — 僅在編輯模式顯示 */}
+            {this.state.edit_mode && (
+              <div style={{ flex: "1", height: "100%", borderLeft: "1px solid #ccc", backgroundColor: "#fdfdfd", minWidth: 0 }}>
+                <div
+                  ref={this.inputContainerRef}
+                  style={{
+                    height: "100%",
+                    overflow: "hidden",
+                    fontFamily: "monospace",
+                    fontSize: "14px"
+                  }}
+                >
+                  {inputs}
+                </div>
               </div>
-            </div>
+            )}
           </div>
+          {this.state.tts_subtitle && (
+            <div style={{ padding: "8px 16px", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontSize: "14px", fontFamily: "sans-serif", borderTop: "1px solid #454545", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {this.state.tts_subtitle.text}
+            </div>
+          )}
         </div>
       );
     }
@@ -718,11 +761,32 @@ class SourceCode extends React.Component<{}, State> {
     if (isMainEditorFile) {
       return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
-          <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0 }}>
+          <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <strong>{this.state.fullname_to_render}</strong>
+            <div>
+              <button
+                onClick={this.triggerImport}
+                className="btn btn-default btn-sm"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                Import JSON
+              </button>
+              <input
+                type="file"
+                accept=".json"
+                style={{ display: "none" }}
+                ref={this.fileInputRef}
+                onChange={this.handleImport}
+              />
+              <button
+                onClick={this.exportProject}
+                className="btn btn-default btn-sm"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px" }}>
+                Export JSON
+              </button>
+            </div>
           </div>
           <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", fontFamily: "monospace", overflow: 'hidden' }}>
-            <div style={{ flex: "0 0 70%", overflow: "auto" }}>
+            <div style={{ flex: this.state.edit_mode ? "0 0 70%" : "1", overflow: "auto" }}>
               <table
                 id="code_table"
                 className={this.state.current_theme}
@@ -731,15 +795,22 @@ class SourceCode extends React.Component<{}, State> {
                 <tbody id="code_body">{bodyRows}</tbody>
               </table>
             </div>
-            <div style={{ backgroundColor: "black" }}></div>
-            <div style={{ flex: "0 0 30%", overflow: "auto" }}>
-              <table className={this.state.current_theme} style={{ width: "100%" }}>
-                <tbody>
-                  {inputRows}
-                </tbody>
-              </table>
-            </div>
+            {this.state.edit_mode && <div style={{ backgroundColor: "black" }}></div>}
+            {this.state.edit_mode && (
+              <div style={{ flex: "0 0 30%", overflow: "auto" }}>
+                <table className={this.state.current_theme} style={{ width: "100%" }}>
+                  <tbody>
+                    {inputRows}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
+          {this.state.tts_subtitle && (
+            <div style={{ padding: "8px 16px", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontSize: "14px", fontFamily: "sans-serif", borderTop: "1px solid #454545", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {this.state.tts_subtitle.text}
+            </div>
+          )}
         </div>
       );
     } else {
@@ -759,6 +830,11 @@ class SourceCode extends React.Component<{}, State> {
               </table>
             </div>
           </div>
+          {this.state.tts_subtitle && (
+            <div style={{ padding: "8px 16px", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontSize: "14px", fontFamily: "sans-serif", borderTop: "1px solid #454545", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {this.state.tts_subtitle.text}
+            </div>
+          )}
         </div>
       );
     }
@@ -767,11 +843,37 @@ class SourceCode extends React.Component<{}, State> {
   componentDidUpdate(prevProps: any, prevState: any) {
     this.updateDecorations();
 
+    // 當 FILE_MISSING 時，嘗試從 localStorage 恢復程式碼（例如 Docker container 重啟後舊 temp 檔消失）
+    if (this.state.source_code_state === constants.source_code_states.FILE_MISSING && this.state.fullname_to_render) {
+      const fn = this.state.fullname_to_render;
+      // 先找精確 key，再找任何 gdbgui_editor_code_* key
+      let savedCode = localStorage.getItem("gdbgui_editor_code_" + fn);
+      if (!savedCode || !savedCode.trim()) {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("gdbgui_editor_code_")) {
+            const val = localStorage.getItem(key);
+            if (val && val.trim()) { savedCode = val; break; }
+          }
+        }
+      }
+      if (savedCode && savedCode.trim()) {
+        const lines = savedCode.split("\n");
+        const source_code_obj: any = {};
+        lines.forEach((line: string, idx: number) => { source_code_obj[idx + 1] = line; });
+        FileOps.add_source_file_to_cache(fn, source_code_obj, Date.now() / 1000, lines.length);
+        const missing = store.get("missing_files").filter((f: string) => f !== fn);
+        store.set("missing_files", missing);
+        store.set("source_code_state", constants.source_code_states.SOURCE_CACHED);
+        (window as any).last_compiled_code = null; // 強制重新編譯，避免 stale binary
+      }
+    }
+
     // Check if filename changed to load appropriate project state for the new file
     if (prevState.fullname_to_render !== this.state.fullname_to_render && this.state.fullname_to_render) {
       const fn = this.state.fullname_to_render;
-      let newInputs = {};
-      let newTts = {};
+      let newInputs: any = null;
+      let newTts: any = null;
       try {
         const storedInputs = localStorage.getItem("gdbgui_guide_inputs_" + fn);
         if (storedInputs) newInputs = JSON.parse(storedInputs);
@@ -779,6 +881,16 @@ class SourceCode extends React.Component<{}, State> {
         if (storedTts) newTts = JSON.parse(storedTts);
       } catch (e) {
         console.error("Failed to load project state", e);
+      }
+      // 若新 filename 在 localStorage 沒有資料，保留記憶體中現有的 guide 資料
+      // （常見情境：import JSON → 按 Run → fullname 變成實際編譯路徑，但 guide 應繼續存在）
+      if (newInputs === null) {
+        newInputs = this.state.inputValues || {};
+        localStorage.setItem("gdbgui_guide_inputs_" + fn, JSON.stringify(newInputs));
+      }
+      if (newTts === null) {
+        newTts = this.state.ttsValues || {};
+        localStorage.setItem("gdbgui_tts_inputs_" + fn, JSON.stringify(newTts));
       }
       this.setState({ inputValues: newInputs, ttsValues: newTts });
       (global_variable as any).__line = { ...newInputs };

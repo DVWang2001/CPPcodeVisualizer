@@ -57,7 +57,8 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
 
     this.state = {
       programOutput: "",
-      programInput: localStorage.getItem("gdbgui_program_input") || store.get("program_input") || ""
+      programInput: localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "",
+      showTerminals: false
     };
 
     this.sendInputToPty = this.sendInputToPty.bind(this);
@@ -103,17 +104,38 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
   }
 
   render() {
-    let terminalsClass = "w-full h-full relative grid grid-cols-3 gap-2";
+    const { showTerminals } = this.state as any;
     return (
-      <div className={terminalsClass}>
+      <div className="w-full h-full relative flex flex-col">
+        {/* 查看 terminal 按鈕 */}
+        <div style={{ flexShrink: 0, padding: "2px 6px", backgroundColor: "#1e1e1e", display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            onClick={() => (this as any).setState({ showTerminals: !showTerminals })}
+            style={{
+              fontSize: 11, padding: "1px 8px", cursor: "pointer",
+              backgroundColor: showTerminals ? "#555" : "#333",
+              color: "#ccc", border: "1px solid #666", borderRadius: 3
+            }}
+          >
+            {showTerminals ? "隱藏 Terminal" : "查看 Terminal"}
+          </button>
+        </div>
+
+        {/* 主要內容區：terminal 欄 + Standard I/O */}
+        <div className="flex-1 relative" style={{ minHeight: 0 }}>
+          <div style={{ display: "flex", width: "100%", height: "100%" }}>
+            {/* 兩個黑色 terminal：showTerminals 為 false 時用 display:none 隱藏但保留 DOM */}
+            <div style={{ display: showTerminals ? "flex" : "none", flex: "0 0 66.66%", gap: 8 }}>
         {this.terminal(this.userPtyRef)}
         {/* <GdbGuiTerminal /> */}
         {this.terminal(this.gdbguiPtyRef)}
 
-        {/* Replaced Program Pty with Dual Monaco Editors (Top: Input, Bottom: Output) */}
-        <div className="h-full w-full overflow-hidden bg-white relative flex flex-col">
-          {/* Top Half: Standard Input */}
-          <div className="flex-1 border-b-2 border-gray-300 flex flex-col">
+            </div>
+
+            {/* Standard Input / Output：terminal 隱藏時佔滿全寬 */}
+            <div style={{ flex: 1, overflow: "hidden" }} className="bg-white relative flex flex-row">
+          {/* Left Half: Standard Input */}
+          <div className="flex-1 border-r-2 border-gray-300 flex flex-col">
             <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 uppercase tracking-wider flex justify-between items-center">
               <span>Standard Input</span>
               <button
@@ -155,7 +177,7 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
             </div>
           </div>
 
-          {/* Bottom Half: Standard Output */}
+          {/* Right Half: Standard Output */}
           <div className="flex-1 flex flex-col">
             <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 flex justify-between uppercase tracking-wider">
               <span>Standard Output</span>
@@ -190,6 +212,8 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
                   overviewRulerLanes: 0
                 } as any}
               />
+            </div>
+          </div>
             </div>
           </div>
         </div>

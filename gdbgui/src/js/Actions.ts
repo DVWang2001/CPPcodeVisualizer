@@ -21,12 +21,34 @@ const Actions = {
     Locals.clear();
     Visualizer.clear();
   },
+  stop_tts: function () {
+    (window as any)._gdbgui_tts_playing = null;
+    (window as any)._gdbgui_tts_resume = null;
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    store.set("tts_subtitle", null);
+  },
+  pause_tts: function () {
+    const playing = (window as any)._gdbgui_tts_playing;
+    if (playing) {
+      const remaining = playing.fullText.slice(playing.lastCharIndex);
+      (window as any)._gdbgui_tts_resume = { text: remaining, fullText: playing.subtitleText ?? playing.fullText, autoplayCommand: playing.autoplayCommand };
+    }
+    (window as any)._gdbgui_tts_playing = null;
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    // 保留字幕，讓使用者看到目前播放到哪句話
+  },
   inferior_program_starting: function () {
+    Actions.stop_tts();
     store.set("inferior_program", constants.inferior_states.running);
     window.dispatchEvent(new Event('gdbgui:clear_program_output'));
     Actions.clear_program_state();
   },
   inferior_program_resuming: function () {
+    Actions.stop_tts();
     store.set("inferior_program", constants.inferior_states.running);
   },
   inferior_program_paused: function (frame = {}) {
@@ -53,6 +75,7 @@ const Actions = {
     Actions.refresh_state_for_gdb_pause();
   },
   inferior_program_exited: function () {
+    Actions.stop_tts();
     store.set("inferior_program", constants.inferior_states.exited);
     store.set("disassembly_for_missing_file", []);
     store.set("root_gdb_tree_var", null);

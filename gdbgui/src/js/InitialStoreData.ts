@@ -42,6 +42,10 @@ const initial_store_data = {
   highlight_source_code: true, // get saved boolean to highlight source code
   max_lines_of_code_to_fetch: constants.default_max_lines_of_code_to_fetch,
   auto_add_breakpoint_to_main: true,
+  autoplay_enabled: true, // 自動播放模式：TTS 結束後自動執行對應的 GDB 步驟指令
+  autoplay_paused: false, // 暫停自動播放：保留進度，下次恢復時從該步驟繼續
+  autoplay_pending_command: null as string | null, // 暫停時儲存的待執行指令
+  edit_mode: true, // 編輯模式：顯示 Guide/TTS 輸入欄；按下 Run 自動切為 false
 
   pretty_print: true, // whether gdb should "pretty print" variables. There is an option for this in Settings
   refresh_state_after_sending_console_command: true, // If true, send commands to refresh GUI store after each command is sent from console

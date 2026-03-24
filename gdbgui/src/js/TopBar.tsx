@@ -227,7 +227,7 @@ class TopBar extends React.Component<{}, State> {
     return (
       <div
         role="group"
-        style={{ marginBottom: 6, height: 25, width: 250 }}
+        style={{ marginBottom: 6, height: 25 }}
         className="btn-group btn-group"
       >
         <ToolTipTourguide

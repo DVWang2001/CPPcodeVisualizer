@@ -18,8 +18,12 @@ const GlobalEvents = {
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'tooltip' does not exist on type 'JQuery<... Remove this comment to see the full error message
     $('[data-toggle="tooltip"]').tooltip();
 
-    window.onbeforeunload = () =>
-      "text here makes dialog appear when exiting. Set function to back to null for nomal behavior.";
+    window.onbeforeunload = () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      return "text here makes dialog appear when exiting. Set function to back to null for nomal behavior.";
+    };
   },
   /**
    * keyboard shortcuts to interact with gdb.

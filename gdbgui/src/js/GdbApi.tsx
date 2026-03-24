@@ -180,6 +180,31 @@ const GdbApi = {
   },
   _waiting_for_response_timeout: null,
   click_run_button: function () {
+    // 按下 Run：切換至播放模式（隱藏 Guide/TTS 輸入欄）
+    store.set("edit_mode", false);
+
+    // 將 GDB 數字格式的 breakpoints (number="1","2"...) 轉為 frontend_* 格式，
+    // 使 F5 重整後再次 Run 時能重新注入這些斷點（GDB 格式會被過濾掉不注入）
+    {
+      const bkpts = store.get("breakpoints") || [];
+      const hasGdbNumbered = bkpts.some((b: any) => {
+        const num = String(b.number);
+        return !num.startsWith('frontend_') && b.fullname_to_display && b.is_normal_breakpoint !== false && !b.is_child_breakpoint;
+      });
+      if (hasGdbNumbered) {
+        let idx = 1;
+        const normalized = bkpts.map((b: any) => {
+          const num = String(b.number);
+          if (!num.startsWith('frontend_') && b.fullname_to_display && b.is_normal_breakpoint !== false && !b.is_child_breakpoint) {
+            return { ...b, number: `frontend_${idx++}` };
+          }
+          return b;
+        });
+        store.set("breakpoints", normalized);
+        localStorage.setItem("breakpoints", JSON.stringify(normalized));
+      }
+    }
+
     // Check if we have editor content to save
     const getEditorValue = (window as any).gdbgui_get_editor_value;
     const getEditorFilename = (window as any).gdbgui_get_editor_filename;
@@ -234,6 +259,8 @@ const GdbApi = {
             Actions.add_console_entries(`Found ${frontend_bkpts.length} frontend breakpoints to inject before run.`, constants.console_entry_type.GDBGUI_OUTPUT);
           }
 
+          // 使用上次編譯儲存的實際源碼路徑，避免用裸檔名導致 GDB 回報 coin_change.cpp 而找不到檔案
+          const _savedSourcePath = (window as any).gdbgui_current_source_path || null;
           for (let b of frontend_bkpts) {
             let cmd = "-break-insert -f";
             if (b.enabled !== "y") {
@@ -242,7 +269,8 @@ const GdbApi = {
             if (b.cond) {
               cmd += ` -c "${b.cond}"`;
             }
-            cmd += ` "${b.fullname_to_display}:${b.line}"`;
+            const targetFile = _savedSourcePath || b.fullname_to_display;
+            cmd += ` "${targetFile}:${b.line}"`;
             cmds.push(cmd);
           }
           store.set("breakpoints", bkpts.filter((b: any) => !(typeof b.number === 'string' && b.number.startsWith('frontend_'))));
@@ -303,8 +331,14 @@ const GdbApi = {
             }
 
             let binaryPath = null;
+            let sourcePath: string | null = null;
             if (response && response.status === "success" && response.binary_path) {
               binaryPath = response.binary_path;
+              sourcePath = response.source_path || null;
+              // 儲存編譯後的實際源碼路徑，供「code unchanged」重啟時使用
+              if (sourcePath) {
+                (window as any).gdbgui_current_source_path = sourcePath;
+              }
             } else if (typeof response === 'string') {
               // Fallback: HTML returned
               const match = response.match(/initial_data\s*=\s*({[\s\S]*?})\n/);
@@ -342,7 +376,7 @@ const GdbApi = {
                 store.get("auto_add_breakpoint_to_main") ? "-break-insert main" : ""
               ];
 
-              // Insert frontend breakpoints
+              // Insert frontend breakpoints — use actual source path to avoid GDB recording bare filename in DWARF
               let bkpts = store.get("breakpoints") || [];
               let frontend_bkpts = bkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
               for (let b of frontend_bkpts) {
@@ -353,7 +387,8 @@ const GdbApi = {
                 if (b.cond) {
                   cmd += ` -c "${b.cond}"`;
                 }
-                cmd += ` "${b.fullname_to_display}:${b.line}"`;
+                const targetFile = sourcePath || (window as any).gdbgui_current_source_path || b.fullname_to_display;
+                cmd += ` "${targetFile}:${b.line}"`;
                 cmds.push(cmd);
               }
               // Remove frontend breakpoints from store so they don't duplicate when GDB returns real ones
@@ -712,4 +747,62 @@ const GdbApi = {
 };
 // @ts-expect-error ts-migrate(2339) FIXME: Property 'socket' does not exist on type '{ getSoc... Remove this comment to see the full error message
 GdbApi.socket = socket;
+
+// 自動播放指令執行器：由 VisualizerHelper 在 TTS 結束後呼叫
+(window as any).gdbgui_execute_autoplay_command = (command: string) => {
+  const delay: number = (window as any).gdbgui_autoplay_delay ?? 600;
+  setTimeout(() => {
+    // 再次確認自動播放仍啟用（使用者可能在 TTS 播放中途關閉）
+    if (!store.get("autoplay_enabled")) return;
+    // 若目前處於暫停狀態，儲存指令等待恢復後執行
+    if (store.get("autoplay_paused")) {
+      store.set("autoplay_pending_command", command);
+      return;
+    }
+    (window as any).gdbgui_run_autoplay_command(command);
+  }, delay);
+};
+
+// 從中斷點繼續播放 TTS，若有剩餘文字則播放並回傳 true，否則回傳 false
+(window as any).gdbgui_resume_tts = (): boolean => {
+  const resume = (window as any)._gdbgui_tts_resume;
+  if (!resume || !resume.text || !('speechSynthesis' in window)) return false;
+  (window as any)._gdbgui_tts_resume = null;
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(resume.text);
+  utterance.lang = 'zh-TW';
+
+  // subtitleText 永遠保留原始完整文字，不隨暫停次數縮短
+  (window as any)._gdbgui_tts_playing = { fullText: resume.text, subtitleText: resume.fullText ?? resume.text, autoplayCommand: resume.autoplayCommand, lastCharIndex: 0 };
+  utterance.onboundary = (e: SpeechSynthesisEvent) => {
+    if ((window as any)._gdbgui_tts_playing) {
+      (window as any)._gdbgui_tts_playing.lastCharIndex = e.charIndex;
+    }
+  };
+  utterance.onend = () => {
+    (window as any)._gdbgui_tts_playing = null;
+    (window as any)._gdbgui_tts_resume = null;
+    if (typeof (window as any).gdbgui_on_tts_end === 'function') {
+      (window as any).gdbgui_on_tts_end();
+    }
+    if (resume.autoplayCommand && typeof (window as any).gdbgui_execute_autoplay_command === 'function') {
+      (window as any).gdbgui_execute_autoplay_command(resume.autoplayCommand);
+    }
+  };
+
+  store.set("tts_subtitle", { text: resume.fullText ?? resume.text, line: null, timestamp: Date.now() });
+  window.speechSynthesis.speak(utterance);
+  return true;
+};
+
+// 執行自動播放指令（供暫停恢復時呼叫）
+(window as any).gdbgui_run_autoplay_command = (command: string) => {
+  switch (command) {
+    case "next":     GdbApi.click_next_button();     break;
+    case "step-in":  GdbApi.click_step_button();     break;
+    case "step-out": GdbApi.click_return_button();   break;
+    case "continue": GdbApi.click_continue_button(); break;
+  }
+};
 export default GdbApi;

@@ -60,8 +60,13 @@ class VisualizerHelper {
     console.log(`[play_tts] Extracted ttsContent: ${ttsContent}`);
     if (!ttsContent) return;
 
-    // 將 TTS 取出的字串依照大括號進行拆分
-    const instruction = VisualizerHelper.extractBalancedBraces(ttsContent);
+    // 解析自動播放指令前綴：[next] [step-in] [step-out] [continue]
+    const cmdMatch = ttsContent.match(/^\[(next|step-in|step-out|continue)\]\s*/);
+    const autoplayCommand = cmdMatch ? cmdMatch[1] : null;
+    const ttsText = cmdMatch ? ttsContent.slice(cmdMatch[0].length) : ttsContent;
+
+    // 將 TTS 取出的字串（去除指令前綴後）依照大括號進行拆分
+    const instruction = VisualizerHelper.extractBalancedBraces(ttsText);
     let outputArray = [];
     console.log(`[play_tts] Extracted array:`, instruction);
 
@@ -123,7 +128,7 @@ class VisualizerHelper {
     // 處理自定義發音 "字[音]" 轉換為 "音"
     // 例如： "白[柏]起打了一套拳" -> "柏起打了一套拳"
     const regex = /([^\[\]]+)\[([^\[\]]+)\]/g;
-    const finalSpokenText = evaluateSpokenText.replace(regex, (match, prefix, pronunciation) => {
+    const finalSpokenText = evaluateSpokenText.replace(regex, (_match, prefix, pronunciation) => {
       return prefix.slice(0, -1) + pronunciation;
     });
 
@@ -131,6 +136,27 @@ class VisualizerHelper {
       window.speechSynthesis.cancel(); // 停止目前播放的語音
       const utterance = new window.SpeechSynthesisUtterance(finalSpokenText);
       utterance.lang = 'zh-TW'; // 設定語言為繁體中文
+
+      // 追蹤目前朗讀到的字元位置，供暫停後繼續使用
+      window._gdbgui_tts_playing = { fullText: finalSpokenText, subtitleText: finalSpokenText, autoplayCommand, lastCharIndex: 0 };
+      utterance.onboundary = (e) => {
+        if (window._gdbgui_tts_playing) {
+          window._gdbgui_tts_playing.lastCharIndex = e.charIndex;
+        }
+      };
+
+      // TTS 結束後：1) 通知 SourceCode 移除字幕泡泡  2) 執行自動播放指令
+      utterance.onend = () => {
+        window._gdbgui_tts_playing = null;
+        window._gdbgui_tts_resume = null;
+        if (typeof window.gdbgui_on_tts_end === 'function') {
+          window.gdbgui_on_tts_end();
+        }
+        if (autoplayCommand && typeof window.gdbgui_execute_autoplay_command === 'function') {
+          window.gdbgui_execute_autoplay_command(autoplayCommand);
+        }
+      };
+
       window.speechSynthesis.speak(utterance);
     } else {
       console.warn("此瀏覽器不支援 Web Speech API (TTS語音播放)");
