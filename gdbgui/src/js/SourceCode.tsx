@@ -35,6 +35,7 @@ class SourceCode extends React.Component<{}, State> {
     this.state = {
       inputValues: savedInputValues,
       ttsValues: savedTtsValues,
+      layoutValues: {} as any,
       splitPos: -1, // -1 means uninitialized/auto
       isDragging: false,
       lineCount: 0,
@@ -70,6 +71,7 @@ class SourceCode extends React.Component<{}, State> {
     this.is_gdb_paused_on_this_line = this.is_gdb_paused_on_this_line.bind(this);
     this.handleInputChange = this.handleInputChange.bind(this);
     this.handleTtsChange = this.handleTtsChange.bind(this);
+    this.handleLayoutChange = this.handleLayoutChange.bind(this);
   }
 
   componentDidMount() {
@@ -77,17 +79,21 @@ class SourceCode extends React.Component<{}, State> {
       const fn = this.state.fullname_to_render;
       let newInputs = {};
       let newTts = {};
+      let newLayout = {};
       try {
         const storedInputs = localStorage.getItem("gdbgui_guide_inputs_" + fn);
         if (storedInputs) newInputs = JSON.parse(storedInputs);
         const storedTts = localStorage.getItem("gdbgui_tts_inputs_" + fn);
         if (storedTts) newTts = JSON.parse(storedTts);
+        const storedLayout = localStorage.getItem("gdbgui_layout_inputs_" + fn);
+        if (storedLayout) newLayout = JSON.parse(storedLayout);
       } catch (e) {
         console.error("Failed to load initial project state", e);
       }
-      this.setState({ inputValues: newInputs, ttsValues: newTts });
+      this.setState({ inputValues: newInputs, ttsValues: newTts, layoutValues: newLayout });
       (global_variable as any).__line = { ...newInputs };
       (global_variable as any).__tts = { ...newTts };
+      (global_variable as any).__layout = { ...newLayout };
     }
   }
 
@@ -95,6 +101,7 @@ class SourceCode extends React.Component<{}, State> {
   monaco: any = null;
   decorations: any[] = [];
   inputContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
+  layoutContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
   containerRef: React.RefObject<HTMLDivElement> = React.createRef();
   fileInputRef: React.RefObject<HTMLInputElement> = React.createRef();
 
@@ -145,6 +152,9 @@ class SourceCode extends React.Component<{}, State> {
     editor.onDidScrollChange((e: any) => {
       if (this.inputContainerRef.current) {
         this.inputContainerRef.current.scrollTop = e.scrollTop;
+      }
+      if (this.layoutContainerRef.current) {
+        this.layoutContainerRef.current.scrollTop = e.scrollTop;
       }
     });
 
@@ -409,17 +419,79 @@ class SourceCode extends React.Component<{}, State> {
     (global_variable as any).__tts[index] = value;
   }
 
+  handleLayoutChange(index: number, value: string) {
+    const newLayoutValues = {
+      ...this.state.layoutValues,
+      [index]: value,
+    };
+
+    this.setState({ layoutValues: newLayoutValues });
+    const fn = this.state.fullname_to_render || "default";
+    localStorage.setItem("gdbgui_layout_inputs_" + fn, JSON.stringify(newLayoutValues));
+
+    if (!('__layout' in global_variable)) {
+      (global_variable as any).__layout = {};
+    }
+    (global_variable as any).__layout[index] = value;
+  }
+
+  applyLayout = (lineNum: string | number) => {
+    const layoutMap = (global_variable as any).__layout;
+    if (!layoutMap) return;
+    const layoutStr: string = layoutMap[String(lineNum)];
+    if (!layoutStr) return;
+
+    const registry = (window as any).gdbgui_collapser_registry || {};
+    const tokens = layoutStr.trim().split(/\s+/);
+    for (const token of tokens) {
+      const colonIdx = token.indexOf(":");
+      if (colonIdx < 0) continue;
+      const key = token.slice(0, colonIdx);
+      const val = token.slice(colonIdx + 1);
+
+      if (key === "sidebar") {
+        const pct = parseFloat(val);
+        if (!isNaN(pct)) {
+          const splitObj = store.get("middle_panes_split_obj");
+          if (splitObj) {
+            const showFs = store.get("show_filesystem");
+            if (showFs) {
+              const fsPct = 30;
+              splitObj.setSizes([fsPct, Math.max(0, 69 - pct), pct]);
+            } else {
+              splitObj.setSizes([0, Math.max(0, 99 - pct), pct]);
+            }
+          }
+        }
+      } else if (key === "open") {
+        val.split(",").forEach((id: string) => {
+          if (registry[id]) registry[id].open();
+        });
+      } else if (key === "close") {
+        val.split(",").forEach((id: string) => {
+          if (registry[id]) registry[id].close();
+        });
+      }
+    }
+  };
+
   exportProject = () => {
     const source_code = this.editorInstance ? this.editorInstance.getValue() : "";
     const line_data: any = {};
     const inputValues = this.state.inputValues || {};
     const ttsValues = this.state.ttsValues || {};
+    const layoutValues = (global_variable as any).__layout || {};
 
-    const allLines = new Set([...Object.keys(inputValues), ...Object.keys(ttsValues)]);
+    const allLines = new Set([
+      ...Object.keys(inputValues),
+      ...Object.keys(ttsValues),
+      ...Object.keys(layoutValues),
+    ]);
     allLines.forEach(line => {
       line_data[line] = {
         guide: inputValues[line] || "",
-        tts: ttsValues[line] || ""
+        tts: ttsValues[line] || "",
+        ...(layoutValues[line] ? { layout: layoutValues[line] } : {}),
       };
     });
 
@@ -487,24 +559,31 @@ class SourceCode extends React.Component<{}, State> {
 
         const newInputValues: any = {};
         const newTtsValues: any = {};
+        const newLayoutValues: any = {};
         if (projectData.line_data) {
           for (const line in projectData.line_data) {
             newInputValues[line] = projectData.line_data[line].guide || "";
             newTtsValues[line] = projectData.line_data[line].tts || "";
+            if (projectData.line_data[line].layout) {
+              newLayoutValues[line] = projectData.line_data[line].layout;
+            }
           }
         }
 
         this.setState({
           inputValues: newInputValues,
-          ttsValues: newTtsValues
+          ttsValues: newTtsValues,
+          layoutValues: newLayoutValues,
         });
 
         const fn = this.state.fullname_to_render || "default";
         localStorage.setItem("gdbgui_guide_inputs_" + fn, JSON.stringify(newInputValues));
         localStorage.setItem("gdbgui_tts_inputs_" + fn, JSON.stringify(newTtsValues));
+        localStorage.setItem("gdbgui_layout_inputs_" + fn, JSON.stringify(newLayoutValues));
 
         (global_variable as any).__line = { ...newInputValues };
         (global_variable as any).__tts = { ...newTtsValues };
+        (global_variable as any).__layout = { ...newLayoutValues };
 
         if (projectData.program_input !== undefined) {
           localStorage.setItem("gdbgui_program_input", projectData.program_input);
@@ -603,47 +682,60 @@ class SourceCode extends React.Component<{}, State> {
       // Use dynamic line count if available, otherwise fallback to static
       const numLines = this.state.lineCount > 0 ? this.state.lineCount : obj.num_lines_in_file;
 
-      // Generate inputs
-      const inputs = [];
+      // Generate Guide/TTS inputs (edit_mode panel)
+      const inputColStyle = (borderLeft?: boolean): React.CSSProperties => ({
+        height: "100%",
+        border: "none",
+        borderLeft: borderLeft ? "1px solid #ccc" : undefined,
+        background: "transparent",
+        fontFamily: "monospace",
+        fontSize: "inherit",
+        paddingLeft: "4px",
+      });
+      const guideTtsInputs: React.ReactNode[] = [];
+      guideTtsInputs.push(
+        <div key="header" style={{ height: `${LINE_HEIGHT}px`, borderBottom: "2px solid #ccc", boxSizing: "border-box", display: "flex", backgroundColor: "#f0f0f0", fontWeight: "bold", fontSize: "11px" }}>
+          <div style={{ width: "50%", paddingLeft: "4px", display: "flex", alignItems: "center" }}>Guide</div>
+          <div style={{ width: "50%", paddingLeft: "4px", display: "flex", alignItems: "center", borderLeft: "1px solid #ccc" }}>TTS</div>
+        </div>
+      );
+      // Generate Layout inputs (always-visible right panel)
+      const layoutInputs: React.ReactNode[] = [];
+      layoutInputs.push(
+        <div key="header" style={{ height: `${LINE_HEIGHT}px`, borderBottom: "2px solid #ccc", boxSizing: "border-box", backgroundColor: "#f0f0f0", fontWeight: "bold", fontSize: "11px", paddingLeft: "6px", display: "flex", alignItems: "center" }}>
+          Layout
+        </div>
+      );
       for (let i = 1; i <= numLines; i++) {
-        inputs.push(
+        guideTtsInputs.push(
           <div key={i} style={{ height: `${LINE_HEIGHT}px`, borderBottom: "1px solid #eee", boxSizing: "border-box", display: "flex" }}>
             <input
-              style={{
-                width: "50%",
-                height: "100%",
-                border: "none",
-                background: "transparent",
-                fontFamily: "monospace",
-                fontSize: "inherit",
-                paddingLeft: "4px"
-              }}
+              style={{ width: "50%", ...inputColStyle() }}
               data-line={i}
               defaultValue={this.state.inputValues[i] || ''}
               placeholder={`Guide L${i}`}
-              onChange={(e) => {
-                this.handleInputChange(i, e.target.value);
-              }}
-              title="Memory Watch Guide"
+              onChange={(e) => { this.handleInputChange(i, e.target.value); }}
+              title="Guide"
             />
             <input
-              style={{
-                width: "50%",
-                height: "100%",
-                border: "none",
-                borderLeft: "1px solid #ccc",
-                background: "transparent",
-                fontFamily: "monospace",
-                fontSize: "inherit",
-                paddingLeft: "4px"
-              }}
+              style={{ width: "50%", ...inputColStyle(true) }}
               data-line={i}
               defaultValue={this.state.ttsValues[i] || ''}
               placeholder={`TTS L${i}`}
-              onChange={(e) => {
-                this.handleTtsChange(i, e.target.value);
-              }}
+              onChange={(e) => { this.handleTtsChange(i, e.target.value); }}
               title="TTS Script"
+            />
+          </div>
+        );
+        layoutInputs.push(
+          <div key={i} style={{ height: `${LINE_HEIGHT}px`, borderBottom: "1px solid #eee", boxSizing: "border-box" }}>
+            <input
+              style={{ width: "100%", height: "100%", border: "none", background: "transparent", fontFamily: "monospace", fontSize: "inherit", paddingLeft: "4px", boxSizing: "border-box" }}
+              data-line={i}
+              defaultValue={this.state.layoutValues[i] || ''}
+              placeholder={`sidebar:50 open:container`}
+              onChange={(e) => { this.handleLayoutChange(i, e.target.value); }}
+              title="Layout (e.g. sidebar:50 open:container close:locals)"
             />
           </div>
         );
@@ -724,14 +816,21 @@ class SourceCode extends React.Component<{}, State> {
               <div style={{ flex: "1", height: "100%", borderLeft: "1px solid #ccc", backgroundColor: "#fdfdfd", minWidth: 0 }}>
                 <div
                   ref={this.inputContainerRef}
-                  style={{
-                    height: "100%",
-                    overflow: "hidden",
-                    fontFamily: "monospace",
-                    fontSize: "14px"
-                  }}
+                  style={{ height: "100%", overflow: "hidden", fontFamily: "monospace", fontSize: "14px" }}
                 >
-                  {inputs}
+                  {guideTtsInputs}
+                </div>
+              </div>
+            )}
+
+            {/* Layout 輸入欄 — 僅在編輯模式顯示 */}
+            {this.state.edit_mode && (
+              <div style={{ width: "220px", flexShrink: 0, borderLeft: "1px solid #ccc", backgroundColor: "#fdfdfd" }}>
+                <div
+                  ref={this.layoutContainerRef}
+                  style={{ height: "100%", overflow: "hidden", fontFamily: "monospace", fontSize: "14px" }}
+                >
+                  {layoutInputs}
                 </div>
               </div>
             )}
@@ -892,10 +991,29 @@ class SourceCode extends React.Component<{}, State> {
         newTts = this.state.ttsValues || {};
         localStorage.setItem("gdbgui_tts_inputs_" + fn, JSON.stringify(newTts));
       }
-      this.setState({ inputValues: newInputs, ttsValues: newTts });
+      // 恢復 layout 資料；若新 filename 無資料則保留記憶體中的
+      let newLayout: any = null;
+      try {
+        const storedLayout = localStorage.getItem("gdbgui_layout_inputs_" + fn);
+        if (storedLayout) newLayout = JSON.parse(storedLayout);
+      } catch (e) { /* ignore */ }
+      if (newLayout === null) {
+        newLayout = (global_variable as any).__layout || {};
+        localStorage.setItem("gdbgui_layout_inputs_" + fn, JSON.stringify(newLayout));
+      }
+      (global_variable as any).__layout = { ...newLayout };
+
+      this.setState({ inputValues: newInputs, ttsValues: newTts, layoutValues: newLayout });
       (global_variable as any).__line = { ...newInputs };
       (global_variable as any).__tts = { ...newTts };
       store.set("call_graph_updated", Math.random());
+    }
+
+    // 當 GDB 暫停行號改變時，套用對應的 layout
+    const prevLine = prevState.paused_on_frame ? prevState.paused_on_frame.line : null;
+    const curLine  = this.state.paused_on_frame  ? this.state.paused_on_frame.line  : null;
+    if (curLine && curLine !== prevLine) {
+      this.applyLayout(curLine);
     }
 
     // 檢查是否有新的 TTS 語音發送過來
@@ -1371,17 +1489,41 @@ class SourceCode extends React.Component<{}, State> {
       // console.log(`Rendering input for line ${line_num_being_rendered}`);
       body.push(
         <tr key={line_num_being_rendered} className="srccode">
-          {/* <td style={{ verticalAlign: "top" }} className="loc"> */}
-          <input
-            key={line_num_being_rendered}
-            data-line={line_num_being_rendered}
-            defaultValue={this.state.inputValues[line_num_being_rendered] || ''}
-            onChange={(e) => {
-              const idx = parseInt((e.target as HTMLInputElement).dataset.line!);
-              this.handleInputChange(idx, e.target.value);
-            }}
-          />
-          {/* </td> */}
+          <td style={{ display: "flex" }}>
+            <input
+              style={{ flex: "0 0 38%", fontFamily: "monospace", fontSize: "inherit" }}
+              data-line={line_num_being_rendered}
+              defaultValue={this.state.inputValues[line_num_being_rendered] || ''}
+              placeholder={`Guide L${line_num_being_rendered}`}
+              onChange={(e) => {
+                const idx = parseInt((e.target as HTMLInputElement).dataset.line!);
+                this.handleInputChange(idx, e.target.value);
+              }}
+              title="Guide"
+            />
+            <input
+              style={{ flex: "0 0 38%", fontFamily: "monospace", fontSize: "inherit", borderLeft: "1px solid #ccc" }}
+              data-line={line_num_being_rendered}
+              defaultValue={this.state.ttsValues[line_num_being_rendered] || ''}
+              placeholder={`TTS L${line_num_being_rendered}`}
+              onChange={(e) => {
+                const idx = parseInt((e.target as HTMLInputElement).dataset.line!);
+                this.handleTtsChange(idx, e.target.value);
+              }}
+              title="TTS Script"
+            />
+            <input
+              style={{ flex: "0 0 24%", fontFamily: "monospace", fontSize: "inherit", borderLeft: "1px solid #ccc" }}
+              data-line={line_num_being_rendered}
+              defaultValue={this.state.layoutValues[line_num_being_rendered] || ''}
+              placeholder="sidebar:50 open:container"
+              onChange={(e) => {
+                const idx = parseInt((e.target as HTMLInputElement).dataset.line!);
+                this.handleLayoutChange(idx, e.target.value);
+              }}
+              title="Layout (e.g. sidebar:50 open:container close:locals)"
+            />
+          </td>
         </tr>
       );
     }

@@ -22,6 +22,11 @@ import WatchTable from "./WatchTable";
 import MemoryWatch from "./MemoryWatch";
 
 
+// Global registry so applyLayout() can open/close collapsers by id
+if (!(window as any).gdbgui_collapser_registry) {
+  (window as any).gdbgui_collapser_registry = {};
+}
+
 let onmouseup_in_parent_callbacks: any = [],
   onmousemove_in_parent_callbacks: any = [];
 
@@ -65,6 +70,25 @@ class Collapser extends React.Component<{}, CollapserState> {
     onmouseup_in_parent_callbacks.push(this.onmouseup_resizer.bind(this));
     onmousemove_in_parent_callbacks.push(this.onmousemove_resizer.bind(this));
   }
+  componentDidMount() {
+    // @ts-expect-error ts-migrate(2339)
+    const id: string = this.props.id;
+    if (id) {
+      (window as any).gdbgui_collapser_registry[id] = {
+        open:  () => { if (this.state.collapsed)  this.setState({ collapsed: false }); },
+        close: () => { if (!this.state.collapsed) this.setState({ collapsed: true  }); },
+      };
+    }
+  }
+
+  componentWillUnmount() {
+    // @ts-expect-error ts-migrate(2339)
+    const id: string = this.props.id;
+    if (id) {
+      delete (window as any).gdbgui_collapser_registry[id];
+    }
+  }
+
   toggle_visibility() {
     this.setState({ collapsed: !this.state.collapsed });
   }
