@@ -56,9 +56,39 @@ class VisualizerHelper {
     }
     const lineNum = parseInt(frame_line);
     if (isNaN(lineNum)) return;
-    const ttsContent = global_variable.__tts[lineNum] || global_variable.__tts[String(lineNum)];
-    console.log(`[play_tts] Extracted ttsContent: ${ttsContent}`);
-    if (!ttsContent) return;
+    const rawTtsContent = global_variable.__tts[lineNum] || global_variable.__tts[String(lineNum)];
+    console.log(`[play_tts] Extracted ttsContent: ${rawTtsContent}`);
+    if (!rawTtsContent) return;
+
+    // ── 多次進入語法：用 | 分段，依進入次數選段落 ──────────────────
+    // 每段可在開頭加 @N 指定「從第 N 次進入才開始說這段」：
+    //   「第一次 | @3 第三次起 | @10 第十次以後」
+    // 沒有 @N 時依序 1, 2, 3…（向下相容舊語法）：
+    //   「第一次 | 第二次 | 第三次以後」
+    let ttsContent = rawTtsContent;
+    if (rawTtsContent.includes('|')) {
+      const parts = rawTtsContent.split('|').map(s => s.trim());
+      const visitCount = (global_variable.__line_visit_count && global_variable.__line_visit_count[lineNum]) || 1;
+
+      // 解析每段的 threshold
+      let nextDefault = 1;
+      const segments = parts.map(part => {
+        const atMatch = part.match(/^@(\d+)\s*/);
+        if (atMatch) {
+          const threshold = parseInt(atMatch[1]);
+          nextDefault = threshold + 1;
+          return { threshold, text: part.slice(atMatch[0].length) };
+        }
+        return { threshold: nextDefault++, text: part };
+      });
+
+      // 選取 threshold <= visitCount 的最後一段
+      let selected = segments[0].text;
+      for (const seg of segments) {
+        if (visitCount >= seg.threshold) selected = seg.text;
+      }
+      ttsContent = selected;
+    }
 
     // 解析自動播放指令前綴：[next] [step-in] [step-out] [continue]
     const cmdMatch = ttsContent.match(/^\[(next|step-in|step-out|continue)\]\s*/);
@@ -134,6 +164,7 @@ class VisualizerHelper {
 
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel(); // 停止目前播放的語音
+
       const utterance = new window.SpeechSynthesisUtterance(finalSpokenText);
       utterance.lang = 'zh-TW'; // 設定語言為繁體中文
 
@@ -157,7 +188,9 @@ class VisualizerHelper {
         }
       };
 
-      window.speechSynthesis.speak(utterance);
+      // Chrome bug：cancel() 尚未完成就呼叫 speak() 會吃掉開頭幾個字。
+      // 用 setTimeout 讓 cancel 的非同步清空完成後再播放。
+      setTimeout(() => { window.speechSynthesis.speak(utterance); }, 150);
     } else {
       console.warn("此瀏覽器不支援 Web Speech API (TTS語音播放)");
     }

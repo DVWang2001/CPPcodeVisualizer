@@ -1,4 +1,5 @@
 import { store } from "statorgfc";
+import { global_variable } from "./global_variable";
 import GdbApi from "./GdbApi";
 import SourceCode from "./SourceCode";
 import Locals from "./Locals";
@@ -43,6 +44,8 @@ const Actions = {
   },
   inferior_program_starting: function () {
     Actions.stop_tts();
+    // 程式重新開始，重置每行的進入計數
+    (global_variable as any).__line_visit_count = {};
     store.set("inferior_program", constants.inferior_states.running);
     window.dispatchEvent(new Event('gdbgui:clear_program_output'));
     Actions.clear_program_state();
@@ -62,6 +65,14 @@ const Actions = {
     store.set("fullname_to_render", frame.fullname);
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
     store.set("line_of_source_to_flash", parseInt(frame.line));
+    // 遞增此行的進入計數（供 TTS/Guide | 語法使用）
+    // @ts-expect-error
+    const _visitLine = parseInt(frame.line);
+    if (!isNaN(_visitLine)) {
+      if (!(global_variable as any).__line_visit_count) (global_variable as any).__line_visit_count = {};
+      (global_variable as any).__line_visit_count[_visitLine] =
+        ((global_variable as any).__line_visit_count[_visitLine] || 0) + 1;
+    }
     // 讀取指導，如果存在指導並且當前的frame有line這個資訊
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
     VisualizerHelper.processing_guide(frame.line, frame.func);

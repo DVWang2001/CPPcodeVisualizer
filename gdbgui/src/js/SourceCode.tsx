@@ -80,12 +80,24 @@ class SourceCode extends React.Component<{}, State> {
       let newInputs = {};
       let newTts = {};
       let newLayout = {};
+
+      // 先嘗試從當前 filename 讀取
+      let sourceFn = fn;
+      const hasCurrentCode = !!localStorage.getItem("gdbgui_editor_code_" + fn);
+      if (!hasCurrentCode) {
+        // 頁面重載後可能是新的 default_hello_*.cpp，改從上次編輯的 filename 讀取 guide/TTS/layout
+        const lastFn = localStorage.getItem("gdbgui_last_edited_filename");
+        if (lastFn && lastFn !== fn && localStorage.getItem("gdbgui_editor_code_" + lastFn)) {
+          sourceFn = lastFn;
+        }
+      }
+
       try {
-        const storedInputs = localStorage.getItem("gdbgui_guide_inputs_" + fn);
+        const storedInputs = localStorage.getItem("gdbgui_guide_inputs_" + sourceFn);
         if (storedInputs) newInputs = JSON.parse(storedInputs);
-        const storedTts = localStorage.getItem("gdbgui_tts_inputs_" + fn);
+        const storedTts = localStorage.getItem("gdbgui_tts_inputs_" + sourceFn);
         if (storedTts) newTts = JSON.parse(storedTts);
-        const storedLayout = localStorage.getItem("gdbgui_layout_inputs_" + fn);
+        const storedLayout = localStorage.getItem("gdbgui_layout_inputs_" + sourceFn);
         if (storedLayout) newLayout = JSON.parse(storedLayout);
       } catch (e) {
         console.error("Failed to load initial project state", e);
@@ -180,6 +192,7 @@ class SourceCode extends React.Component<{}, State> {
           const fn = this.state.fullname_to_render;
           localStorage.setItem("gdbgui_editor_code_" + fn, this.editorInstance.getValue());
           localStorage.setItem("gdbgui_editor_filename_" + fn, fn);
+          localStorage.setItem("gdbgui_last_edited_filename", fn);
         }
       }, 500);
     });
@@ -344,6 +357,19 @@ class SourceCode extends React.Component<{}, State> {
         const savedFilename = localStorage.getItem("gdbgui_editor_filename_" + fn);
         if (savedCode !== null && savedFilename === fn) {
             return savedCode;
+        }
+        // Fallback: 頁面重載後 server 可能派了新的 default_hello_*.cpp，
+        // 但使用者上次的程式碼存在另一個 key 裡。
+        // 找到最後一次編輯的 filename，把那份程式碼搬過來並回傳。
+        const lastFn = localStorage.getItem("gdbgui_last_edited_filename");
+        if (lastFn && lastFn !== fn) {
+            const lastCode = localStorage.getItem("gdbgui_editor_code_" + lastFn);
+            if (lastCode && lastCode.trim()) {
+                // 同步到新的 filename key，讓之後的查詢直接命中
+                localStorage.setItem("gdbgui_editor_code_" + fn, lastCode);
+                localStorage.setItem("gdbgui_editor_filename_" + fn, fn);
+                return lastCode;
+            }
         }
     }
 
@@ -591,7 +617,7 @@ class SourceCode extends React.Component<{}, State> {
         }
 
         // import 後的 fullname_to_render（可能是合成名稱或舊路徑）
-        const currentFullname = this.state.fullname_to_render || syntheticFullname || "imported_code.cpp";
+        const currentFullname = this.state.fullname_to_render || "imported_code.cpp";
 
         const normalizeBkpts = (bkpts: any[]) =>
           bkpts
@@ -658,24 +684,35 @@ class SourceCode extends React.Component<{}, State> {
       obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
     }
 
-    if (showMonaco && obj && obj.source_code_obj && obj.fullname === this.initialFullname) {
+    const ftrForMonaco = this.state.fullname_to_render || "";
+    const isMonacoMainFile =
+      this.initialFullname === null ||
+      ftrForMonaco === this.initialFullname ||
+      ftrForMonaco.includes("uploads/") ||
+      ftrForMonaco.includes("uploaded_scripts");
+
+    if (showMonaco && obj && obj.source_code_obj && isMonacoMainFile) {
+      // Keep initialFullname in sync so future checks remain stable
+      this.initialFullname = ftrForMonaco;
+
       let value = "";
-      if (this.editorInstance && this.lastLoadedFilename === this.state.fullname_to_render) {
-        try {
-          value = this.editorInstance.getValue();
-        } catch (e) {
-          value = "";
-        }
-        // Safety: if editor returned empty but we have saved code, use the saved code
-        // This happens when the editor was unmounted (assembly view) and re-mounted
+      if (this.editorInstance && this.lastLoadedFilename !== null) {
+        // Monaco is already mounted — always prefer the live editor content
+        try { value = this.editorInstance.getValue(); } catch (e) { value = ""; }
         if (!value || value.trim() === "") {
+          // Editor returned empty (rare edge case), fall back to storage/cache
           value = this.get_monaco_value(obj.source_code_obj, obj.num_lines_in_file);
-          this.lastLoadedFilename = this.state.fullname_to_render;
+        } else if (this.lastLoadedFilename !== ftrForMonaco) {
+          // Filename changed while Monaco was mounted — persist code under new key
+          // so that a future remount (e.g. after assembly view) still finds it
+          localStorage.setItem("gdbgui_editor_code_" + ftrForMonaco, value);
+          localStorage.setItem("gdbgui_editor_filename_" + ftrForMonaco, ftrForMonaco);
         }
       } else {
+        // Monaco is (re)mounting — load from localStorage or server cache
         value = this.get_monaco_value(obj.source_code_obj, obj.num_lines_in_file);
-        this.lastLoadedFilename = this.state.fullname_to_render;
       }
+      this.lastLoadedFilename = ftrForMonaco;
 
       const theme = this.state.current_theme === 'dark' ? 'vs-dark' : 'light';
       const LINE_HEIGHT = 19;
@@ -710,6 +747,7 @@ class SourceCode extends React.Component<{}, State> {
         guideTtsInputs.push(
           <div key={i} style={{ height: `${LINE_HEIGHT}px`, borderBottom: "1px solid #eee", boxSizing: "border-box", display: "flex" }}>
             <input
+              className="panel-input"
               style={{ width: "50%", ...inputColStyle() }}
               data-line={i}
               defaultValue={this.state.inputValues[i] || ''}
@@ -718,6 +756,7 @@ class SourceCode extends React.Component<{}, State> {
               title="Guide"
             />
             <input
+              className="panel-input"
               style={{ width: "50%", ...inputColStyle(true) }}
               data-line={i}
               defaultValue={this.state.ttsValues[i] || ''}
@@ -730,6 +769,7 @@ class SourceCode extends React.Component<{}, State> {
         layoutInputs.push(
           <div key={i} style={{ height: `${LINE_HEIGHT}px`, borderBottom: "1px solid #eee", boxSizing: "border-box" }}>
             <input
+              className="panel-input"
               style={{ width: "100%", height: "100%", border: "none", background: "transparent", fontFamily: "monospace", fontSize: "inherit", paddingLeft: "4px", boxSizing: "border-box" }}
               data-line={i}
               defaultValue={this.state.layoutValues[i] || ''}

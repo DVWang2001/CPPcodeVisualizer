@@ -248,6 +248,7 @@ const GdbApi = {
             (global_variable as any).__containers_guide = new Map();
             (global_variable as any).__source_code = null;
             (global_variable as any).__source_code_fullname = null;
+            (global_variable as any).__line_visit_count = {};
           }
 
           let cmds: string[] = [];
@@ -772,6 +773,7 @@ GdbApi.socket = socket;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(resume.text);
   utterance.lang = 'zh-TW';
+  // Chrome bug：cancel() → speak() 連續呼叫會吃掉開頭，需延遲
 
   // subtitleText 永遠保留原始完整文字，不隨暫停次數縮短
   (window as any)._gdbgui_tts_playing = { fullText: resume.text, subtitleText: resume.fullText ?? resume.text, autoplayCommand: resume.autoplayCommand, lastCharIndex: 0 };
@@ -792,7 +794,7 @@ GdbApi.socket = socket;
   };
 
   store.set("tts_subtitle", { text: resume.fullText ?? resume.text, line: null, timestamp: Date.now() });
-  window.speechSynthesis.speak(utterance);
+  setTimeout(() => { window.speechSynthesis.speak(utterance); }, 150);
   return true;
 };
 

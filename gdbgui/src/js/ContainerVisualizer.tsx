@@ -97,7 +97,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 break;
             case "stack":
                 shape = (
-                    <div style={{ display: 'inline-flex', flexDirection: 'row-reverse', border: '3px solid #b30000', borderLeft: 'none', borderTopRightRadius: '8px', borderBottomRightRadius: '8px', padding: '4px', minHeight: '30px', alignItems: 'center', backgroundColor: '#fff', verticalAlign: 'middle', gap: '4px' }}>
+                    <div style={{ display: 'inline-flex', flexDirection: 'row', border: '3px solid #b30000', borderRight: 'none', borderTopLeftRadius: '8px', borderBottomLeftRadius: '8px', padding: '4px', minHeight: '30px', alignItems: 'center', backgroundColor: '#fff', verticalAlign: 'middle', gap: '4px' }}>
                         {values.map((v: string, idx: number) => {
                             const isHighlighted = highlightIndex === idx;
                             const bgColor = isHighlighted ? '#fff6b3' : '#ffe6e6';

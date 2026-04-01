@@ -1,3 +1,12 @@
+/* Guide / TTS / Layout 輸入欄：placeholder 淺灰，輸入文字也偏灰 */
+.panel-input::placeholder {
+  color: #c0c0c0;
+  opacity: 1;
+}
+.panel-input {
+  color: #000;
+}
+
 #grid-container {
   display: flex;          /* 外層橫向排列每一欄 */
   gap: 10px;              /* 欄與欄之間距 */
