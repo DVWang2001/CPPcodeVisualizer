@@ -4,6 +4,15 @@ import os
 from typing import Dict, List
 import traceback
 from flask import Flask, abort, request, session
+
+# python-engineio 4.10+ 將 max_decode_packets 改為 1（強制 v4 協議），
+# 但瀏覽器 socket.io client 仍會批次送多個封包，造成大量 ValueError。
+# 在 import 後立即調高上限，讓舊格式的批次封包能被正常接受。
+try:
+    from engineio import payload as _eio_payload
+    _eio_payload.Payload.max_decode_packets = 50
+except Exception:
+    pass
 from flask_compress import Compress  # type: ignore
 from flask_socketio import SocketIO, emit  # type: ignore
 

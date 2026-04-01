@@ -561,6 +561,8 @@ class SourceCode extends React.Component<{}, State> {
         if (projectData.source_code) {
           if (this.editorInstance) {
             this.editorInstance.setValue(projectData.source_code);
+            // 強制下次 Start 一定重新編譯（不論程式碼內容是否與上次相同）
+            (window as any).last_compiled_code = null;
           } else {
             // Monaco 尚未掛載（FILE_MISSING / NONE_AVAILABLE 狀態）
             // 將 source_code 直接注入 FileOps cache，讓 Monaco 立刻顯示

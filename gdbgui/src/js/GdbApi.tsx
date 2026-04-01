@@ -180,6 +180,18 @@ const GdbApi = {
   },
   _waiting_for_response_timeout: null,
   click_run_button: function () {
+    // 在使用者點擊的當下解鎖瀏覽器音訊上下文（Autoplay Policy）。
+    // 若不這樣做，編譯 + GDB 啟動後音訊上下文仍處於 suspended 狀態，
+    // 第一句 TTS 的開頭會被瀏覽器靜默延遲而聽不到。
+    try {
+      const ctx = new AudioContext();
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => ctx.close());
+      } else {
+        ctx.close();
+      }
+    } catch (_) {}
+
     // 按下 Run：切換至播放模式（隱藏 Guide/TTS 輸入欄）
     store.set("edit_mode", false);
 
@@ -764,37 +776,26 @@ GdbApi.socket = socket;
   }, delay);
 };
 
-// 從中斷點繼續播放 TTS，若有剩餘文字則播放並回傳 true，否則回傳 false
+// 從中斷點繼續播放 TTS，若有恢復資訊則播放並回傳 true，否則回傳 false
 (window as any).gdbgui_resume_tts = (): boolean => {
   const resume = (window as any)._gdbgui_tts_resume;
-  if (!resume || !resume.text || !('speechSynthesis' in window)) return false;
+  if (!resume || !resume.url) return false;
   (window as any)._gdbgui_tts_resume = null;
 
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(resume.text);
-  utterance.lang = 'zh-TW';
-  // Chrome bug：cancel() → speak() 連續呼叫會吃掉開頭，需延遲
-
-  // subtitleText 永遠保留原始完整文字，不隨暫停次數縮短
-  (window as any)._gdbgui_tts_playing = { fullText: resume.text, subtitleText: resume.fullText ?? resume.text, autoplayCommand: resume.autoplayCommand, lastCharIndex: 0 };
-  utterance.onboundary = (e: SpeechSynthesisEvent) => {
-    if ((window as any)._gdbgui_tts_playing) {
-      (window as any)._gdbgui_tts_playing.lastCharIndex = e.charIndex;
-    }
+  // 恢復播放狀態，讓字幕顯示正確文字
+  (window as any)._gdbgui_tts_playing = {
+    fullText: resume.fullText ?? '',
+    subtitleText: resume.fullText ?? '',
+    autoplayCommand: resume.autoplayCommand,
+    lastCharIndex: 0,
   };
-  utterance.onend = () => {
-    (window as any)._gdbgui_tts_playing = null;
-    (window as any)._gdbgui_tts_resume = null;
-    if (typeof (window as any).gdbgui_on_tts_end === 'function') {
-      (window as any).gdbgui_on_tts_end();
-    }
-    if (resume.autoplayCommand && typeof (window as any).gdbgui_execute_autoplay_command === 'function') {
-      (window as any).gdbgui_execute_autoplay_command(resume.autoplayCommand);
-    }
-  };
+  store.set("tts_subtitle", { text: resume.fullText ?? '', line: null, timestamp: Date.now() });
 
-  store.set("tts_subtitle", { text: resume.fullText ?? resume.text, line: null, timestamp: Date.now() });
-  setTimeout(() => { window.speechSynthesis.speak(utterance); }, 150);
+  // 使用 audio API 從暫停點繼續
+  (window as any)._tts_api?.resume(
+    { url: resume.url, currentTime: resume.currentTime },
+    resume.autoplayCommand
+  );
   return true;
 };
 

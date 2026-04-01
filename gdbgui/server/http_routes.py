@@ -1,7 +1,10 @@
+import hashlib
 import json
 import logging
 import os
 import subprocess
+import tempfile
+from pathlib import Path
 from werkzeug.utils import secure_filename
 
 from flask import (
@@ -11,6 +14,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     session,
     Response,
     url_for
@@ -31,6 +35,58 @@ import uuid
 
 logger = logging.getLogger(__file__)
 blueprint = Blueprint("http_routes", __name__, template_folder=str(TEMPLATE_DIR))
+
+# 快取目錄：/tmp/gdbgui_tts/，同一段文字只生成一次 MP3
+_TTS_CACHE_DIR = Path(tempfile.gettempdir()) / "gdbgui_tts"
+_TTS_CACHE_DIR.mkdir(exist_ok=True)
+
+
+@blueprint.route("/tts_audio")
+@authenticate
+def tts_audio():
+    """生成並回傳 TTS 音訊。相同文字直接從快取回傳，節省資源。
+    使用 ffmpeg 將 gTTS MP3 轉為 OGG Vorbis：
+      - OGG 無 MP3 encoder delay，開頭不會被截掉
+      - 檔案更小（約 -20%）
+    若 ffmpeg 不存在則回退使用原始 MP3。
+    """
+    text = request.args.get("text", "").strip()
+    if not text:
+        return client_error({"message": "text is required"})
+
+    lang = "zh-TW"
+    cache_key = hashlib.md5(f"{lang}:{text}".encode("utf-8")).hexdigest()
+    mp3_path = _TTS_CACHE_DIR / f"{cache_key}.mp3"
+    ogg_path = _TTS_CACHE_DIR / f"{cache_key}.ogg"
+
+    # 生成 MP3（gTTS）
+    if not mp3_path.exists():
+        try:
+            from gtts import gTTS
+            tts = gTTS(text=text, lang="zh-TW", slow=False)
+            tts.save(str(mp3_path))
+        except Exception as e:
+            logger.error(f"[tts_audio] gTTS error: {e}")
+            return Response("TTS generation failed", status=503)
+
+    # 嘗試用 ffmpeg 轉 OGG（無 encoder delay）
+    if not ogg_path.exists():
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-y", "-i", str(mp3_path),
+                 "-c:a", "libvorbis", "-q:a", "3",
+                 str(ogg_path)],
+                capture_output=True, timeout=15
+            )
+            if result.returncode != 0:
+                ogg_path.unlink(missing_ok=True)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass  # ffmpeg 不存在，回退 MP3
+
+    if ogg_path.exists():
+        return send_file(str(ogg_path), mimetype="audio/ogg", conditional=True)
+
+    return send_file(str(mp3_path), mimetype="audio/mpeg", conditional=True)
 
 # @blueprint.route("/upload", methods=["GET", "POST"])
 # def upload_source_code():
@@ -212,7 +268,7 @@ def create_and_upload():
     session["uploaded_input"] = input_path
 
     if request.headers.get("Accept") == "application/json":
-        return jsonify({"status": "success", "binary_path": binary_path_result, "input_path": input_path})
+        return jsonify({"status": "success", "binary_path": binary_path_result, "source_path": src_path, "input_path": input_path})
         
     return redirect(url_for(".gdbgui"))
 

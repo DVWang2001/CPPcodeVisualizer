@@ -25,21 +25,22 @@ const Actions = {
   stop_tts: function () {
     (window as any)._gdbgui_tts_playing = null;
     (window as any)._gdbgui_tts_resume = null;
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
+    (window as any)._tts_api?.cancel();
     store.set("tts_subtitle", null);
   },
   pause_tts: function () {
     const playing = (window as any)._gdbgui_tts_playing;
-    if (playing) {
-      const remaining = playing.fullText.slice(playing.lastCharIndex);
-      (window as any)._gdbgui_tts_resume = { text: remaining, fullText: playing.subtitleText ?? playing.fullText, autoplayCommand: playing.autoplayCommand };
+    const audioInfo = (window as any)._tts_api?.pause(); // 暫停 audio 並取得 url + currentTime
+    if (audioInfo && playing) {
+      // 儲存恢復所需資訊：audio 位置 + autoplayCommand + 字幕文字
+      (window as any)._gdbgui_tts_resume = {
+        url: audioInfo.url,
+        currentTime: audioInfo.currentTime,
+        autoplayCommand: playing.autoplayCommand,
+        fullText: playing.subtitleText ?? playing.fullText,
+      };
     }
     (window as any)._gdbgui_tts_playing = null;
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
     // 保留字幕，讓使用者看到目前播放到哪句話
   },
   inferior_program_starting: function () {

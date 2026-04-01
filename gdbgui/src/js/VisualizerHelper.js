@@ -1,6 +1,105 @@
 import { global_variable } from "./global_variable";
 import { store } from "statorgfc";
 import GdbVariable from "./GdbVariable";
+
+// ── TTS 播放狀態（模組級）────────────────────────────────────────────
+let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
+let _tts_current_audio = null;  // 目前播放中的 Audio 元素，供中斷使用
+
+/** 停止目前播放的音訊。 */
+function _tts_cancel() {
+  if (_tts_current_audio) {
+    _tts_current_audio.pause();
+    _tts_current_audio.src = '';
+    _tts_current_audio = null;
+  }
+}
+
+/** 暫停目前播放的音訊，回傳恢復所需的資訊（url + currentTime）。 */
+function _tts_pause() {
+  if (!_tts_current_audio || _tts_current_audio.paused) return null;
+  const url = _tts_current_audio.src;
+  const currentTime = _tts_current_audio.currentTime;
+  _tts_current_audio.pause();
+  return { url, currentTime };
+}
+
+/** 從暫停點繼續播放，並在結束時執行 autoplayCommand。 */
+function _tts_resume(resumeInfo, autoplayCommand) {
+  if (!resumeInfo || !resumeInfo.url) return;
+  const audio = new Audio();
+  _tts_current_audio = audio;
+
+  const finish = () => {
+    if (_tts_current_audio === audio) _tts_current_audio = null;
+    window._gdbgui_tts_playing = null;
+    window._gdbgui_tts_resume = null;
+    if (typeof window.gdbgui_on_tts_end === 'function') window.gdbgui_on_tts_end();
+    if (autoplayCommand && typeof window.gdbgui_execute_autoplay_command === 'function') {
+      window.gdbgui_execute_autoplay_command(autoplayCommand);
+    }
+  };
+
+  audio.onended = finish;
+  audio.onerror = () => { console.warn('[TTS] Resume playback error'); finish(); };
+  audio.src = resumeInfo.url;
+  // 等 canplay 後再 seek，避免部分瀏覽器 currentTime 設定失敗
+  audio.addEventListener('canplay', () => {
+    audio.currentTime = resumeInfo.currentTime || 0;
+    audio.play().catch(() => finish());
+  }, { once: true });
+  audio.load();
+}
+
+/**
+ * 向後端 /tts_audio 請求 MP3 音訊，並以 <audio> 元素播放。
+ * 完全繞過 Web Speech API，不再有 Chrome 的 cancel/speak 競態問題。
+ * 播放完畢後執行 autoplayCommand 並通知字幕清除。
+ */
+function _tts_play_audio(url, taskId, autoplayCommand) {
+  return new Promise((resolve) => {
+    if (taskId !== _tts_task_id) { resolve(); return; }
+
+    const audio = new Audio();
+    _tts_current_audio = audio;
+
+    const finish = () => {
+      if (_tts_current_audio === audio) _tts_current_audio = null;
+      if (taskId !== _tts_task_id) { resolve(); return; }
+      window._gdbgui_tts_playing = null;
+      window._gdbgui_tts_resume = null;
+      if (typeof window.gdbgui_on_tts_end === 'function') window.gdbgui_on_tts_end();
+      if (autoplayCommand && typeof window.gdbgui_execute_autoplay_command === 'function') {
+        window.gdbgui_execute_autoplay_command(autoplayCommand);
+      }
+      resolve();
+    };
+
+    audio.onended = finish;
+    audio.onerror = () => { console.warn('[TTS] Audio playback error'); finish(); };
+
+    // 等 canplay 事件確認瀏覽器已 buffer 足夠資料再 play()，
+    // 避免 MP3 encoder delay + 網路延遲造成開頭被截。
+    // 看門狗：5 秒內若 canplay 仍未觸發（離線 / server 慢），直接嘗試播放。
+    let canplayFired = false;
+    const watchdog = setTimeout(() => {
+      if (!canplayFired) audio.play().catch(() => finish());
+    }, 5000);
+
+    audio.addEventListener('canplay', () => {
+      canplayFired = true;
+      clearTimeout(watchdog);
+      audio.play().catch(() => finish());
+    }, { once: true });
+
+    audio.src = url;
+    audio.load();
+  });
+}
+
+// 供其他模組（Actions.ts、GdbApi.tsx）操控 audio 元素的統一介面
+window._tts_api = { cancel: _tts_cancel, pause: _tts_pause, resume: _tts_resume };
+
 class VisualizerHelper {
   static processing_guide(frame_line, funcName) {
     if (!('__line' in global_variable)) return;
@@ -49,6 +148,8 @@ class VisualizerHelper {
   }
 
   static async play_tts(frame_line, funcName) {
+    const myTaskId = ++_tts_task_id; // 新任務 ID，舊任務將自動放棄
+    _tts_cancel();                   // 立即停止目前播放的音訊
     console.log(`[play_tts] Called with frame_line: ${frame_line}, funcName: ${funcName}`);
     if (!('__tts' in global_variable)) {
       console.log(`[play_tts] __tts not found in global_variable`);
@@ -162,45 +263,20 @@ class VisualizerHelper {
       return prefix.slice(0, -1) + pronunciation;
     });
 
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel(); // 停止目前播放的語音
+    // 變數替換完成後確認任務是否仍有效（非同步查詢期間可能有新任務進來）
+    if (myTaskId !== _tts_task_id) return;
 
-      const utterance = new window.SpeechSynthesisUtterance(finalSpokenText);
-      utterance.lang = 'zh-TW'; // 設定語言為繁體中文
-
-      // 追蹤目前朗讀到的字元位置，供暫停後繼續使用
-      window._gdbgui_tts_playing = { fullText: finalSpokenText, subtitleText: finalSpokenText, autoplayCommand, lastCharIndex: 0 };
-      utterance.onboundary = (e) => {
-        if (window._gdbgui_tts_playing) {
-          window._gdbgui_tts_playing.lastCharIndex = e.charIndex;
-        }
-      };
-
-      // TTS 結束後：1) 通知 SourceCode 移除字幕泡泡  2) 執行自動播放指令
-      utterance.onend = () => {
-        window._gdbgui_tts_playing = null;
-        window._gdbgui_tts_resume = null;
-        if (typeof window.gdbgui_on_tts_end === 'function') {
-          window.gdbgui_on_tts_end();
-        }
-        if (autoplayCommand && typeof window.gdbgui_execute_autoplay_command === 'function') {
-          window.gdbgui_execute_autoplay_command(autoplayCommand);
-        }
-      };
-
-      // Chrome bug：cancel() 尚未完成就呼叫 speak() 會吃掉開頭幾個字。
-      // 用 setTimeout 讓 cancel 的非同步清空完成後再播放。
-      setTimeout(() => { window.speechSynthesis.speak(utterance); }, 150);
-    } else {
-      console.warn("此瀏覽器不支援 Web Speech API (TTS語音播放)");
-    }
-
-    // 發送給介面顯示對話泡泡
+    // 先顯示字幕，再開始播放（避免 await 結束後字幕才設進去）
     store.set("tts_subtitle", {
       text: finalSpokenText,
       line: parseInt(frame_line),
       timestamp: Date.now()
     });
+
+    // 向後端請求音訊並播放，完畢後執行 autoplayCommand
+    window._gdbgui_tts_playing = { fullText: finalSpokenText, subtitleText: finalSpokenText, autoplayCommand, lastCharIndex: 0 };
+    const audioUrl = `/tts_audio?text=${encodeURIComponent(finalSpokenText)}`;
+    await _tts_play_audio(audioUrl, myTaskId, autoplayCommand);
   }
 
   static async graphics_instruction(instruction, frame_line, funcName) {

@@ -3,7 +3,7 @@ FROM python:3.11-slim
 # Install build tools (g++), gdb and clean apt lists
 RUN set -eux \
     && apt-get update \
-    && apt-get install -y --no-install-recommends build-essential g++ gdb \
+    && apt-get install -y --no-install-recommends build-essential g++ gdb ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
