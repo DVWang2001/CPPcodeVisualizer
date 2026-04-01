@@ -12,7 +12,7 @@ class ControlButtons extends React.Component<{}, State> {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
-    store.connectComponentState(this, ["gdb_pid", "reverse_supported", "autoplay_enabled", "autoplay_paused", "edit_mode", "inferior_program"]);
+    store.connectComponentState(this, ["gdb_pid", "reverse_supported", "autoplay_enabled", "autoplay_paused", "edit_mode", "inferior_program", "tts_speed"]);
   }
   render() {
     let btn_class = "btn btn-default btn-sm";
@@ -170,6 +170,33 @@ class ControlButtons extends React.Component<{}, State> {
           >
             <span className={this.state.autoplay_paused ? "glyphicon glyphicon-play" : "glyphicon glyphicon-pause"} />
           </button>
+        )}
+
+        {this.state.autoplay_enabled && (
+          <span
+            title="TTS 播放速度"
+            style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginLeft: "4px", verticalAlign: "middle" }}
+          >
+            <span style={{ fontSize: "11px", color: "#aaa", userSelect: "none" }}>
+              {Number(this.state.tts_speed).toFixed(1)}x
+            </span>
+            <input
+              type="range"
+              min="0.5"
+              max="2.0"
+              step="0.1"
+              value={this.state.tts_speed}
+              onChange={(e) => {
+                const speed = parseFloat(e.target.value);
+                store.set("tts_speed", speed);
+                // 若目前正在播放，立即套用新速度
+                const audio = (window as any)._tts_api?._current?.();
+                if (audio) audio.playbackRate = speed;
+              }}
+              style={{ width: "70px", cursor: "pointer", accentColor: "#5cb85c" }}
+              title={`播放速度：${Number(this.state.tts_speed).toFixed(1)}x（拖曳調整 0.5x ~ 2.0x）`}
+            />
+          </span>
         )}
 
         {/* <div role="group" className="btn-group btn-group-xs">

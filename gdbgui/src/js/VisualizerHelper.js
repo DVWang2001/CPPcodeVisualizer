@@ -42,9 +42,11 @@ function _tts_resume(resumeInfo, autoplayCommand) {
 
   audio.onended = finish;
   audio.onerror = () => { console.warn('[TTS] Resume playback error'); finish(); };
+
   audio.src = resumeInfo.url;
-  // 等 canplay 後再 seek，避免部分瀏覽器 currentTime 設定失敗
+  // 等 canplay 後再 seek 並套用速度（load() 會重置 playbackRate）
   audio.addEventListener('canplay', () => {
+    audio.playbackRate = (store.get('tts_speed')) || 1.0;
     audio.currentTime = resumeInfo.currentTime || 0;
     audio.play().catch(() => finish());
   }, { once: true });
@@ -83,12 +85,18 @@ function _tts_play_audio(url, taskId, autoplayCommand) {
     // 看門狗：5 秒內若 canplay 仍未觸發（離線 / server 慢），直接嘗試播放。
     let canplayFired = false;
     const watchdog = setTimeout(() => {
-      if (!canplayFired) audio.play().catch(() => finish());
+      if (!canplayFired) {
+        // load() 會重置 playbackRate，在此重新套用
+        audio.playbackRate = (store.get('tts_speed')) || 1.0;
+        audio.play().catch(() => finish());
+      }
     }, 5000);
 
     audio.addEventListener('canplay', () => {
       canplayFired = true;
       clearTimeout(watchdog);
+      // load() 會重置 playbackRate，在 canplay 後才設定確保生效
+      audio.playbackRate = (store.get('tts_speed')) || 1.0;
       audio.play().catch(() => finish());
     }, { once: true });
 
@@ -98,7 +106,12 @@ function _tts_play_audio(url, taskId, autoplayCommand) {
 }
 
 // 供其他模組（Actions.ts、GdbApi.tsx）操控 audio 元素的統一介面
-window._tts_api = { cancel: _tts_cancel, pause: _tts_pause, resume: _tts_resume };
+window._tts_api = {
+  cancel: _tts_cancel,
+  pause: _tts_pause,
+  resume: _tts_resume,
+  _current: () => _tts_current_audio,  // 供 speedbar 即時調整 playbackRate
+};
 
 class VisualizerHelper {
   static processing_guide(frame_line, funcName) {
