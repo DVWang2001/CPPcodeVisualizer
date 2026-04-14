@@ -421,6 +421,13 @@ const GdbApi = {
               (global_variable as any).__source_code_fullname = null;
             }
 
+            // 顯示沙箱警告（若靜態分析偵測到危險呼叫）
+            if (response && Array.isArray(response.sandbox_warnings) && response.sandbox_warnings.length > 0) {
+              for (const warn of response.sandbox_warnings) {
+                Actions.add_console_entries(warn, constants.console_entry_type.STD_ERR);
+              }
+            }
+
             if (binaryPath) {
               Actions.add_console_entries(
                 `Compilation successful. Loading binary: ${binaryPath}`,

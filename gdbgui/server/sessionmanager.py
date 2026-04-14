@@ -2,13 +2,18 @@ import datetime
 import logging
 import os
 import signal
+import stat
 import traceback
 from collections import defaultdict
+from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from pygdbmi.IoManager import IoManager
 
 from .ptylib import Pty
+
+# sandbox wrapper.sh 路徑（同 package 下的 sandbox/ 子目錄）
+_SANDBOX_WRAPPER = Path(__file__).parent / "sandbox" / "wrapper.sh"
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +96,19 @@ class SessionManager(object):
             f"set inferior-tty {pty_for_debugged_program.name}",
             "set pagination off",
         ]
+
+        # 若 sandbox wrapper.sh 存在且可執行，注入 exec-wrapper 命令
+        # GDB 每次 run/start 都會先呼叫 wrapper，wrapper 設定 ulimit 後再 exec 真正的 binary
+        try:
+            wp = _SANDBOX_WRAPPER
+            if wp.exists():
+                # 確保有執行權限
+                current_mode = wp.stat().st_mode
+                if not (current_mode & stat.S_IXUSR):
+                    wp.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP)
+                gdbgui_startup_cmds.append(f"set exec-wrapper {wp}")
+        except Exception as e:
+            logger.warning(f"[sandbox] Could not set exec-wrapper: {e}")
         # instead of writing to the pty after it starts, add startup
         # commands to gdb. This allows gdb to be run as sudo and prompt for a
         # password, for example.

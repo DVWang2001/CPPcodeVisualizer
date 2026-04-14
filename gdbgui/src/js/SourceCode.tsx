@@ -44,6 +44,18 @@ class SourceCode extends React.Component<{}, State> {
       dragOverLine: null as number | null,
       selectedLines: [] as number[],    // Ctrl/Shift 選中的行
       lastClickedLine: null as number | null, // Shift 選取的錨點
+      lineEditorModal: null as null | {
+        lineNum: number;
+        activeTab: 'guide' | 'tts' | 'layout';
+        draftGuide: string;
+        draftTtsSpeed: string;
+        draftTtsContinue: boolean;
+        draftTtsText: string;
+        draftLayoutSidebar: string;
+        draftLayoutOpen: string;
+        draftLayoutClose: string;
+        draftLayoutMaze: string;
+      },
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
@@ -604,6 +616,90 @@ class SourceCode extends React.Component<{}, State> {
     (global_variable as any).__layout[index] = value;
   }
 
+  // ── Line Editor Modal helpers ─────────────────────────────────────────────
+
+  /** 將 TTS 字串拆解為 speed / continue / 本文 三個欄位 */
+  _parseTts(tts: string) {
+    let text = tts || '';
+    let speed = '';
+    let hasContinue = false;
+    const speedM = /\[speed:([\d.]+)\]/.exec(text);
+    if (speedM) { speed = speedM[1]; text = text.replace(speedM[0], ''); }
+    if (text.includes('[continue]')) { hasContinue = true; text = text.replace('[continue]', ''); }
+    return { speed, hasContinue, text: text.trimStart() };
+  }
+
+  /** 將三個欄位重新組合成 TTS 字串 */
+  _buildTts(speed: string, hasContinue: boolean, text: string) {
+    let result = '';
+    const s = parseFloat(speed);
+    if (!isNaN(s) && s !== 1.0) result += `[speed:${s}]`;
+    if (hasContinue) result += '[continue]';
+    if (text.trim()) result += (result ? '' : '') + text;
+    return result;
+  }
+
+  /** 將 Layout 字串拆解為結構化欄位 */
+  _parseLayout(layout: string) {
+    const fields: any = { sidebar: '', open: '', close: '', maze: '' };
+    (layout || '').trim().split(/\s+/).forEach(token => {
+      const c = token.indexOf(':');
+      if (c < 0) return;
+      const k = token.slice(0, c), v = token.slice(c + 1);
+      if (k in fields) fields[k] = v;
+    });
+    return fields;
+  }
+
+  /** 將結構化欄位重新組合成 Layout 字串 */
+  _buildLayout(sidebar: string, open: string, close: string, maze: string) {
+    const parts: string[] = [];
+    if (sidebar.trim()) parts.push(`sidebar:${sidebar.trim()}`);
+    if (open.trim())    parts.push(`open:${open.trim()}`);
+    if (close.trim())   parts.push(`close:${close.trim()}`);
+    if (maze.trim())    parts.push(`maze:${maze.trim()}`);
+    return parts.join(' ');
+  }
+
+  openLineEditor = (lineNum: number, tab: 'guide' | 'tts' | 'layout' = 'guide') => {
+    const guide  = this.state.inputValues[lineNum]  || '';
+    const tts    = this.state.ttsValues[lineNum]    || '';
+    const layout = this.state.layoutValues[lineNum] || '';
+    const { speed, hasContinue, text: ttsText } = this._parseTts(tts);
+    const { sidebar, open, close, maze }         = this._parseLayout(layout);
+    this.setState({
+      lineEditorModal: {
+        lineNum, activeTab: tab,
+        draftGuide: guide,
+        draftTtsSpeed: speed, draftTtsContinue: hasContinue, draftTtsText: ttsText,
+        draftLayoutSidebar: sidebar, draftLayoutOpen: open,
+        draftLayoutClose: close, draftLayoutMaze: maze,
+      }
+    });
+  };
+
+  saveLineEditor = () => {
+    const m = this.state.lineEditorModal;
+    if (!m) return;
+    const { lineNum, draftGuide,
+            draftTtsSpeed, draftTtsContinue, draftTtsText,
+            draftLayoutSidebar, draftLayoutOpen, draftLayoutClose, draftLayoutMaze } = m;
+    const ttsStr    = this._buildTts(draftTtsSpeed, draftTtsContinue, draftTtsText);
+    const layoutStr = this._buildLayout(draftLayoutSidebar, draftLayoutOpen, draftLayoutClose, draftLayoutMaze);
+    this.handleInputChange(lineNum, draftGuide);
+    this.handleTtsChange(lineNum, ttsStr);
+    this.handleLayoutChange(lineNum, layoutStr);
+    this.setState({ lineEditorModal: null });
+  };
+
+  updateModalField = (field: string, value: any) => {
+    this.setState((prev: any) => ({
+      lineEditorModal: prev.lineEditorModal ? { ...prev.lineEditorModal, [field]: value } : null
+    }));
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   // 多行移動的 guide/TTS/layout 重新映射
   // sortedSources：要移動的行（已排序），insertAfterLine：插入到此行之後
   _shiftMapForMultiMove(obj: any, sortedSources: number[], insertAfterLine: number): any {
@@ -949,6 +1045,153 @@ class SourceCode extends React.Component<{}, State> {
       this.initialFullname = this.state.fullname_to_render;
     }
 
+    // ── Line Editor Modal ─────────────────────────────────────────────────────
+    const lm = this.state.lineEditorModal;
+    const lineEditorModal = lm ? (
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.45)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+        }}
+        onMouseDown={(e) => { if (e.target === e.currentTarget) this.setState({ lineEditorModal: null }); }}
+      >
+        <div style={{
+          background: '#fff', borderRadius: '8px', boxShadow: '0 8px 32px rgba(0,0,0,0.28)',
+          width: '640px', maxWidth: '96vw', fontFamily: 'sans-serif', overflow: 'hidden',
+        }}>
+          {/* Header */}
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f5f5f5' }}>
+            <strong style={{ fontSize: '15px' }}>第 {lm.lineNum} 行 — 行編輯器</strong>
+            <button onClick={() => this.setState({ lineEditorModal: null })} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#666', lineHeight: 1 }}>✕</button>
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', borderBottom: '1px solid #e0e0e0' }}>
+            {(['guide', 'tts', 'layout'] as const).map(tab => (
+              <button key={tab} onClick={() => this.updateModalField('activeTab', tab)} style={{
+                flex: 1, padding: '8px', border: 'none', borderBottom: lm.activeTab === tab ? '2px solid #4a9eff' : '2px solid transparent',
+                background: lm.activeTab === tab ? '#f0f7ff' : 'transparent', cursor: 'pointer', fontWeight: lm.activeTab === tab ? 600 : 400, fontSize: '13px',
+              }}>
+                {tab === 'guide' ? '📝 指導文字' : tab === 'tts' ? '🔊 語音 TTS' : '📐 版面 Layout'}
+              </button>
+            ))}
+          </div>
+
+          {/* Body */}
+          <div style={{ padding: '16px', minHeight: '220px' }}>
+            {lm.activeTab === 'guide' && (
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '6px' }}>指導文字（支援 GDB 指令佔位符，如 <code style={{background:'#f0f0f0',padding:'1px 4px',borderRadius:'3px'}}>{'{varName}'}</code>）</label>
+                <textarea
+                  autoFocus
+                  value={lm.draftGuide}
+                  onChange={(e) => this.updateModalField('draftGuide', e.target.value)}
+                  rows={6}
+                  style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', padding: '8px', resize: 'vertical' }}
+                  placeholder="輸入指導文字，支援換行與 {變數名} 佔位符"
+                />
+                <p style={{ fontSize: '11px', color: '#888', marginTop: '6px', marginBottom: 0 }}>
+                  換行符 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>\n</code> 會顯示為多行。佔位符 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>{'{varName}'}</code> 會被替換為目前變數值。
+                </p>
+              </div>
+            )}
+
+            {lm.activeTab === 'tts' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>語速倍率</label>
+                    <input type="number" min="0.5" max="4.0" step="0.1"
+                      value={lm.draftTtsSpeed}
+                      onChange={(e) => this.updateModalField('draftTtsSpeed', e.target.value)}
+                      placeholder="1.0"
+                      style={{ width: '90px', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
+                    />
+                    <span style={{ fontSize: '11px', color: '#aaa', marginLeft: '6px' }}>留空 = 預設 1.0</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '4px' }}>
+                    <input type="checkbox" id="le-continue" checked={lm.draftTtsContinue}
+                      onChange={(e) => this.updateModalField('draftTtsContinue', e.target.checked)}
+                    />
+                    <label htmlFor="le-continue" style={{ fontSize: '13px', cursor: 'pointer' }}>
+                      <code style={{background:'#f0f0f0',padding:'1px 4px',borderRadius:'3px'}}>[continue]</code>　播完後自動繼續執行
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>語音朗讀文字</label>
+                  <textarea
+                    value={lm.draftTtsText}
+                    onChange={(e) => this.updateModalField('draftTtsText', e.target.value)}
+                    rows={5}
+                    style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', padding: '8px', resize: 'vertical' }}
+                    placeholder="輸入 TTS 朗讀文字（留空則此行不播語音）"
+                  />
+                </div>
+                <div style={{ background: '#f7f7f7', borderRadius: '4px', padding: '6px 10px', fontSize: '12px', color: '#666' }}>
+                  <strong>預覽：</strong> <code style={{ wordBreak: 'break-all' }}>{this._buildTts(lm.draftTtsSpeed, lm.draftTtsContinue, lm.draftTtsText) || '（空）'}</code>
+                </div>
+              </div>
+            )}
+
+            {lm.activeTab === 'layout' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>右側邊欄寬度 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>sidebar:N</code></label>
+                    <input type="number" min="0" max="100" step="1"
+                      value={lm.draftLayoutSidebar}
+                      onChange={(e) => this.updateModalField('draftLayoutSidebar', e.target.value)}
+                      placeholder="例：50"
+                      style={{ width: '100%', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>迷宮容器 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>maze:名稱</code></label>
+                    <input type="text"
+                      value={lm.draftLayoutMaze}
+                      onChange={(e) => this.updateModalField('draftLayoutMaze', e.target.value)}
+                      placeholder="例：maze"
+                      style={{ width: '100%', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>展開面板 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>open:id1,id2</code></label>
+                    <input type="text"
+                      value={lm.draftLayoutOpen}
+                      onChange={(e) => this.updateModalField('draftLayoutOpen', e.target.value)}
+                      placeholder="例：container,locals"
+                      style={{ width: '100%', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>收合面板 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>close:id1,id2</code></label>
+                    <input type="text"
+                      value={lm.draftLayoutClose}
+                      onChange={(e) => this.updateModalField('draftLayoutClose', e.target.value)}
+                      placeholder="例：memory,registers"
+                      style={{ width: '100%', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ background: '#f7f7f7', borderRadius: '4px', padding: '6px 10px', fontSize: '12px', color: '#666' }}>
+                  <strong>預覽：</strong> <code style={{ wordBreak: 'break-all' }}>{this._buildLayout(lm.draftLayoutSidebar, lm.draftLayoutOpen, lm.draftLayoutClose, lm.draftLayoutMaze) || '（空）'}</code>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div style={{ padding: '12px 16px', borderTop: '1px solid #e0e0e0', display: 'flex', justifyContent: 'flex-end', gap: '8px', background: '#f9f9f9' }}>
+            <button onClick={() => this.setState({ lineEditorModal: null })} style={{ padding: '6px 16px', border: '1px solid #ccc', borderRadius: '4px', background: '#fff', cursor: 'pointer', fontSize: '13px' }}>取消</button>
+            <button onClick={this.saveLineEditor} style={{ padding: '6px 16px', border: 'none', borderRadius: '4px', background: '#4a9eff', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>儲存</button>
+          </div>
+        </div>
+      </div>
+    ) : null;
+    // ─────────────────────────────────────────────────────────────────────────
+
     const showMonaco =
       this.state.source_code_state === constants.source_code_states.SOURCE_CACHED ||
       this.state.source_code_state === constants.source_code_states.ASSM_AND_SOURCE_CACHED ||
@@ -1061,7 +1304,7 @@ class SourceCode extends React.Component<{}, State> {
           >
             <input
               className="panel-input"
-              style={{ width: "50%", flex: 1, ...inputColStyle() }}
+              style={{ flex: 1, minWidth: 0, ...inputColStyle() }}
               data-line={i}
               value={this.state.inputValues[i] || ''}
               placeholder={`Guide L${i}`}
@@ -1070,13 +1313,24 @@ class SourceCode extends React.Component<{}, State> {
             />
             <input
               className="panel-input"
-              style={{ width: "50%", flex: 1, ...inputColStyle(true) }}
+              style={{ flex: 1, minWidth: 0, ...inputColStyle(true) }}
               data-line={i}
               value={this.state.ttsValues[i] || ''}
               placeholder={`TTS L${i}`}
               onChange={(e) => { this.handleTtsChange(i, e.target.value); }}
               title="TTS Script"
             />
+            {/* 展開編輯按鈕 */}
+            <button
+              title="展開行編輯器"
+              onClick={(e) => { e.stopPropagation(); this.openLineEditor(i); }}
+              style={{
+                flexShrink: 0, width: '18px', height: '100%',
+                border: 'none', background: 'transparent',
+                cursor: 'pointer', color: '#888', fontSize: '11px', padding: 0,
+                borderLeft: '1px solid #eee',
+              }}
+            >✎</button>
           </div>
         );
         // 拖曳 handle overlay（對齊 Monaco glyph margin）
@@ -1133,16 +1387,26 @@ class SourceCode extends React.Component<{}, State> {
           >⠿</div>
         );
         layoutInputs.push(
-          <div key={i} style={{ height: `${LINE_HEIGHT}px`, borderBottom: "1px solid #eee", boxSizing: "border-box" }}>
+          <div key={i} style={{ height: `${LINE_HEIGHT}px`, borderBottom: "1px solid #eee", boxSizing: "border-box", display: 'flex' }}>
             <input
               className="panel-input"
-              style={{ width: "100%", height: "100%", border: "none", background: "transparent", fontFamily: "monospace", fontSize: "inherit", paddingLeft: "4px", boxSizing: "border-box" }}
+              style={{ flex: 1, minWidth: 0, height: "100%", border: "none", background: "transparent", fontFamily: "monospace", fontSize: "inherit", paddingLeft: "4px", boxSizing: "border-box" }}
               data-line={i}
               value={this.state.layoutValues[i] || ''}
               placeholder={`sidebar:50 open:container`}
               onChange={(e) => { this.handleLayoutChange(i, e.target.value); }}
               title="Layout (e.g. sidebar:50 open:container close:locals)"
             />
+            <button
+              title="展開行編輯器 (Layout)"
+              onClick={(e) => { e.stopPropagation(); this.openLineEditor(i, 'layout'); }}
+              style={{
+                flexShrink: 0, width: '18px', height: '100%',
+                border: 'none', background: 'transparent',
+                cursor: 'pointer', color: '#888', fontSize: '11px', padding: 0,
+                borderLeft: '1px solid #eee',
+              }}
+            >✎</button>
           </div>
         );
       }
@@ -1272,6 +1536,7 @@ class SourceCode extends React.Component<{}, State> {
               {this.state.tts_subtitle.text}
             </div>
           )}
+          {lineEditorModal}
         </div>
       );
     }
@@ -1342,6 +1607,7 @@ class SourceCode extends React.Component<{}, State> {
               {this.state.tts_subtitle.text}
             </div>
           )}
+          {lineEditorModal}
         </div>
       );
     } else {

@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -35,6 +36,173 @@ import uuid
 
 logger = logging.getLogger(__file__)
 blueprint = Blueprint("http_routes", __name__, template_folder=str(TEMPLATE_DIR))
+
+# ── Sandbox 路徑 ──────────────────────────────────────────────────────────────
+_SANDBOX_DIR = Path(__file__).parent / "sandbox"
+_STUB_C    = _SANDBOX_DIR / "stub.c"
+_STUB_O    = _SANDBOX_DIR / "stub.o"
+_WRAPPER   = _SANDBOX_DIR / "wrapper.sh"
+
+# --wrap flags（LD 連結層完全封鎖，stub.c 有對應實作）
+# 原則：只 wrap 幾乎不會被 C runtime 自身使用的函式，
+# 避免把 printf 用到的 write() 也攔截掉。
+_WRAP_FLAGS = [
+    # shell 執行
+    "-Wl,--wrap=system",
+    "-Wl,--wrap=popen",
+    # exec 系列
+    "-Wl,--wrap=execl",
+    "-Wl,--wrap=execle",
+    "-Wl,--wrap=execlp",
+    "-Wl,--wrap=execv",
+    "-Wl,--wrap=execvp",
+    "-Wl,--wrap=execvpe",
+    "-Wl,--wrap=execve",
+    # 建立子程序
+    "-Wl,--wrap=fork",
+    "-Wl,--wrap=vfork",
+    # 刪除
+    "-Wl,--wrap=unlink",
+    "-Wl,--wrap=unlinkat",
+    "-Wl,--wrap=remove",
+    "-Wl,--wrap=rmdir",
+    # 改名 / 移動
+    "-Wl,--wrap=rename",
+    "-Wl,--wrap=renameat",
+    # 建立目錄
+    "-Wl,--wrap=mkdir",
+    "-Wl,--wrap=mkdirat",
+    # 權限 / 擁有者
+    "-Wl,--wrap=chmod",
+    "-Wl,--wrap=fchmod",
+    "-Wl,--wrap=chown",
+    "-Wl,--wrap=fchown",
+    # 符號連結 / 硬連結
+    "-Wl,--wrap=symlink",
+    "-Wl,--wrap=link",
+    # 截斷
+    "-Wl,--wrap=truncate",
+    "-Wl,--wrap=ftruncate",
+    # 動態載入惡意 .so
+    "-Wl,--wrap=dlopen",
+]
+
+# ── 靜態分析規則 ──────────────────────────────────────────────────────────────
+# 每個 tuple：(compiled_regex, 說明文字, severity)
+# severity = "block" → 連結層也會封鎖（有 --wrap）
+# severity = "warn"  → 只警告，無法從連結層攔截（如 ofstream、fopen write mode）
+
+_DANGEROUS_PATTERNS = [
+    # ── Shell 執行（連結層封鎖）────────────────────────────────────────────
+    (re.compile(r'\bsystem\s*\('),      "system()     — 執行 shell 命令",           "block"),
+    (re.compile(r'\bpopen\s*\('),       "popen()      — 開啟 shell 子程序管道",      "block"),
+
+    # ── 程序建立 / 取代（連結層封鎖）───────────────────────────────────────
+    (re.compile(r'\bfork\s*\('),        "fork()       — 建立子程序",                "block"),
+    (re.compile(r'\bvfork\s*\('),       "vfork()      — 建立子程序",                "block"),
+    (re.compile(r'\bexecl[pev]?\s*\('), "execl*()     — 取代當前程序",              "block"),
+    (re.compile(r'\bexecv[pe]?\s*\('),  "execv*()     — 取代當前程序",              "block"),
+    (re.compile(r'\bexecve\s*\('),      "execve()     — 取代當前程序（syscall）",    "block"),
+    (re.compile(r'\bposix_spawn\s*\('), "posix_spawn()— 建立新程序",                "warn"),
+
+    # ── 刪除（連結層封鎖）──────────────────────────────────────────────────
+    (re.compile(r'\bunlinkat?\s*\('),   "unlink()     — 刪除檔案",                  "block"),
+    (re.compile(r'\bremove\s*\('),      "remove()     — 刪除檔案/目錄",             "block"),
+    (re.compile(r'\brmdir\s*\('),       "rmdir()      — 刪除目錄",                  "block"),
+
+    # ── 改名 / 移動（連結層封鎖）───────────────────────────────────────────
+    (re.compile(r'\brenameat?\s*\('),   "rename()     — 移動/重命名檔案",           "block"),
+
+    # ── 建立目錄（連結層封鎖）──────────────────────────────────────────────
+    (re.compile(r'\bmkdirat?\s*\('),    "mkdir()      — 建立目錄",                  "block"),
+
+    # ── 權限 / 擁有者（連結層封鎖）─────────────────────────────────────────
+    (re.compile(r'\bf?chmod\s*\('),     "chmod()      — 修改檔案權限",              "block"),
+    (re.compile(r'\bf?chown\s*\('),     "chown()      — 修改檔案擁有者",            "block"),
+
+    # ── 連結（連結層封鎖）──────────────────────────────────────────────────
+    (re.compile(r'\bsymlink\s*\('),     "symlink()    — 建立符號連結",              "block"),
+    (re.compile(r'\blink\s*\('),        "link()       — 建立硬連結",               "block"),
+
+    # ── 截斷（連結層封鎖）──────────────────────────────────────────────────
+    (re.compile(r'\bftruncate\s*\('),   "ftruncate()  — 截斷檔案",                  "block"),
+    (re.compile(r'\btruncate\s*\('),    "truncate()   — 截斷檔案",                  "block"),
+
+    # ── 動態載入（連結層封鎖）──────────────────────────────────────────────
+    (re.compile(r'\bdlopen\s*\('),      "dlopen()     — 動態載入 .so（可載入惡意庫）","block"),
+
+    # ── 低階寫入（僅靜態警告，C runtime 內部也會用，不適合 wrap）───────────
+    (re.compile(r'\bopen\s*\(.*O_WRONLY|O_CREAT|O_TRUNC'), "open(O_WRONLY/O_CREAT) — 低階寫入/建立檔案", "warn"),
+    (re.compile(r'\bcreat\s*\('),       "creat()      — 建立並開啟寫入檔案",        "warn"),
+    (re.compile(r'\bmknod\s*\('),       "mknod()      — 建立裝置/特殊檔案",         "warn"),
+    (re.compile(r'\bmkfifo\s*\('),      "mkfifo()     — 建立具名管道",              "warn"),
+    (re.compile(r'\bmkstemp\s*\('),     "mkstemp()    — 建立臨時可寫檔案",          "warn"),
+
+    # ── fopen 寫入模式（僅靜態警告）────────────────────────────────────────
+    # 匹配 fopen(xxx, "w") / fopen(xxx, "a") / fopen(xxx, "w+") 等寫入模式
+    (re.compile(r'\bfopen\s*\([^,]+,\s*"[wa]'), "fopen(\"w\"/\"a\") — 開啟檔案寫入/附加", "warn"),
+    (re.compile(r'\bfreopen\s*\('),     "freopen()    — 重新導向檔案流",            "warn"),
+
+    # ── C++ 檔案流（僅靜態警告）────────────────────────────────────────────
+    (re.compile(r'\bofstream\b'),       "ofstream     — C++ 寫入檔案流",            "warn"),
+    (re.compile(r'\bfstream\b'),        "fstream      — C++ 讀寫檔案流",            "warn"),
+    # C++17 std::filesystem
+    (re.compile(r'\bfilesystem\s*::'), "std::filesystem — C++17 檔案系統操作",     "warn"),
+    (re.compile(r'\bfs\s*::\s*(remove|rename|copy|create_directory|permissions)'),
+                                        "fs::remove/rename/copy — filesystem 危險操作", "warn"),
+
+    # ── 網路（僅靜態警告，可能外洩資料）───────────────────────────────────
+    (re.compile(r'\bsocket\s*\('),      "socket()     — 開啟網路連接（可能外洩資料）","warn"),
+    (re.compile(r'\bconnect\s*\('),     "connect()    — 連接遠端主機",              "warn"),
+    (re.compile(r'\bbind\s*\('),        "bind()       — 監聽網路埠",               "warn"),
+
+    # ── 發送信號 / 權限提升（僅靜態警告）──────────────────────────────────
+    (re.compile(r'\bkill\s*\('),        "kill()       — 向其他程序發送信號",        "warn"),
+    (re.compile(r'\bsetuid\s*\('),      "setuid()     — 提升程序權限",             "warn"),
+    (re.compile(r'\bsetgid\s*\('),      "setgid()     — 提升程序群組權限",         "warn"),
+    (re.compile(r'\bsetenv\s*\('),      "setenv()     — 修改環境變數",             "warn"),
+    (re.compile(r'\bputenv\s*\('),      "putenv()     — 修改環境變數",             "warn"),
+
+    # ── 記憶體映射寫入（僅靜態警告）────────────────────────────────────────
+    (re.compile(r'\bmmap\s*\('),        "mmap()       — 記憶體映射（含 MAP_SHARED 可能寫入檔案）","warn"),
+]
+
+def _ensure_stub_compiled() -> bool:
+    """確保 sandbox/stub.o 已編譯；回傳是否成功。"""
+    if _STUB_O.exists():
+        return True
+    try:
+        res = subprocess.run(
+            ["gcc", "-c", str(_STUB_C), "-o", str(_STUB_O)],
+            capture_output=True, text=True, timeout=20,
+        )
+        if res.returncode != 0:
+            logger.warning(f"[sandbox] stub compilation failed:\n{res.stderr}")
+            return False
+        logger.info("[sandbox] stub.o compiled successfully")
+        return True
+    except Exception as e:
+        logger.warning(f"[sandbox] stub compilation error: {e}")
+        return False
+
+def _check_dangerous_code(code: str) -> list:
+    """掃描原始碼，回傳偵測到的危險呼叫清單。
+    每項為 dict: { "desc": str, "severity": "block"|"warn" }
+    """
+    # 移除單行與多行注釋，避免誤報注釋中的 system()
+    stripped = re.sub(r'//[^\n]*', '', code)
+    stripped = re.sub(r'/\*.*?\*/', '', stripped, flags=re.DOTALL)
+    # 移除字串常量中的內容（避免 printf("system(") 誤報）
+    stripped = re.sub(r'"(?:[^"\\]|\\.)*"', '""', stripped)
+    stripped = re.sub(r"'(?:[^'\\]|\\.)*'", "''", stripped)
+
+    found = []
+    seen_descs = set()
+    for pattern, desc, severity in _DANGEROUS_PATTERNS:
+        if desc not in seen_descs and pattern.search(stripped):
+            found.append({"desc": desc, "severity": severity})
+            seen_descs.add(desc)
+    return found
 
 # 快取目錄：/tmp/gdbgui_tts/，同一段文字只生成一次 MP3
 _TTS_CACHE_DIR = Path(tempfile.gettempdir()) / "gdbgui_tts"
@@ -220,22 +388,57 @@ def create_and_upload():
         return client_error({"message": "Failed to write source file", "detail": str(e)})
 
     binary_path_result = None
+    sandbox_warnings = []  # 靜態分析警告，回傳給前端
 
     # If C/C++ source -> compile to executable
     if ext.lower() in (".c", ".cpp", ".cc", ".cxx", ".c++"):
+        # ── 靜態分析：偵測危險呼叫 ────────────────────────────────────────
+        detected = _check_dangerous_code(code)
+        if detected:
+            for item in detected:
+                if item["severity"] == "block":
+                    sandbox_warnings.append(
+                        f"[sandbox:封鎖] {item['desc']}（執行時將被攔截並回傳 EPERM）"
+                    )
+                else:
+                    sandbox_warnings.append(
+                        f"[sandbox:警告] {item['desc']}（連結層無法攔截，請注意使用）"
+                    )
+            logger.info(f"[sandbox] detected dangerous calls: {[i['desc'] for i in detected]}")
+
+        # ── 編譯 stub.o（若尚未編譯）──────────────────────────────────────
+        stub_available = _ensure_stub_compiled()
+
         name_only, _ = os.path.splitext(stored_filename)
         exec_filename = name_only + ".a"
         exec_path = os.path.join(upload_dir, exec_filename)
         compiler = current_app.config.get("c_compiler") or ("g++" if ext.lower() != ".c" else "gcc")
+
+        # 基本編譯命令；若 stub 可用則附加 --wrap flags 與 stub.o
+        compile_cmd = [compiler, "-g", "-O0", src_path, "-o", exec_path]
+        if stub_available:
+            compile_cmd += [str(_STUB_O)] + _WRAP_FLAGS
+
         try:
             res = subprocess.run(
-                [compiler, "-g", "-O0", src_path, "-o", exec_path],
+                compile_cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
             if res.returncode != 0:
-                return client_error({"message": "Compilation failed", "stderr": res.stderr})
+                # 若加入 stub 導致失敗（少數情況），降級重試（不含 sandbox）
+                if stub_available:
+                    logger.warning("[sandbox] compile with stub failed, retrying without sandbox")
+                    res2 = subprocess.run(
+                        [compiler, "-g", "-O0", src_path, "-o", exec_path],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    if res2.returncode != 0:
+                        return client_error({"message": "Compilation failed", "stderr": res2.stderr})
+                    sandbox_warnings.append("[sandbox] 沙箱連結失敗，以無沙箱模式編譯（請告知管理員）")
+                else:
+                    return client_error({"message": "Compilation failed", "stderr": res.stderr})
             try:
                 os.chmod(exec_path, 0o755)
             except Exception:
@@ -268,8 +471,14 @@ def create_and_upload():
     session["uploaded_input"] = input_path
 
     if request.headers.get("Accept") == "application/json":
-        return jsonify({"status": "success", "binary_path": binary_path_result, "source_path": src_path, "input_path": input_path})
-        
+        return jsonify({
+            "status": "success",
+            "binary_path": binary_path_result,
+            "source_path": src_path,
+            "input_path": input_path,
+            "sandbox_warnings": sandbox_warnings,
+        })
+
     return redirect(url_for(".gdbgui"))
 
 

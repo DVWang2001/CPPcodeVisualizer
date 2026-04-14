@@ -244,12 +244,24 @@ close:locals,watch_table
 | `locals` | 區域變數（Local Variables） |
 | `watch_table` | Teaching Dashboard（Table） |
 
-### 4.5 組合範例
+### 4.5 迷宮模式 `maze:容器名稱`
+
+自動為指定容器啟用「迷宮視覺化模式」（以格狀地圖顯示二維陣列）：
+
+```
+maze:maze
+maze:grid,board
+```
+
+> 等同於在容器視覺化面板手動勾選「迷宮模式」。
+
+### 4.6 組合範例
 
 ```
 sidebar:50 open:container close:locals
 sidebar:40 open:callgraph,container close:visualizer
 sidebar:0 close:container,callgraph
+sidebar:55 open:container maze:maze
 ```
 
 ---
@@ -286,9 +298,120 @@ sidebar:0 close:container,callgraph
 
 ---
 
-## 六、欄位設計建議（給 AI 生成教案使用）
+## 六、編輯器功能
 
-### 6.1 Guide 欄的設計原則
+### 6.1 Export / Import JSON
+
+在程式碼編輯器右上角有兩顆按鈕：
+
+| 按鈕 | 功能 |
+|------|------|
+| **Import JSON** | 從本機匯入 `.gdbgui.json` 教案檔（程式碼、Guide/TTS/Layout、斷點一次匯入） |
+| **Export JSON** | 將目前教案儲存為 `.gdbgui.json`（Chrome/Edge 支援「另存新檔」直接覆蓋本機檔案；其他瀏覽器自動下載） |
+
+> **建議工作流**：在 Chrome/Edge 中使用，Export 時可直接瀏覽到專案資料夾並覆蓋同名 JSON，省去手動移檔的步驟。
+
+### 6.2 行編輯器 Modal（✎ 按鈕）
+
+在「Edit Mode」下，每一行的 Guide/TTS/Layout 欄右側都有一個 **✎** 按鈕。
+點擊後會彈出放大版的行編輯器，分為三個 Tab：
+
+#### 📝 指導文字 Tab
+- 多行 `textarea`，可輸入長篇指導說明
+- 支援 `{varName}` 佔位符
+- 適合需要換行或篇幅較長的說明
+
+#### 🔊 語音 TTS Tab
+
+| 欄位 | 說明 |
+|------|------|
+| **語速倍率** | 數字輸入框，等同於 `[speed:N]` 標籤，留空代表使用預設速度 |
+| **[continue] 勾選** | 勾選後 TTS 唸完自動繼續到下個斷點 |
+| **語音朗讀文字** | TTS 實際唸出的內容，留空則此行不播語音 |
+| **預覽** | 即時顯示組合後的原始 TTS 字串，可確認格式是否正確 |
+
+> 儲存時自動將三個欄位組合為 `[speed:N][continue]文字` 格式。
+
+#### 📐 版面 Layout Tab
+
+| 欄位 | 說明 |
+|------|------|
+| **右側欄寬度** | 數字輸入，等同於 `sidebar:N` |
+| **迷宮容器** | 容器名稱，等同於 `maze:名稱` |
+| **展開面板** | 逗號分隔的面板 ID，等同於 `open:id1,id2` |
+| **收合面板** | 逗號分隔的面板 ID，等同於 `close:id1,id2` |
+| **預覽** | 即時顯示組合後的原始 Layout 字串 |
+
+點擊 **儲存** 套用所有欄位；點擊 **取消** 或點擊遮罩關閉不儲存。
+
+### 6.3 行拖曳排序
+
+在 Edit Mode 下，程式碼左側（行號區右邊）每行都有一個 **⠿ 拖曳 handle**。
+拖曳 handle 可以搬移整行（包含其 Guide、TTS、Layout、斷點設定）：
+
+| 操作 | 效果 |
+|------|------|
+| **拖曳單行** | 將該行移到目標行之後（目標行底部顯示藍色指示線） |
+| **Ctrl + 點擊 handle** | 加入 / 取消該行的多選（累積選取不連續的行） |
+| **Shift + 點擊 handle** | 從上次點擊行到此行的連續範圍全選 |
+| **拖曳已選中的行** | 一次移動所有選中的行，插入位置取決於最上面的 source 行 |
+
+> 拖曳完成後 Guide/TTS/Layout 的行號對應自動更新，不需要手動修正。
+
+---
+
+## 七、沙箱安全機制
+
+當使用者點擊 **Run / Restart** 編譯並執行程式時，系統會自動啟用三層保護機制，防止惡意程式碼（如 `system("> evil.txt")`、`system("sudo rm -rf /")` 等）破壞伺服器檔案系統。
+
+### 7.1 Layer 1 — 靜態分析（編譯前）
+
+編譯前掃描原始碼（已去除注釋與字串常量），偵測到危險函式時在 Console 顯示警告：
+
+- **`[sandbox:封鎖]`**（紅色）— 連結層也會攔截，執行時回傳 `EPERM`
+- **`[sandbox:警告]`**（黃色）— 連結層無法攔截，但 ulimit 限制傷害範圍
+
+| 分類 | 偵測目標 | 層級 |
+|------|----------|------|
+| Shell 執行 | `system`, `popen` | 封鎖 |
+| 程序建立/取代 | `fork`, `vfork`, `exec*` 系列 | 封鎖 |
+| 刪除檔案 | `unlink`, `unlinkat`, `remove`, `rmdir` | 封鎖 |
+| 改名/移動 | `rename`, `renameat` | 封鎖 |
+| 建立目錄 | `mkdir`, `mkdirat` | 封鎖 |
+| 權限/擁有者 | `chmod`, `fchmod`, `chown`, `fchown` | 封鎖 |
+| 符號/硬連結 | `symlink`, `link` | 封鎖 |
+| 截斷檔案 | `truncate`, `ftruncate` | 封鎖 |
+| 動態載入 | `dlopen` | 封鎖 |
+| 低階寫入 | `open(O_WRONLY)`, `creat`, `mknod`, `mkfifo`, `mkstemp` | 警告 |
+| C 檔案寫入 | `fopen("w"/"a")`, `freopen` | 警告 |
+| C++ 流 | `ofstream`, `fstream`, `std::filesystem::` | 警告 |
+| 網路 | `socket`, `connect`, `bind` | 警告 |
+| 信號/提權 | `kill`, `setuid`, `setgid`, `setenv`, `putenv` | 警告 |
+| 記憶體映射 | `mmap` | 警告 |
+
+### 7.2 Layer 2 — 連結層攔截（--wrap）
+
+所有「封鎖」等級的函式，在編譯時會透過 GCC `-Wl,--wrap=XXX` 連結選項，將呼叫導向 `sandbox/stub.c` 中的替換實作：執行時印出 `[sandbox] XXX() is blocked` 訊息並回傳 `-1`（`errno = EPERM`），**不會真正執行**。
+
+### 7.3 Layer 3 — 執行期資源限制（ulimit）
+
+每次執行程式前，GDB 透過 `set exec-wrapper sandbox/wrapper.sh` 啟動 wrapper，設定以下限制：
+
+| 資源 | 限制 |
+|------|------|
+| 單檔最大寫入 | 512 KB |
+| Core dump | 禁止 |
+| 子程序數 | 最多 64 個 |
+| CPU 時間 | 30 秒 |
+| 虛擬記憶體 | 512 MB |
+
+即使攻擊者透過 inline asm 或其他方式繞過 Layer 2，Layer 3 也能限制傷害範圍。
+
+---
+
+## 八、欄位設計建議（給 AI 生成教案使用）
+
+### 8.1 Guide 欄的設計原則
 
 - 每次暫停**只顯示該步驟最重要的容器或變數**，避免同時顯示太多。
 - 遞迴類題目：用 `[標籤名#顏色]` 標記不同函式呼叫層次，搭配 call graph。
@@ -296,7 +419,7 @@ sidebar:0 close:container,callgraph
 - 條件判斷行：可純文字說明判斷式意義，不一定要顯示容器。
 - 速度控制：用 `[speed:0.8]` 在複雜段落放慢，用 `[speed:1.2]` 在簡單段落加速。
 
-### 6.2 TTS 欄的設計原則
+### 8.2 TTS 欄的設計原則
 
 - **第一次進入**：完整說明該行的語意、目的。
 - **後續重複進入**（迴圈/遞迴）：只說關鍵變數值，縮短說明。
@@ -305,7 +428,7 @@ sidebar:0 close:container,callgraph
   遞迴進入點通常加 `[step-in]`，退出條件加 `[next]` 或 `[continue]`。
 - **發音修正**：遇到縮寫、英文夾雜的中文詞，用 `詞[讀音]` 修正。
 
-### 6.3 Layout 欄的設計原則
+### 8.3 Layout 欄的設計原則
 
 - **程式開始**（main 入口）：`sidebar:40 open:callgraph`
 - **容器操作行**：`sidebar:55 open:container close:locals`
@@ -313,7 +436,7 @@ sidebar:0 close:container,callgraph
 - **不重要的行**（僅宣告、空行）：不填或 `sidebar:30 close:container`
 - **程式結束**：`sidebar:60 open:watch_table`
 
-### 6.4 多次進入設計範本（迴圈/遞迴）
+### 8.4 多次進入設計範本（迴圈/遞迴）
 
 ```
 TTS 第 7 行（for 迴圈）：
@@ -325,7 +448,7 @@ TTS 第 5 行（遞迴入口）：
 
 ---
 
-## 七、快速語法速查表
+## 九、快速語法速查表
 
 ### Guide 欄
 | 語法 | 功能 |
@@ -359,7 +482,18 @@ TTS 第 5 行（遞迴入口）：
 | `open:ID` | 展開面板 |
 | `open:ID1,ID2` | 同時展開多個面板 |
 | `close:ID` | 收合面板 |
+| `maze:容器名` | 啟用指定容器的迷宮視覺化模式 |
 | `sidebar:50 open:container close:locals` | 組合使用（空格分隔） |
 
 ### 可用面板 ID
 `memory_watch` / `callgraph` / `visualizer` / `container` / `locals` / `watch_table`
+
+### 編輯器操作
+| 操作 | 功能 |
+|------|------|
+| **✎ 按鈕** | 展開該行的放大版行編輯器（Edit Mode 下可見） |
+| **⠿ 拖曳 handle** | 搬移整行至目標位置（行底部藍線為插入點） |
+| **Ctrl + 點擊 ⠿** | 多選（切換） |
+| **Shift + 點擊 ⠿** | 連續範圍選取 |
+| **Export JSON** | 另存新檔至本機（Chrome/Edge）或下載 |
+| **Import JSON** | 從本機匯入教案 |
