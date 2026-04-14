@@ -6,6 +6,9 @@ import GdbVariable from "./GdbVariable";
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
 let _tts_current_audio = null;  // 目前播放中的 Audio 元素，供中斷使用
 
+// ── graphics_instruction 取消 token（模組級）──────────────────────────
+let _graphics_task_id = 0;      // 每次 graphics_instruction 遞增，舊任務自動放棄
+
 /** 停止目前播放的音訊。 */
 function _tts_cancel() {
   if (_tts_current_audio) {
@@ -122,16 +125,31 @@ class VisualizerHelper {
     const guideContent = global_variable.__line[lineNum] || global_variable.__line[String(lineNum)];
     if (!guideContent) return;
 
+    // --- 攔截 [speed:N] 語法，設定 TTS 播放速度 ---
+    const speedRegex = /\[speed:([\d.]+)\]/g;
+    let speedMatch;
+    while ((speedMatch = speedRegex.exec(guideContent)) !== null) {
+      const speed = parseFloat(speedMatch[1]);
+      if (!isNaN(speed) && speed >= 0.1 && speed <= 4.0) {
+        store.set('tts_speed', speed);
+        // 若目前有正在播放的音訊，立即套用新速度
+        const currentAudio = window._tts_api && window._tts_api._current();
+        if (currentAudio) currentAudio.playbackRate = speed;
+      }
+    }
+    // 移除 [speed:N] token，後續不顯示在 guide 面板
+    const guideContentNoSpeed = guideContent.replace(speedRegex, '').trim();
+
     // --- 攔截 [自訂標籤#顏色] 語法給 Call Graph 使用 ---
     // 支援 `[標籤名稱#顏色] {變數}` 或是 `[標籤名稱] {變數}`
-    const labelRegex = /^\[([^\]#]+)(?:#([^\]]+))?\](.*)/;
-    const labelMatch = guideContent.match(labelRegex);
+    const labelRegex = /^\[([^\]#]+)(?:#([^\]]+))?\]([\s\S]*)/;
+    const labelMatch = guideContentNoSpeed.match(labelRegex);
     
     if (!global_variable.__call_graph_custom_labels) {
       global_variable.__call_graph_custom_labels = {};
     }
 
-    let graphicsContent = guideContent;
+    let graphicsContent = guideContentNoSpeed;
     if (labelMatch) {
       const labelName = labelMatch[1].trim();
       const color = labelMatch[2] ? labelMatch[2].trim() : null; // 可選的顏色
@@ -279,6 +297,17 @@ class VisualizerHelper {
     // 變數替換完成後確認任務是否仍有效（非同步查詢期間可能有新任務進來）
     if (myTaskId !== _tts_task_id) return;
 
+    // 若文字為空（如純 [continue] 指令），直接執行 autoplayCommand，跳過 TTS 請求
+    if (!finalSpokenText.trim()) {
+      window._gdbgui_tts_playing = null;
+      window._gdbgui_tts_resume = null;
+      if (typeof window.gdbgui_on_tts_end === 'function') window.gdbgui_on_tts_end();
+      if (autoplayCommand && typeof window.gdbgui_execute_autoplay_command === 'function') {
+        window.gdbgui_execute_autoplay_command(autoplayCommand);
+      }
+      return;
+    }
+
     // 先顯示字幕，再開始播放（避免 await 結束後字幕才設進去）
     store.set("tts_subtitle", {
       text: finalSpokenText,
@@ -293,15 +322,22 @@ class VisualizerHelper {
   }
 
   static async graphics_instruction(instruction, frame_line, funcName) {
+    const myGraphicsTaskId = ++_graphics_task_id; // 新任務 ID，舊任務自動放棄
+    // 清空前一個任務遺留的所有 VarCreator / ChildVarFetcher 佇列，
+    // 讓新任務的 varobj 建立和子節點抓取能立即排在最前面
+    GdbVariable.clear_visualizer_queues();
     if (!("__guide" in global_variable)) global_variable.__guide = new Map();
     let outputArray = [];
     for (const inst of instruction) {
+      if (_graphics_task_id !== myGraphicsTaskId) {
+        return; // 已被更新任務取代
+      }
       if (!(inst.startsWith('{') && inst.endsWith('}'))) {
         outputArray.push(inst);
         continue;
       }
       const trimmedInst = inst.slice(1, -1).trim();
-      const displayKey = funcName ? `${funcName}::${trimmedInst}` : trimmedInst;
+      let displayKey = funcName ? `${funcName}::${trimmedInst}` : trimmedInst;
       const expressions = store.get("expressions");
 
       const indexMatch = trimmedInst.match(/^([^\[\]]+)\[([^\[\]]+)\]$/);
@@ -316,7 +352,7 @@ class VisualizerHelper {
           if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
           if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
 
-          const baseContainerKey = funcName ? `${funcName}::${baseContainer}` : baseContainer;
+          const baseContainerKey = baseContainer;
           global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parseInt(indexExpr);
           if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
           global_variable.__latest_highlights.set(baseContainerKey, parseInt(indexExpr));
@@ -331,18 +367,40 @@ class VisualizerHelper {
         }
       }
 
-      const existingVar = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
-      if (existingVar) {
-        // 如果已存在，先刪除以確保獲取最新值
-        GdbVariable.delete_gdb_variable(existingVar.name);
+      // 若已有 in-scope 的 varobj（可能由其他函數 frame 建立，如 main::maze 在 solveMaze 中），
+      // -var-update --all-values * 已自動更新其子節點值，直接複用即可，不需刪除重建。
+      // 支援跨函數複用：trimmedInst 相同但 funcName 不同時（e.g. main::maze vs solveMaze::maze）
+      // 仍能找到同一個 in-scope varobj。
+      const existingInScopeVar = expressions.find(
+        obj => obj.in_scope === "true" && (
+          obj.expression === displayKey ||
+          obj.expression === trimmedInst ||
+          (trimmedInst.indexOf('::') === -1 && obj.expression.endsWith('::' + trimmedInst))
+        )
+      );
+      if (existingInScopeVar) {
+        // 複用現有 varobj；更新 displayKey 確保後續 checkStore 能找到它
+        displayKey = existingInScopeVar.expression;
+      } else {
+        // 刪除所有同名舊 varobj（出 scope 的殘留）並建立新的
+        expressions.filter(obj =>
+          obj.expression === displayKey ||
+          obj.expression === trimmedInst ||
+          (trimmedInst.indexOf('::') === -1 && obj.expression.endsWith('::' + trimmedInst))
+        ).forEach(v => GdbVariable.delete_gdb_variable(v.name));
+        GdbVariable.create_variable(trimmedInst, "expr", displayKey);
       }
-      // 總是創建新的變數對象以獲取最新值
-      GdbVariable.create_variable(trimmedInst, "expr", displayKey);
 
       if (!global_variable.__active_visualizer_exprs) {
         global_variable.__active_visualizer_exprs = new Set();
       }
       global_variable.__active_visualizer_exprs.add(displayKey);
+
+      // 若複用現有 varobj，記錄目前的 changelist 版本號，
+      // checkStore 必須等到版本號遞增（代表本次 stop 的 changelist 已處理完畢）再讀值。
+      const capturedChangelistVersion = existingInScopeVar
+        ? (window.__gdbgui_changelist_version || 0)
+        : -1; // -1 表示不需要等待
 
       const addrExpr = `&(${trimmedInst})`;
       const addrDisplayKey = `&(${displayKey})`;
@@ -356,9 +414,22 @@ class VisualizerHelper {
       const result = await new Promise((resolve) => {
         let checkTicks = 0;
         const checkStore = () => {
+          // 若有更新的 graphics_instruction 任務，立即放棄（不寫入 __latest_containers）
+          if (_graphics_task_id !== myGraphicsTaskId) {
+            console.log(`[GI] task ${myGraphicsTaskId} cancelled for "${trimmedInst}" line=${frame_line}`);
+            resolve(trimmedInst);
+            return;
+          }
+          // 若複用已存在的 varobj，必須等到本次 stop 的 changelist 處理完畢（版本號遞增）再讀值，
+          // 否則拿到的仍是上一個斷點的舊值。
+          if (capturedChangelistVersion >= 0 &&
+              (window.__gdbgui_changelist_version || 0) <= capturedChangelistVersion) {
+            setTimeout(checkStore, 50);
+            return;
+          }
           checkTicks++;
-          if (checkTicks > 50) {
-            console.warn(`[VisualizerHelper] Promise TIMEOUT for expression: ${trimmedInst}`);
+          if (checkTicks > 150) {
+            console.warn(`[GI] TIMEOUT task=${myGraphicsTaskId} "${trimmedInst}" line=${frame_line}`);
             resolve(trimmedInst);
             return;
           }
@@ -374,7 +445,7 @@ class VisualizerHelper {
               if (!isNaN(parsedIdx)) {
                 if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
                 if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
-                const baseContainerKey = funcName ? `${funcName}::${baseContainer}` : baseContainer;
+                const baseContainerKey = baseContainer;
                 global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parsedIdx;
                 if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
                 global_variable.__latest_highlights.set(baseContainerKey, parsedIdx);
@@ -385,7 +456,6 @@ class VisualizerHelper {
 
           const varObj = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
           if (varObj && highlightIndexReady) {
-            console.log(`[VisualizerHelper] Found variable: ${displayKey}, numchild: ${varObj.numchild}, value: ${varObj.value}`);
 
             // ── 判斷容器類型 ──
             const ty = varObj.type || "";
@@ -418,7 +488,7 @@ class VisualizerHelper {
               if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
               global_variable.__containers_guide.get(frame_line).push(payload);
               if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
-              global_variable.__latest_containers.set(displayKey, payload);
+              global_variable.__latest_containers.set(trimmedInst, payload);
               resolve(`{${strVal}}`);
             } else if ((varObj.value || "").includes("of length 0") ||
               (varObj.numchild === 0 && !(varObj.value || "").match(/(length|size)\s+[1-9]/i))) {
@@ -428,11 +498,71 @@ class VisualizerHelper {
               if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
               global_variable.__containers_guide.get(frame_line).push(payload);
               if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
-              global_variable.__latest_containers.set(displayKey, payload);
+              global_variable.__latest_containers.set(trimmedInst, payload);
+              console.log(`[GI] stored "${trimmedInst}" line=${frame_line} task=${myGraphicsTaskId} EMPTY`);
               resolve("{}");
             } else if (varObj.numchild > 0) {
               if (varObj.children && varObj.children.length > 0) {
-                const childValues = varObj.children.map(child => child.value);
+                // 若有 child 本身是容器（value 含 "of length"），需要遞迴展開
+                // 注意：GDB pretty-printer 回傳的 inner vector child.numchild 可能是 NaN，
+                // 所以改用 child.value 字串偵測
+                const isInnerContainer = (child) =>
+                  typeof child.value === 'string' && child.value.includes('of length');
+                const isEmptyInnerContainer = (child) =>
+                  isInnerContainer(child) && /of length 0\b/.test(child.value || '');
+                const hasInnerContainers = varObj.children.some(isInnerContainer);
+                let childValues;
+                if (hasInnerContainers) {
+                  // 直接檢查 varObj.children[i].children（fetch 後會被 mutate 更新到 store）
+                  // 空的內層容器（"of length 0"）不需要 fetch，直接視為空陣列
+                  const innerMissing = varObj.children.filter(
+                    child => isInnerContainer(child) &&
+                             !isEmptyInnerContainer(child) &&
+                             !(child.children && child.children.length > 0)
+                  );
+                  if (innerMissing.length > 0) {
+                    // 逐一觸發展開（每次最多 5 個，避免 queue 塞滿）
+                    // 注意：動態 varobj 的 numchild 可能是 NaN（因為用 has_more 而非 numchild）
+                    // fetch_and_show_children_for_var 會檢查 obj.numchild，NaN 是 falsy 會跳過
+                    // → 先從 child.value 解析長度寫回 numchild，再觸發 fetch
+                    const exprs = store.get("expressions");
+                    innerMissing.slice(0, 5).forEach(child => {
+                      if (!child.numchild || isNaN(child.numchild)) {
+                        const m = (child.value || '').match(/of length (\d+)/);
+                        if (m) {
+                          child.numchild = parseInt(m[1]);
+                        } else {
+                          child.numchild = 1; // fallback: 給 truthy 值讓 fetch 能進行
+                        }
+                      }
+                    });
+                    store.set("expressions", exprs);
+                    innerMissing.slice(0, 5).forEach(child =>
+                      GdbVariable.fetch_and_show_children_for_var(child.name)
+                    );
+                    setTimeout(checkStore, 200);
+                    return;
+                  }
+                  // 所有內層均已展開，組成 nested array
+                  childValues = varObj.children.map(child => {
+                    if (isEmptyInnerContainer(child)) {
+                      return [];  // 空的內層容器（如空 deque）直接給空陣列
+                    }
+                    if (isInnerContainer(child) && child.children && child.children.length > 0) {
+                      return child.children.map(c => c.value);
+                    }
+                    return child.value;
+                  });
+                  // 對 queue/stack/deque 這類「單一內層容器包裝」類型做扁平化：
+                  // 無 pretty-printer 時 std::queue 只有一個 _M_c (deque) 子層，
+                  // 展開後為 [[elem0, elem1, ...]]，需攤平為 [elem0, elem1, ...]
+                  if (['queue', 'stack', 'deque'].includes(containerName) &&
+                      childValues.length === 1 && Array.isArray(childValues[0])) {
+                    childValues = childValues[0];
+                  }
+                } else {
+                  childValues = varObj.children.map(child => child.value);
+                }
                 const payload = buildPayload(childValues);
 
                 // 嘗試抓 capacity（非阻塞）
@@ -457,7 +587,7 @@ class VisualizerHelper {
                 if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
                 global_variable.__containers_guide.get(frame_line).push(payload);
                 if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
-                global_variable.__latest_containers.set(displayKey, payload);
+                global_variable.__latest_containers.set(trimmedInst, payload);
 
                 const valStr = childValues.join(', ');
                 resolve(`{${valStr}}`);
@@ -479,8 +609,8 @@ class VisualizerHelper {
             setTimeout(checkStore, 100);
           }
         };
-        checkStore();
-        console.log(`總有跑checkStore了吧`);
+        // 立即開始輪詢；若需等 changelist，checkStore 內部的版本號偵測會自動 spin。
+        setTimeout(checkStore, 0);
       });
       console.log(`單獨結果 for ${displayKey}: ${result}`);
       outputArray.push(result);

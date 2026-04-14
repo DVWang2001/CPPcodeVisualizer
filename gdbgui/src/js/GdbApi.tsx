@@ -204,10 +204,38 @@ const GdbApi = {
         return !num.startsWith('frontend_') && b.fullname_to_display && b.is_normal_breakpoint !== false && !b.is_child_breakpoint;
       });
       if (hasGdbNumbered) {
-        let idx = 1;
-        const normalized = bkpts.map((b: any) => {
+        // Deduplicate by fullname:line — GDB accumulates breakpoints across runs,
+        // so we may have 194 entries for only 2 unique locations after 97 runs.
+        const seen = new Set<string>();
+        const unique: any[] = [];
+        // First pass: keep existing frontend_* entries (already unique) and unique GDB-numbered ones
+        for (const b of bkpts) {
           const num = String(b.number);
-          if (!num.startsWith('frontend_') && b.fullname_to_display && b.is_normal_breakpoint !== false && !b.is_child_breakpoint) {
+          const isGdbNumbered = !num.startsWith('frontend_') && b.fullname_to_display && b.is_normal_breakpoint !== false && !b.is_child_breakpoint;
+          if (isGdbNumbered) {
+            const key = `${b.fullname_to_display}:${b.line}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              unique.push(b);
+            }
+            // else: skip duplicate location
+          } else {
+            // non-normal breakpoints (child, already frontend_*): keep as-is but deduplicate frontend_* too
+            if (num.startsWith('frontend_') && b.fullname_to_display) {
+              const key = `${b.fullname_to_display}:${b.line}`;
+              if (!seen.has(key)) {
+                seen.add(key);
+                unique.push(b);
+              }
+            } else {
+              unique.push(b);
+            }
+          }
+        }
+        // Second pass: renumber all normal entries as frontend_*
+        let idx = 1;
+        const normalized = unique.map((b: any) => {
+          if (b.fullname_to_display && b.is_normal_breakpoint !== false && !b.is_child_breakpoint) {
             return { ...b, number: `frontend_${idx++}` };
           }
           return b;
@@ -263,9 +291,25 @@ const GdbApi = {
             (global_variable as any).__line_visit_count = {};
           }
 
-          let cmds: string[] = [];
+          let cmds: string[] = ["-interpreter-exec console \"delete\""];
           // Insert frontend breakpoints even when restarting without recompiling
           let bkpts = store.get("breakpoints") || [];
+          // Deduplicate by fullname:line before injection (cleans up any legacy accumulation)
+          {
+            const seen = new Set<string>();
+            const deduped = bkpts.filter((b: any) => {
+              if (!(typeof b.number === 'string' && b.number.startsWith('frontend_'))) return true;
+              const key = `${b.fullname_to_display}:${b.line}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            if (deduped.length !== bkpts.length) {
+              bkpts = deduped;
+              store.set("breakpoints", bkpts);
+              localStorage.setItem("breakpoints", JSON.stringify(bkpts));
+            }
+          }
           let frontend_bkpts = bkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
 
           if (frontend_bkpts.length > 0) {
@@ -385,12 +429,29 @@ const GdbApi = {
 
               // Reload binary and run
               let cmds: string[] = [
+                "-interpreter-exec console \"delete\"",
                 `-file-exec-and-symbols ${binaryPath}`,
                 store.get("auto_add_breakpoint_to_main") ? "-break-insert main" : ""
               ];
 
               // Insert frontend breakpoints — use actual source path to avoid GDB recording bare filename in DWARF
               let bkpts = store.get("breakpoints") || [];
+              // Deduplicate by fullname:line before injection
+              {
+                const seen = new Set<string>();
+                const deduped = bkpts.filter((b: any) => {
+                  if (!(typeof b.number === 'string' && b.number.startsWith('frontend_'))) return true;
+                  const key = `${b.fullname_to_display}:${b.line}`;
+                  if (seen.has(key)) return false;
+                  seen.add(key);
+                  return true;
+                });
+                if (deduped.length !== bkpts.length) {
+                  bkpts = deduped;
+                  store.set("breakpoints", bkpts);
+                  localStorage.setItem("breakpoints", JSON.stringify(bkpts));
+                }
+              }
               let frontend_bkpts = bkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
               for (let b of frontend_bkpts) {
                 let cmd = "-break-insert -f";

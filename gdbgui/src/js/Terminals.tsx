@@ -43,10 +43,21 @@ function customKeyEventHandler(config: {
 
 const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 
-export class Terminals extends React.Component<any, { programOutput: string; programInput: string }> {
+export class Terminals extends React.Component<any, { programOutput: string; programInput: string; showTerminals: boolean }> {
   userPtyRef: React.RefObject<any>;
   programPtyRef: React.RefObject<any>;
   gdbguiPtyRef: React.RefObject<any>;
+  _fitAddon: FitAddon | null = null;
+  _gdbguiFitAddon: FitAddon | null = null;
+  _userPty: Terminal | null = null;
+  _gdbguiPty: Terminal | null = null;
+  _pendingUserData: string[] = [];
+  _pendingGdbguiData: string[] = [];
+  _xtermOpened = false;
+  _containerRef = React.createRef<HTMLDivElement>();
+  _isDragging = false;
+  _dragStartX = 0;
+  _dragStartWidth = 0;
 
   constructor(props: any) {
     super(props);
@@ -58,8 +69,9 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
     this.state = {
       programOutput: "",
       programInput: localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "",
-      showTerminals: false
-    };
+      showTerminals: false,
+      terminalWidthPct: 50,  // terminal 面板佔總寬度的百分比
+    } as any;
 
     this.sendInputToPty = this.sendInputToPty.bind(this);
   }
@@ -78,33 +90,82 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
     }
   }
 
-  componentDidMount() {
-    // Expose flush function globally so GdbApi can call it
-    (window as any).gdbgui_flush_program_input = () => {
-      this.sendInputToPty();
-    };
-
-    // Sync localStorage program_input to the global store on mount.
-    // The constructor loads from localStorage into component state, but the
-    // global store (used by GdbApi for auto-injection) is never updated unless
-    // the user edits the input. This ensures store has the correct value on load.
-    const savedInput = localStorage.getItem("gdbgui_program_input") || "";
-    if (savedInput) {
-      store.set("program_input", savedInput);
+  componentDidUpdate(prevProps: any, prevState: any) {
+    const wasShown = (prevState as any).showTerminals;
+    const isShown = (this.state as any).showTerminals;
+    if (!wasShown && isShown) {
+      if (!this._xtermOpened) {
+        // 第一次顯示：現在容器可見，安全呼叫 open()
+        this._xtermOpened = true;
+        setTimeout(() => this._openXterm(), 0);
+      } else {
+        // 再次顯示：只需重算尺寸
+        setTimeout(() => {
+          try { this._fitAddon?.fit(); } catch (e) { }
+          try { this._gdbguiFitAddon?.fit(); } catch (e) { }
+        }, 50);
+      }
     }
   }
 
+  _openXterm() {
+    const userPty = this._userPty!;
+    const gdbguiPty = this._gdbguiPty!;
+
+    // Open on now-visible containers
+    userPty.open(this.userPtyRef.current!);
+    gdbguiPty.open(this.gdbguiPtyRef.current!);
+
+    // Flush buffered data
+    for (const d of this._pendingUserData) { try { userPty.write(d); } catch (e) { } }
+    this._pendingUserData = [];
+    for (const d of this._pendingGdbguiData) { try { gdbguiPty.write(d); } catch (e) { } }
+    this._pendingGdbguiData = [];
+
+    setTimeout(() => {
+      try { this._fitAddon?.fit(); } catch (e) { }
+      try { this._gdbguiFitAddon?.fit(); } catch (e) { }
+    }, 50);
+  }
+
   terminal(ref: React.RefObject<any>) {
-    let className = "relative bg-black p-0 m-0 h-full align-baseline ";
     return (
-      <div className={className} >
-        <div className="absolute h-full w-full align-baseline  " ref={ref}></div>
+      <div style={{ flex: 1, minWidth: 0, position: "relative", backgroundColor: "black", height: "100%" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }} ref={ref} />
       </div>
     );
   }
 
+  _onDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    this._isDragging = true;
+    this._dragStartX = e.clientX;
+    this._dragStartWidth = (this.state as any).terminalWidthPct;
+
+    const onMove = (ev: MouseEvent) => {
+      if (!this._isDragging || !this._containerRef.current) return;
+      const containerW = this._containerRef.current.getBoundingClientRect().width;
+      const dx = ev.clientX - this._dragStartX;
+      const newPct = Math.min(85, Math.max(15, this._dragStartWidth + (dx / containerW) * 100));
+      (this as any).setState({ terminalWidthPct: newPct }, () => {
+        // xterm canvas needs to re-fit after width change
+        setTimeout(() => {
+          try { this._fitAddon?.fit(); } catch (_) { }
+          try { this._gdbguiFitAddon?.fit(); } catch (_) { }
+        }, 0);
+      });
+    };
+    const onUp = () => {
+      this._isDragging = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   render() {
-    const { showTerminals } = this.state as any;
+    const { showTerminals, terminalWidthPct } = this.state as any;
     return (
       <div className="w-full h-full relative flex flex-col">
         {/* 查看 terminal 按鈕 */}
@@ -122,18 +183,31 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
         </div>
 
         {/* 主要內容區：terminal 欄 + Standard I/O */}
-        <div className="flex-1 relative" style={{ minHeight: 0 }}>
+        <div ref={this._containerRef} className="flex-1 relative" style={{ minHeight: 0 }}>
           <div style={{ display: "flex", width: "100%", height: "100%" }}>
             {/* 兩個黑色 terminal：showTerminals 為 false 時用 display:none 隱藏但保留 DOM */}
-            <div style={{ display: showTerminals ? "flex" : "none", flex: "0 0 66.66%", gap: 8 }}>
+            <div style={{ display: showTerminals ? "flex" : "none", width: `${terminalWidthPct}%`, flexShrink: 0, gap: 8 }}>
         {this.terminal(this.userPtyRef)}
         {/* <GdbGuiTerminal /> */}
         {this.terminal(this.gdbguiPtyRef)}
-
             </div>
 
+            {/* Drag handle — terminal 顯示時才出現 */}
+            {showTerminals && (
+              <div
+                onMouseDown={this._onDragStart}
+                style={{
+                  width: 5, flexShrink: 0, cursor: "col-resize",
+                  backgroundColor: "#444",
+                  transition: "background-color 0.15s",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#888")}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = "#444")}
+              />
+            )}
+
             {/* Standard Input / Output：terminal 隱藏時佔滿全寬 */}
-            <div style={{ flex: 1, overflow: "hidden" }} className="bg-white relative flex flex-row">
+            <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }} className="bg-white relative flex flex-row">
           {/* Left Half: Standard Input */}
           <div className="flex-1 border-r-2 border-gray-300 flex flex-col">
             <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 uppercase tracking-wider flex justify-between items-center">
@@ -222,106 +296,72 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
   }
 
   componentDidMount() {
-    // Add event listener to clear output on new run
+    // ── 原第一個 componentDidMount 的邏輯 ──────────────────────────────
+    (window as any).gdbgui_flush_program_input = () => { this.sendInputToPty(); };
+    const savedInput = localStorage.getItem("gdbgui_program_input") || "";
+    if (savedInput) { store.set("program_input", savedInput); }
+
+    // ── xterm 初始化 ───────────────────────────────────────────────────
     window.addEventListener('gdbgui:clear_program_output', () => {
       this.setState({ programOutput: "" });
     });
 
-    const fitAddon = new FitAddon();
-    // const programFitAddon = new FitAddon(); // No longer needed
-    const gdbguiFitAddon = new FitAddon();
+    // ── FitAddon（先建立，open() 之後才真正有用）─────────────────────
+    this._fitAddon = new FitAddon();
+    this._gdbguiFitAddon = new FitAddon();
 
-    const userPty = new Terminal({
-      cursorBlink: true,
-      macOptionIsMeta: true,
-      scrollback: 9999
-    });
-    userPty.loadAddon(fitAddon);
-    userPty.open(this.userPtyRef.current!);
-    userPty.writeln(`running command: ${store.get("gdb_command")}`);
-    userPty.writeln("");
+    // ── userPty：建立但先不 open()，等 showTerminals 首次為 true 時再 open ──
+    const userPty = new Terminal({ cursorBlink: true, macOptionIsMeta: true, scrollback: 9999 });
+    userPty.loadAddon(this._fitAddon);
     userPty.attachCustomKeyEventHandler(
       // @ts-expect-error
-      customKeyEventHandler({
-        pty_name: "user_pty",
-        pty: userPty,
-        canPaste: true,
-        pidStoreKey: "gdb_pid"
-      })
+      customKeyEventHandler({ pty_name: "user_pty", pty: userPty, canPaste: true, pidStoreKey: "gdb_pid" })
     );
-    GdbApi.getSocket().on("user_pty_response", function (data: string) {
-      userPty.write(data);
+    userPty.onKey((data) => {
+      GdbApi.getSocket().emit("pty_interaction", { data: { pty_name: "user_pty", key: data.key, action: "write" } });
+      if (data.domEvent.code === "Enter") { Actions.onConsoleCommandRun(); }
     });
-    userPty.onKey((data, ev) => {
-      GdbApi.getSocket().emit("pty_interaction", {
-        data: { pty_name: "user_pty", key: data.key, action: "write" }
-      });
-      if (data.domEvent.code === "Enter") {
-        Actions.onConsoleCommandRun();
-      }
+    // 先 buffer，open() 後再 flush
+    GdbApi.getSocket().on("user_pty_response", (data: string) => {
+      if (this._xtermOpened) { userPty.write(data); }
+      else { this._pendingUserData.push(data); }
     });
+    this._userPty = userPty;
 
-    // Program Pty Replacement Logic
-    GdbApi.getSocket().on("program_pty_response", (pty_response: string) => {
-      // Strip ANSI codes for plain text editor
-      let cleanText = pty_response.replace(ansiRegex, '');
-
-      this.setState(prevState => {
-        let newOutput = prevState.programOutput + cleanText;
-        return { programOutput: newOutput };
-      });
-    });
-
-    const gdbguiPty = new Terminal({
-      cursorBlink: false,
-      macOptionIsMeta: true,
-      scrollback: 9999,
-      disableStdin: true
-      // theme: { background: "#888" }
-    });
-    gdbguiPty.write(constants.xtermColors.grey);
-    gdbguiPty.writeln("gdbgui output (read-only)");
-    gdbguiPty.writeln(
-      "Copy/Paste available in all terminals with ctrl+shift+c, ctrl+shift+v"
-    );
-    gdbguiPty.write(constants.xtermColors.reset);
-
+    // ── gdbguiPty：同上，先不 open() ─────────────────────────────────
+    const gdbguiPty = new Terminal({ cursorBlink: false, macOptionIsMeta: true, scrollback: 9999, disableStdin: true });
+    gdbguiPty.loadAddon(this._gdbguiFitAddon);
     gdbguiPty.attachCustomKeyEventHandler(
       // @ts-expect-error
       customKeyEventHandler({ pty_name: "unused", pty: gdbguiPty, canPaste: false })
     );
+    // 初始歡迎訊息先 buffer
+    this._pendingGdbguiData.push(
+      constants.xtermColors.grey,
+      `running command: ${store.get("gdb_command")}\r\n`,
+      "gdbgui output (read-only)\r\n",
+      "Copy/Paste: ctrl+shift+c / ctrl+shift+v\r\n",
+      constants.xtermColors.reset
+    );
+    store.set("gdbguiPty", gdbguiPty); // 讓其他模組可以 write（會在 open 後才真正顯示）
+    this._gdbguiPty = gdbguiPty;
 
-    gdbguiPty.loadAddon(gdbguiFitAddon);
-    gdbguiPty.open(this.gdbguiPtyRef.current!);
-    // gdbguiPty is written to elsewhere
-    store.set("gdbguiPty", gdbguiPty);
+    // ── program_pty_response → Standard Output Monaco ─────────────────
+    GdbApi.getSocket().on("program_pty_response", (pty_response: string) => {
+      const cleanText = pty_response.replace(ansiRegex, '');
+      this.setState(prev => ({ programOutput: prev.programOutput + cleanText }));
+    });
 
-    const interval = setInterval(() => {
-      try { fitAddon.fit(); } catch (e) { }
-      try { gdbguiFitAddon.fit(); } catch (e) { }
+    // ── 定期 fit + winsize ─────────────────────────────────────────────
+    setInterval(() => {
+      if (!this._xtermOpened) return;
+      try { this._fitAddon?.fit(); } catch (e) { }
+      try { this._gdbguiFitAddon?.fit(); } catch (e) { }
       const socket = GdbApi.getSocket();
-
-      if (socket.disconnected) {
-        return;
-      }
+      if (socket.disconnected) return;
       socket.emit("pty_interaction", {
-        data: {
-          pty_name: "user_pty",
-          rows: userPty.rows,
-          cols: userPty.cols,
-          action: "set_winsize"
-        }
+        data: { pty_name: "user_pty", rows: userPty.rows, cols: userPty.cols, action: "set_winsize" }
       });
-
-      // Program Pty resizing is no longer relevant for Monaco, 
-      // but maybe keep backend happy? Or just omit.
-      // Omit since we are not displaying it via xterm.
     }, 2000);
-
-    setTimeout(() => {
-      fitAddon.fit();
-      // programFitAddon.fit();
-      gdbguiFitAddon.fit();
-    }, 0);
   }
 }

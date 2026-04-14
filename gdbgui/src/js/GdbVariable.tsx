@@ -650,6 +650,20 @@ class GdbVariable extends React.Component {
       GdbVariable.plot_var_and_children(child);
     }
   }
+  /**
+   * 清空 ChildVarFetcher 與 VarCreator 的待處理佇列。
+   * 用於 graphics_instruction 新任務開始時，丟棄前一個任務遺留的所有待建立/待展開請求，
+   * 避免舊請求堵塞新任務的 maze 等大型結構的抓取。
+   * 注意：若 VarCreator/ChildVarFetcher 正在執行中的那筆（in-flight）請求無法中斷，
+   * 但完成後會因找不到對應 expression 而被忽略。
+   */
+  static clear_visualizer_queues() {
+    // @ts-ignore
+    ChildVarFetcher._queue = [];
+    // @ts-ignore
+    VarCreator._queue = [];
+  }
+
   static fetch_and_show_children_for_var(gdb_var_name: any) {
     let expressions = store.get("expressions");
     let obj = GdbVariable.get_obj_from_gdb_var_name(expressions, gdb_var_name);

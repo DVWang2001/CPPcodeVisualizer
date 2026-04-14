@@ -7,10 +7,34 @@ from flask import Flask, abort, request, session
 
 # python-engineio 4.10+ 將 max_decode_packets 改為 1（強制 v4 協議），
 # 但瀏覽器 socket.io client 仍會批次送多個封包，造成大量 ValueError。
-# 在 import 後立即調高上限，讓舊格式的批次封包能被正常接受。
+# 用兩層防禦：class attribute + monkey-patch decode，確保各版本都能正常。
 try:
     from engineio import payload as _eio_payload
-    _eio_payload.Payload.max_decode_packets = 50
+
+    # 層 1：直接設 class attribute（舊版有效）
+    if hasattr(_eio_payload.Payload, 'max_decode_packets'):
+        _eio_payload.Payload.max_decode_packets = 500
+
+    # 層 2：替換 decode，移除 packet 數量上限檢查（新版有效）
+    _orig_payload_decode = _eio_payload.Payload.decode
+
+    def _patched_payload_decode(self, encoded_payload):
+        # 暫時把 class attribute 調高（有些版本在方法內讀 self.__class__）
+        _cls = type(self)
+        _old = getattr(_cls, 'max_decode_packets', None)
+        try:
+            _cls.max_decode_packets = 500
+            return _orig_payload_decode(self, encoded_payload)
+        except ValueError as exc:
+            if 'Too many packets' in str(exc):
+                pass  # 忽略，直接回傳已解析的部分
+            else:
+                raise
+        finally:
+            if _old is not None:
+                _cls.max_decode_packets = _old
+
+    _eio_payload.Payload.decode = _patched_payload_decode
 except Exception:
     pass
 from flask_compress import Compress  # type: ignore

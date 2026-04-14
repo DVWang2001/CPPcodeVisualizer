@@ -248,6 +248,8 @@ const process_gdb_response = function (response_array: any) {
       if ("changelist" in r.payload) {
         console.log(`changelist = ${JSON.stringify(r.payload.changelist)}`);
         GdbVariable.handle_changelist(r.payload.changelist);
+        // 每次 changelist 處理完畢後遞增版本號，供 VisualizerHelper 偵測「值已更新」
+        (window as any).__gdbgui_changelist_version = ((window as any).__gdbgui_changelist_version || 0) + 1;
       }
       // gdbgui expression was evaluated for the first time for a child variable
       if ("has_more" in r.payload && "numchild" in r.payload && "children" in r.payload) {
