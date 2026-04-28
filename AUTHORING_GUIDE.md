@@ -364,6 +364,16 @@ sidebar:55 open:container maze:maze
 
 當使用者點擊 **Run / Restart** 編譯並執行程式時，系統會自動啟用三層保護機制，防止惡意程式碼（如 `system("> evil.txt")`、`system("sudo rm -rf /")` 等）破壞伺服器檔案系統。
 
+
+
+
+
+
+
+
+
+
+
 ### 7.1 Layer 1 — 靜態分析（編譯前）
 
 編譯前掃描原始碼（已去除注釋與字串常量），偵測到危險函式時在 Console 顯示警告：

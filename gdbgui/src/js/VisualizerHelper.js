@@ -327,14 +327,12 @@ class VisualizerHelper {
     // 讓新任務的 varobj 建立和子節點抓取能立即排在最前面
     GdbVariable.clear_visualizer_queues();
     if (!("__guide" in global_variable)) global_variable.__guide = new Map();
-    let outputArray = [];
-    for (const inst of instruction) {
-      if (_graphics_task_id !== myGraphicsTaskId) {
-        return; // 已被更新任務取代
-      }
+    // 所有 {expr} token 同時送出並行處理（Promise.all），
+    // 避免因 {maze} 抓取 11 個子列時間過長，導致 TTS 結束後 autoplay 觸發
+    // 新的 graphics_instruction，取消仍在等待中的 {q} 等後續 token。
+    const outputArray = await Promise.all(instruction.map((inst) => {
       if (!(inst.startsWith('{') && inst.endsWith('}'))) {
-        outputArray.push(inst);
-        continue;
+        return Promise.resolve(inst);
       }
       const trimmedInst = inst.slice(1, -1).trim();
       let displayKey = funcName ? `${funcName}::${trimmedInst}` : trimmedInst;
@@ -410,8 +408,8 @@ class VisualizerHelper {
       }
       GdbVariable.create_variable(addrExpr, "expr", addrDisplayKey);
 
-      // 等待並獲取結果
-      const result = await new Promise((resolve) => {
+      // 等待並獲取結果（與其他 {expr} 並行）
+      return new Promise((resolve) => {
         let checkTicks = 0;
         const checkStore = () => {
           // 若有更新的 graphics_instruction 任務，立即放棄（不寫入 __latest_containers）
@@ -612,9 +610,7 @@ class VisualizerHelper {
         // 立即開始輪詢；若需等 changelist，checkStore 內部的版本號偵測會自動 spin。
         setTimeout(checkStore, 0);
       });
-      console.log(`單獨結果 for ${displayKey}: ${result}`);
-      outputArray.push(result);
-    }
+    }));
     const outputString = outputArray.join('');
     // 將字面上的 \n 替換為實際的換行符 \n
     const processedString = outputString.replace(/\\n/g, '\n');

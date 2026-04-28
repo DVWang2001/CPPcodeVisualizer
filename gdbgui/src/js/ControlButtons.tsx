@@ -94,16 +94,20 @@ class ControlButtons extends React.Component<{}, State> {
               // 切回編輯模式時，先終止 inferior（被偵錯的程式）
               const inf = this.state.inferior_program;
               if (inf === "running" || inf === "paused") {
-                // 在清除 paused_on_frame 之前，先把 selection state 切為 USER_SELECTION，
-                // 避免 FileOps._store_change_callback 因 paused_frame_fullname=null
-                // 而把 source_code_state 設成 NONE_AVAILABLE（顯示「no source code」）
                 store.set(
                   "source_code_selection_state",
                   constants.source_code_selection_states.USER_SELECTION
                 );
-                // GDB kill 指令可在 running / paused 兩種狀態下直接終止 inferior
                 GdbApi.run_gdb_command("kill");
                 Actions.inferior_program_exited();
+              }
+              // 若目前停在系統標頭檔（如 stl_bvector.h），fullname 不含 uploads/，
+              // isMonacoMainFile 條件不成立，edit_mode 視覺上無效。
+              // 清空 fullname 讓 Monaco 的 NONE_AVAILABLE 路徑接手。
+              const ftr = store.get("fullname_to_render") || "";
+              if (ftr && !ftr.includes("uploads/") && !ftr.includes("uploaded_scripts")) {
+                store.set("fullname_to_render", "");
+                store.set("source_code_state", constants.source_code_states.NONE_AVAILABLE);
               }
             }
             store.set("edit_mode", enteringEditMode);

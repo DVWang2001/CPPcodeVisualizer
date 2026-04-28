@@ -363,7 +363,20 @@ def create_and_upload():
     prefix = session["uploaded_prefix"]
 
     # Determine where to save the code
-    if filepath and os.path.exists(filepath):
+    _upload_dir_default = current_app.config.get("upload_folder") or os.path.join(
+        current_app.root_path, "uploads"
+    )
+    _upload_dir_abs = os.path.realpath(_upload_dir_default)
+
+    # 安全性檢查：只允許覆寫 uploads 目錄內的既有檔案，
+    # 防止 client 傳入系統路徑（如 /usr/include/.../stl_bvector.h）導致任意檔案覆寫
+    _filepath_safe = False
+    if filepath:
+        _filepath_abs = os.path.realpath(filepath)
+        if _filepath_abs.startswith(_upload_dir_abs + os.sep) and os.path.exists(filepath):
+            _filepath_safe = True
+
+    if _filepath_safe:
         src_path = filepath
         ext = os.path.splitext(src_path)[1]
         stored_filename = os.path.basename(src_path)

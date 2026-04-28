@@ -153,10 +153,24 @@ class CallGraph extends React.Component<{}, CallGraphState> {
              // 從 store 取最新狀態 (因為我們不用 state 了) -> 這裡需要改回用 state
             const locals = store.get("locals") || [];
 
+            const allExpressions = store.get("expressions") || [];
+
             const visNodes = gNodes.map((n: any) => {
+                // 展開 args 中的陣列/向量（若 expressions 有 children 資料）
+                const expandArg = (name: string, rawValue: any): string => {
+                    const displayKey = n.func_name ? `${n.func_name}::${name}` : name;
+                    const exprObj = allExpressions.find((obj: any) =>
+                        (obj.expression === displayKey || obj.expression === name) && obj.in_scope === "true");
+                    if (exprObj && exprObj.children && exprObj.children.length > 0) {
+                        const childVals = exprObj.children.map((c: any) => c.value ?? '?');
+                        return `[${childVals.join(', ')}]`;
+                    }
+                    return rawValue ?? '?';
+                };
+
                 let argsStr = "";
                 if (n.args && n.args.length > 0) {
-                    argsStr = n.args.map((a: any) => `${a.name}=${a.value ?? '?'}`).join(", ");
+                    argsStr = n.args.map((a: any) => `${a.name}=${expandArg(a.name, a.value)}`).join(", ");
                 }
                 let label = `${n.func_name}(${argsStr})`;
 
@@ -169,17 +183,33 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                 }
 
                 if (n.id === activeNodeId) {
+                    const expressions = store.get("expressions") || [];
+
+                    // 展開陣列/向量：若 varobj 有 children，以 [v0, v1, ...] 取代原始 value
+                    const expandedValue = (varName: string, rawValue: any): string => {
+                        const displayKey = n.func_name ? `${n.func_name}::${varName}` : varName;
+                        const exprObj = expressions.find((obj: any) =>
+                            (obj.expression === displayKey || obj.expression === varName) && obj.in_scope === "true");
+                        if (exprObj && exprObj.children && exprObj.children.length > 0) {
+                            const childVals = exprObj.children.map((c: any) => c.value ?? '?');
+                            return `[${childVals.join(', ')}]`;
+                        }
+                        return rawValue ?? '...';
+                    };
+
                     let trueLocals: any[] = [];
                     const paramNames = n.args ? n.args.map((a: any) => a.name) : [];
-                    
+
                     if (locals && locals.length > 0) {
                         trueLocals = locals.filter((l: any) => !paramNames.includes(l.name));
                         if (trueLocals.length > 0) {
-                            const localsStr = trueLocals.map((l: any) => `${l.name} = ${l.value ?? '...'}`).join('\n');
+                            const localsStr = trueLocals.map((l: any) =>
+                                `${l.name} = ${expandedValue(l.name, l.value)}`
+                            ).join('\n');
                             label += `\n\n[Local Variables]\n${localsStr}`;
                         }
                     }
-                    
+
                     color = { background: '#f1c40f', border: '#e67e22', highlight: { background: '#f39c12', border: '#e67e22' } };
 
                     // 檢查是否有自訂的 Call Graph 標籤
@@ -187,17 +217,15 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                     if (customLabels && n.line && customLabels[n.line]) {
                         const customData = customLabels[n.line];
                         label = `[${customData.labelName}]`;
-                        
-                        // 嘗試抓取指定的 {變數}
+
+                        // 嘗試抓取指定的 {變數}，若有 children 則展開顯示
                         if (customData.vars && customData.vars.length > 0) {
                             label += `\n\n`;
-                            const expressions = store.get("expressions") || [];
                             customData.vars.forEach((varName: string) => {
                                 const displayKey = n.func_name ? `${n.func_name}::${varName}` : varName;
-                                const exprObj = expressions.find((obj: any) => obj.expression === displayKey && obj.in_scope === "true") || 
+                                const exprObj = expressions.find((obj: any) => obj.expression === displayKey && obj.in_scope === "true") ||
                                                 expressions.find((obj: any) => obj.expression === varName && obj.in_scope === "true");
-                                                
-                                const varValue = exprObj && exprObj.value !== undefined ? exprObj.value : "...";
+                                const varValue = exprObj ? expandedValue(varName, exprObj.value) : "...";
                                 label += `${varName} = ${varValue}\n`;
                             });
                         }

@@ -337,35 +337,32 @@ class Breakpoints extends React.Component {
     }
   }
   static add_or_remove_breakpoint(fullname: any, line: any) {
-    if (Breakpoints.has_breakpoint(fullname, line)) {
-      Breakpoints.remove_breakpoint_if_present(fullname, line);
+    // 用行號比對（不比對 fullname），因為 import 後和編譯後 fullname 會不同，
+    // 若用 fullname 比對會找不到舊斷點，導致同一行出現兩個斷點。
+    const bkpts = store.get("breakpoints");
+    const existing = bkpts.find(
+      (b: any) => b.line == line && b.is_normal_breakpoint !== false && !b.is_child_breakpoint
+    );
+    if (existing) {
+      Breakpoints.delete_breakpoint(existing.number);
     } else {
       Breakpoints.add_breakpoint(fullname, line);
     }
   }
   static add_breakpoint(fullname: any, line: any) {
-    let inferior_program = store.get("inferior_program");
-    let currentCode = null;
-    if (typeof (window as any).gdbgui_get_editor_value === "function") {
-        currentCode = (window as any).gdbgui_get_editor_value();
-    }
-    const codeChanged = currentCode !== null && currentCode !== (window as any).last_compiled_code;
-
-    if (inferior_program === constants.inferior_states.unknown || inferior_program === constants.inferior_states.exited || codeChanged) {
-      let bkpt = {
-        fullname: fullname,
-        fullname_to_display: fullname,
-        line: line,
-        number: `frontend_${Math.random().toString(36).substr(2, 9)}`,
-        enabled: "y",
-        is_parent_breakpoint: false,
-        is_child_breakpoint: false,
-        is_normal_breakpoint: true
-      };
-      Breakpoints.save_breakpoint(bkpt);
-    } else {
-      GdbApi.run_gdb_command(GdbApi.get_insert_break_cmd(fullname, line));
-    }
+    // 永遠存成 frontend_*，等 Run 編譯完成後再統一送給 GDB，
+    // 不在點擊當下立即發送 -break-insert。
+    let bkpt = {
+      fullname: fullname,
+      fullname_to_display: fullname,
+      line: line,
+      number: `frontend_${Math.random().toString(36).substr(2, 9)}`,
+      enabled: "y",
+      is_parent_breakpoint: false,
+      is_child_breakpoint: false,
+      is_normal_breakpoint: true
+    };
+    Breakpoints.save_breakpoint(bkpt);
   }
   static has_breakpoint(fullname: any, line: any) {
     let bkpts = store.get("breakpoints");
@@ -454,6 +451,15 @@ class Breakpoints extends React.Component {
     // add the breakpoint if it's not stored already
     let bkpts = store.get("breakpoints");
     if (bkpts.indexOf(bkpt) === -1) {
+      // 同一行只允許一個 normal breakpoint（排除 child breakpoint）
+      if (bkpt.is_normal_breakpoint && !bkpt.is_child_breakpoint) {
+        const dupIdx = bkpts.findIndex(
+          (b: any) => b.line == bkpt.line && b.is_normal_breakpoint && !b.is_child_breakpoint
+        );
+        if (dupIdx !== -1) {
+          bkpts.splice(dupIdx, 1); // 移除舊的，以新的取代
+        }
+      }
       bkpts.push(bkpt);
       store.set("breakpoints", bkpts);
     }

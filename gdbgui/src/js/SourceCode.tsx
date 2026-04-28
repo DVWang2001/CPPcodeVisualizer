@@ -13,6 +13,7 @@ import constants from "./constants";
 import Actions from "./Actions";
 import { global_variable } from "./global_variable";
 import VisualizerHelper from "./VisualizerHelper";
+import GdbApi from "./GdbApi";
 
 type State = any;
 
@@ -77,6 +78,7 @@ class SourceCode extends React.Component<{}, State> {
       "source_code_infinite_scrolling",
       "tts_subtitle",
       "edit_mode",
+      "inferior_program",
     ]);
 
     // bind methods
@@ -930,6 +932,16 @@ class SourceCode extends React.Component<{}, State> {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // 若 GDB inferior 正在執行或暫停中，先強制終止，再進行 import
+    const infState = store.get("inferior_program");
+    if (
+      infState === constants.inferior_states.running ||
+      infState === constants.inferior_states.paused
+    ) {
+      GdbApi.run_gdb_command("kill");
+      Actions.inferior_program_exited();
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -961,6 +973,13 @@ class SourceCode extends React.Component<{}, State> {
             // 清除 last_compiled_code，避免 Run 誤判「程式碼未變」而跳過重新 compile
             (window as any).last_compiled_code = null;
           }
+          // 把 import 進來的程式碼存進 localStorage 的 fallback 鏈：
+          // get_monaco_value 在 Monaco 重新 mount 時會先查 gdbgui_last_edited_filename，
+          // 若不存此處，Monaco 重 mount 後會撈回舊檔案，導致 Run 時跑舊程式碼。
+          const _importKey = "__imported__";
+          localStorage.setItem("gdbgui_editor_code_" + _importKey, projectData.source_code);
+          localStorage.setItem("gdbgui_editor_filename_" + _importKey, _importKey);
+          localStorage.setItem("gdbgui_last_edited_filename", _importKey);
         }
 
         const newInputValues: any = {};
@@ -1025,6 +1044,14 @@ class SourceCode extends React.Component<{}, State> {
         // JSON 沒有 breakpoints 欄位：保留現有斷點，不做任何更改
 
         Actions.add_console_entries("Project imported successfully. Please click Run/Restart to recompile.", constants.console_entry_type.GDBGUI_OUTPUT);
+
+        // 清除 fullname 與 initialFullname，讓 render 回到 NONE_AVAILABLE 空白狀態，
+        // Monaco 路徑的 isMonacoMainFile 條件（initialFullname===null）因此成立，
+        // edit_mode 才能正確生效並顯示匯入的程式碼
+        this.initialFullname = null;
+        store.set("fullname_to_render", "");
+        store.set("source_code_state", constants.source_code_states.NONE_AVAILABLE);
+        store.set("edit_mode", true);
 
       } catch (err) {
         console.error("Error parsing project file", err);
@@ -1197,9 +1224,16 @@ class SourceCode extends React.Component<{}, State> {
       this.state.source_code_state === constants.source_code_states.ASSM_AND_SOURCE_CACHED ||
       this.state.source_code_state === constants.source_code_states.NONE_AVAILABLE;
 
-    // When Monaco is NOT shown (e.g. assembly view after program exit),
+    // 程式已啟動（running/paused/exited）且不在 edit_mode 時，切換到 code_body 樣式
+    const programStarted =
+      this.state.inferior_program === constants.inferior_states.running ||
+      this.state.inferior_program === constants.inferior_states.paused ||
+      this.state.inferior_program === constants.inferior_states.exited;
+    const showMonacoEditor = this.state.edit_mode || !programStarted;
+
+    // When Monaco is NOT shown (e.g. assembly view, or program running in code_body mode),
     // invalidate lastLoadedFilename so next render forces fresh load from localStorage
-    if (!showMonaco) {
+    if (!showMonaco || !showMonacoEditor) {
       this.lastLoadedFilename = null;
     }
 
@@ -1217,7 +1251,7 @@ class SourceCode extends React.Component<{}, State> {
       ftrForMonaco.includes("uploaded_scripts");
 
     const isNoneAvailable = this.state.source_code_state === constants.source_code_states.NONE_AVAILABLE;
-    if (showMonaco && (isNoneAvailable || (obj && obj.source_code_obj)) && isMonacoMainFile) {
+    if (showMonaco && showMonacoEditor && (isNoneAvailable || (obj && obj.source_code_obj)) && isMonacoMainFile) {
       // Keep initialFullname in sync so future checks remain stable
       this.initialFullname = ftrForMonaco;
 
@@ -1582,11 +1616,11 @@ class SourceCode extends React.Component<{}, State> {
             </div>
           </div>
           <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", fontFamily: "monospace", overflow: 'hidden' }}>
-            <div style={{ flex: this.state.edit_mode ? "0 0 70%" : "1", overflow: "auto" }}>
+            <div style={{ flex: this.state.edit_mode ? "0 0 70%" : "1", height: "100%", overflow: "auto" }}>
               <table
                 id="code_table"
                 className={this.state.current_theme}
-                style={{ width: "100%" }}
+                style={{ width: "100%", minWidth: "100%" }}
               >
                 <tbody id="code_body">{bodyRows}</tbody>
               </table>
@@ -1613,8 +1647,29 @@ class SourceCode extends React.Component<{}, State> {
     } else {
       return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
-          <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0 }}>
+          <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <strong>{this.state.fullname_to_render}</strong>
+            <div>
+              <button
+                onClick={this.triggerImport}
+                className="btn btn-default btn-sm"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                Import JSON
+              </button>
+              <input
+                type="file"
+                accept=".json"
+                style={{ display: "none" }}
+                ref={this.fileInputRef}
+                onChange={this.handleImport}
+              />
+              <button
+                onClick={this.exportProject}
+                className="btn btn-default btn-sm"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px" }}>
+                Export JSON
+              </button>
+            </div>
           </div>
           <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", fontFamily: "monospace", overflow: 'hidden' }}>
             <div style={{ flex: "1", overflow: "auto" }}>
@@ -1904,7 +1959,7 @@ class SourceCode extends React.Component<{}, State> {
         {this.get_linenum_td(line_num_being_rendered, gutter_cls)}
 
         <td style={{ verticalAlign: "top" }} className="loc">
-          <span className="wsp" contentEditable={true} suppressContentEditableWarning={true} dangerouslySetInnerHTML={{ __html: source }} />
+          <span className="wsp" dangerouslySetInnerHTML={{ __html: source }} />
         </td>
 
         <td className="assembly">{assembly_content}</td>
@@ -1912,15 +1967,27 @@ class SourceCode extends React.Component<{}, State> {
     );
   }
   get_linenum_td(linenum: any, gutter_cls = "") {
+    let dotColor = "";
+    if (gutter_cls === "breakpoint") dotColor = "#E53935";
+    else if (gutter_cls === "disabled_breakpoint") dotColor = "#EF9A9A";
+    else if (gutter_cls === "conditional_breakpoint") dotColor = "#FB8C00";
+
     return (
       <td
-        style={{ verticalAlign: "top", width: "30px" }}
-        className={"line_num " + gutter_cls}
-        onClick={() => {
-          this.click_gutter(linenum);
-        }}
+        style={{ verticalAlign: "top", width: "55px", minWidth: "55px", userSelect: "none", cursor: "pointer", padding: 0 }}
+        className="line_num"
+        onClick={() => this.click_gutter(linenum)}
       >
-        <div>{linenum}</div>
+        <div style={{ display: "flex", alignItems: "center", height: "19px" }}>
+          {/* glyph margin — 與 Monaco glyphMargin 對齊 */}
+          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "20px", height: "19px", flexShrink: 0 }}>
+            {dotColor && (
+              <span style={{ display: "inline-block", width: "12px", height: "12px", borderRadius: "50%", backgroundColor: dotColor, flexShrink: 0 }} />
+            )}
+          </span>
+          {/* line number */}
+          <span style={{ color: "#ababab", fontSize: "0.9em", paddingRight: "6px" }}>{linenum}</span>
+        </div>
       </td>
     );
   }
