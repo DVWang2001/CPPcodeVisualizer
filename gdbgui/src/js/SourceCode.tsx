@@ -17,6 +17,9 @@ import GdbApi from "./GdbApi";
 
 type State = any;
 
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 class SourceCode extends React.Component<{}, State> {
   static el_code_container = null; // todo: no jquery
   static el_code_container_node = null;
@@ -79,6 +82,8 @@ class SourceCode extends React.Component<{}, State> {
       "tts_subtitle",
       "edit_mode",
       "inferior_program",
+      "compile_errors",
+      "user_source_fullname",
     ]);
 
     // bind methods
@@ -168,6 +173,13 @@ class SourceCode extends React.Component<{}, State> {
     // Expose editor content getter for GdbApi to use
     (window as any).gdbgui_get_editor_value = () => this.editorInstance.getValue();
     (window as any).gdbgui_get_editor_filename = () => this.state.fullname_to_render;
+    // Navigate to a compile error line and set cursor
+    (window as any).gdbgui_navigate_to_error = (line: number, col: number) => {
+      if (!this.editorInstance) return;
+      this.editorInstance.revealLineInCenter(line);
+      this.editorInstance.setPosition({ lineNumber: line, column: col || 1 });
+      this.editorInstance.focus();
+    };
     // 不在這裡設 last_compiled_code：
     // 只有 GdbApi 成功編譯後才設，確保 "code unchanged" 判斷對應的是真正跑過的 binary，
     // 而不是 editor 的初始顯示值（可能來自 localStorage，與現有 binary 不一致）。
@@ -190,6 +202,23 @@ class SourceCode extends React.Component<{}, State> {
         this.dragHandleContainerRef.current.scrollTop = e.scrollTop;
       }
     });
+
+    // Glyph margin / line number click → toggle breakpoint (works in both edit and read-only modes)
+    editor.onMouseDown((e: any) => {
+      if (!this.monaco) return;
+      const T = this.monaco.editor.MouseTargetType;
+      if (e.target && (e.target.type === T.GUTTER_GLYPH_MARGIN || e.target.type === T.GUTTER_LINE_NUMBERS)) {
+        const line = e.target.position?.lineNumber;
+        if (line) Breakpoints.add_or_remove_breakpoint(this.state.fullname_to_render, line);
+      }
+    });
+
+    // Persist source text for Visualizer (survives code_body view switches)
+    const syncSourceText = () => {
+      try { (global_variable as any).__source_text = editor.getValue(); } catch (_) {}
+    };
+    syncSourceText();
+    editor.onDidChangeModelContent(syncSourceText);
 
     // Dynamic line count sync
     const updateLineCount = () => {
@@ -416,6 +445,15 @@ class SourceCode extends React.Component<{}, State> {
 
   updateDecorations = () => {
     if (!this.editorInstance || !this.monaco) return;
+    try {
+      this._updateDecorationsImpl();
+    } catch (e) {
+      console.warn("[updateDecorations] caught error:", e);
+    }
+  };
+
+  _updateDecorationsImpl = () => {
+    if (!this.editorInstance || !this.monaco) return;
 
     const { paused_on_frame, fullname_to_render } = this.state;
 
@@ -488,7 +526,55 @@ class SourceCode extends React.Component<{}, State> {
       }
     }
 
+    // Compile error/warning decorations and markers
+    const compileErrors: any[] = store.get("compile_errors") || [];
+    const model = this.editorInstance.getModel();
+    const totalLines = model ? model.getLineCount() : 0;
+
+    // Only include errors whose line is within the current model (code may have changed since last compile)
+    const validErrors = compileErrors.filter(
+      (err: any) => typeof err.line === "number" && err.line >= 1 && err.line <= totalLines
+    );
+
+    // Whole-line background decorations
+    validErrors.forEach((err: any) => {
+      if (err.severity === "error") {
+        newDecorations.push({
+          range: new this.monaco.Range(err.line, 1, err.line, 1),
+          options: { isWholeLine: true, className: "monaco-compile-error-line" },
+        });
+      } else if (err.severity === "warning") {
+        newDecorations.push({
+          range: new this.monaco.Range(err.line, 1, err.line, 1),
+          options: { isWholeLine: true, className: "monaco-compile-warning-line" },
+        });
+      }
+    });
+
     this.decorations = this.editorInstance.deltaDecorations(this.decorations, newDecorations);
+
+    // Monaco model markers — squiggly underlines, hover tooltips, overview ruler indicators
+    if (model) {
+      try {
+        const markers = validErrors.map((err: any) => ({
+          severity: err.severity === "error"
+            ? this.monaco.MarkerSeverity.Error
+            : err.severity === "warning"
+            ? this.monaco.MarkerSeverity.Warning
+            : this.monaco.MarkerSeverity.Info,
+          startLineNumber: err.line,
+          startColumn: Math.max(1, err.col || 1),
+          endLineNumber: err.line,
+          endColumn: model.getLineMaxColumn(err.line),
+          message: err.message,
+          source: "GCC",
+        }));
+        this.monaco.editor.setModelMarkers(model, "gcc", markers);
+      } catch (e) {
+        // Ignore marker errors (e.g., model replaced between calls)
+        this.monaco.editor.setModelMarkers(model, "gcc", []);
+      }
+    }
   };
 
   get_monaco_value(source_code_obj: any, num_lines: any) {
@@ -855,6 +941,12 @@ class SourceCode extends React.Component<{}, State> {
     }
   };
 
+  clearAllBreakpoints = () => {
+    store.set("breakpoints", []);
+    localStorage.setItem("breakpoints", JSON.stringify([]));
+    GdbApi.run_gdb_command(["-interpreter-exec console \"delete\"", GdbApi.get_break_list_cmd()]);
+  };
+
   exportProject = () => {
     const source_code = this.editorInstance ? this.editorInstance.getValue() : "";
     const line_data: any = {};
@@ -959,7 +1051,7 @@ class SourceCode extends React.Component<{}, State> {
             const lines = projectData.source_code.split("\n");
             const source_code_obj: any = {};
             lines.forEach((line: string, idx: number) => {
-              source_code_obj[idx + 1] = line;
+              source_code_obj[idx + 1] = escapeHtml(line);
             });
             const numLines = lines.length;
             // 用現有 fullname 或建立一個合成名稱
@@ -1224,16 +1316,11 @@ class SourceCode extends React.Component<{}, State> {
       this.state.source_code_state === constants.source_code_states.ASSM_AND_SOURCE_CACHED ||
       this.state.source_code_state === constants.source_code_states.NONE_AVAILABLE;
 
-    // 程式已啟動（running/paused/exited）且不在 edit_mode 時，切換到 code_body 樣式
-    const programStarted =
-      this.state.inferior_program === constants.inferior_states.running ||
-      this.state.inferior_program === constants.inferior_states.paused ||
-      this.state.inferior_program === constants.inferior_states.exited;
-    const showMonacoEditor = this.state.edit_mode || !programStarted;
+    // Always use Monaco (with readOnly when not in edit_mode) so syntax highlighting is always active.
+    const showMonacoEditor = true;
 
-    // When Monaco is NOT shown (e.g. assembly view, or program running in code_body mode),
-    // invalidate lastLoadedFilename so next render forces fresh load from localStorage
-    if (!showMonaco || !showMonacoEditor) {
+    // Invalidate lastLoadedFilename when assembly view is active (no Monaco)
+    if (!showMonaco) {
       this.lastLoadedFilename = null;
     }
 
@@ -1244,10 +1331,11 @@ class SourceCode extends React.Component<{}, State> {
     }
 
     const ftrForMonaco = this.state.fullname_to_render || "";
+    const userSourceFullname: string = (this.state as any).user_source_fullname || "";
     const isMonacoMainFile =
-      this.initialFullname === null ||
-      ftrForMonaco === this.initialFullname ||
-      ftrForMonaco.includes("uploads/") ||
+      ftrForMonaco === "" ||                                                        // no file → show Monaco
+      (userSourceFullname !== "" && ftrForMonaco === userSourceFullname) ||         // showing user's compiled source
+      ftrForMonaco.includes("uploads/") ||                                          // backward compat
       ftrForMonaco.includes("uploaded_scripts");
 
     const isNoneAvailable = this.state.source_code_state === constants.source_code_states.NONE_AVAILABLE;
@@ -1454,7 +1542,7 @@ class SourceCode extends React.Component<{}, State> {
       return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
           <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong>{this.state.fullname_to_render}</strong>
+            <strong>{(this.state.fullname_to_render || "").split(/[\\/]/).pop() || this.state.fullname_to_render}</strong>
             <div>
               <button
                 onClick={this.triggerImport}
@@ -1472,8 +1560,15 @@ class SourceCode extends React.Component<{}, State> {
               <button
                 onClick={this.exportProject}
                 className="btn btn-default btn-sm"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px" }}>
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
                 Export JSON
+              </button>
+              <button
+                onClick={this.clearAllBreakpoints}
+                className="btn btn-default btn-sm"
+                title="Clear all breakpoints"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", color: "#c00" }}>
+                ✕ Breakpoints
               </button>
             </div>
           </div>
@@ -1508,7 +1603,7 @@ class SourceCode extends React.Component<{}, State> {
                   this.handleEditorDidMount(getValue, editor);
                 }}
                 options={{
-                  readOnly: false,
+                  readOnly: !this.state.edit_mode,
                   glyphMargin: true,
                   lineNumbers: 'on',
                   scrollBeyondLastLine: false,
@@ -1565,11 +1660,7 @@ class SourceCode extends React.Component<{}, State> {
               </div>
             )}
           </div>
-          {this.state.tts_subtitle && (
-            <div style={{ padding: "8px 16px", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontSize: "14px", fontFamily: "sans-serif", borderTop: "1px solid #454545", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {this.state.tts_subtitle.text}
-            </div>
-          )}
+          {/* TTS 字幕已移至底部大字幕區顯示 */}
           {lineEditorModal}
         </div>
       );
@@ -1579,12 +1670,13 @@ class SourceCode extends React.Component<{}, State> {
 
     // Determine if this is the main editable file (to show input rows and Monaco)
     const ftr = this.state.fullname_to_render || "";
-    let isMainEditorFile = (this.initialFullname === null) || (ftr === this.initialFullname) || (ftr.includes("uploaded_scripts") || ftr.includes("uploads/"));
-
-    // Update initialFullname early during render if we detect a new main upload
-    if (isMainEditorFile && this.state.fullname_to_render) {
-      this.initialFullname = this.state.fullname_to_render;
-    }
+    const userSrc: string = (this.state as any).user_source_fullname || "";
+    let isMainEditorFile =
+      ftr === "" ||
+      (userSrc !== "" && ftr === userSrc) ||
+      ftr.includes("uploaded_scripts") ||
+      ftr.includes("uploads/") ||
+      ftr.startsWith("/workspace/");
 
     const inputRows = isMainEditorFile ? this.get_input_rows() : [];
 
@@ -1592,7 +1684,7 @@ class SourceCode extends React.Component<{}, State> {
       return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
           <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong>{this.state.fullname_to_render}</strong>
+            <strong>{(this.state.fullname_to_render || "").split(/[\\/]/).pop() || this.state.fullname_to_render}</strong>
             <div>
               <button
                 onClick={this.triggerImport}
@@ -1610,8 +1702,15 @@ class SourceCode extends React.Component<{}, State> {
               <button
                 onClick={this.exportProject}
                 className="btn btn-default btn-sm"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px" }}>
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
                 Export JSON
+              </button>
+              <button
+                onClick={this.clearAllBreakpoints}
+                className="btn btn-default btn-sm"
+                title="Clear all breakpoints"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", color: "#c00" }}>
+                ✕ Breakpoints
               </button>
             </div>
           </div>
@@ -1636,11 +1735,7 @@ class SourceCode extends React.Component<{}, State> {
               </div>
             )}
           </div>
-          {this.state.tts_subtitle && (
-            <div style={{ padding: "8px 16px", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontSize: "14px", fontFamily: "sans-serif", borderTop: "1px solid #454545", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {this.state.tts_subtitle.text}
-            </div>
-          )}
+          {/* TTS 字幕已移至底部大字幕區顯示 */}
           {lineEditorModal}
         </div>
       );
@@ -1648,7 +1743,7 @@ class SourceCode extends React.Component<{}, State> {
       return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
           <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong>{this.state.fullname_to_render}</strong>
+            <strong>{(this.state.fullname_to_render || "").split(/[\\/]/).pop() || this.state.fullname_to_render}</strong>
             <div>
               <button
                 onClick={this.triggerImport}
@@ -1666,8 +1761,15 @@ class SourceCode extends React.Component<{}, State> {
               <button
                 onClick={this.exportProject}
                 className="btn btn-default btn-sm"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px" }}>
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
                 Export JSON
+              </button>
+              <button
+                onClick={this.clearAllBreakpoints}
+                className="btn btn-default btn-sm"
+                title="Clear all breakpoints"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", color: "#c00" }}>
+                ✕ Breakpoints
               </button>
             </div>
           </div>
@@ -1682,11 +1784,7 @@ class SourceCode extends React.Component<{}, State> {
               </table>
             </div>
           </div>
-          {this.state.tts_subtitle && (
-            <div style={{ padding: "8px 16px", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontSize: "14px", fontFamily: "sans-serif", borderTop: "1px solid #454545", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {this.state.tts_subtitle.text}
-            </div>
-          )}
+          {/* TTS 字幕已移至底部大字幕區顯示 */}
         </div>
       );
     }
@@ -1712,7 +1810,7 @@ class SourceCode extends React.Component<{}, State> {
       if (savedCode && savedCode.trim()) {
         const lines = savedCode.split("\n");
         const source_code_obj: any = {};
-        lines.forEach((line: string, idx: number) => { source_code_obj[idx + 1] = line; });
+        lines.forEach((line: string, idx: number) => { source_code_obj[idx + 1] = escapeHtml(line); });
         FileOps.add_source_file_to_cache(fn, source_code_obj, Date.now() / 1000, lines.length);
         const missing = store.get("missing_files").filter((f: string) => f !== fn);
         store.set("missing_files", missing);
@@ -1918,6 +2016,18 @@ class SourceCode extends React.Component<{}, State> {
       row_class.push("flash");
     }
 
+    // Compile error/warning highlighting for code_body rows
+    // Only show when currently displaying the user's own source file (not a library header)
+    const _userSrcFn: string = (this.state as any).user_source_fullname || "";
+    const _ftrNow: string = this.state.fullname_to_render || "";
+    const _onUserFile = _userSrcFn !== "" && _ftrNow === _userSrcFn;
+    const compileErrors: any[] = _onUserFile ? ((this.state as any).compile_errors || []) : [];
+    const lineErrors = compileErrors.filter((e: any) => e.line === line_num_being_rendered);
+    const hasError   = lineErrors.some((e: any) => e.severity === "error");
+    const hasWarning = lineErrors.some((e: any) => e.severity === "warning");
+    if (hasError)        row_class.push("compile-error-tr");
+    else if (hasWarning) row_class.push("compile-warning-tr");
+
     let id = "";
     if (
       this.state.source_code_selection_state ===
@@ -1954,12 +2064,37 @@ class SourceCode extends React.Component<{}, State> {
       }
     }
 
+    // Build inline error/warning badges for this line
+    const errorBadges = lineErrors.map((e: any, i: number) => {
+      const isErr = e.severity === "error";
+      return (
+        <span
+          key={i}
+          className="compile-error-badge"
+          style={{
+            marginLeft: "10px",
+            fontSize: "0.82em",
+            color: isErr ? "#b71c1c" : "#e65100",
+            background: isErr ? "rgba(211,47,47,0.10)" : "rgba(245,124,0,0.10)",
+            borderRadius: "3px",
+            padding: "0 5px",
+            fontFamily: "sans-serif",
+            fontStyle: "italic",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {isErr ? "✖" : "⚠"} {e.message}
+        </span>
+      );
+    });
+
     return (
       <tr id={id} key={line_num_being_rendered} className={`${row_class.join(" ")}`}>
         {this.get_linenum_td(line_num_being_rendered, gutter_cls)}
 
         <td style={{ verticalAlign: "top" }} className="loc">
           <span className="wsp" dangerouslySetInnerHTML={{ __html: source }} />
+          {errorBadges}
         </td>
 
         <td className="assembly">{assembly_content}</td>

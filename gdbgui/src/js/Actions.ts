@@ -73,6 +73,9 @@ const Actions = {
       if (!(global_variable as any).__line_visit_count) (global_variable as any).__line_visit_count = {};
       (global_variable as any).__line_visit_count[_visitLine] =
         ((global_variable as any).__line_visit_count[_visitLine] || 0) + 1;
+      // 記錄已執行行號供 Visualizer 使用
+      if (!(global_variable as any).__visited_lines) (global_variable as any).__visited_lines = new Set<number>();
+      (global_variable as any).__visited_lines.add(_visitLine);
     }
     // 讀取指導，如果存在指導並且當前的frame有line這個資訊
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
@@ -95,6 +98,7 @@ const Actions = {
     store.set("current_register_values", {});
     store.set("inferior_pid", null);
     Actions.clear_program_state();
+    store.set("edit_mode", true);
   },
   /**
    * Request relevant store information from gdb to refresh UI

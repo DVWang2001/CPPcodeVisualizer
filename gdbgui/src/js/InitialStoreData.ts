@@ -63,6 +63,7 @@ const initial_store_data = {
   locals: [],
   threads: [],
   call_graph_updated: 0,
+  rbtree_updated: 0,
 
 
   // source files
@@ -121,7 +122,14 @@ const initial_store_data = {
   middle_panes_split_obj: {},
   gdbguiPty: null,
   tts_subtitle: null,
+  tts_focus_var: null as string | null,
+  condition_overlay: null as any,
   program_input: "",
+  compile_errors: [] as any[],
+  // Canonical path of the user's last successfully compiled source file.
+  // Unlike fullname_to_render (which GDB can change to library headers), this
+  // never changes except when the user compiles a new file.
+  user_source_fullname: null as string | null,
 };
 
 function get_stored(key: any, default_val: any) {

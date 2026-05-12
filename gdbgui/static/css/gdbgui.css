@@ -471,3 +471,28 @@ button:focus {
   margin-left: 5px;
   cursor: pointer;
 }
+
+/* Compile error / warning line backgrounds in Monaco editor */
+.monaco-compile-error-line {
+  background-color: rgba(211, 47, 47, 0.12) !important;
+  border-left: 3px solid #d32f2f;
+}
+.monaco-compile-warning-line {
+  background-color: rgba(245, 124, 0, 0.10) !important;
+  border-left: 3px solid #f57c00;
+}
+
+/* Compile error panel row hover */
+.compile-error-row:hover {
+  filter: brightness(0.94);
+}
+
+/* code_body table row highlighting */
+tr.compile-error-tr td {
+  background-color: rgba(211, 47, 47, 0.10) !important;
+  border-left: 3px solid #d32f2f;
+}
+tr.compile-warning-tr td {
+  background-color: rgba(245, 124, 0, 0.08) !important;
+  border-left: 3px solid #f57c00;
+}

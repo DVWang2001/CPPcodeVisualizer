@@ -282,7 +282,10 @@ class Breakpoints extends React.Component {
     if (store.disconnectComponentState) {
       store.disconnectComponentState(this);
     }
-    store.unsubscribeFromKeys(["breakpoints"], this.storeSubscriptionCallback);
+    // @ts-expect-error
+    if (store.unsubscribeFromKeys) {
+      store.unsubscribeFromKeys(["breakpoints"], this.storeSubscriptionCallback);
+    }
   }
   render() {
     let breakpoints_jsx = [];
@@ -340,11 +343,30 @@ class Breakpoints extends React.Component {
     // 用行號比對（不比對 fullname），因為 import 後和編譯後 fullname 會不同，
     // 若用 fullname 比對會找不到舊斷點，導致同一行出現兩個斷點。
     const bkpts = store.get("breakpoints");
-    const existing = bkpts.find(
+    const existings = bkpts.filter(
       (b: any) => b.line == line && b.is_normal_breakpoint !== false && !b.is_child_breakpoint
     );
-    if (existing) {
-      Breakpoints.delete_breakpoint(existing.number);
+    if (existings && existings.length > 0) {
+      const gdbOnes = existings.filter((b: any) => !String(b.number).startsWith('frontend_'));
+      const frontendOnes = existings.filter((b: any) => String(b.number).startsWith('frontend_'));
+
+      // Remove all matching entries from the store immediately
+      const allNums = new Set(existings.map((b: any) => b.number));
+      store.set("breakpoints", store.get("breakpoints").filter((b: any) => !allNums.has(b.number)));
+
+      if (gdbOnes.length > 0) {
+        // Use GDB's "clear FILE:LINE" to delete ALL breakpoints at this location in one shot.
+        // This handles hidden duplicates (e.g., from line-number relocation) that may exist in
+        // GDB but are not yet visible in the store.
+        const bkptFn: string = gdbOnes[0].fullname || gdbOnes[0].fullname_to_display || fullname;
+        const safeFn = bkptFn.replace(/\\/g, '/');
+        GdbApi.run_gdb_command([
+          `-interpreter-exec console "clear ${safeFn}:${line}"`,
+          GdbApi.get_break_list_cmd()
+        ]);
+      } else if (frontendOnes.length > 0) {
+        // All were frontend_* (pre-run state) — already removed from store, nothing in GDB
+      }
     } else {
       Breakpoints.add_breakpoint(fullname, line);
     }
@@ -413,10 +435,40 @@ class Breakpoints extends React.Component {
       .map((b: any) => parseInt(b.line));
   }
   static save_breakpoints(payload: any) {
-    store.set("breakpoints", []);
+    // Preserve frontend_* (user-set editor markers); only replace GDB-confirmed numeric ones
+    const existingFrontend = (store.get("breakpoints") || []).filter(
+      (b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_')
+    );
+    store.set("breakpoints", existingFrontend);
     if (payload && payload.BreakpointTable && payload.BreakpointTable.body) {
+      // Track locations already seen to detect GDB duplicates caused by line-number relocation.
+      // When the user shrinks a program, out-of-bounds breakpoints all relocate to the last line,
+      // piling up as separate GDB breakpoints. Deduplicate here and delete the extras from GDB.
+      const seenLocations = new Map<string, boolean>();
+      const dupNumbers: string[] = [];
+
       for (let breakpoint of payload.BreakpointTable.body) {
+        const num = String(breakpoint.number || "");
+        const isFrontend = num.startsWith('frontend_');
+        const isChild = !isFrontend && parseFloat(num) !== parseInt(num);
+        const isParent = breakpoint.addr === "(MULTIPLE)";
+        const isNormal = !isChild && !isParent && !isFrontend;
+
+        if (isNormal) {
+          const fn = breakpoint.fullname || (breakpoint["original-location"] || "").split(":")[0] || "";
+          const ln = String(breakpoint.line || "");
+          const key = `${fn}:${ln}`;
+          if (seenLocations.has(key)) {
+            dupNumbers.push(num);
+            continue; // skip saving; will delete from GDB below
+          }
+          seenLocations.set(key, true);
+        }
         Breakpoints.save_breakpoint(breakpoint);
+      }
+
+      if (dupNumbers.length > 0) {
+        GdbApi.run_gdb_command(dupNumbers.map((n: string) => GdbApi.get_delete_break_cmd(n)));
       }
     }
   }
@@ -425,15 +477,19 @@ class Breakpoints extends React.Component {
 
     bkpt.is_parent_breakpoint = bkpt.addr === "(MULTIPLE)";
 
-    // parent breakpoints have numbers like "5.6", whereas normal breakpoints and parent breakpoints have numbers like "5"
-    bkpt.is_child_breakpoint = parseInt(bkpt.number) !== parseFloat(bkpt.number);
+    if (typeof bkpt.number === 'string' && bkpt.number.startsWith('frontend_')) {
+      bkpt.is_child_breakpoint = false;
+    } else {
+      // parent breakpoints have numbers like "5.6", whereas normal breakpoints and parent breakpoints have numbers like "5"
+      bkpt.is_child_breakpoint = parseInt(bkpt.number) !== parseFloat(bkpt.number);
+    }
     bkpt.is_normal_breakpoint = !bkpt.is_parent_breakpoint && !bkpt.is_child_breakpoint;
 
     if (bkpt.is_child_breakpoint) {
       bkpt.parent_breakpoint_number = parseInt(bkpt.number);
     }
 
-    if ("fullname" in breakpoint && breakpoint.fullname) {
+    if ("fullname" in breakpoint && breakpoint.fullname !== undefined && breakpoint.fullname !== null) {
       // this is a normal/child breakpoint; gdb gives it the fullname
       bkpt.fullname_to_display = breakpoint.fullname;
     } else if ("original-location" in breakpoint && breakpoint["original-location"]) {

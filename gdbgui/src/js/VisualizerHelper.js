@@ -1,6 +1,7 @@
 import { global_variable } from "./global_variable";
 import { store } from "statorgfc";
 import GdbVariable from "./GdbVariable";
+import GdbApi from "./GdbApi";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
@@ -197,6 +198,22 @@ class VisualizerHelper {
     //   「第一次 | @3 第三次起 | @10 第十次以後」
     // 沒有 @N 時依序 1, 2, 3…（向下相容舊語法）：
     //   「第一次 | 第二次 | 第三次以後」
+    
+    // 套用 [speed:N] 設定（TTS 欄位自己設定的速度）
+    const speedTagRegex = /\[speed:([\d.]+)\]/g;
+    let speedTagMatch;
+    while ((speedTagMatch = speedTagRegex.exec(rawTtsContent)) !== null) {
+      const speed = parseFloat(speedTagMatch[1]);
+      if (!isNaN(speed) && speed >= 0.1 && speed <= 4.0) {
+        store.set('tts_speed', speed);
+      }
+    }
+
+    // 先從原始完整字串嘗試抓取全域指令（先移除 [speed:N] 避免它擋在前面）
+    const rawStripped = rawTtsContent.replace(/\[speed:[\d.]+\]/g, '').trimStart();
+    const globalCmdMatch = rawStripped.match(/^\[(next|step-in|step-out|continue)\]\s*/);
+    const globalAutoplayCommand = globalCmdMatch ? globalCmdMatch[1] : null;
+
     let ttsContent = rawTtsContent;
     if (rawTtsContent.includes('|')) {
       const parts = rawTtsContent.split('|').map(s => s.trim());
@@ -222,10 +239,14 @@ class VisualizerHelper {
       ttsContent = selected;
     }
 
-    // 解析自動播放指令前綴：[next] [step-in] [step-out] [continue]
-    const cmdMatch = ttsContent.match(/^\[(next|step-in|step-out|continue)\]\s*/);
-    const autoplayCommand = cmdMatch ? cmdMatch[1] : null;
-    const ttsText = cmdMatch ? ttsContent.slice(cmdMatch[0].length) : ttsContent;
+    // 解析自動播放指令前綴：先移除 [speed:N]，再抓 [next]/[continue] 等
+    const ttsContentNoSpeed = ttsContent.replace(/\[speed:[\d.]+\]/g, '').trimStart();
+    const cmdMatch = ttsContentNoSpeed.match(/^\[(next|step-in|step-out|continue)\]\s*/);
+    const autoplayCommand = cmdMatch ? cmdMatch[1] : globalAutoplayCommand;
+    // 去除所有控制標籤（[speed:N] 及任意數量的指令標籤）得到純說話文字
+    const ttsText = ttsContentNoSpeed
+      .replace(/^\s*(\[(next|step-in|step-out|continue)\]\s*)*/,'')
+      .trim();
 
     // 將 TTS 取出的字串（去除指令前綴後）依照大括號進行拆分
     const instruction = VisualizerHelper.extractBalancedBraces(ttsText);
@@ -287,12 +308,14 @@ class VisualizerHelper {
     const evaluateSpokenText = outputArray.join('');
     console.log(`[play_tts] Formatted text across evaluated array: ${evaluateSpokenText}`);
 
-    // 處理自定義發音 "字[音]" 轉換為 "音"
-    // 例如： "白[柏]起打了一套拳" -> "柏起打了一套拳"
+    // 處理自定義發音 "字[音]"：
+    //   音訊用：替換讀音（白[柏] → 柏），讓 TTS 讀對
+    //   字幕用：僅移除 [音] 標記，保留原字（白[柏] → 白）
     const regex = /([^\[\]]+)\[([^\[\]]+)\]/g;
     const finalSpokenText = evaluateSpokenText.replace(regex, (_match, prefix, pronunciation) => {
       return prefix.slice(0, -1) + pronunciation;
     });
+    const displayText = evaluateSpokenText.replace(/\[([^\[\]]+)\]/g, '');
 
     // 變數替換完成後確認任務是否仍有效（非同步查詢期間可能有新任務進來）
     if (myTaskId !== _tts_task_id) return;
@@ -310,13 +333,13 @@ class VisualizerHelper {
 
     // 先顯示字幕，再開始播放（避免 await 結束後字幕才設進去）
     store.set("tts_subtitle", {
-      text: finalSpokenText,
+      text: displayText,
       line: parseInt(frame_line),
       timestamp: Date.now()
     });
 
     // 向後端請求音訊並播放，完畢後執行 autoplayCommand
-    window._gdbgui_tts_playing = { fullText: finalSpokenText, subtitleText: finalSpokenText, autoplayCommand, lastCharIndex: 0 };
+    window._gdbgui_tts_playing = { fullText: finalSpokenText, subtitleText: displayText, autoplayCommand, lastCharIndex: 0 };
     const audioUrl = `/tts_audio?text=${encodeURIComponent(finalSpokenText)}`;
     await _tts_play_audio(audioUrl, myTaskId, autoplayCommand);
   }
@@ -330,6 +353,19 @@ class VisualizerHelper {
     // 所有 {expr} token 同時送出並行處理（Promise.all），
     // 避免因 {maze} 抓取 11 個子列時間過長，導致 TTS 結束後 autoplay 觸發
     // 新的 graphics_instruction，取消仍在等待中的 {q} 等後續 token。
+
+    // 預先掃描本次 instruction 中所有帶索引的容器，將其高亮陣列清空，
+    // 確保 {arr[i]} 與 {arr[j]} 能各自疊加，且不殘留上一步驟的高亮。
+    if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
+    for (const _inst of instruction) {
+      if (!(_inst.startsWith('{') && _inst.endsWith('}'))) continue;
+      const _t = _inst.slice(1, -1).trim();
+      const _m2D = _t.match(/^([^\[\]]+)\[([^\[\]]+)\]\[([^\[\]]+)\](?::(.+))?$/);
+      const _m1D = !_m2D && _t.match(/^([^\[\]]+)\[([^\[\]]+)\](?::(.+))?$/);
+      const _cName = _m2D ? _m2D[1].trim() : (_m1D ? _m1D[1].trim() : null);
+      if (_cName) global_variable.__latest_highlights.set(_cName, []);
+    }
+
     const outputArray = await Promise.all(instruction.map((inst) => {
       if (!(inst.startsWith('{') && inst.endsWith('}'))) {
         return Promise.resolve(inst);
@@ -338,13 +374,45 @@ class VisualizerHelper {
       let displayKey = funcName ? `${funcName}::${trimmedInst}` : trimmedInst;
       const expressions = store.get("expressions");
 
-      const indexMatch = trimmedInst.match(/^([^\[\]]+)\[([^\[\]]+)\]$/);
+      const indexMatch2D = trimmedInst.match(/^([^\[\]]+)\[([^\[\]]+)\]\[([^\[\]]+)\](?::(.+))?$/);
+      const indexMatch = trimmedInst.match(/^([^\[\]]+)\[([^\[\]]+)\](?::(.+))?$/);
       let baseContainer = null;
       let indexExpr = null;
       let idxDisplayKey = null;
-      if (indexMatch) {
+
+      let rowExpr = null;
+      let colExpr = null;
+      let rowDisplayKey = null;
+      let colDisplayKey = null;
+      let highlightColor = 'default'; // 'default'=黃色，或任意 CSS 色碼字串
+
+      if (indexMatch2D) {
+        baseContainer = indexMatch2D[1].trim();
+        rowExpr = indexMatch2D[2].trim();
+        colExpr = indexMatch2D[3].trim();
+        if (indexMatch2D[4]) highlightColor = indexMatch2D[4].trim();
+
+        if (/^\d+$/.test(rowExpr)) {
+          // static
+        } else {
+          rowDisplayKey = funcName ? `${funcName}::${rowExpr}` : rowExpr;
+          const existingRowVar = expressions.find(obj => obj.expression === rowDisplayKey && obj.in_scope === "true");
+          if (existingRowVar) GdbVariable.delete_gdb_variable(existingRowVar.name);
+          GdbVariable.create_variable(rowExpr, "expr", rowDisplayKey);
+        }
+
+        if (/^\d+$/.test(colExpr)) {
+          // static
+        } else {
+          colDisplayKey = funcName ? `${funcName}::${colExpr}` : colExpr;
+          const existingColVar = expressions.find(obj => obj.expression === colDisplayKey && obj.in_scope === "true");
+          if (existingColVar) GdbVariable.delete_gdb_variable(existingColVar.name);
+          GdbVariable.create_variable(colExpr, "expr", colDisplayKey);
+        }
+      } else if (indexMatch) {
         baseContainer = indexMatch[1].trim();
         indexExpr = indexMatch[2].trim();
+        if (indexMatch[3]) highlightColor = indexMatch[3].trim();
 
         if (/^\d+$/.test(indexExpr)) {
           if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
@@ -353,7 +421,9 @@ class VisualizerHelper {
           const baseContainerKey = baseContainer;
           global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parseInt(indexExpr);
           if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
-          global_variable.__latest_highlights.set(baseContainerKey, parseInt(indexExpr));
+          const hl0 = global_variable.__latest_highlights.get(baseContainerKey) || [];
+          hl0.push({ index: parseInt(indexExpr), color: highlightColor });
+          global_variable.__latest_highlights.set(baseContainerKey, hl0);
           indexExpr = null;
         } else {
           idxDisplayKey = funcName ? `${funcName}::${indexExpr}` : indexExpr;
@@ -363,6 +433,13 @@ class VisualizerHelper {
           }
           GdbVariable.create_variable(indexExpr, "expr", idxDisplayKey);
         }
+      }
+
+      // {arr[i]} / {arr[i][j]}：用 BASE CONTAINER 建立 varobj 而非元素值，
+      // 這樣才能得到完整的容器視覺化並套用 highlight；否則只會拿到 int 類型。
+      if (baseContainer && (indexMatch || indexMatch2D)) {
+        trimmedInst = baseContainer;
+        displayKey = funcName ? `${funcName}::${baseContainer}` : baseContainer;
       }
 
       // 若已有 in-scope 的 varobj（可能由其他函數 frame 建立，如 main::maze 在 solveMaze 中），
@@ -434,7 +511,57 @@ class VisualizerHelper {
           const expressions = store.get("expressions");
 
           let highlightIndexReady = true;
-          if (indexExpr) {
+          if (indexMatch2D && (rowExpr || colExpr)) {
+            let rowVal = undefined;
+            let colVal = undefined;
+
+            if (rowExpr) {
+              if (/^\d+$/.test(rowExpr)) {
+                rowVal = parseInt(rowExpr);
+              } else {
+                const rowObj = expressions.find(obj => obj.expression === rowDisplayKey && obj.in_scope === "true");
+                if (rowObj && rowObj.value !== undefined) rowVal = parseInt(rowObj.value);
+              }
+            } else {
+              rowVal = 0;
+            }
+
+            if (colExpr) {
+              if (/^\d+$/.test(colExpr)) {
+                colVal = parseInt(colExpr);
+              } else {
+                const colObj = expressions.find(obj => obj.expression === colDisplayKey && obj.in_scope === "true");
+                if (colObj && colObj.value !== undefined) colVal = parseInt(colObj.value);
+              }
+            } else {
+              colVal = 0;
+            }
+
+            if (rowVal === undefined || colVal === undefined) {
+              highlightIndexReady = false;
+            } else {
+              if (!isNaN(rowVal) && !isNaN(colVal)) {
+                let cols = 1;
+                const baseContainerKey = baseContainer;
+                if (global_variable.__latest_containers && global_variable.__latest_containers.has(baseContainerKey)) {
+                  const data = global_variable.__latest_containers.get(baseContainerKey);
+                  if (data.values && data.values.length > 0 && Array.isArray(data.values[0])) {
+                    cols = data.values[0].length;
+                  }
+                }
+                const parsedIdx = rowVal * cols + colVal;
+                if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
+                if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
+                global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parsedIdx;
+                if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
+                const hl2D = global_variable.__latest_highlights.get(baseContainerKey) || [];
+                hl2D.push({ index: parsedIdx, color: highlightColor });
+                global_variable.__latest_highlights.set(baseContainerKey, hl2D);
+              }
+              rowExpr = null;
+              colExpr = null;
+            }
+          } else if (indexExpr) {
             const idxObj = expressions.find(obj => obj.expression === idxDisplayKey && obj.in_scope === "true");
             if (!idxObj || idxObj.value === undefined) {
               highlightIndexReady = false;
@@ -446,7 +573,9 @@ class VisualizerHelper {
                 const baseContainerKey = baseContainer;
                 global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parsedIdx;
                 if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
-                global_variable.__latest_highlights.set(baseContainerKey, parsedIdx);
+                const hl1D = global_variable.__latest_highlights.get(baseContainerKey) || [];
+                hl1D.push({ index: parsedIdx, color: highlightColor });
+                global_variable.__latest_highlights.set(baseContainerKey, hl1D);
               }
               indexExpr = null;
             }
@@ -466,7 +595,9 @@ class VisualizerHelper {
             else if (ty.includes("std::__cxx11::basic_string") || ty.includes("std::string")) { containerName = "string"; }
             else if (ty.includes("std::__cxx11::list") || ty.includes("std::list")) containerName = "list";
             else if (ty.includes("std::array")) containerName = "array";
+            else if (ty.includes("std::unordered_set") || ty.includes("std::unordered_multiset")) containerName = "set";
             else if (ty.includes("std::set") || ty.includes("std::multiset")) containerName = "set";
+            else if (ty.includes("std::unordered_map") || ty.includes("std::unordered_multimap")) containerName = "unordered_map";
             else if (ty.includes("std::map") || ty.includes("std::multimap")) containerName = "map";
 
             // ── 建立 payload 函數 ──
@@ -558,6 +689,21 @@ class VisualizerHelper {
                       childValues.length === 1 && Array.isArray(childValues[0])) {
                     childValues = childValues[0];
                   }
+                } else if (containerName === "map" || containerName === "unordered_map") {
+                  // map 子節點是 {first = K, second = V} 結構，解析成 {key, value} 物件
+                  childValues = varObj.children.map(child => {
+                    const str = String(child.value || "").trim();
+                    // GDB pretty-printer 格式: {first = K, second = V}
+                    const firstIdx = str.indexOf('first = ');
+                    const secondIdx = str.lastIndexOf(', second = ');
+                    if (firstIdx !== -1 && secondIdx !== -1 && secondIdx > firstIdx) {
+                      const key = str.slice(firstIdx + 8, secondIdx).trim();
+                      const val = str.slice(secondIdx + 11).replace(/\s*\}$/, '').trim();
+                      return { key, value: val };
+                    }
+                    // 無法解析時使用 child.expression 當 key、value 當 value
+                    return { key: child.expression || String(varObj.children.indexOf(child)), value: str };
+                  });
                 } else {
                   childValues = varObj.children.map(child => child.value);
                 }
@@ -586,6 +732,12 @@ class VisualizerHelper {
                 global_variable.__containers_guide.get(frame_line).push(payload);
                 if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
                 global_variable.__latest_containers.set(trimmedInst, payload);
+
+                // Fetch RB-tree structure for ordered containers (values merged on frontend)
+                if (containerName === "set" || containerName === "multiset" ||
+                    containerName === "map" || containerName === "multimap") {
+                  VisualizerHelper.fetchRBTreeData(trimmedInst);
+                }
 
                 const valStr = childValues.join(', ');
                 resolve(`{${valStr}}`);
@@ -640,6 +792,38 @@ class VisualizerHelper {
       targetArray.push(part);
     }
     console.log(JSON.stringify(Object.fromEntries(global_variable.__guide)));
+  }
+
+  static fetchRBTreeData(varName) {
+    // Read only tree STRUCTURE from GDB (color + left/right links via base class).
+    // Values are NOT read here — the frontend merges them from the variable inspector
+    // by matching in-order position (both are sorted, so they align 1:1).
+    const safe = varName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const pyLines = [
+      'import gdb,json',
+      'def _w(p,ha):',
+      ' try:',
+      '  a=int(p)',
+      '  if a==0 or a==ha:return None',
+      '  d=p.dereference()',
+      '  c="R"if int(d["_M_color"])==0 else"B"',
+      '  return{"c":c,"l":_w(d["_M_left"],ha),"r":_w(d["_M_right"],ha)}',
+      ' except:return None',
+      'try:',
+      ' obj=gdb.parse_and_eval("' + safe + '")',
+      ' tr=obj["_M_t"]',
+      ' try:h=tr["_M_impl"]["_M_header"]',
+      ' except:h=tr["_M_header"]',
+      ' ha=int(h.address)',
+      ' root=_w(h["_M_parent"],ha)',
+      ' print("__GDBGUI_RBTREE__:"+json.dumps({"n":"' + safe + '","t":root}))',
+      'except:pass',
+    ];
+    const script = pyLines.join('\n');
+    const b64 = btoa(script);
+    GdbApi.run_gdb_command(
+      `-interpreter-exec console "python import base64; exec(base64.b64decode('${b64}').decode())"`
+    );
   }
 
   static extractBalancedBraces(str) {

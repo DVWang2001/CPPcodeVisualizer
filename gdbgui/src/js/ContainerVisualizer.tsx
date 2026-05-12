@@ -1,14 +1,155 @@
 import React from "react";
+import { store } from "statorgfc";
 import { global_variable } from "./global_variable";
 
 type ColorRule = { value: string; color: string };  // value = 數字字串, color = CSS色碼
+type HighlightEntry = { index: number; color: string }; // color = 'default' 或任意 CSS 色碼
+
+// 回傳該索引的 {bg, border} 樣式，未命中回傳 null。
+// 'default' 沿用原有黃色配色；其他值直接套用為 CSS 顏色。
+function getHighlight(idx: number, highlights: HighlightEntry[] | undefined): { bg: string; border: string } | null {
+    if (!highlights) return null;
+    const h = highlights.find(e => e.index === idx);
+    if (!h) return null;
+    if (h.color === 'default') return { bg: '#fff6b3', border: '#cca300' };
+    return { bg: h.color, border: h.color };
+}
+
+// ── Red-Black Tree simulation ──────────────────────────────────────────────
+
+interface RBNode {
+    key: string;
+    label: string;
+    color: 'R' | 'B';
+    left: RBNode | null;
+    right: RBNode | null;
+    parent: RBNode | null;
+}
+
+function rbCmp(a: string, b: string): number {
+    const na = parseFloat(a), nb = parseFloat(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function rbRotateLeft(root: RBNode, x: RBNode): RBNode {
+    const y = x.right!;
+    x.right = y.left;
+    if (y.left) y.left.parent = x;
+    y.parent = x.parent;
+    if (!x.parent) root = y;
+    else if (x === x.parent.left) x.parent.left = y;
+    else x.parent.right = y;
+    y.left = x; x.parent = y;
+    return root;
+}
+
+function rbRotateRight(root: RBNode, x: RBNode): RBNode {
+    const y = x.left!;
+    x.left = y.right;
+    if (y.right) y.right.parent = x;
+    y.parent = x.parent;
+    if (!x.parent) root = y;
+    else if (x === x.parent.right) x.parent.right = y;
+    else x.parent.left = y;
+    y.right = x; x.parent = y;
+    return root;
+}
+
+function rbInsertFix(root: RBNode, z: RBNode): RBNode {
+    while (z.parent && z.parent.color === 'R') {
+        const p = z.parent, g = p.parent;
+        if (!g) break;
+        if (p === g.left) {
+            const u = g.right;
+            if (u && u.color === 'R') {
+                p.color = 'B'; u.color = 'B'; g.color = 'R'; z = g;
+            } else {
+                if (z === p.right) { z = p; root = rbRotateLeft(root, z); }
+                z.parent!.color = 'B'; z.parent!.parent!.color = 'R';
+                root = rbRotateRight(root, z.parent!.parent!);
+            }
+        } else {
+            const u = g.left;
+            if (u && u.color === 'R') {
+                p.color = 'B'; u.color = 'B'; g.color = 'R'; z = g;
+            } else {
+                if (z === p.left) { z = p; root = rbRotateRight(root, z); }
+                z.parent!.color = 'B'; z.parent!.parent!.color = 'R';
+                root = rbRotateLeft(root, z.parent!.parent!);
+            }
+        }
+    }
+    root.color = 'B';
+    return root;
+}
+
+function rbInsert(root: RBNode | null, key: string, label: string): RBNode {
+    const z: RBNode = { key, label, color: 'R', left: null, right: null, parent: null };
+    let y: RBNode | null = null, x: RBNode | null = root;
+    while (x) { y = x; x = rbCmp(key, x.key) < 0 ? x.left : x.right; }
+    z.parent = y;
+    if (!y) root = z;
+    else if (rbCmp(key, y.key) < 0) y.left = z;
+    else y.right = z;
+    return rbInsertFix(root!, z);
+}
+
+// Compute black height for JS-simulated RB nodes.
+// bh(x) = # black nodes from x (inclusive, counting x if black) down to null (exclusive).
+function computeJsBH(node: RBNode | null): Map<RBNode, number> {
+    const map = new Map<RBNode, number>();
+    function bh(n: RBNode | null): number {
+        if (!n) return 0;
+        const lb = bh(n.left);
+        const val = lb + (n.color === 'B' ? 1 : 0);
+        map.set(n, val);
+        return val;
+    }
+    bh(node);
+    return map;
+}
+
+// Compute black height for GDB-provided nodes ({c:"R"|"B", l, r}).
+function computeGdbBH(root: any): Map<any, number> {
+    const map = new Map<any, number>();
+    function bh(n: any): number {
+        if (!n) return 0;
+        const lb = bh(n.l);
+        const val = lb + (n.c === 'B' ? 1 : 0);
+        map.set(n, val);
+        return val;
+    }
+    bh(root);
+    return map;
+}
+
+interface NodePos { node: RBNode; x: number; y: number; }
+
+function computeRBLayout(root: RBNode | null): NodePos[] {
+    const pos: NodePos[] = [];
+    const H = 54, V = 66;
+    const minRankOf = new Map<RBNode, number>();
+    const maxRankOf = new Map<RBNode, number>();
+    let rank = 0;
+    function assign(n: RBNode | null, depth: number) {
+        if (!n) return;
+        assign(n.left, depth + 1);
+        const r = rank++;
+        minRankOf.set(n, n.left != null ? minRankOf.get(n.left)! : r);
+        assign(n.right, depth + 1);
+        maxRankOf.set(n, n.right != null ? maxRankOf.get(n.right)! : r);
+        pos.push({ node: n, x: ((minRankOf.get(n)! + maxRankOf.get(n)!) / 2) * H, y: depth * V });
+    }
+    assign(root, 0);
+    return pos;
+}
 
 type State = {
     mazeMode: Set<string>;
-    // per-container 自訂顏色規則（不包含 0/1，那兩個固定）
     mazeColorRules: Map<string, ColorRule[]>;
-    // 新增規則時的暫存輸入
     mazeRuleInput: Map<string, { value: string; color: string }>;
+    rbTreeMode: Set<string>;
 };
 
 class ContainerVisualizer extends React.Component<{}, State> {
@@ -20,7 +161,11 @@ class ContainerVisualizer extends React.Component<{}, State> {
             mazeMode: new Set<string>(),
             mazeColorRules: new Map(),
             mazeRuleInput: new Map(),
+            rbTreeMode: new Set<string>(),
         };
+        // Re-render immediately when new RB-tree data arrives from GDB
+        // @ts-expect-error ts-migrate(2339) FIXME: connectComponentState
+        store.connectComponentState(this, ["rbtree_updated"]);
     }
 
     componentDidMount() {
@@ -61,8 +206,245 @@ class ContainerVisualizer extends React.Component<{}, State> {
         });
     };
 
+    toggleRBTreeMode = (name: string) => {
+        this.setState(prev => {
+            const next = new Set<string>(prev.rbTreeMode);
+            next.has(name) ? next.delete(name) : next.add(name);
+            return { rbTreeMode: next };
+        });
+    };
+
+    // ── Red-Black Tree renderer ───────────────────────────────────────────────
+
+    // Render an RB-tree from actual GDB data: {c:"R"|"B", k:string, v:string, l:..., r:...}
+    renderRBTreeFromGDB(gdbRoot: any): React.ReactNode {
+        if (!gdbRoot) return <div style={{ color: '#999', fontStyle: 'italic', padding: '8px' }}>empty</div>;
+
+        // Place each node at the horizontal midpoint of its subtree's inorder span.
+        // This keeps the root visually centered even for unbalanced trees.
+        type GPos = { node: any; x: number; y: number };
+        const positions: GPos[] = [];
+        const YSTEP = 64, XSTEP = 54, R = 22, PAD = R + 18;
+
+        const minRankOf = new Map<any, number>();
+        const maxRankOf = new Map<any, number>();
+        let rank = 0;
+        const assignPositions = (node: any, depth: number) => {
+            if (!node) return;
+            assignPositions(node.l, depth + 1);
+            const r = rank++;
+            minRankOf.set(node, node.l != null ? minRankOf.get(node.l)! : r);
+            assignPositions(node.r, depth + 1);
+            maxRankOf.set(node, node.r != null ? maxRankOf.get(node.r)! : r);
+            const x = ((minRankOf.get(node)! + maxRankOf.get(node)!) / 2) * XSTEP;
+            positions.push({ node, x, y: depth * YSTEP });
+        };
+        assignPositions(gdbRoot, 0);
+
+        // Build lookup by reference equality
+        const posMap = new Map<any, { x: number; y: number }>();
+        for (const p of positions) posMap.set(p.node, { x: p.x + PAD, y: p.y + PAD });
+
+        const maxX = Math.max(...positions.map(p => p.x));
+        const maxY = Math.max(...positions.map(p => p.y));
+        const svgW = maxX + PAD * 2;
+        const svgH = maxY + PAD * 2 + 14; // extra bottom space for bh labels
+
+        const bhMap = computeGdbBH(gdbRoot);
+
+        const edges: React.ReactNode[] = [];
+        const nodes: React.ReactNode[] = [];
+
+        const buildSVG = (node: any) => {
+            if (!node) return;
+            const p = posMap.get(node)!;
+            if (node.l) {
+                const lp = posMap.get(node.l)!;
+                edges.push(<line key={`eL-${node.k}-${p.x}`} x1={p.x} y1={p.y} x2={lp.x} y2={lp.y} stroke="#666" strokeWidth={1.5} />);
+                buildSVG(node.l);
+            }
+            if (node.r) {
+                const rp = posMap.get(node.r)!;
+                edges.push(<line key={`eR-${node.k}-${p.x}`} x1={p.x} y1={p.y} x2={rp.x} y2={rp.y} stroke="#666" strokeWidth={1.5} />);
+                buildSVG(node.r);
+            }
+            const isRed = node.c === 'R';
+            const lbl = node.v ? `${node.k}→${node.v}` : String(node.k);
+            const display = lbl.length > 9 ? lbl.slice(0, 8) + '…' : lbl;
+            const bh = bhMap.get(node) ?? 0;
+            nodes.push(
+                <g key={`n-${node.k}-${p.x}`}>
+                    <circle cx={p.x} cy={p.y} r={R}
+                        fill={isRed ? '#c62828' : '#263238'}
+                        stroke={isRed ? '#b71c1c' : '#37474f'}
+                        strokeWidth={2} />
+                    <text x={p.x} y={p.y + 5} textAnchor="middle"
+                        fill="#fff" fontSize={10} fontFamily="monospace" fontWeight="bold">
+                        {display}
+                    </text>
+                    {/* Black-height badge */}
+                    <rect x={p.x + R - 2} y={p.y - R - 14} width={22} height={13} rx={3}
+                        fill="#37474f" stroke="#546e7a" strokeWidth={1} />
+                    <text x={p.x + R + 9} y={p.y - R - 4} textAnchor="middle"
+                        fill="#b0bec5" fontSize={9} fontFamily="monospace">
+                        bh{bh}
+                    </text>
+                </g>
+            );
+        };
+        buildSVG(gdbRoot);
+
+        return (
+            <div>
+                <div style={{ overflowX: 'auto' }}>
+                    <svg width={svgW} height={svgH} style={{ display: 'block' }}>
+                        <g>{edges}</g>
+                        <g>{nodes}</g>
+                    </svg>
+                </div>
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '6px', fontFamily: 'sans-serif', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                    <span><span style={{ display: 'inline-block', width: 11, height: 11, borderRadius: '50%', backgroundColor: '#263238', border: '1px solid #555', marginRight: 4, verticalAlign: 'middle' }} />黑節點</span>
+                    <span><span style={{ display: 'inline-block', width: 11, height: 11, borderRadius: '50%', backgroundColor: '#c62828', border: '1px solid #b71c1c', marginRight: 4, verticalAlign: 'middle' }} />紅節點</span>
+                    <span style={{ color: '#4caf50' }}>實際 GDB 樹狀結構</span>
+                    <span style={{ color: '#b0bec5' }}>
+                        <span style={{ display: 'inline-block', padding: '0 4px', backgroundColor: '#37474f', border: '1px solid #546e7a', borderRadius: 3, marginRight: 4, fontSize: '9px' }}>bhN</span>
+                        黑色高度（從該節點往下的黑節點數，各路徑相等表示平衡）
+                    </span>
+                </div>
+            </div>
+        );
+    }
+
+    renderRBTreeSVG(values: any[], type: string, name?: string): React.ReactNode {
+        const isMap = type === 'map' || type === 'multimap';
+
+        // ── Primary path: GDB-provided structure + variable-inspector values ──
+        // GDB Python reads only colors/links (always works via base class).
+        // Values come from the variable inspector (already sorted in-order).
+        // We merge them by in-order index: both arrays are in the same sorted order.
+        const rbtreeData = (window as any).gdbgui_global_variable?.__rbtree_data;
+        const gdbStruct = name && rbtreeData ? rbtreeData[name] : undefined;
+
+        if (gdbStruct !== undefined) {
+            // Collect GDB nodes in in-order (sorted) sequence
+            const ordered: any[] = [];
+            const collectInorder = (node: any) => {
+                if (!node) return;
+                collectInorder(node.l);
+                ordered.push(node);
+                collectInorder(node.r);
+            };
+            collectInorder(gdbStruct);
+
+            // If the GDB structure is stale (node count doesn't match values), fall through
+            // to the JS simulation so we never show a mismatched tree.
+            if (ordered.length !== values.length) {
+                // gdbStruct is from a previous step; let the JS simulation below render instead
+            } else {
+                // Sort values to match in-order traversal order
+                const sorted = [...values].sort((a: any, b: any) => {
+                    const ka = isMap ? String(a.key) : String(a);
+                    const kb = isMap ? String(b.key) : String(b);
+                    return rbCmp(ka, kb);
+                });
+
+                // Assign value labels to nodes by position
+                ordered.forEach((node, i) => {
+                    const v = sorted[i];
+                    if (v !== undefined) {
+                        node.k = isMap ? String((v as any).key) : String(v);
+                        node.v = isMap ? String((v as any).value) : '';
+                    } else {
+                        node.k = '?'; node.v = '';
+                    }
+                });
+
+                return this.renderRBTreeFromGDB(gdbStruct);
+            }
+        }
+
+        // ── Fallback: JS simulation (used before first GDB read) ──
+        const isSet = type === 'set' || type === 'multiset';
+        const entries: { key: string; label: string }[] = isSet
+            ? (values as string[]).map(v => ({ key: String(v), label: String(v) }))
+            : (values as { key: string; value: string }[]).map(e => ({ key: e.key, label: `${e.key}→${e.value}` }));
+
+        entries.sort((a, b) => rbCmp(a.key, b.key));
+        let root: RBNode | null = null;
+        for (const e of entries) root = rbInsert(root, e.key, e.label);
+
+        if (!root) return <div style={{ color: '#999', fontStyle: 'italic', padding: '8px' }}>empty</div>;
+
+        const positions = computeRBLayout(root);
+        const R = 22, PAD = R + 18;
+        const maxX = Math.max(...positions.map(p => p.x));
+        const maxY = Math.max(...positions.map(p => p.y));
+        const svgW = maxX + PAD * 2;
+        const svgH = maxY + PAD * 2 + 14;
+        const OX = PAD, OY = PAD;
+
+        const posMap = new Map(positions.map(p => [p.node, { x: p.x + OX, y: p.y + OY }]));
+        const bhMap = computeJsBH(root);
+        const edges: React.ReactNode[] = [];
+        const nodes: React.ReactNode[] = [];
+
+        for (const { node } of positions) {
+            const p = posMap.get(node)!;
+            if (node.left) {
+                const lp = posMap.get(node.left)!;
+                edges.push(<line key={`eL-${node.key}`} x1={p.x} y1={p.y} x2={lp.x} y2={lp.y} stroke="#666" strokeWidth={1.5} />);
+            }
+            if (node.right) {
+                const rp = posMap.get(node.right)!;
+                edges.push(<line key={`eR-${node.key}`} x1={p.x} y1={p.y} x2={rp.x} y2={rp.y} stroke="#666" strokeWidth={1.5} />);
+            }
+            const isRed = node.color === 'R';
+            const lbl = node.label.length > 9 ? node.label.slice(0, 8) + '…' : node.label;
+            const bh = bhMap.get(node) ?? 0;
+            nodes.push(
+                <g key={`n-${node.key}`}>
+                    <circle cx={p.x} cy={p.y} r={R}
+                        fill={isRed ? '#c62828' : '#263238'}
+                        stroke={isRed ? '#b71c1c' : '#37474f'}
+                        strokeWidth={2} />
+                    <text x={p.x} y={p.y + 5} textAnchor="middle"
+                        fill="#fff" fontSize={10} fontFamily="monospace" fontWeight="bold">
+                        {lbl}
+                    </text>
+                    {/* Black-height badge */}
+                    <rect x={p.x + R - 2} y={p.y - R - 14} width={22} height={13} rx={3}
+                        fill="#37474f" stroke="#546e7a" strokeWidth={1} />
+                    <text x={p.x + R + 9} y={p.y - R - 4} textAnchor="middle"
+                        fill="#b0bec5" fontSize={9} fontFamily="monospace">
+                        bh{bh}
+                    </text>
+                </g>
+            );
+        }
+
+        return (
+            <div>
+                <div style={{ overflowX: 'auto' }}>
+                    <svg width={svgW} height={svgH} style={{ display: 'block' }}>
+                        <g>{edges}</g>
+                        <g>{nodes}</g>
+                    </svg>
+                </div>
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '6px', fontFamily: 'sans-serif', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                    <span><span style={{ display: 'inline-block', width: 11, height: 11, borderRadius: '50%', backgroundColor: '#263238', border: '1px solid #555', marginRight: 4, verticalAlign: 'middle' }} />黑節點</span>
+                    <span><span style={{ display: 'inline-block', width: 11, height: 11, borderRadius: '50%', backgroundColor: '#c62828', border: '1px solid #b71c1c', marginRight: 4, verticalAlign: 'middle' }} />紅節點</span>
+                    <span style={{ color: '#bbb' }}>依排序鍵值模擬插入</span>
+                    <span style={{ color: '#b0bec5' }}>
+                        <span style={{ display: 'inline-block', padding: '0 4px', backgroundColor: '#37474f', border: '1px solid #546e7a', borderRadius: 3, marginRight: 4, fontSize: '9px' }}>bhN</span>
+                        黑色高度（各路徑相等表示平衡）
+                    </span>
+                </div>
+            </div>
+        );
+    }
+
     // ── Maze renderer ────────────────────────────────────────────────────────
-    renderMaze(values: any[][], highlightIndex: number | undefined, colorRules: ColorRule[]) {
+    renderMaze(values: any[][], highlights: HighlightEntry[] | undefined, colorRules: ColorRule[]) {
         const CELL = 20; // px per cell
         const rows = values.length;
         const cols = rows > 0 ? (values[0] as any[]).length : 0;
@@ -76,10 +458,15 @@ class ContainerVisualizer extends React.Component<{}, State> {
             }
         }
 
-        // Map a flat highlight index → {row, col}
-        let highlightPos: { r: number; c: number } | null = null;
-        if (highlightIndex !== undefined && cols > 0) {
-            highlightPos = { r: Math.floor(highlightIndex / cols), c: highlightIndex % cols };
+        // 建立 "row,col" → 高亮色 的查表，支援多個高亮位置
+        const mazePosMap = new Map<string, string>();
+        if (highlights && cols > 0) {
+            for (const h of highlights) {
+                const r = Math.floor(h.index / cols);
+                const c = h.index % cols;
+                // 迷宮的 default 色改用橘紅（在深色格子上對比較高）
+                mazePosMap.set(`${r},${c}`, h.color === 'default' ? '#ff6b35' : h.color);
+            }
         }
 
         return (
@@ -88,10 +475,10 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     <div key={rowIdx} style={{ display: 'flex' }}>
                         {(row as any[]).map((cell: any, colIdx: number) => {
                             const cellNum = parseInt(cell);
-                            const isHL = highlightPos !== null && highlightPos.r === rowIdx && highlightPos.c === colIdx;
+                            const mazeHL = mazePosMap.get(`${rowIdx},${colIdx}`);
                             let bg: string;
-                            if (isHL) {
-                                bg = '#ff6b35';
+                            if (mazeHL) {
+                                bg = mazeHL;
                             } else if (cellNum === 0) {
                                 bg = '#f5f0e8';          // 地板（固定）
                             } else if (cellNum === 1) {
@@ -199,12 +586,13 @@ class ContainerVisualizer extends React.Component<{}, State> {
     }
 
     // ── Container shape renderer ──────────────────────────────────────────────
-    renderContainerShape(name: string, data: any, highlightIndex: number | undefined) {
+    renderContainerShape(name: string, data: any, highlights: HighlightEntry[] | undefined) {
         const { type, values } = data;
         const len = values.length;
         let shape = null;
 
         const isMazeMode = this.state.mazeMode.has(name);
+        const isRBTreeMode = this.state.rbTreeMode.has(name);
 
         switch (type) {
             case "string":
@@ -218,18 +606,33 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
                 if (is2D && isMazeMode) {
                     // ── Maze view ──
-                    shape = this.renderMaze(values, highlightIndex, this.state.mazeColorRules.get(name) || []);
+                    shape = this.renderMaze(values, highlights, this.state.mazeColorRules.get(name) || []);
                 } else if (is2D) {
                     // ── Default 2D grid view ──
+                    const cols = values.length > 0 ? (values[0] as any[]).length : 0;
+                    // 建立 "row,col" → 樣式 的查表，支援多個高亮位置
+                    const hlPosMap2D = new Map<string, { bg: string; border: string }>();
+                    if (highlights && cols > 0) {
+                        for (const h of highlights) {
+                            const hl = getHighlight(h.index, highlights);
+                            if (hl) hlPosMap2D.set(`${Math.floor(h.index / cols)},${h.index % cols}`, hl);
+                        }
+                    }
                     shape = (
                         <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '3px', backgroundColor: '#f9f9f9', padding: '6px', border: '2px solid #333', borderRadius: '6px' }}>
                             {values.map((row: any[], rowIdx: number) => (
                                 <div key={`row-${rowIdx}`} style={{ display: 'flex', gap: '3px' }}>
-                                    {(row as any[]).map((colVal: string, colIdx: number) => (
-                                        <div key={`col-${rowIdx}-${colIdx}`} style={{ border: '1px solid #888', padding: '4px 10px', minWidth: '35px', textAlign: 'center', backgroundColor: '#fff', borderRadius: '3px', boxShadow: '1px 1px 3px rgba(0,0,0,0.1)' }}>
-                                            {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
-                                        </div>
-                                    ))}
+                                    {(row as any[]).map((colVal: string, colIdx: number) => {
+                                        const hlInfo2D = hlPosMap2D.get(`${rowIdx},${colIdx}`);
+                                        const bgColor = hlInfo2D ? hlInfo2D.bg : '#fff';
+                                        const fontWeight = hlInfo2D ? 'bold' : 'normal';
+                                        const borderColor = hlInfo2D ? hlInfo2D.border : '#888';
+                                        return (
+                                            <div key={`col-${rowIdx}-${colIdx}`} style={{ border: `1px solid ${borderColor}`, padding: '4px 10px', minWidth: '35px', textAlign: 'center', backgroundColor: bgColor, fontWeight: fontWeight, borderRadius: '3px', boxShadow: '1px 1px 3px rgba(0,0,0,0.1)' }}>
+                                                {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
+                                            </div>
+                                        );
+                                    })}
                                     {row.length === 0 && <div style={{ padding: '4px 10px', color: '#999', fontStyle: 'italic', border: '1px dashed #999', backgroundColor: '#fff', borderRadius: '3px' }}>empty row</div>}
                                 </div>
                             ))}
@@ -240,9 +643,9 @@ class ContainerVisualizer extends React.Component<{}, State> {
                         <div style={{ display: 'inline-flex', verticalAlign: 'middle', alignItems: 'stretch', gap: '2px' }}>
                             <div style={{ display: 'inline-flex', border: '2px solid #333', borderRadius: '4px', backgroundColor: '#f9f9f9', overflow: 'hidden' }}>
                                 {values.map((v: string, idx: number) => {
-                                    const isHighlighted = highlightIndex === idx;
-                                    const bgColor = isHighlighted ? '#fff6b3' : 'transparent';
-                                    const fontWeight = isHighlighted ? 'bold' : 'normal';
+                                    const hlInfo = getHighlight(idx, highlights);
+                                    const bgColor = hlInfo ? hlInfo.bg : 'transparent';
+                                    const fontWeight = hlInfo ? 'bold' : 'normal';
                                     const borderRight = idx < len - 1 ? '1px solid #777' : 'none';
                                     return (
                                         <div key={`val-${idx}`} style={{ padding: '2px 8px', borderRight: borderRight, minWidth: '20px', textAlign: 'center', backgroundColor: bgColor, fontWeight: fontWeight }}>
@@ -264,10 +667,10 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 shape = (
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', verticalAlign: 'middle', flexWrap: 'wrap' }}>
                         {values.map((v: string, idx: number) => {
-                            const isHighlighted = highlightIndex === idx;
-                            const bgColor = isHighlighted ? '#fff6b3' : '#e6f2ff';
-                            const borderColor = isHighlighted ? '#cca300' : '#0056b3';
-                            const fontWeight = isHighlighted ? 'bold' : 'normal';
+                            const hlInfo = getHighlight(idx, highlights);
+                            const bgColor = hlInfo ? hlInfo.bg : '#e6f2ff';
+                            const borderColor = hlInfo ? hlInfo.border : '#0056b3';
+                            const fontWeight = hlInfo ? 'bold' : 'normal';
                             return (
                                 <React.Fragment key={idx}>
                                     <div style={{ padding: '4px 10px', borderRadius: '16px', border: `2px solid ${borderColor}`, backgroundColor: bgColor, minWidth: '30px', textAlign: 'center', fontWeight: fontWeight }}>
@@ -285,10 +688,10 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 shape = (
                     <div style={{ display: 'inline-flex', flexDirection: 'row', border: '3px solid #b30000', borderRight: 'none', borderTopLeftRadius: '8px', borderBottomLeftRadius: '8px', padding: '4px', minHeight: '30px', alignItems: 'center', backgroundColor: '#fff', verticalAlign: 'middle', gap: '4px' }}>
                         {values.map((v: string, idx: number) => {
-                            const isHighlighted = highlightIndex === idx;
-                            const bgColor = isHighlighted ? '#fff6b3' : '#ffe6e6';
-                            const borderColor = isHighlighted ? '#cca300' : '#ff6666';
-                            const fontWeight = isHighlighted ? 'bold' : 'normal';
+                            const hlInfo = getHighlight(idx, highlights);
+                            const bgColor = hlInfo ? hlInfo.bg : '#ffe6e6';
+                            const borderColor = hlInfo ? hlInfo.border : '#ff6666';
+                            const fontWeight = hlInfo ? 'bold' : 'normal';
                             return (
                                 <div key={idx} style={{ border: `2px solid ${borderColor}`, padding: '2px 8px', textAlign: 'center', backgroundColor: bgColor, minWidth: '30px', fontWeight: fontWeight }}>
                                     {v}
@@ -304,11 +707,11 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     <div style={{ display: 'inline-flex', alignItems: 'center', backgroundColor: '#f0fff0', borderTop: '3px solid #00b300', borderBottom: '3px solid #00b300', padding: '4px', gap: '4px', verticalAlign: 'middle', flexWrap: 'wrap' }}>
                         <span style={{ color: '#00b300', fontSize: '1.2em' }}>&larr;</span>
                         {values.map((v: string, idx: number) => {
-                            const isHighlighted = highlightIndex === idx;
-                            const bgColor = isHighlighted ? '#fff6b3' : '#fff';
-                            const borderColor = isHighlighted ? '#cca300' : '#66cc66';
-                            const fontWeight = isHighlighted ? 'bold' : 'normal';
-                            const borderStyle = isHighlighted ? '2px solid' : '2px dashed';
+                            const hlInfo = getHighlight(idx, highlights);
+                            const bgColor = hlInfo ? hlInfo.bg : '#fff';
+                            const borderColor = hlInfo ? hlInfo.border : '#66cc66';
+                            const fontWeight = hlInfo ? 'bold' : 'normal';
+                            const borderStyle = hlInfo ? '2px solid' : '2px dashed';
                             return (
                                 <div key={idx} style={{ border: `${borderStyle} ${borderColor}`, padding: '2px 8px', backgroundColor: bgColor, textAlign: 'center', fontWeight: fontWeight }}>
                                     {v}
@@ -325,10 +728,10 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     <div style={{ display: 'inline-flex', alignItems: 'center', borderBottom: '4px solid #6600cc', paddingBottom: '4px', gap: '6px', verticalAlign: 'middle', flexWrap: 'wrap' }}>
                         <span style={{ color: '#6600cc', fontSize: '1.2em' }}>&harr;</span>
                         {values.map((v: string, idx: number) => {
-                            const isHighlighted = highlightIndex === idx;
-                            const bgColor = isHighlighted ? '#fff6b3' : '#f9f2ff';
-                            const borderColor = isHighlighted ? '#cca300' : '#b366ff';
-                            const fontWeight = isHighlighted ? 'bold' : 'normal';
+                            const hlInfo = getHighlight(idx, highlights);
+                            const bgColor = hlInfo ? hlInfo.bg : '#f9f2ff';
+                            const borderColor = hlInfo ? hlInfo.border : '#b366ff';
+                            const fontWeight = hlInfo ? 'bold' : 'normal';
                             return (
                                 <div key={idx} style={{ padding: '4px 10px', border: `2px solid ${borderColor}`, backgroundColor: bgColor, borderRadius: '4px', textAlign: 'center', fontWeight: fontWeight }}>
                                     {v}
@@ -340,16 +743,81 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     </div>
                 );
                 break;
+            case "set":
+            case "multiset": {
+                if (isRBTreeMode) {
+                    shape = this.renderRBTreeSVG(values, type, name);
+                } else {
+                    shape = (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', verticalAlign: 'middle', flexWrap: 'wrap', border: '2px solid #009688', borderRadius: '20px', padding: '4px 10px', backgroundColor: '#e0f2f1' }}>
+                            <span style={{ color: '#009688', fontWeight: 'bold', fontSize: '0.85em', marginRight: '4px' }}>{`{`}</span>
+                            {values.map((v: string, idx: number) => {
+                                const hlInfo = getHighlight(idx, highlights);
+                                return (
+                                    <React.Fragment key={idx}>
+                                        <div style={{
+                                            padding: '2px 10px', borderRadius: '50px',
+                                            border: `2px solid ${hlInfo ? hlInfo.border : '#00796b'}`,
+                                            backgroundColor: hlInfo ? hlInfo.bg : '#fff',
+                                            fontWeight: hlInfo ? 'bold' : 'normal',
+                                            minWidth: '24px', textAlign: 'center', fontFamily: 'monospace',
+                                        }}>{v}</div>
+                                        {idx < len - 1 && <span style={{ color: '#00796b', fontSize: '0.85em' }}>,</span>}
+                                    </React.Fragment>
+                                );
+                            })}
+                            {len === 0 && <span style={{ color: '#999', fontStyle: 'italic' }}>empty</span>}
+                            <span style={{ color: '#009688', fontWeight: 'bold', fontSize: '0.85em', marginLeft: '4px' }}>{`}`}</span>
+                        </div>
+                    );
+                }
+                break;
+            }
+            case "map":
+            case "unordered_map":
+            case "multimap": {
+                if (isRBTreeMode) {
+                    shape = this.renderRBTreeSVG(values, type, name);
+                } else {
+                    const pairs: { key: string; value: string }[] = values as any;
+                    shape = (
+                        <table style={{ borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: '0.9em' }}>
+                            <thead>
+                                <tr>
+                                    <th style={{ padding: '3px 10px', backgroundColor: '#1565c0', color: '#fff', borderRadius: '4px 0 0 0', fontWeight: 'bold', textAlign: 'center' }}>key</th>
+                                    <th style={{ padding: '3px 10px', backgroundColor: '#1565c0', color: '#fff', borderRadius: '0 4px 0 0', fontWeight: 'bold', textAlign: 'center' }}>value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pairs.length === 0 && (
+                                    <tr><td colSpan={2} style={{ padding: '4px 12px', color: '#999', fontStyle: 'italic', textAlign: 'center', border: '1px solid #90caf9' }}>empty</td></tr>
+                                )}
+                                {pairs.map((pair, idx) => {
+                                    const hlInfo = getHighlight(idx, highlights);
+                                    return (
+                                        <tr key={idx} style={{ backgroundColor: hlInfo ? hlInfo.bg : (idx % 2 === 0 ? '#e3f2fd' : '#fff') }}>
+                                            <td style={{ padding: '3px 12px', border: '1px solid #90caf9', fontWeight: hlInfo ? 'bold' : 'normal', color: '#1a237e', borderRight: '2px solid #1565c0' }}>{pair.key}</td>
+                                            <td style={{ padding: '3px 12px', border: '1px solid #90caf9', fontWeight: hlInfo ? 'bold' : 'normal', color: '#333' }}>{pair.value}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    );
+                }
+                break;
+            }
             default:
                 shape = <span style={{ fontFamily: 'monospace', color: 'blue' }}>{values.join(", ")}</span>;
         }
 
         const displayCapacity = data.capacity !== undefined ? data.capacity : len;
         const showCapacitySize = (type === "vector");
+        const showSizeOnly = (type === "set" || type === "multiset" || type === "map" || type === "unordered_map" || type === "multimap");
 
-        // Show maze toggle only for 2D arrays/vectors
         const is2D = len > 0 && Array.isArray(values[0]);
         const showMazeToggle = is2D && (type === "vector" || type === "array");
+        const showRBTreeToggle = type === "set" || type === "multiset" || type === "map" || type === "unordered_map" || type === "multimap";
 
         return (
             <div key={name} style={{ marginBottom: "16px", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", backgroundColor: "#fff" }}>
@@ -365,16 +833,22 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                 Size: {len}, Capacity: {displayCapacity}
                             </span>
                         )}
+                        {showSizeOnly && (
+                            <span style={{ color: "#0066cc", fontSize: "0.85em", backgroundColor: "#e6f2ff", padding: "2px 6px", borderRadius: "4px" }}>
+                                Size: {len}
+                            </span>
+                        )}
                         {showMazeToggle && (
                             <label style={{ display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", fontWeight: "normal", fontSize: "0.85em", color: isMazeMode ? "#b05000" : "#555", userSelect: "none" }}>
-                                <input
-                                    type="checkbox"
-                                    checked={isMazeMode}
-                                    onChange={() => this.toggleMazeMode(name)}
-                                    style={{ cursor: "pointer", accentColor: "#b05000" }}
-                                />
+                                <input type="checkbox" checked={isMazeMode} onChange={() => this.toggleMazeMode(name)} style={{ cursor: "pointer", accentColor: "#b05000" }} />
                                 迷宮模式
-            </label>
+                            </label>
+                        )}
+                        {showRBTreeToggle && (
+                            <label style={{ display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", fontWeight: "normal", fontSize: "0.85em", color: isRBTreeMode ? "#c62828" : "#555", userSelect: "none" }}>
+                                <input type="checkbox" checked={isRBTreeMode} onChange={() => this.toggleRBTreeMode(name)} style={{ cursor: "pointer", accentColor: "#c62828" }} />
+                                紅黑樹
+                            </label>
                         )}
                     </div>
                 </div>
@@ -394,11 +868,11 @@ class ContainerVisualizer extends React.Component<{}, State> {
             return <div style={{ padding: "10px", color: "#666", fontStyle: "italic" }}>No container data available. Run and trace code to see containers.</div>;
         }
 
-        const latestHighlights = (global_variable as any).__latest_highlights as Map<string, number> || new Map<string, number>();
+        const latestHighlights = (global_variable as any).__latest_highlights as Map<string, HighlightEntry[]> || new Map<string, HighlightEntry[]>();
 
         const containerElements = Array.from(latestContainers.entries()).map(([name, data]) => {
-            const highlightIndex = latestHighlights.get(name);
-            return this.renderContainerShape(name, data, highlightIndex);
+            const highlights = latestHighlights.get(name);
+            return this.renderContainerShape(name, data, highlights);
         });
 
         return (

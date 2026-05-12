@@ -101,14 +101,12 @@ class ControlButtons extends React.Component<{}, State> {
                 GdbApi.run_gdb_command("kill");
                 Actions.inferior_program_exited();
               }
-              // 若目前停在系統標頭檔（如 stl_bvector.h），fullname 不含 uploads/，
-              // isMonacoMainFile 條件不成立，edit_mode 視覺上無效。
-              // 清空 fullname 讓 Monaco 的 NONE_AVAILABLE 路徑接手。
-              const ftr = store.get("fullname_to_render") || "";
-              if (ftr && !ftr.includes("uploads/") && !ftr.includes("uploaded_scripts")) {
-                store.set("fullname_to_render", "");
-                store.set("source_code_state", constants.source_code_states.NONE_AVAILABLE);
-              }
+              // 明確還原到使用者的源碼檔案（user_source_fullname），
+              // 不再用脆弱的 includes("uploads/") 路徑比對。
+              // 若從未編譯過，回到空白狀態讓 Monaco 顯示預設模板。
+              const userSrc: string | null = store.get("user_source_fullname") || null;
+              store.set("fullname_to_render", userSrc);
+              store.set("source_code_state", constants.source_code_states.NONE_AVAILABLE);
             }
             store.set("edit_mode", enteringEditMode);
           }}

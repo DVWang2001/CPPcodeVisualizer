@@ -1,12 +1,21 @@
 import hashlib
+import html as _html
 import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from werkzeug.utils import secure_filename
+
+from .sandbox.jail_manager import create_jail, destroy_jail
+
+try:
+    import requests as _requests
+except ImportError:
+    _requests = None
 
 from flask import (
     Blueprint,
@@ -42,6 +51,56 @@ _SANDBOX_DIR = Path(__file__).parent / "sandbox"
 _STUB_C    = _SANDBOX_DIR / "stub.c"
 _STUB_O    = _SANDBOX_DIR / "stub.o"
 _WRAPPER   = _SANDBOX_DIR / "wrapper.sh"
+
+def _setup_jail(exec_path: str, jail_dir: str) -> "str | None":
+    """
+    為已編譯的 binary 建立 chroot jail，並產生一個供 GDB exec-wrapper 使用的
+    per-session wrapper 腳本。回傳 wrapper 腳本的絕對路徑；失敗回傳 None。
+
+    Jail 結構（由 jail_manager.create_jail 建立）：
+      <jail_dir>/app/<binary>  — 執行檔
+      <jail_dir>/lib*, /usr    — 共享函式庫
+      <jail_dir>/tmp           — 可寫暫存
+      <jail_dir>/dev, /proc    — 裝置 / 行程資訊
+
+    wrapper 腳本邏輯（優先序）：
+      1. root        → chroot(8) + exec
+      2. bwrap 可用  → bubblewrap --bind jail / + exec
+      3. 其他        → 直接 exec（只有 ulimit 保護）
+    """
+    # 清除同 session 的舊 jail
+    if os.path.exists(jail_dir):
+        try:
+            destroy_jail(jail_dir)
+        except Exception:
+            pass
+
+    if not create_jail(exec_path, jail_dir):
+        return None
+
+    binary_name = os.path.basename(exec_path)
+    wrapper_path = os.path.join(jail_dir, "run.sh")
+    # Simple ulimit-only wrapper: chroot/bwrap change the process namespace in ways
+    # that prevent GDB from inserting breakpoints via ptrace (PIE address issue).
+    # Resource limits still protect against runaway programs.
+    script = f"""#!/bin/bash
+# GDB exec-wrapper — resource limits only (GDB-compatible)
+# GDB calls: run.sh <host_binary_path> [args...]
+HOST_BIN="$1"; shift
+ulimit -c 0       # no core dumps
+ulimit -u 64      # max 64 child processes (fork bomb protection)
+ulimit -t 30      # 30 s CPU time limit
+ulimit -v 1048576 # 1 GB virtual memory limit
+exec "$HOST_BIN" "$@"
+"""
+    try:
+        with open(wrapper_path, "w") as f:
+            f.write(script)
+        os.chmod(wrapper_path, 0o755)
+        return wrapper_path
+    except Exception:
+        return None
+
 
 # --wrap flags（LD 連結層完全封鎖，stub.c 有對應實作）
 # 原則：只 wrap 幾乎不會被 C runtime 自身使用的函式，
@@ -400,6 +459,12 @@ def create_and_upload():
     except Exception as e:
         return client_error({"message": "Failed to write source file", "detail": str(e)})
 
+    # Virtual path shown to users (hides real filesystem layout)
+    _vfilename = "main.cpp" if not _filepath_safe else os.path.basename(src_path)
+    virtual_src_path = f"/workspace/{_vfilename}"
+    session["virtual_src_path"] = virtual_src_path
+    session["real_src_path"] = src_path
+
     binary_path_result = None
     sandbox_warnings = []  # 靜態分析警告，回傳給前端
 
@@ -448,10 +513,10 @@ def create_and_upload():
                         capture_output=True, text=True, timeout=30,
                     )
                     if res2.returncode != 0:
-                        return client_error({"message": "Compilation failed", "stderr": res2.stderr})
+                        return client_error({"message": "Compilation failed", "stderr": res2.stderr.replace(src_path, virtual_src_path)})
                     sandbox_warnings.append("[sandbox] 沙箱連結失敗，以無沙箱模式編譯（請告知管理員）")
                 else:
-                    return client_error({"message": "Compilation failed", "stderr": res.stderr})
+                    return client_error({"message": "Compilation failed", "stderr": res.stderr.replace(src_path, virtual_src_path)})
             try:
                 os.chmod(exec_path, 0o755)
             except Exception:
@@ -466,6 +531,17 @@ def create_and_upload():
         session["uploaded_binary"] = exec_path
         binary_path_result = exec_path
         current_app.config["initial_binary_and_args"] = [exec_path]
+
+        # ── Chroot jail：為每次編譯建立隔離沙盒 ──────────────────────────────
+        jail_dir = os.path.join(upload_dir, "jails", prefix)
+        exec_wrapper_result = _setup_jail(exec_path, jail_dir)
+        if exec_wrapper_result:
+            session["exec_wrapper"] = exec_wrapper_result
+            logger.info(f"[jail] created jail at {jail_dir}, wrapper: {exec_wrapper_result}")
+        else:
+            session.pop("exec_wrapper", None)
+            logger.warning(f"[jail] jail creation failed for {exec_path}, running without chroot")
+
     else:
         # non-C source: just register the source file as uploaded_binary
         session["uploaded_binary"] = src_path
@@ -487,8 +563,11 @@ def create_and_upload():
         return jsonify({
             "status": "success",
             "binary_path": binary_path_result,
-            "source_path": src_path,
+            "source_path": virtual_src_path,       # virtual /workspace path (display only)
+            "gdb_source_path": src_path,           # real filesystem path (used for GDB operations)
             "input_path": input_path,
+            "exec_wrapper": session.get("exec_wrapper"),
+            "gdb_subst_cmd": f"set substitute-path {src_path} {virtual_src_path}",
             "sandbox_warnings": sandbox_warnings,
         })
 
@@ -516,6 +595,11 @@ def read_file():
                 return True  # highlight argument was invalid for some reason, default to true
 
     path = request.args.get("path")
+    # Translate virtual workspace path → real filesystem path
+    _virtual = session.get("virtual_src_path")
+    _real = session.get("real_src_path")
+    if _virtual and _real and path == _virtual:
+        path = _real
     start_line = int(request.args.get("start_line"))
     start_line = max(1, start_line)  # make sure it's not negative
     end_line = int(request.args.get("end_line"))
@@ -554,7 +638,7 @@ def read_file():
                 source_code = formatter.get_marked_up_list(tokens)
             else:
                 highlighted = False
-                source_code = raw_source_code_lines_of_interest
+                source_code = [_html.escape(line) for line in raw_source_code_lines_of_interest]
 
             return jsonify(
                 {
@@ -795,3 +879,72 @@ def send_signal_to_pid():
             % (signal_name, signal_value, pid_str)
         }
     )
+
+
+# ── AI 錯誤解釋 ───────────────────────────────────────────────────────────────
+
+_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+_NVIDIA_MODEL    = "meta/llama-3.3-70b-instruct"
+
+@blueprint.route("/api/explain_error", methods=["POST"])
+@authenticate
+def explain_error():
+    """接收編譯錯誤列表與原始碼，呼叫 NVIDIA NIM API 回傳繁體中文解釋。"""
+    if _requests is None:
+        return jsonify({"error": "伺服器缺少 requests 套件，請執行 pip install requests"}), 500
+
+    api_key = os.environ.get("NVIDIA_API_KEY", "").strip()
+    if not api_key:
+        return jsonify({"error": "伺服器尚未設定 NVIDIA_API_KEY 環境變數"}), 503
+
+    body = request.get_json(silent=True) or {}
+    errors  = body.get("errors",  [])
+    source  = body.get("source",  "")
+    language = body.get("language", "C++")
+
+    if not errors:
+        return jsonify({"error": "沒有錯誤資訊可分析"}), 400
+
+    error_block = "\n".join(
+        f"第 {e.get('line','?')} 行｜[{e.get('severity','error')}] {e.get('message','')}"
+        for e in errors
+    )
+
+    prompt = (
+        f"你是一位 {language} 教學助理，請用繁體中文回答。\n"
+        f"學生的程式發生以下編譯錯誤：\n\n"
+        f"{error_block}\n\n"
+        f"學生的原始碼如下：\n```{language}\n{source}\n```\n\n"
+        "請對每一個錯誤：\n"
+        "1. 用簡單易懂的話解釋錯誤原因\n"
+        "2. 提供修正方式（必要時附上修正後的程式碼片段）\n\n"
+        "回答請簡潔，適合初學者閱讀。"
+    )
+
+    try:
+        resp = _requests.post(
+            f"{_NVIDIA_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": _NVIDIA_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1024,
+                "temperature": 0.3,
+            },
+            timeout=30,
+        )
+    except Exception as e:
+        return jsonify({"error": f"呼叫 NVIDIA API 失敗：{e}"}), 502
+
+    if resp.status_code != 200:
+        return jsonify({"error": f"NVIDIA API 回傳錯誤 {resp.status_code}：{resp.text[:300]}"}), 502
+
+    try:
+        explanation = resp.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, ValueError) as e:
+        return jsonify({"error": f"解析 API 回應失敗：{e}"}), 502
+
+    return jsonify({"explanation": explanation})

@@ -20,6 +20,7 @@ import ContainerVisualizer from "./ContainerVisualizer";
 import CallGraph from "./CallGraph";
 import WatchTable from "./WatchTable";
 import MemoryWatch from "./MemoryWatch";
+import CompileErrors from "./CompileErrors";
 
 
 // Global registry so applyLayout() can open/close collapsers by id
@@ -241,6 +242,9 @@ class RightSidebar extends React.Component {
           }
           step_num={5}
         />
+
+        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+        <Collapser id="compile_errors" title="編譯錯誤 (Compile Errors)" collapsed={true} content={<CompileErrors />} />
 
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
         <Collapser id="memory_watch" title="記憶體與指標追蹤 (Memory Watch)" content={<MemoryWatch />} />

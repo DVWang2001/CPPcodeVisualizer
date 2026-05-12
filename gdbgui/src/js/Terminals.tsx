@@ -70,10 +70,12 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
       programOutput: "",
       programInput: localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "",
       showTerminals: false,
-      terminalWidthPct: 50,  // terminal 面板佔總寬度的百分比
+      terminalWidthPct: 50,
     } as any;
 
     this.sendInputToPty = this.sendInputToPty.bind(this);
+    // @ts-expect-error
+    store.connectComponentState(this, ["tts_subtitle", "edit_mode"]);
   }
 
   sendInputToPty() {
@@ -166,9 +168,12 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
 
   render() {
     const { showTerminals, terminalWidthPct } = this.state as any;
+    const ttsSubtitle: { text: string; line?: number } | null = (this.state as any).tts_subtitle || null;
+    const editMode: boolean = !!(this.state as any).edit_mode;
+
     return (
       <div className="w-full h-full relative flex flex-col">
-        {/* 查看 terminal 按鈕 */}
+        {/* 頂部工具列 */}
         <div style={{ flexShrink: 0, padding: "2px 6px", backgroundColor: "#1e1e1e", display: "flex", alignItems: "center", gap: 6 }}>
           <button
             onClick={() => (this as any).setState({ showTerminals: !showTerminals })}
@@ -180,6 +185,11 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
           >
             {showTerminals ? "隱藏 Terminal" : "查看 Terminal"}
           </button>
+          {ttsSubtitle && (
+            <span style={{ fontSize: 11, color: "#5cb85c", fontFamily: "sans-serif" }}>
+              ▶ TTS 播放中
+            </span>
+          )}
         </div>
 
         {/* 主要內容區：terminal 欄 + Standard I/O */}
@@ -206,88 +216,109 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
               />
             )}
 
-            {/* Standard Input / Output：terminal 隱藏時佔滿全寬 */}
-            <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }} className="bg-white relative flex flex-row">
-          {/* Left Half: Standard Input */}
-          <div className="flex-1 border-r-2 border-gray-300 flex flex-col">
-            <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 uppercase tracking-wider flex justify-between items-center">
-              <span>Standard Input</span>
-              <button
-                className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase"
-                onClick={this.sendInputToPty}
-                title="Send input to the running program (useful if program is waiting on cin)"
-              >
-                send input
-              </button>
-            </div>
-            <div className="flex-1 relative">
-              <MonacoEditor
-                height="100%"
-                language="plaintext"
-                theme="light"
-                value={this.state.programInput}
-                editorDidMount={(getValue: any, editor: any) => {
-                  editor.onDidChangeModelContent(() => {
-                    const val = getValue();
-                    this.setState({ programInput: val });
-                    store.set("program_input", val);
-                    localStorage.setItem("gdbgui_program_input", val);
-                  });
-                }}
-                options={{
-                  readOnly: false,
-                  minimap: { enabled: false },
-                  wordWrap: "on",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  fontFamily: "monospace",
-                  renderLineHighlight: "none",
-                  cursorBlink: "solid",
-                  matchBrackets: "never",
-                  hideCursorInOverviewRuler: true,
-                  overviewRulerLanes: 0
-                } as any}
-              />
-            </div>
-          </div>
+            {/* Standard Input / Output 或 TTS 字幕 */}
+            <div style={{ flex: 1, overflow: "hidden", minWidth: 0, position: "relative" }}>
 
-          {/* Right Half: Standard Output */}
-          <div className="flex-1 flex flex-col">
-            <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 flex justify-between uppercase tracking-wider">
-              <span>Standard Output</span>
-              <button
-                className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase"
-                onClick={() => this.setState({ programOutput: "" })}
-                title="Clear Output"
-              >
-                clear
-              </button>
-            </div>
-            <div className="flex-1 relative">
-              <MonacoEditor
-                height="100%"
-                language="plaintext"
-                theme="light"
-                value={this.state.programOutput}
-                editorDidMount={(getValue: any, editor: any) => {
-                  // Make it strictly Read-only since we moved input to the top pane
-                }}
-                options={{
-                  readOnly: true,
-                  minimap: { enabled: false },
-                  wordWrap: "on",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  fontFamily: "monospace",
-                  renderLineHighlight: "none",
-                  cursorBlink: "solid",
-                  matchBrackets: "never",
-                  hideCursorInOverviewRuler: true,
-                  overviewRulerLanes: 0
-                } as any}
-              />
-            </div>
-          </div>
+              {/* ── TTS 大字幕（非 edit 模式時黑色背景常駐，文字僅在播放時顯示）── */}
+              {!editMode && <div style={{
+                position: "absolute", inset: 0, zIndex: 10,
+                display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center",
+                backgroundColor: "#0d1117",
+                padding: "24px 48px",
+              }}>
+                {ttsSubtitle && ttsSubtitle.line !== undefined && (
+                  <div style={{
+                    marginBottom: "12px",
+                    fontSize: "13px", color: "#58a6ff",
+                    fontFamily: "monospace", letterSpacing: "0.05em",
+                  }}>
+                    第 {ttsSubtitle.line} 行
+                  </div>
+                )}
+                {ttsSubtitle && (
+                  <div style={{
+                    textAlign: "center",
+                    color: "#e6edf3",
+                    fontSize: "clamp(18px, 2.4vw, 32px)",
+                    fontFamily: "'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif",
+                    lineHeight: 1.8,
+                    maxWidth: "90%",
+                    fontWeight: 500,
+                    textShadow: "0 1px 6px rgba(0,0,0,0.8)",
+                  }}>
+                    {ttsSubtitle.text}
+                  </div>
+                )}
+              </div>}
+
+              {/* ── Standard I/O（edit 模式時可見，否則被黑色字幕層覆蓋）── */}
+              <div style={{ display: "flex", width: "100%", height: "100%", visibility: editMode ? "visible" : "hidden" }}
+                className="bg-white">
+                {/* Left: Standard Input */}
+                <div className="flex-1 border-r-2 border-gray-300 flex flex-col">
+                  <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 uppercase tracking-wider flex justify-between items-center">
+                    <span>Standard Input</span>
+                    <button
+                      className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase"
+                      onClick={this.sendInputToPty}
+                      title="Send input to the running program"
+                    >
+                      send input
+                    </button>
+                  </div>
+                  <div className="flex-1 relative">
+                    <MonacoEditor
+                      height="100%"
+                      language="plaintext"
+                      theme="light"
+                      value={this.state.programInput}
+                      editorDidMount={(getValue: any, editor: any) => {
+                        editor.onDidChangeModelContent(() => {
+                          const val = getValue();
+                          this.setState({ programInput: val });
+                          store.set("program_input", val);
+                          localStorage.setItem("gdbgui_program_input", val);
+                        });
+                      }}
+                      options={{
+                        readOnly: false, minimap: { enabled: false }, wordWrap: "on",
+                        scrollBeyondLastLine: false, automaticLayout: true, fontFamily: "monospace",
+                        renderLineHighlight: "none", cursorBlink: "solid",
+                        matchBrackets: "never", hideCursorInOverviewRuler: true, overviewRulerLanes: 0
+                      } as any}
+                    />
+                  </div>
+                </div>
+
+                {/* Right: Standard Output */}
+                <div className="flex-1 flex flex-col">
+                  <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 flex justify-between uppercase tracking-wider">
+                    <span>Standard Output</span>
+                    <button
+                      className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase"
+                      onClick={() => this.setState({ programOutput: "" })}
+                    >
+                      clear
+                    </button>
+                  </div>
+                  <div className="flex-1 relative">
+                    <MonacoEditor
+                      height="100%"
+                      language="plaintext"
+                      theme="light"
+                      value={this.state.programOutput}
+                      editorDidMount={() => {}}
+                      options={{
+                        readOnly: true, minimap: { enabled: false }, wordWrap: "on",
+                        scrollBeyondLastLine: false, automaticLayout: true, fontFamily: "monospace",
+                        renderLineHighlight: "none", cursorBlink: "solid",
+                        matchBrackets: "never", hideCursorInOverviewRuler: true, overviewRulerLanes: 0
+                      } as any}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

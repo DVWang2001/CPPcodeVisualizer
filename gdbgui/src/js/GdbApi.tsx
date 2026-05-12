@@ -12,6 +12,26 @@ import process_gdb_response from "./process_gdb_response";
 import React from "react";
 import io from "socket.io-client";
 import { global_variable } from "./global_variable";
+
+/** Parse GCC/Clang stderr into structured error objects. */
+function _parseCompileErrors(stderr: string): any[] {
+  if (!stderr) return [];
+  const re = /^(.+?):(\d+):(\d+):\s*(error|warning|note):\s*(.+)$/;
+  const result: any[] = [];
+  for (const line of stderr.split("\n")) {
+    const m = line.match(re);
+    if (m) {
+      result.push({
+        file: m[1],
+        line: parseInt(m[2]),
+        col: parseInt(m[3]),
+        severity: m[4],
+        message: m[5].trim(),
+      });
+    }
+  }
+  return result;
+}
 void React; // needed when using JSX, but not marked as used
 /* global debug */
 
@@ -192,6 +212,28 @@ const GdbApi = {
       }
     } catch (_) {}
 
+    // Synchronously flush Monaco editor content to localStorage before switching modes.
+    // The auto-save is debounced 300ms; if Run is clicked quickly, or if fullname_to_render=""
+    // (NONE_AVAILABLE state), the current code would be lost on compile error.
+    try {
+      const _editorVal: string = (window as any).gdbgui_get_editor_value?.() || "";
+      if (_editorVal.trim()) {
+        const _currentFn: string = store.get("fullname_to_render") || "";
+        const _userSrc: string = store.get("user_source_fullname") || "";
+        const _saveKey = _currentFn || _userSrc;
+        if (_saveKey) {
+          localStorage.setItem("gdbgui_editor_code_" + _saveKey, _editorVal);
+          localStorage.setItem("gdbgui_editor_filename_" + _saveKey, _saveKey);
+        }
+        // Always keep last-edited so NONE_AVAILABLE fallback works
+        localStorage.setItem("gdbgui_last_edited_filename", _saveKey || "__pending__");
+        if (!_saveKey) {
+          localStorage.setItem("gdbgui_editor_code___pending__", _editorVal);
+          localStorage.setItem("gdbgui_editor_filename___pending__", "__pending__");
+        }
+      }
+    } catch (_) {}
+
     // 按下 Run：切換至播放模式（隱藏 Guide/TTS 輸入欄）
     store.set("edit_mode", false);
 
@@ -303,31 +345,49 @@ const GdbApi = {
             "Accept": "application/json"
           },
           success: function (response: any) {
-            console.log("Compile response:", response); // Browser console
-
-            // Debug logging to GDBGUI console
-            let responseType = typeof response;
-            if (responseType === 'string') {
-              const preview = response.substring(0, 100).replace(/\n/g, ' ');
-              Actions.add_console_entries(
-                `Debug: Received string response (likely HTML): "${preview}..."`,
-                constants.console_entry_type.GDBGUI_OUTPUT
-              );
-            } else {
-              Actions.add_console_entries(
-                `Debug: Received JSON response: ${JSON.stringify(response)}`,
-                constants.console_entry_type.GDBGUI_OUTPUT
-              );
-            }
+            // Clear any previous compile errors on successful compile
+            store.set("compile_errors", []);
+            const registry = (window as any).gdbgui_collapser_registry || {};
+            if (registry["compile_errors"]) registry["compile_errors"].close();
 
             let binaryPath = null;
-            let sourcePath: string | null = null;
+            let sourcePath: string | null = null;   // virtual display path (/workspace/main.cpp)
+            let gdbSourcePath: string | null = null; // real filesystem path (for GDB commands)
+            let execWrapper: string = "";
+            let gdbSubstCmd: string = "";
             if (response && response.status === "success" && response.binary_path) {
               binaryPath = response.binary_path;
               sourcePath = response.source_path || null;
-              // 儲存編譯後的實際源碼路徑，供「code unchanged」重啟時使用
+              gdbSourcePath = response.gdb_source_path || sourcePath;
+              execWrapper = response.exec_wrapper || "";
+              gdbSubstCmd = response.gdb_subst_cmd || "";
+              // Store real source path for GDB operations (breakpoint insertion, re-runs)
+              if (gdbSourcePath) {
+                (window as any).gdbgui_real_source_path = gdbSourcePath;
+              }
+              // Store real source path for GDB "code unchanged" re-run
+              if (gdbSourcePath) {
+                (window as any).gdbgui_current_source_path = gdbSourcePath;
+              }
+              // Carry guide/TTS/layout data to new virtual path so user edits survive recompilation.
               if (sourcePath) {
-                (window as any).gdbgui_current_source_path = sourcePath;
+                const oldFn: string = store.get("fullname_to_render") || store.get("user_source_fullname") || "";
+                const candidates = Array.from(new Set([oldFn, ""])).filter(k => k !== sourcePath);
+                for (const prefix of ["gdbgui_guide_inputs_", "gdbgui_tts_inputs_", "gdbgui_layout_inputs_"]) {
+                  for (const key of candidates) {
+                    const saved = localStorage.getItem(prefix + key);
+                    if (saved && saved !== "{}") {
+                      // Only copy if destination is still empty
+                      const existing = localStorage.getItem(prefix + sourcePath);
+                      if (!existing || existing === "{}") {
+                        localStorage.setItem(prefix + sourcePath, saved);
+                      }
+                      break;
+                    }
+                  }
+                }
+                // Virtual display path is the single source of truth for UI state keying
+                store.set("user_source_fullname", sourcePath);
               }
             } else if (typeof response === 'string') {
               // Fallback: HTML returned
@@ -350,8 +410,8 @@ const GdbApi = {
             if (global_variable) {
               (global_variable as any).__guide = new Map();
               (global_variable as any).__containers_guide = new Map();
-              (global_variable as any).__source_code = null;
-              (global_variable as any).__source_code_fullname = null;
+              (global_variable as any).__rbtree_data = {};
+              // __source_code is intentionally kept so Visualizer stays visible during run
             }
 
             // 顯示沙箱警告（若靜態分析偵測到危險呼叫）
@@ -363,27 +423,46 @@ const GdbApi = {
 
             if (binaryPath) {
               Actions.add_console_entries(
-                `Compilation successful. Loading binary: ${binaryPath}`,
+                `Compilation successful. Source: ${sourcePath || binaryPath}`,
                 constants.console_entry_type.GDBGUI_OUTPUT
               );
 
               // Reload binary and run
+              const safeBinaryPath = binaryPath.replace(/\\/g, '/');
+              const safeWrapper = execWrapper.replace(/\\/g, '/');
               let cmds: string[] = [
                 "-interpreter-exec console \"delete\"",
-                `-file-exec-and-symbols ${binaryPath}`,
-                store.get("auto_add_breakpoint_to_main") ? "-break-insert main" : ""
+                // Clear any previous exec-wrapper before loading the new binary
+                "-gdb-set exec-wrapper \"\"",
+                `-file-exec-and-symbols "${safeBinaryPath}"`,
+                // Clear any stale substitute-path rules from previous sessions, then apply new one
+                `-interpreter-exec console "unset substitute-path"`,
+                gdbSubstCmd ? `-interpreter-exec console "${gdbSubstCmd}"` : "",
+                // Set chroot exec-wrapper so every -exec-run spawns the inferior inside the jail
+                safeWrapper ? `-gdb-set exec-wrapper "${safeWrapper}"` : "",
+                store.get("auto_add_breakpoint_to_main") ? "-break-insert -f main" : ""
               ];
 
-              // Insert frontend breakpoints — use actual source path to avoid GDB recording bare filename in DWARF
-              let bkpts = store.get("breakpoints") || [];
-              // Deduplicate by fullname:line before injection
+              // Breakpoints are editor markers decoupled from any specific binary.
+              // Drop GDB-confirmed numeric entries (ephemeral); keep only frontend_* (persistent markers).
               {
-                const seen = new Set<string>();
+                const allBkpts = store.get("breakpoints") || [];
+                const frontendOnly = allBkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
+                if (frontendOnly.length !== allBkpts.length) {
+                  store.set("breakpoints", frontendOnly);
+                  localStorage.setItem("breakpoints", JSON.stringify(frontendOnly));
+                }
+              }
+
+              // De-duplicate frontend_* by line number, then filter out-of-bounds lines.
+              let bkpts = store.get("breakpoints") || [];
+              {
+                const seen = new Set<number>();
                 const deduped = bkpts.filter((b: any) => {
                   if (!(typeof b.number === 'string' && b.number.startsWith('frontend_'))) return true;
-                  const key = `${b.fullname_to_display}:${b.line}`;
-                  if (seen.has(key)) return false;
-                  seen.add(key);
+                  const ln = parseInt(b.line);
+                  if (seen.has(ln)) return false;
+                  seen.add(ln);
                   return true;
                 });
                 if (deduped.length !== bkpts.length) {
@@ -393,32 +472,47 @@ const GdbApi = {
                 }
               }
               let frontend_bkpts = bkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
+
+              // Remove frontend breakpoints beyond the current file's line count to avoid
+              // GDB relocating them all to the last line and creating phantom breakpoints.
+              try {
+                const _ev: string = (window as any).gdbgui_get_editor_value?.() || "";
+                const _lineCount = _ev ? _ev.split(/\r?\n/).length : 0;
+                if (_lineCount > 0) {
+                  const _inBounds = frontend_bkpts.filter((b: any) => parseInt(b.line) <= _lineCount);
+                  if (_inBounds.length !== frontend_bkpts.length) {
+                    const _outNums = new Set(frontend_bkpts.filter((b: any) => parseInt(b.line) > _lineCount).map((b: any) => b.number));
+                    bkpts = bkpts.filter((b: any) => !_outNums.has(b.number));
+                    store.set("breakpoints", bkpts);
+                    localStorage.setItem("breakpoints", JSON.stringify(bkpts));
+                    frontend_bkpts = _inBounds;
+                  }
+                }
+              } catch (_) {}
+
               for (let b of frontend_bkpts) {
                 let cmd = "-break-insert -f";
-                if (b.enabled !== "y") {
-                  cmd += " -d";
-                }
-                if (b.cond) {
-                  cmd += ` -c "${b.cond}"`;
-                }
-                const targetFile = sourcePath || (window as any).gdbgui_current_source_path || b.fullname_to_display;
-                cmd += ` "${targetFile}:${b.line}"`;
+                if (b.enabled !== "y") cmd += " -d";
+                if (b.cond) cmd += ` -c "${b.cond}"`;
+                // Use real filesystem path for GDB breakpoint insertion (virtual path not in DWARF)
+                const targetFile = gdbSourcePath || (window as any).gdbgui_real_source_path || b.fullname_to_display;
+                cmd += ` "${targetFile.replace(/\\/g, '/')}:${b.line}"`;
                 cmds.push(cmd);
               }
-              // Remove frontend breakpoints from store so they don't duplicate when GDB returns real ones
-              store.set("breakpoints", bkpts.filter((b: any) => !(typeof b.number === 'string' && b.number.startsWith('frontend_'))));
+              // frontend_* breakpoints are kept in the store — they are persistent editor markers.
 
               cmds = cmds.concat([
                 "-break-list",
                 "-exec-run"
               ]).filter((c: string) => c !== "");
 
-              // Clear Visualizer panel state
+              // Clear per-run state; keep __source_code so Visualizer stays visible
               if (global_variable) {
                 (global_variable as any).__guide = new Map();
                 (global_variable as any).__containers_guide = new Map();
-                (global_variable as any).__source_code = null;
-                (global_variable as any).__source_code_fullname = null;
+                (global_variable as any).__rbtree_data = {};
+                (global_variable as any).__visited_lines = new Set<number>();
+                (global_variable as any).__line_visit_count = {};
               }
 
               GdbApi.run_gdb_command(cmds);
@@ -447,12 +541,19 @@ const GdbApi = {
               `Compilation failed: ${msg}`,
               constants.console_entry_type.STD_ERR
             );
-            if (xhr.responseJSON && xhr.responseJSON.stderr) {
-              Actions.add_console_entries(
-                xhr.responseJSON.stderr,
-                constants.console_entry_type.STD_ERR
-              );
+            const stderr = (xhr.responseJSON && xhr.responseJSON.stderr) ? xhr.responseJSON.stderr : "";
+            if (stderr) {
+              Actions.add_console_entries(stderr, constants.console_entry_type.STD_ERR);
             }
+            // Parse structured errors and store them; auto-open the error panel
+            const errors = _parseCompileErrors(stderr);
+            store.set("compile_errors", errors);
+            if (errors.length > 0) {
+              const registry = (window as any).gdbgui_collapser_registry || {};
+              if (registry["compile_errors"]) registry["compile_errors"].open();
+            }
+            // Return to edit mode so the user sees their code (with error markers), not "no source code"
+            store.set("edit_mode", true);
           }
         });
         return;
@@ -726,19 +827,33 @@ const GdbApi = {
     ];
     // add breakpoint if we don't already have one
     if (store.get("auto_add_breakpoint_to_main")) {
-      cmds.push("-break-insert main");
+      cmds.push("-break-insert -f main");
+    }
+
+    // Drop GDB-confirmed numeric breakpoints (ephemeral); keep only frontend_* (persistent markers).
+    {
+      const allBkpts = store.get("breakpoints") || [];
+      const frontendOnly = allBkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
+      if (frontendOnly.length !== allBkpts.length) {
+        store.set("breakpoints", frontendOnly);
+        localStorage.setItem("breakpoints", JSON.stringify(frontendOnly));
+      }
     }
 
     let bkpts = store.get("breakpoints") || [];
-    let frontend_bkpts = bkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
+    const frontend_bkpts = bkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
+
+    // Prefer real filesystem path for GDB (virtual /workspace paths are not in DWARF)
+    const _realSrcForBkpt = (window as any).gdbgui_real_source_path || "";
     for (let b of frontend_bkpts) {
       let cmd = "-break-insert -f";
       if (b.enabled !== "y") cmd += " -d";
       if (b.cond) cmd += ` -c "${b.cond}"`;
-      cmd += ` "${b.fullname_to_display}:${b.line}"`;
+      const bkptFile = _realSrcForBkpt || b.fullname_to_display;
+      cmd += ` "${bkptFile.replace(/\\/g, '/')}:${b.line}"`;
       cmds.push(cmd);
     }
-    store.set("breakpoints", bkpts.filter((b: any) => !(typeof b.number === 'string' && b.number.startsWith('frontend_'))));
+    // frontend_* breakpoints are kept in the store — they are persistent editor markers.
 
     cmds.push(GdbApi.get_break_list_cmd());
     return cmds;
@@ -786,11 +901,11 @@ GdbApi.socket = socket;
   // 恢復播放狀態，讓字幕顯示正確文字
   (window as any)._gdbgui_tts_playing = {
     fullText: resume.fullText ?? '',
-    subtitleText: resume.fullText ?? '',
+    subtitleText: resume.subtitleText ?? resume.fullText ?? '',
     autoplayCommand: resume.autoplayCommand,
     lastCharIndex: 0,
   };
-  store.set("tts_subtitle", { text: resume.fullText ?? '', line: null, timestamp: Date.now() });
+  store.set("tts_subtitle", { text: resume.subtitleText ?? resume.fullText ?? '', line: null, timestamp: Date.now() });
 
   // 使用 audio API 從暫停點繼續
   (window as any)._tts_api?.resume(

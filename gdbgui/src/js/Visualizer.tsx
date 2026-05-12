@@ -5,6 +5,7 @@ Animations.tsx就是用來給我弄視覺化的
 import React from "react";
 import { global_variable } from "./global_variable";
 import { store } from "statorgfc";
+import constants from "./constants";
 
 type State = any;
 
@@ -16,7 +17,23 @@ class Visualizer extends React.Component<{}, State> {
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
       "current_theme",
+      "expressions",
+      "inferior_program",
     ]);
+  }
+
+  resolveGuideText(raw: string): string {
+    if (!raw || !raw.includes("{")) return raw;
+    const expressions: any[] = store.get("expressions") || [];
+    return raw.replace(/\{([^{}]+)\}/g, (_match, varName) => {
+      const name = varName.trim();
+      // Try exact match first, then suffix match (handles funcName::varName)
+      const found = expressions.find(
+        (obj: any) => obj.in_scope === "true" && obj.value !== undefined &&
+          (obj.expression === name || obj.expression.endsWith("::" + name))
+      );
+      return found ? found.value : `{${name}}`;
+    });
   }
   static clear() {
     if ("__guide" in global_variable) {
@@ -55,62 +72,108 @@ class Visualizer extends React.Component<{}, State> {
 
 
   renderSourceCode() {
-    const sourceCode = (global_variable as any).__source_code;
-    const fullname = (global_variable as any).__source_code_fullname;
-    const guide = (global_variable as any).__guide as Map<string, any[]>;
-    if (!sourceCode) {
-      return <div>No source code available</div>;
+    const sourceText: string = (global_variable as any).__source_text || "";
+    const lineGuide: Record<string | number, string> = (global_variable as any).__line || {};
+    const guide: Map<string, any[]> = (global_variable as any).__guide;
+
+    if (!sourceText) {
+      return <div style={{ padding: "8px", color: "#888", fontSize: "12px" }}>尚未載入源碼，請先在編輯器開啟並編譯。</div>;
     }
 
-    // Calculate max guide length
-    const allGuideData = Object.keys(sourceCode).map(lineNum => guide ? guide.get(lineNum) : undefined).filter(g => g && g.length > 0);
-    const maxGuideLength = allGuideData.length > 0 ? Math.max(...allGuideData.map(g => g!.length)) : 0;
-    const rows = Object.entries(sourceCode).map(([lineNum, code]) => {
-      const guideData = guide ? guide.get(lineNum) : undefined;
-      const guideCells = [];
-      for (let i = 0; i < maxGuideLength; i++) {
-        const valueStr = guideData && guideData[i] ? guideData[i] : '';
-        let cellContent: any = valueStr;
+    const lines = sourceText.split(/\r?\n/);
+    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
 
-        if (typeof valueStr === 'string' && valueStr.startsWith('{') && valueStr.includes('"type"')) {
-          try {
-            const data = JSON.parse(valueStr);
-            if (data.values) {
-              cellContent = <span style={{ fontFamily: 'monospace', color: 'blue' }}>{`{${data.values.join(', ')}}`}</span>;
-            } else {
-              cellContent = <span style={{ fontFamily: 'monospace', color: 'blue' }}>{valueStr}</span>;
-            }
-          } catch (e) {
-            // JSON 解析失敗，回退成純字串
-            cellContent = <span style={{ fontFamily: 'monospace', color: 'blue' }}>{valueStr}</span>;
-          }
-        } else if (valueStr) {
-          cellContent = <span style={{ fontFamily: 'monospace', color: 'blue' }}>{valueStr}</span>;
-        }
+    // Max step count across all tracked lines
+    const guideArrays = guide ? Array.from(guide.values()) : [];
+    const maxSteps = guideArrays.length > 0 ? Math.max(...guideArrays.map(a => a.length)) : 0;
 
-        guideCells.push(<td key={i} style={{ padding: '8px' }}>{cellContent}</td>);
+    // Which lines have guide text written by the user
+    const linesWithGuide = new Set<number>();
+    lines.forEach((_, idx) => {
+      const n = idx + 1;
+      if ((lineGuide[n] || lineGuide[String(n)] || "").trim().length > 0) linesWithGuide.add(n);
+    });
+
+    const tdCode: React.CSSProperties = { padding: "1px 8px", whiteSpace: "pre", fontFamily: "monospace", fontSize: "12px", color: "#333" };
+    const tdNum: React.CSSProperties  = { padding: "1px 6px", textAlign: "right", color: "#aaa", userSelect: "none", minWidth: "26px", fontSize: "11px" };
+
+    const tableRows = lines.map((code, idx) => {
+      const lineNum = idx + 1;
+      const hasGuideInput = linesWithGuide.has(lineNum);
+
+      if (!hasGuideInput) {
+        // No guide — just show code, no step cells
+        return (
+          <tr key={lineNum}>
+            <td style={tdNum}>{lineNum}</td>
+            <td style={tdCode}>{code}</td>
+          </tr>
+        );
       }
+
+      // This line has guide text — build step cells from __guide
+      const stepValues: any[] = (guide && (guide.get(String(lineNum)) || guide.get(lineNum as any))) || [];
+
+      const stepCells = Array.from({ length: maxSteps }, (_, step) => {
+        const raw = stepValues[step];
+        const isEmpty = raw === undefined || raw === null || String(raw).trim() === "" || raw === " ";
+        return (
+          <td key={step} style={{
+            padding: "1px 8px",
+            borderLeft: step === 0 ? "2px solid #90caf9" : "1px solid #e8e8e8",
+            color: isEmpty ? "#ccc" : "#1565c0",
+            whiteSpace: "pre-wrap",
+            fontSize: "12px",
+            minWidth: "60px",
+            maxWidth: "200px",
+            verticalAlign: "top",
+          }}>
+            {isEmpty ? "·" : String(raw)}
+          </td>
+        );
+      });
+
+      // Not yet visited at all — show a single placeholder column
+      if (maxSteps === 0) {
+        stepCells.push(
+          <td key="placeholder" style={{ padding: "1px 8px", borderLeft: "2px solid #e0e0e0", color: "#ccc", fontSize: "12px", minWidth: "60px" }}>
+            ·
+          </td>
+        );
+      }
+
       return (
-        <tr key={lineNum}>
-          <td style={{ padding: '4px', textAlign: 'right', width: '50px' }}>{lineNum}</td>
-          <td style={{ padding: '4px', fontFamily: 'monospace', whiteSpace: 'pre' }}><span className="wsp" dangerouslySetInnerHTML={{ __html: code as string }} /></td>
-          {guideCells}
+        <tr key={lineNum} style={{ background: stepValues.length > 0 ? "rgba(21,101,192,0.05)" : undefined }}>
+          <td style={tdNum}>{lineNum}</td>
+          <td style={tdCode}>{code}</td>
+          {stepCells}
         </tr>
       );
     });
+
     return (
-      <div style={{ padding: '4px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <tbody>{rows}</tbody>
+      <div style={{ maxHeight: "340px", overflowY: "auto", overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", tableLayout: "auto" }}>
+          <tbody>{tableRows}</tbody>
         </table>
       </div>
     );
   }
 
   render() {
+    const prog = (this.state as any).inferior_program;
+    const isActive =
+      prog === constants.inferior_states.running ||
+      prog === constants.inferior_states.paused;
+
     return (
       <div className={this.state.current_theme}>
-        {this.renderSourceCode()}
+        {isActive
+          ? this.renderSourceCode()
+          : <div style={{ padding: "10px 12px", color: "#888", fontStyle: "italic", fontSize: "0.88em" }}>
+              執行程式後顯示追蹤表格。
+            </div>
+        }
       </div>
     );
   }

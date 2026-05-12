@@ -280,6 +280,23 @@ const process_gdb_response = function (response_array: any) {
         Actions.inferior_program_exited();
       }
     } else if (r.type === "console") {
+      // 攔截紅黑樹走訪結果，不顯示在 console
+      const _pl: string = r.payload || "";
+      if (_pl.startsWith("__GDBGUI_RBTREE__:")) {
+        try {
+          const json = JSON.parse(_pl.slice("__GDBGUI_RBTREE__:".length));
+          if (json && json.n !== undefined) {
+            const _gv = (window as any).gdbgui_global_variable;
+            if (_gv) {
+              if (!_gv.__rbtree_data) _gv.__rbtree_data = {};
+              _gv.__rbtree_data[json.n] = json.t;
+              // Immediately re-render ContainerVisualizer
+              store.set("rbtree_updated", Date.now());
+            }
+          }
+        } catch (_) {}
+        continue; // 不送到 console 顯示
+      }
       Actions.add_console_entries(
         r.payload,
         r.stream === "stderr"
