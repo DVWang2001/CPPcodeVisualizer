@@ -355,15 +355,11 @@ class Breakpoints extends React.Component {
       store.set("breakpoints", store.get("breakpoints").filter((b: any) => !allNums.has(b.number)));
 
       if (gdbOnes.length > 0) {
-        // Use GDB's "clear FILE:LINE" to delete ALL breakpoints at this location in one shot.
-        // This handles hidden duplicates (e.g., from line-number relocation) that may exist in
-        // GDB but are not yet visible in the store.
-        const bkptFn: string = gdbOnes[0].fullname || gdbOnes[0].fullname_to_display || fullname;
-        const safeFn = bkptFn.replace(/\\/g, '/');
-        GdbApi.run_gdb_command([
-          `-interpreter-exec console "clear ${safeFn}:${line}"`,
-          GdbApi.get_break_list_cmd()
-        ]);
+        // Use -break-delete N directly — avoids "clear FILE:LINE" which requires GDB
+        // to reverse-map the substitute-path virtual path and can silently fail.
+        const cmds: string[] = gdbOnes.map((b: any) => GdbApi.get_delete_break_cmd(b.number));
+        cmds.push(GdbApi.get_break_list_cmd());
+        GdbApi.run_gdb_command(cmds);
       } else if (frontendOnes.length > 0) {
         // All were frontend_* (pre-run state) — already removed from store, nothing in GDB
       }

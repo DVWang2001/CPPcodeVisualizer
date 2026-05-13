@@ -560,6 +560,14 @@ def create_and_upload():
     session["uploaded_input"] = input_path
 
     if request.headers.get("Accept") == "application/json":
+        import secrets as _secrets
+        run_token = _secrets.token_hex(16)
+        session["run_token"] = run_token
+        # Store in SessionManager so WebSocket handlers can validate without cookie-session lag.
+        _manager = current_app.config.get("_manager")
+        if _manager is not None:
+            _manager.run_tokens[session.get("csrf_token", "")] = run_token
+
         return jsonify({
             "status": "success",
             "binary_path": binary_path_result,
@@ -569,6 +577,7 @@ def create_and_upload():
             "exec_wrapper": session.get("exec_wrapper"),
             "gdb_subst_cmd": f"set substitute-path {src_path} {virtual_src_path}",
             "sandbox_warnings": sandbox_warnings,
+            "run_token": run_token,
         })
 
     return redirect(url_for(".gdbgui"))

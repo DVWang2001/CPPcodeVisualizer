@@ -7,90 +7,131 @@ import GdbApi from "./GdbApi";
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
 let _tts_current_audio = null;  // 目前播放中的 Audio 元素，供中斷使用
 
+// ── 多段與停頓播放清單狀態（模組級）──
+let _tts_playlist = null;       // 播放清單陣列，例如 [{type: 'audio', text: '...', url: '...', currentTime: 0}, {type: 'wait', duration: 1.5}]
+let _tts_playlist_index = 0;    // 目前消耗的清單索引
+let _tts_wait_timeout = null;   // 停頓中使用的計時器 ID
+let _tts_wait_start_time = 0;   // wait 項目開始等待的 timestamp (ms)
+let _tts_autoplay_command = null; // 清單結束後要執行的自動播放指令
+let _tts_subtitle_text = "";    // 去除所有標記後的純淨字幕文字
+
 // ── graphics_instruction 取消 token（模組級）──────────────────────────
 let _graphics_task_id = 0;      // 每次 graphics_instruction 遞增，舊任務自動放棄
 
-/** 停止目前播放的音訊。 */
+/** 停止目前播放的音訊與停頓計時器。 */
 function _tts_cancel() {
   if (_tts_current_audio) {
     _tts_current_audio.pause();
     _tts_current_audio.src = '';
     _tts_current_audio = null;
   }
+  if (_tts_wait_timeout) {
+    clearTimeout(_tts_wait_timeout);
+    _tts_wait_timeout = null;
+  }
+  _tts_playlist = null;
+  _tts_playlist_index = 0;
+  _tts_autoplay_command = null;
 }
 
-/** 暫停目前播放的音訊，回傳恢復所需的資訊（url + currentTime）。 */
+/** 暫停目前播放的音訊或等待，動態記錄進度並回傳恢復所需的資訊。 */
 function _tts_pause() {
-  if (!_tts_current_audio || _tts_current_audio.paused) return null;
-  const url = _tts_current_audio.src;
-  const currentTime = _tts_current_audio.currentTime;
-  _tts_current_audio.pause();
+  // 若沒有任何播放清單、音訊或等待中的任務，回傳 null 讓系統不再設定 resume 狀態
+  if (!_tts_playlist && !_tts_current_audio && !_tts_wait_timeout) return null;
+
+  let url = 'playlist-resume';
+  let currentTime = 0;
+
+  if (_tts_current_audio && !_tts_current_audio.paused) {
+    url = _tts_current_audio.src;
+    currentTime = _tts_current_audio.currentTime;
+    _tts_current_audio.pause();
+    // 儲存當前 audio 的中斷時間點
+    if (_tts_playlist && _tts_playlist[_tts_playlist_index]) {
+      _tts_playlist[_tts_playlist_index].currentTime = currentTime;
+    }
+  } else if (_tts_wait_timeout) {
+    clearTimeout(_tts_wait_timeout);
+    _tts_wait_timeout = null;
+    // 計算已經度過的秒數，動態更新剩餘所需等待的 duration
+    const elapsed = (Date.now() - _tts_wait_start_time) / 1000;
+    if (_tts_playlist && _tts_playlist[_tts_playlist_index]) {
+      const currentWait = _tts_playlist[_tts_playlist_index];
+      currentWait.duration = Math.max(0.01, currentWait.duration - elapsed);
+    }
+  }
+
+  // 確保播放狀態的保留供 UI 與控制列識別
+  const playing = window._gdbgui_tts_playing;
+  if (playing) {
+    playing.subtitleText = _tts_subtitle_text;
+  }
+
   return { url, currentTime };
 }
 
-/** 從暫停點繼續播放，並在結束時執行 autoplayCommand。 */
-function _tts_resume(resumeInfo, autoplayCommand) {
-  if (!resumeInfo || !resumeInfo.url) return;
-  const audio = new Audio();
-  _tts_current_audio = audio;
+/** 從保留的清單狀態繼續接軌朗讀或等待。 */
+function _tts_resume(_resumeInfo, _autoplayCommand) {
+  if (!_tts_playlist) return;
+  const currentTaskId = _tts_task_id;
+  // 恢復全域識別變數
+  window._gdbgui_tts_playing = {
+    fullText: _tts_subtitle_text,
+    subtitleText: _tts_subtitle_text,
+    autoplayCommand: _tts_autoplay_command,
+    lastCharIndex: 0,
+  };
+  _tts_play_next(currentTaskId);
+}
 
-  const finish = () => {
-    if (_tts_current_audio === audio) _tts_current_audio = null;
+/** 核心非同步遞迴清單消耗器：依序處理清單內的音訊播放與精確秒數延遲。 */
+function _tts_play_next(taskId) {
+  if (taskId !== _tts_task_id) return;
+
+  // 清單播放完畢時，執行自動播放指令並釋放狀態
+  if (!_tts_playlist || _tts_playlist_index >= _tts_playlist.length) {
+    _tts_current_audio = null;
+    _tts_wait_timeout = null;
+    _tts_playlist = null;
     window._gdbgui_tts_playing = null;
     window._gdbgui_tts_resume = null;
     if (typeof window.gdbgui_on_tts_end === 'function') window.gdbgui_on_tts_end();
-    if (autoplayCommand && typeof window.gdbgui_execute_autoplay_command === 'function') {
-      window.gdbgui_execute_autoplay_command(autoplayCommand);
+    if (_tts_autoplay_command && typeof window.gdbgui_execute_autoplay_command === 'function') {
+      window.gdbgui_execute_autoplay_command(_tts_autoplay_command);
     }
-  };
+    return;
+  }
 
-  audio.onended = finish;
-  audio.onerror = () => { console.warn('[TTS] Resume playback error'); finish(); };
+  const item = _tts_playlist[_tts_playlist_index];
 
-  audio.src = resumeInfo.url;
-  // 等 canplay 後再 seek 並套用速度（load() 會重置 playbackRate）
-  audio.addEventListener('canplay', () => {
-    audio.playbackRate = (store.get('tts_speed')) || 1.0;
-    audio.currentTime = resumeInfo.currentTime || 0;
-    audio.play().catch(() => finish());
-  }, { once: true });
-  audio.load();
-}
-
-/**
- * 向後端 /tts_audio 請求 MP3 音訊，並以 <audio> 元素播放。
- * 完全繞過 Web Speech API，不再有 Chrome 的 cancel/speak 競態問題。
- * 播放完畢後執行 autoplayCommand 並通知字幕清除。
- */
-function _tts_play_audio(url, taskId, autoplayCommand) {
-  return new Promise((resolve) => {
-    if (taskId !== _tts_task_id) { resolve(); return; }
-
+  if (item.type === 'wait') {
+    _tts_current_audio = null;
+    _tts_wait_start_time = Date.now();
+    const ms = item.duration * 1000;
+    console.log(`[TTS] Pausing for ${item.duration}s...`);
+    _tts_wait_timeout = setTimeout(() => {
+      _tts_wait_timeout = null;
+      if (taskId !== _tts_task_id) return;
+      _tts_playlist_index++;
+      _tts_play_next(taskId);
+    }, ms);
+  } else if (item.type === 'audio') {
     const audio = new Audio();
     _tts_current_audio = audio;
 
     const finish = () => {
       if (_tts_current_audio === audio) _tts_current_audio = null;
-      if (taskId !== _tts_task_id) { resolve(); return; }
-      window._gdbgui_tts_playing = null;
-      window._gdbgui_tts_resume = null;
-      if (typeof window.gdbgui_on_tts_end === 'function') window.gdbgui_on_tts_end();
-      if (autoplayCommand && typeof window.gdbgui_execute_autoplay_command === 'function') {
-        window.gdbgui_execute_autoplay_command(autoplayCommand);
-      }
-      resolve();
+      if (taskId !== _tts_task_id) return;
+      _tts_playlist_index++;
+      _tts_play_next(taskId);
     };
 
     audio.onended = finish;
-    audio.onerror = () => { console.warn('[TTS] Audio playback error'); finish(); };
+    audio.onerror = () => { console.warn('[TTS] Segment playback error'); finish(); };
 
-    // 等 canplay 事件確認瀏覽器已 buffer 足夠資料再 play()，
-    // 避免 MP3 encoder delay + 網路延遲造成開頭被截。
-    // 看門狗：5 秒內若 canplay 仍未觸發（離線 / server 慢），直接嘗試播放。
     let canplayFired = false;
     const watchdog = setTimeout(() => {
-      if (!canplayFired) {
-        // load() 會重置 playbackRate，在此重新套用
+      if (!canplayFired && _tts_current_audio === audio && taskId === _tts_task_id) {
         audio.playbackRate = (store.get('tts_speed')) || 1.0;
         audio.play().catch(() => finish());
       }
@@ -99,14 +140,18 @@ function _tts_play_audio(url, taskId, autoplayCommand) {
     audio.addEventListener('canplay', () => {
       canplayFired = true;
       clearTimeout(watchdog);
-      // load() 會重置 playbackRate，在 canplay 後才設定確保生效
+      if (_tts_current_audio !== audio || taskId !== _tts_task_id) return;
       audio.playbackRate = (store.get('tts_speed')) || 1.0;
+      if (item.currentTime) {
+        audio.currentTime = item.currentTime;
+        item.currentTime = 0;
+      }
       audio.play().catch(() => finish());
     }, { once: true });
 
-    audio.src = url;
+    audio.src = item.url;
     audio.load();
-  });
+  }
 }
 
 // 供其他模組（Actions.ts、GdbApi.tsx）操控 audio 元素的統一介面
@@ -308,20 +353,47 @@ class VisualizerHelper {
     const evaluateSpokenText = outputArray.join('');
     console.log(`[play_tts] Formatted text across evaluated array: ${evaluateSpokenText}`);
 
-    // 處理自定義發音 "字[音]"：
-    //   音訊用：替換讀音（白[柏] → 柏），讓 TTS 讀對
-    //   字幕用：僅移除 [音] 標記，保留原字（白[柏] → 白）
-    const regex = /([^\[\]]+)\[([^\[\]]+)\]/g;
-    const finalSpokenText = evaluateSpokenText.replace(regex, (_match, prefix, pronunciation) => {
-      return prefix.slice(0, -1) + pronunciation;
-    });
-    const displayText = evaluateSpokenText.replace(/\[([^\[\]]+)\]/g, '');
-
     // 變數替換完成後確認任務是否仍有效（非同步查詢期間可能有新任務進來）
     if (myTaskId !== _tts_task_id) return;
 
-    // 若文字為空（如純 [continue] 指令），直接執行 autoplayCommand，跳過 TTS 請求
-    if (!finalSpokenText.trim()) {
+    // 產生全局字幕文字：去除所有 [wait:X]、[pause:X] 以及讀音標記 [音]
+    const displayText = evaluateSpokenText
+      .replace(/\[(?:wait|pause):[\d.]+\]/g, '')
+      .replace(/\[([^\[\]]+)\]/g, '')
+      .trim();
+
+    _tts_subtitle_text = displayText;
+    _tts_autoplay_command = autoplayCommand;
+
+    // 使用 Regex 分割字串，同時捕獲停頓標籤指定的秒數
+    // 例如字串被分割成 ["語音段1", "1.5", "語音段2", "0.5", "語音段3"]
+    const parts = evaluateSpokenText.split(/\[(?:wait|pause):([\d.]+)\]/g);
+    const playlist = [];
+
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 === 0) {
+        // 語音文字段落
+        const segText = parts[i];
+        // 處理自定義發音 "字[音]"：替換讀音（白[柏] → 柏），讓 TTS 讀對
+        const regexPronounce = /([^\[\]]+)\[([^\[\]]+)\]/g;
+        const spokenSegText = segText.replace(regexPronounce, (_match, prefix, pronunciation) => {
+          return prefix.slice(0, -1) + pronunciation;
+        });
+        if (spokenSegText.trim()) {
+          const url = `/tts_audio?text=${encodeURIComponent(spokenSegText.trim())}`;
+          playlist.push({ type: 'audio', text: spokenSegText.trim(), url: url, currentTime: 0 });
+        }
+      } else {
+        // 停頓秒數
+        const duration = parseFloat(parts[i]);
+        if (!isNaN(duration) && duration > 0) {
+          playlist.push({ type: 'wait', duration: duration });
+        }
+      }
+    }
+
+    // 若清單為空（如純 [continue] 指令或全空白），直接執行 autoplayCommand，跳過 TTS 播放
+    if (playlist.length === 0) {
       window._gdbgui_tts_playing = null;
       window._gdbgui_tts_resume = null;
       if (typeof window.gdbgui_on_tts_end === 'function') window.gdbgui_on_tts_end();
@@ -331,17 +403,26 @@ class VisualizerHelper {
       return;
     }
 
-    // 先顯示字幕，再開始播放（避免 await 結束後字幕才設進去）
+    // 設定全局清單狀態
+    _tts_playlist = playlist;
+    _tts_playlist_index = 0;
+
+    // 先顯示字幕，再啟動清單消耗器
     store.set("tts_subtitle", {
       text: displayText,
       line: parseInt(frame_line),
       timestamp: Date.now()
     });
 
-    // 向後端請求音訊並播放，完畢後執行 autoplayCommand
-    window._gdbgui_tts_playing = { fullText: finalSpokenText, subtitleText: displayText, autoplayCommand, lastCharIndex: 0 };
-    const audioUrl = `/tts_audio?text=${encodeURIComponent(finalSpokenText)}`;
-    await _tts_play_audio(audioUrl, myTaskId, autoplayCommand);
+    window._gdbgui_tts_playing = {
+      fullText: displayText,
+      subtitleText: displayText,
+      autoplayCommand: autoplayCommand,
+      lastCharIndex: 0
+    };
+
+    // 啟動播放
+    _tts_play_next(myTaskId);
   }
 
   static async graphics_instruction(instruction, frame_line, funcName) {
@@ -371,7 +452,8 @@ class VisualizerHelper {
         return Promise.resolve(inst);
       }
       const trimmedInst = inst.slice(1, -1).trim();
-      let displayKey = funcName ? `${funcName}::${trimmedInst}` : trimmedInst;
+      // 若 trimmedInst 已經指定了明確的 scope (包含 ::)，則不再重複添加 funcName 前綴
+      let displayKey = (funcName && trimmedInst.indexOf('::') === -1) ? `${funcName}::${trimmedInst}` : trimmedInst;
       const expressions = store.get("expressions");
 
       const indexMatch2D = trimmedInst.match(/^([^\[\]]+)\[([^\[\]]+)\]\[([^\[\]]+)\](?::(.+))?$/);
@@ -439,7 +521,7 @@ class VisualizerHelper {
       // 這樣才能得到完整的容器視覺化並套用 highlight；否則只會拿到 int 類型。
       if (baseContainer && (indexMatch || indexMatch2D)) {
         trimmedInst = baseContainer;
-        displayKey = funcName ? `${funcName}::${baseContainer}` : baseContainer;
+        displayKey = (funcName && baseContainer.indexOf('::') === -1) ? `${funcName}::${baseContainer}` : baseContainer;
       }
 
       // 若已有 in-scope 的 varobj（可能由其他函數 frame 建立，如 main::maze 在 solveMaze 中），

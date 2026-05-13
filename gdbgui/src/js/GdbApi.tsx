@@ -59,6 +59,8 @@ if (debug) {
 const initial_data = window.initial_data;
 let socket: SocketIOClient.Socket;
 let _pending_input_injection = false;
+let _next_request_id = 1;
+let _response_packet_buffer: any[] = [];
 const GdbApi = {
   getSocket: function () {
     return socket;
@@ -83,12 +85,47 @@ const GdbApi = {
       }
     });
 
-    socket.on("gdb_response", function (response_array: any) {
+    socket.on("gdb_response", function (packet: any) {
       // @ts-expect-error ts-migrate(2769) FIXME: Argument of type 'null' is not assignable to param... Remove this comment to see the full error message
       clearTimeout(GdbApi._waiting_for_response_timeout);
       store.set("waiting_for_response", false);
-      // console.log(`讀到的回傳陣列是${JSON.stringify(response_array)}`);
-      process_gdb_response(response_array);
+
+      // Server wraps responses as {run_token, data}. Validate token and extract data.
+      let response_array: any;
+      let req_id = 0;
+      let pkt_seq = 0;
+      if (packet && !Array.isArray(packet) && typeof packet === "object" && "data" in packet) {
+        const expected = store.get("run_token");
+        if (expected !== null && packet.run_token !== expected) {
+          // Stale response from a previous run — discard silently.
+          return;
+        }
+        response_array = packet.data;
+        req_id = typeof packet.request_id === 'number' ? packet.request_id : 0;
+        pkt_seq = typeof packet.packet_seq_num === 'number' ? packet.packet_seq_num : 0;
+      } else {
+        // Fallback for legacy/pre-token packets
+        response_array = packet;
+      }
+
+      // 將封包存入緩衝區並優先處理序號較前的封包
+      _response_packet_buffer.push({
+        req_id,
+        pkt_seq,
+        response_array,
+      });
+
+      // 依照 request_id 升冪排序，若相同則依照 packet_seq_num 升冪排序
+      _response_packet_buffer.sort((a, b) => {
+        if (a.req_id !== b.req_id) return a.req_id - b.req_id;
+        return a.pkt_seq - b.pkt_seq;
+      });
+
+      // 依序處理排在前面的所有封包
+      while (_response_packet_buffer.length > 0) {
+        const nextPacket = _response_packet_buffer.shift();
+        process_gdb_response(nextPacket.response_array);
+      }
     });
     socket.on("fatal_server_error", function (data: { message: null | string }) {
       Actions.add_console_entries(
@@ -369,25 +406,23 @@ const GdbApi = {
               if (gdbSourcePath) {
                 (window as any).gdbgui_current_source_path = gdbSourcePath;
               }
-              // Carry guide/TTS/layout data to new virtual path so user edits survive recompilation.
+              // Always write the CURRENT in-memory guide/TTS/layout to the new virtual path.
+              // Using global_variable (live state) prevents stale localStorage data from a
+              // previous run or JSON import from overwriting what the user currently sees.
               if (sourcePath) {
-                const oldFn: string = store.get("fullname_to_render") || store.get("user_source_fullname") || "";
-                const candidates = Array.from(new Set([oldFn, ""])).filter(k => k !== sourcePath);
-                for (const prefix of ["gdbgui_guide_inputs_", "gdbgui_tts_inputs_", "gdbgui_layout_inputs_"]) {
-                  for (const key of candidates) {
-                    const saved = localStorage.getItem(prefix + key);
-                    if (saved && saved !== "{}") {
-                      // Only copy if destination is still empty
-                      const existing = localStorage.getItem(prefix + sourcePath);
-                      if (!existing || existing === "{}") {
-                        localStorage.setItem(prefix + sourcePath, saved);
-                      }
-                      break;
-                    }
-                  }
-                }
+                const currentGuide  = JSON.stringify((global_variable as any).__line   || {});
+                const currentTts    = JSON.stringify((global_variable as any).__tts    || {});
+                const currentLayout = JSON.stringify((global_variable as any).__layout || {});
+                localStorage.setItem("gdbgui_guide_inputs_"  + sourcePath, currentGuide);
+                localStorage.setItem("gdbgui_tts_inputs_"    + sourcePath, currentTts);
+                localStorage.setItem("gdbgui_layout_inputs_" + sourcePath, currentLayout);
                 // Virtual display path is the single source of truth for UI state keying
                 store.set("user_source_fullname", sourcePath);
+              }
+              // Store the run token so it can be attached to every GDB command and
+              // validated against every GDB response.
+              if (response.run_token) {
+                store.set("run_token", response.run_token);
               }
             } else if (typeof response === 'string') {
               // Fallback: HTML returned
@@ -730,8 +765,9 @@ const GdbApi = {
     }
 
     if (socket.connected) {
-      console.log(`傳送封包到伺服器${JSON.stringify(cmd)}`);
-      socket.emit("run_gdb_command", { cmd: cmds });
+      const current_request_id = _next_request_id++;
+      console.log(`傳送封包到伺服器${JSON.stringify(cmd)} (request_id: ${current_request_id})`);
+      socket.emit("run_gdb_command", { cmd: cmds, run_token: store.get("run_token"), request_id: current_request_id });
       GdbApi.waiting_for_response();
       // add the send command to the console to show commands that are
       // automatically run by gdb

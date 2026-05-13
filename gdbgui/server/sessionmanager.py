@@ -39,6 +39,10 @@ class DebugSession:
         self.pid = pid
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.client_ids: Set[str] = set()
+        # Token tied to the current compilation/run session; validated on every GDB command.
+        self.run_token: Optional[str] = None
+        self.last_request_id: int = 0
+        self.packet_seq_num: int = 0
 
     def terminate(self):
         if self.pid:
@@ -74,6 +78,8 @@ class SessionManager(object):
         )  # key is controller, val is list of client ids
 
         self.gdb_reader_thread = None
+        # Maps csrf_token → run_token so WebSocket handlers can validate without Flask session cookie lag.
+        self.run_tokens: Dict[str, str] = {}
 
     def connect_client_to_debug_session(
         self, *, desired_gdbpid: int, client_id: str

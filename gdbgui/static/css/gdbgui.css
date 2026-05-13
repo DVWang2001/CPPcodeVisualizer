@@ -496,3 +496,11 @@ tr.compile-warning-tr td {
   background-color: rgba(245, 124, 0, 0.08) !important;
   border-left: 3px solid #f57c00;
 }
+
+/* Monaco read-only mode: no I-beam cursor, no blinking caret */
+.gdbgui-readonly-editor .view-lines {
+  cursor: default !important;
+}
+.gdbgui-readonly-editor .cursors-layer {
+  display: none !important;
+}

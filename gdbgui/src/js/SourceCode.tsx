@@ -98,19 +98,43 @@ class SourceCode extends React.Component<{}, State> {
   }
 
   componentDidMount() {
-    if (this.state.fullname_to_render) {
-      const fn = this.state.fullname_to_render;
+    // 優先從 autosave JSON 還原（最可靠，格式同 Export JSON）
+    try {
+      const _as = JSON.parse(localStorage.getItem("gdbgui_autosave") || "null");
+      if (_as && _as.version && _as.line_data && Object.keys(_as.line_data).length > 0) {
+        const newInputs: any = {};
+        const newTts: any = {};
+        const newLayout: any = {};
+        for (const [line, data] of Object.entries(_as.line_data as any)) {
+          const d = data as any;
+          if (d.guide) newInputs[line] = d.guide;
+          if (d.tts) newTts[line] = d.tts;
+          if (d.layout) newLayout[line] = d.layout;
+        }
+        this.setState({ inputValues: newInputs, ttsValues: newTts, layoutValues: newLayout });
+        (global_variable as any).__line = { ...newInputs };
+        (global_variable as any).__tts = { ...newTts };
+        (global_variable as any).__layout = { ...newLayout };
+        window.addEventListener("beforeunload", this.saveAutosave);
+        return;
+      }
+    } catch (_) {}
+
+    // Fallback：沒有 autosave 時，從分散的 localStorage key 讀取
+    const fn = this.state.fullname_to_render
+      || localStorage.getItem("gdbgui_last_edited_filename")
+      || "";
+
+    if (fn && fn !== "__pending__") {
       let newInputs = {};
       let newTts = {};
       let newLayout = {};
 
-      // 先嘗試從當前 filename 讀取
       let sourceFn = fn;
       const hasCurrentCode = !!localStorage.getItem("gdbgui_editor_code_" + fn);
       if (!hasCurrentCode) {
-        // 頁面重載後可能是新的 default_hello_*.cpp，改從上次編輯的 filename 讀取 guide/TTS/layout
         const lastFn = localStorage.getItem("gdbgui_last_edited_filename");
-        if (lastFn && lastFn !== fn && localStorage.getItem("gdbgui_editor_code_" + lastFn)) {
+        if (lastFn && lastFn !== "__pending__" && lastFn !== fn && localStorage.getItem("gdbgui_editor_code_" + lastFn)) {
           sourceFn = lastFn;
         }
       }
@@ -130,12 +154,76 @@ class SourceCode extends React.Component<{}, State> {
       (global_variable as any).__tts = { ...newTts };
       (global_variable as any).__layout = { ...newLayout };
     }
+
+    window.addEventListener("beforeunload", this.saveAutosave);
   }
 
   editorInstance: any = null;
   monaco: any = null;
   decorations: any[] = [];
   _programmaticEdit: boolean = false;
+  _autosaveTimer: any = null;
+
+  componentWillUnmount() {
+    window.removeEventListener("beforeunload", this.saveAutosave);
+    if (this._autosaveTimer) clearTimeout(this._autosaveTimer);
+  }
+
+  saveAutosave = () => {
+    try {
+      const source_code = this.editorInstance?.getValue?.() || "";
+      if (!source_code.trim()) {
+        // Editor is in a transient empty state (e.g. right after run/exit toggles edit_mode).
+        // Don't overwrite the full autosave, but patch the breakpoints + fullname so they
+        // survive an F5 reload even when the source text is momentarily unavailable.
+        try {
+          const raw = localStorage.getItem("gdbgui_autosave");
+          if (raw) {
+            const existingAs = JSON.parse(raw);
+            if (existingAs && existingAs.version) {
+              existingAs.breakpoints = store.get("breakpoints") || [];
+              existingAs.fullname_to_render =
+                this.state.fullname_to_render ||
+                existingAs.fullname_to_render ||
+                "";
+              localStorage.setItem("gdbgui_autosave", JSON.stringify(existingAs));
+            }
+          }
+        } catch (_) {}
+        return;
+      }
+
+      const inputValues = this.state.inputValues || {};
+      const ttsValues = this.state.ttsValues || {};
+      const layoutValues = (global_variable as any).__layout || this.state.layoutValues || {};
+
+      const line_data: any = {};
+      new Set([...Object.keys(inputValues), ...Object.keys(ttsValues), ...Object.keys(layoutValues)])
+        .forEach(line => {
+          if (inputValues[line] || ttsValues[line] || layoutValues[line]) {
+            line_data[line] = {
+              guide: inputValues[line] || "",
+              tts: ttsValues[line] || "",
+              ...(layoutValues[line] ? { layout: layoutValues[line] } : {}),
+            };
+          }
+        });
+
+      localStorage.setItem("gdbgui_autosave", JSON.stringify({
+        version: "1.0",
+        fullname_to_render: this.state.fullname_to_render || "",
+        source_code,
+        line_data,
+        breakpoints: store.get("breakpoints") || [],
+        program_input: store.get("program_input") || "",
+      }));
+    } catch (_) {}
+  };
+
+  _debouncedSaveAutosave = () => {
+    if (this._autosaveTimer) clearTimeout(this._autosaveTimer);
+    this._autosaveTimer = setTimeout(this.saveAutosave, 800);
+  };
   inputContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
   layoutContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
   dragHandleContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
@@ -163,8 +251,7 @@ class SourceCode extends React.Component<{}, State> {
     };
 
     (window as any).gdbgui_on_tts_end = clearSubtitle;
-    // Fallback：若 onend 未觸發，15 秒後自動清除
-    this.ttsTimeout = setTimeout(clearSubtitle, 15000);
+    // 依據需求：完全依賴 TTS 音訊播放完畢的 onended/onerror 回呼事件清除字幕，不設定固定計時器自動消失
   }
 
   handleEditorDidMount = (_getValue: any, editor: any) => {
@@ -200,16 +287,6 @@ class SourceCode extends React.Component<{}, State> {
       }
       if (this.dragHandleContainerRef.current) {
         this.dragHandleContainerRef.current.scrollTop = e.scrollTop;
-      }
-    });
-
-    // Glyph margin / line number click → toggle breakpoint (works in both edit and read-only modes)
-    editor.onMouseDown((e: any) => {
-      if (!this.monaco) return;
-      const T = this.monaco.editor.MouseTargetType;
-      if (e.target && (e.target.type === T.GUTTER_GLYPH_MARGIN || e.target.type === T.GUTTER_LINE_NUMBERS)) {
-        const line = e.target.position?.lineNumber;
-        if (line) Breakpoints.add_or_remove_breakpoint(this.state.fullname_to_render, line);
       }
     });
 
@@ -456,10 +533,12 @@ class SourceCode extends React.Component<{}, State> {
     if (!this.editorInstance || !this.monaco) return;
 
     const { paused_on_frame, fullname_to_render } = this.state;
+    // Normalize null → "" so post-F5 breakpoints (fullname_to_display="") are found
+    const effectiveFTR = fullname_to_render || "";
 
-    const bkpt_lines = Breakpoints.get_breakpoint_lines_for_file(fullname_to_render) || [];
-    const disabled_bkpt_lines = Breakpoints.get_disabled_breakpoint_lines_for_file(fullname_to_render) || [];
-    const conditional_bkpt_lines = Breakpoints.get_conditional_breakpoint_lines_for_file(fullname_to_render) || [];
+    const bkpt_lines = Breakpoints.get_breakpoint_lines_for_file(effectiveFTR) || [];
+    const disabled_bkpt_lines = Breakpoints.get_disabled_breakpoint_lines_for_file(effectiveFTR) || [];
+    const conditional_bkpt_lines = Breakpoints.get_conditional_breakpoint_lines_for_file(effectiveFTR) || [];
 
     const newDecorations: any[] = [];
 
@@ -1115,13 +1194,12 @@ class SourceCode extends React.Component<{}, State> {
             .filter((b: any) => b.is_normal_breakpoint !== false && !b.is_child_breakpoint)
             .map((b: any, idx: number) => ({
               ...b,
-              // 統一 fullname / fullname_to_display → 目前畫面的路徑，
-              // 使 has_breakpoint 與 get_breakpoint_lines_for_file 都能正確匹配
-              fullname: currentFullname,
-              fullname_to_display: currentFullname,
-              // 確保 enabled 為 "y"，否則會被 get_disabled_breakpoint_lines 誤判為停用狀態（半透明）
+              // import 後 fullname_to_render 會被重設為 ""，用 "" 才能讓
+              // get_breakpoint_lines_for_file("") 找到並在 Monaco gutter 顯示標記。
+              // Run 後 save_breakpoints 的 dedup-by-line 會自動換成 GDB 確認的路徑。
+              fullname: "",
+              fullname_to_display: "",
               enabled: b.enabled ?? "y",
-              // 轉為 frontend_* 格式，讓 Run 時能重新注入 GDB
               number: typeof b.number === 'string' && b.number.startsWith('frontend_')
                 ? b.number
                 : `frontend_${idx + 1}`
@@ -1311,57 +1389,33 @@ class SourceCode extends React.Component<{}, State> {
     ) : null;
     // ─────────────────────────────────────────────────────────────────────────
 
-    const showMonaco =
-      this.state.source_code_state === constants.source_code_states.SOURCE_CACHED ||
-      this.state.source_code_state === constants.source_code_states.ASSM_AND_SOURCE_CACHED ||
-      this.state.source_code_state === constants.source_code_states.NONE_AVAILABLE;
-
-    // Always use Monaco (with readOnly when not in edit_mode) so syntax highlighting is always active.
-    const showMonacoEditor = true;
-
-    // Invalidate lastLoadedFilename when assembly view is active (no Monaco)
-    if (!showMonaco) {
-      this.lastLoadedFilename = null;
-    }
-
-    // Check if we have the file object
-    let obj = null;
-    if (showMonaco) {
-      obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
-    }
+    // Monaco always renders — code_body table view is eliminated.
+    const obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
 
     const ftrForMonaco = this.state.fullname_to_render || "";
-    const userSourceFullname: string = (this.state as any).user_source_fullname || "";
-    const isMonacoMainFile =
-      ftrForMonaco === "" ||                                                        // no file → show Monaco
-      (userSourceFullname !== "" && ftrForMonaco === userSourceFullname) ||         // showing user's compiled source
-      ftrForMonaco.includes("uploads/") ||                                          // backward compat
-      ftrForMonaco.includes("uploaded_scripts");
 
-    const isNoneAvailable = this.state.source_code_state === constants.source_code_states.NONE_AVAILABLE;
-    if (showMonaco && showMonacoEditor && (isNoneAvailable || (obj && obj.source_code_obj)) && isMonacoMainFile) {
-      // Keep initialFullname in sync so future checks remain stable
-      this.initialFullname = ftrForMonaco;
+    // Keep initialFullname in sync so future checks remain stable
+    this.initialFullname = ftrForMonaco;
 
-      let value = "";
-      if (this.editorInstance && this.lastLoadedFilename !== null) {
-        // Monaco is already mounted — always prefer the live editor content
-        try { value = this.editorInstance.getValue(); } catch (e) { value = ""; }
-        if (!value || value.trim() === "") {
-          // Editor returned empty (rare edge case), fall back to storage/cache
-          value = this.get_monaco_value(obj?.source_code_obj ?? null, obj?.num_lines_in_file ?? 0);
-        } else if (this.lastLoadedFilename !== ftrForMonaco && this.lastLoadedFilename !== "" && ftrForMonaco !== "") {
-          // Filename changed while Monaco was mounted — persist code under new key
-          // so that a future remount (e.g. after assembly view) still finds it
-          // Guard: skip when transitioning from NONE_AVAILABLE ("") to real file
-          localStorage.setItem("gdbgui_editor_code_" + ftrForMonaco, value);
-          localStorage.setItem("gdbgui_editor_filename_" + ftrForMonaco, ftrForMonaco);
-        }
-      } else {
-        // Monaco is (re)mounting — load from localStorage or server cache
+    let value = "";
+    if (this.editorInstance && this.lastLoadedFilename !== null) {
+      // Monaco is already mounted — always prefer the live editor content
+      try { value = this.editorInstance.getValue(); } catch (e) { value = ""; }
+      if (!value || value.trim() === "") {
+        // Editor returned empty (rare edge case), fall back to storage/cache
         value = this.get_monaco_value(obj?.source_code_obj ?? null, obj?.num_lines_in_file ?? 0);
+      } else if (this.lastLoadedFilename !== ftrForMonaco && this.lastLoadedFilename !== "" && ftrForMonaco !== "") {
+        // Filename changed while Monaco was mounted — persist code under new key
+        // so that a future remount (e.g. after assembly view) still finds it
+        // Guard: skip when transitioning from NONE_AVAILABLE ("") to real file
+        localStorage.setItem("gdbgui_editor_code_" + ftrForMonaco, value);
+        localStorage.setItem("gdbgui_editor_filename_" + ftrForMonaco, ftrForMonaco);
       }
-      this.lastLoadedFilename = ftrForMonaco;
+    } else {
+      // Monaco is (re)mounting — load from localStorage or server cache
+      value = this.get_monaco_value(obj?.source_code_obj ?? null, obj?.num_lines_in_file ?? 0);
+    }
+    this.lastLoadedFilename = ftrForMonaco;
 
       const theme = this.state.current_theme === 'dark' ? 'vs-dark' : 'light';
       const LINE_HEIGHT = 19;
@@ -1604,6 +1658,7 @@ class SourceCode extends React.Component<{}, State> {
                 }}
                 options={{
                   readOnly: !this.state.edit_mode,
+                  extraEditorClassName: this.state.edit_mode ? '' : 'gdbgui-readonly-editor',
                   glyphMargin: true,
                   lineNumbers: 'on',
                   scrollBeyondLastLine: false,
@@ -1664,134 +1719,28 @@ class SourceCode extends React.Component<{}, State> {
           {lineEditorModal}
         </div>
       );
-    }
-
-    const bodyRows = this.get_body();
-
-    // Determine if this is the main editable file (to show input rows and Monaco)
-    const ftr = this.state.fullname_to_render || "";
-    const userSrc: string = (this.state as any).user_source_fullname || "";
-    let isMainEditorFile =
-      ftr === "" ||
-      (userSrc !== "" && ftr === userSrc) ||
-      ftr.includes("uploaded_scripts") ||
-      ftr.includes("uploads/") ||
-      ftr.startsWith("/workspace/");
-
-    const inputRows = isMainEditorFile ? this.get_input_rows() : [];
-
-    if (isMainEditorFile) {
-      return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
-          <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong>{(this.state.fullname_to_render || "").split(/[\\/]/).pop() || this.state.fullname_to_render}</strong>
-            <div>
-              <button
-                onClick={this.triggerImport}
-                className="btn btn-default btn-sm"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                Import JSON
-              </button>
-              <input
-                type="file"
-                accept=".json"
-                style={{ display: "none" }}
-                ref={this.fileInputRef}
-                onChange={this.handleImport}
-              />
-              <button
-                onClick={this.exportProject}
-                className="btn btn-default btn-sm"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                Export JSON
-              </button>
-              <button
-                onClick={this.clearAllBreakpoints}
-                className="btn btn-default btn-sm"
-                title="Clear all breakpoints"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", color: "#c00" }}>
-                ✕ Breakpoints
-              </button>
-            </div>
-          </div>
-          <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", fontFamily: "monospace", overflow: 'hidden' }}>
-            <div style={{ flex: this.state.edit_mode ? "0 0 70%" : "1", height: "100%", overflow: "auto" }}>
-              <table
-                id="code_table"
-                className={this.state.current_theme}
-                style={{ width: "100%", minWidth: "100%" }}
-              >
-                <tbody id="code_body">{bodyRows}</tbody>
-              </table>
-            </div>
-            {this.state.edit_mode && <div style={{ backgroundColor: "black" }}></div>}
-            {this.state.edit_mode && (
-              <div style={{ flex: "0 0 30%", overflow: "auto" }}>
-                <table className={this.state.current_theme} style={{ width: "100%" }}>
-                  <tbody>
-                    {inputRows}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          {/* TTS 字幕已移至底部大字幕區顯示 */}
-          {lineEditorModal}
-        </div>
-      );
-    } else {
-      return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
-          <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong>{(this.state.fullname_to_render || "").split(/[\\/]/).pop() || this.state.fullname_to_render}</strong>
-            <div>
-              <button
-                onClick={this.triggerImport}
-                className="btn btn-default btn-sm"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                Import JSON
-              </button>
-              <input
-                type="file"
-                accept=".json"
-                style={{ display: "none" }}
-                ref={this.fileInputRef}
-                onChange={this.handleImport}
-              />
-              <button
-                onClick={this.exportProject}
-                className="btn btn-default btn-sm"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                Export JSON
-              </button>
-              <button
-                onClick={this.clearAllBreakpoints}
-                className="btn btn-default btn-sm"
-                title="Clear all breakpoints"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", color: "#c00" }}>
-                ✕ Breakpoints
-              </button>
-            </div>
-          </div>
-          <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", fontFamily: "monospace", overflow: 'hidden' }}>
-            <div style={{ flex: "1", overflow: "auto" }}>
-              <table
-                id="code_table"
-                className={this.state.current_theme}
-                style={{ width: "100%" }}
-              >
-                <tbody id="code_body">{bodyRows}</tbody>
-              </table>
-            </div>
-          </div>
-          {/* TTS 字幕已移至底部大字幕區顯示 */}
-        </div>
-      );
-    }
   }
 
   componentDidUpdate(prevProps: any, prevState: any) {
     this.updateDecorations();
+
+    // Autosave whenever breakpoints, guide, TTS, or layout change
+    if (
+      prevState.breakpoints !== this.state.breakpoints ||
+      prevState.inputValues !== this.state.inputValues ||
+      prevState.ttsValues !== this.state.ttsValues ||
+      prevState.layoutValues !== this.state.layoutValues
+    ) {
+      this._debouncedSaveAutosave();
+    }
+
+    // Sync Monaco readOnly / cursor class when edit_mode changes
+    if (prevState.edit_mode !== this.state.edit_mode && this.editorInstance) {
+      this.editorInstance.updateOptions({
+        readOnly: !this.state.edit_mode,
+        extraEditorClassName: this.state.edit_mode ? '' : 'gdbgui-readonly-editor',
+      });
+    }
 
     // 當 FILE_MISSING 時，嘗試從 localStorage 恢復程式碼（例如 Docker container 重啟後舊 temp 檔消失）
     if (this.state.source_code_state === constants.source_code_states.FILE_MISSING && this.state.fullname_to_render) {
@@ -1994,7 +1943,7 @@ class SourceCode extends React.Component<{}, State> {
     }
   }
   click_gutter(line_num: any) {
-    Breakpoints.add_or_remove_breakpoint(this.state.fullname_to_render, line_num);
+    Breakpoints.add_or_remove_breakpoint(this.state.fullname_to_render || "", line_num);
   }
 
   _get_source_line(

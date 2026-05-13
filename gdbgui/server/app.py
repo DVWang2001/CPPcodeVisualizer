@@ -205,6 +205,23 @@ def run_gdb_command(message: Dict[str, str]):
     if not debug_session:
         emit("error_running_gdb_command", {"message": "no session"})
         return
+
+    # Validate run_token: only enforce after the first compile (when a token exists).
+    client_token = message.get("run_token")
+    csrf_key = session.get("csrf_token", "")
+    expected_token = manager.run_tokens.get(csrf_key)
+    if expected_token is not None:
+        if client_token != expected_token:
+            # 每次按下 start 時都會產生不同的雜湊值 (run_token)，
+            # 若收到不同次編譯時舊的指令請求，直接忽略，避免讓使用者連線階段過期
+            logger.info(f"Ignoring stale command with token {client_token}, expected {expected_token}")
+            return
+        debug_session.run_token = client_token
+
+    req_id = message.get("request_id")
+    if req_id is not None:
+        debug_session.last_request_id = req_id
+
     pty_mi = debug_session.pygdbmi_controller
     if pty_mi is not None:
         try:
@@ -226,7 +243,7 @@ def run_gdb_command(message: Dict[str, str]):
         emit("error_running_gdb_command", {"message": "gdb is not running"})
 
 
-def send_msg_to_clients(client_ids, msg, error=False):
+def send_msg_to_clients(client_ids, msg, error=False, run_token=None):
     """Send message to all clients"""
     if error:
         stream = "stderr"
@@ -237,8 +254,24 @@ def send_msg_to_clients(client_ids, msg, error=False):
 
     for client_id in client_ids:
         logger.info("emiting message to websocket client id " + client_id)
+        debug_session = manager.debug_session_from_client_id(client_id)
+        req_id = 0
+        pkt_seq = 0
+        if debug_session:
+            req_id = debug_session.last_request_id
+            debug_session.packet_seq_num += 1
+            pkt_seq = debug_session.packet_seq_num
+
         socketio.emit(
-            "gdb_response", response, namespace="/gdb_listener", room=client_id
+            "gdb_response",
+            {
+                "run_token": run_token,
+                "request_id": req_id,
+                "packet_seq_num": pkt_seq,
+                "data": response,
+            },
+            namespace="/gdb_listener",
+            room=client_id,
         )
 
 
@@ -274,6 +307,7 @@ def read_and_forward_gdb_and_pty_output():
                         client_ids,
                         "The underlying gdb process has been killed. This tab will no longer function as expected.",
                         error=True,
+                        run_token=debug_session.run_token,
                     )
                     debug_sessions_to_remove.append(debug_session)
 
@@ -282,9 +316,15 @@ def read_and_forward_gdb_and_pty_output():
                         logger.info(
                             "emiting message to websocket client id " + client_id
                         )
+                        debug_session.packet_seq_num += 1
                         socketio.emit(
                             "gdb_response",
-                            response,
+                            {
+                                "run_token": debug_session.run_token,
+                                "request_id": debug_session.last_request_id,
+                                "packet_seq_num": debug_session.packet_seq_num,
+                                "data": response,
+                            },
                             namespace="/gdb_listener",
                             room=client_id,
                         )
