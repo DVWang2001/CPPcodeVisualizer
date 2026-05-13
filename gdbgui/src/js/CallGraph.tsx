@@ -216,18 +216,32 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                     const customLabels = global_variable.__call_graph_custom_labels;
                     if (customLabels && n.line && customLabels[n.line]) {
                         const customData = customLabels[n.line];
-                        label = `[${customData.labelName}]`;
 
-                        // 嘗試抓取指定的 {變數}，若有 children 則展開顯示
+                        // Inline-substitute {varName} within the label name,
+                        // and collect vars not embedded in the label as separate lines.
+                        let resolvedLabelName = customData.labelName;
+                        const extraLines: string[] = [];
+
                         if (customData.vars && customData.vars.length > 0) {
-                            label += `\n\n`;
                             customData.vars.forEach((varName: string) => {
                                 const displayKey = n.func_name ? `${n.func_name}::${varName}` : varName;
                                 const exprObj = expressions.find((obj: any) => obj.expression === displayKey && obj.in_scope === "true") ||
                                                 expressions.find((obj: any) => obj.expression === varName && obj.in_scope === "true");
                                 const varValue = exprObj ? expandedValue(varName, exprObj.value) : "...";
-                                label += `${varName} = ${varValue}\n`;
+                                const placeholder = `{${varName}}`;
+                                if (resolvedLabelName.includes(placeholder)) {
+                                    // Inline substitution: [啟動遞迴 n={n}] → [啟動遞迴 n=13]
+                                    resolvedLabelName = resolvedLabelName.split(placeholder).join(varValue);
+                                } else {
+                                    // Not in label name → show as separate line (original behaviour)
+                                    extraLines.push(`${varName} = ${varValue}`);
+                                }
                             });
+                        }
+
+                        label = `[${resolvedLabelName}]`;
+                        if (extraLines.length > 0) {
+                            label += `\n\n` + extraLines.join('\n');
                         }
 
                         // 如果有指定顏色，覆蓋顏色

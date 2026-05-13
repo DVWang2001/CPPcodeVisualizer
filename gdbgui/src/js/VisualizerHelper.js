@@ -200,11 +200,18 @@ class VisualizerHelper {
       const labelName = labelMatch[1].trim();
       const color = labelMatch[2] ? labelMatch[2].trim() : null; // 可選的顏色
       const remainingContent = labelMatch[3].trim();
-      
-      // 提取該行要監聽的所有 {變數}
-      const varsToWatch = VisualizerHelper.extractBalancedBraces(remainingContent)
+
+      // 提取括號外 (remainingContent) 的 {變數}
+      const outVars = VisualizerHelper.extractBalancedBraces(remainingContent)
         .filter(v => v.startsWith('{') && v.endsWith('}'))
         .map(v => v.slice(1, -1).trim());
+
+      // 提取括號內 (labelName) 的 {變數}，例如 [啟動遞迴 n={n}] 中的 n
+      const inLabelVars = VisualizerHelper.extractBalancedBraces(labelName)
+        .filter(v => v.startsWith('{') && v.endsWith('}'))
+        .map(v => v.slice(1, -1).trim());
+
+      const varsToWatch = [...new Set([...outVars, ...inLabelVars])];
 
       global_variable.__call_graph_custom_labels[lineNum] = {
         labelName,
@@ -212,8 +219,10 @@ class VisualizerHelper {
         vars: varsToWatch, // 變數名稱清單，稍後在 CallGraph 中取得其值
         originalLine: lineNum
       };
-      
-      graphicsContent = remainingContent; // 後續交給 graphics_instruction 處理畫圖的部分
+
+      // 將括號內的變數也傳給 graphics_instruction，確保 GDB varobj 被建立
+      const inLabelContent = inLabelVars.map(v => `{${v}}`).join(' ');
+      graphicsContent = [remainingContent, inLabelContent].filter(s => s).join(' ');
     } else {
         // 如果沒有匹配到，就清除該行的自訂標籤 (避免殘留舊的執行狀態)
         delete global_variable.__call_graph_custom_labels[lineNum];
