@@ -127,6 +127,7 @@ class Visualizer extends React.Component<{}, State> {
             minWidth: "60px",
             maxWidth: "200px",
             verticalAlign: "top",
+            textAlign: "center",
           }}>
             {isEmpty ? "·" : String(raw)}
           </td>

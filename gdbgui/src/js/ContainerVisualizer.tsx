@@ -640,23 +640,23 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     );
                 } else {
                     shape = (
-                        <div style={{ display: 'inline-flex', verticalAlign: 'middle', alignItems: 'stretch', gap: '2px' }}>
-                            <div style={{ display: 'inline-flex', border: '2px solid #333', borderRadius: '4px', backgroundColor: '#f9f9f9', overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', gap: '4px' }}>
+                            <div style={{ display: 'flex', flex: 1, border: '2px solid #333', borderRadius: '6px', backgroundColor: '#f9f9f9', overflow: 'hidden' }}>
                                 {values.map((v: string, idx: number) => {
                                     const hlInfo = getHighlight(idx, highlights);
                                     const bgColor = hlInfo ? hlInfo.bg : 'transparent';
                                     const fontWeight = hlInfo ? 'bold' : 'normal';
                                     const borderRight = idx < len - 1 ? '1px solid #777' : 'none';
                                     return (
-                                        <div key={`val-${idx}`} style={{ padding: '2px 8px', borderRight: borderRight, minWidth: '20px', textAlign: 'center', backgroundColor: bgColor, fontWeight: fontWeight }}>
+                                        <div key={`val-${idx}`} style={{ flex: 1, padding: '18px 6px', borderRight: borderRight, minWidth: '32px', textAlign: 'center', backgroundColor: bgColor, fontWeight: fontWeight, fontSize: '1.1em' }}>
                                             {type === "string" && v !== "" ? `'${v}'` : v}
                                         </div>
                                     );
                                 })}
-                                {len === 0 && <div style={{ padding: '2px 8px', color: '#999', fontStyle: 'italic' }}>empty</div>}
+                                {len === 0 && <div style={{ flex: 1, padding: '18px 6px', color: '#999', fontStyle: 'italic', textAlign: 'center' }}>empty</div>}
                             </div>
                             {emptySlots > 0 && Array.from({ length: emptySlots }).map((_, idx) => (
-                                <div key={`cap-${idx}`} style={{ display: 'inline-block', minWidth: '20px', border: '2px dashed #aaa', backgroundColor: '#f0f0f0', borderRadius: '2px' }} title="Unused Capacity" />
+                                <div key={`cap-${idx}`} style={{ flex: 1, minWidth: '32px', border: '2px dashed #aaa', backgroundColor: '#f0f0f0', borderRadius: '4px' }} title="Unused Capacity" />
                             ))}
                         </div>
                     );
@@ -665,7 +665,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             }
             case "list":
                 shape = (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', verticalAlign: 'middle', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', width: '100%', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                         {values.map((v: string, idx: number) => {
                             const hlInfo = getHighlight(idx, highlights);
                             const bgColor = hlInfo ? hlInfo.bg : '#e6f2ff';
@@ -673,73 +673,76 @@ class ContainerVisualizer extends React.Component<{}, State> {
                             const fontWeight = hlInfo ? 'bold' : 'normal';
                             return (
                                 <React.Fragment key={idx}>
-                                    <div style={{ padding: '4px 10px', borderRadius: '16px', border: `2px solid ${borderColor}`, backgroundColor: bgColor, minWidth: '30px', textAlign: 'center', fontWeight: fontWeight }}>
+                                    <div style={{ flex: 1, padding: '18px 6px', borderRadius: '16px', border: `2px solid ${borderColor}`, backgroundColor: bgColor, minWidth: '32px', textAlign: 'center', fontWeight: fontWeight, fontSize: '1.1em' }}>
                                         {v}
                                     </div>
-                                    {idx < len - 1 && <span style={{ color: '#0056b3', fontWeight: 'bold' }}>&harr;</span>}
+                                    {idx < len - 1 && <span style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '1.1em' }}>&harr;</span>}
                                 </React.Fragment>
                             );
                         })}
-                        {len === 0 && <div style={{ padding: '4px 10px', borderRadius: '16px', border: '2px dashed #0056b3', color: '#999', fontStyle: 'italic' }}>empty node</div>}
+                        {len === 0 && <div style={{ flex: 1, padding: '18px 6px', borderRadius: '16px', border: '2px dashed #0056b3', color: '#999', fontStyle: 'italic', textAlign: 'center' }}>empty node</div>}
                     </div>
                 );
                 break;
             case "stack":
                 shape = (
-                    <div style={{ display: 'inline-flex', flexDirection: 'row', border: '3px solid #b30000', borderRight: 'none', borderTopLeftRadius: '8px', borderBottomLeftRadius: '8px', padding: '4px', minHeight: '30px', alignItems: 'center', backgroundColor: '#fff', verticalAlign: 'middle', gap: '4px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'row', width: '100%', border: '3px solid #b30000', borderRight: 'none', borderTopLeftRadius: '8px', borderBottomLeftRadius: '8px', alignItems: 'stretch', backgroundColor: '#fff', gap: '0px' }}>
                         {values.map((v: string, idx: number) => {
                             const hlInfo = getHighlight(idx, highlights);
                             const bgColor = hlInfo ? hlInfo.bg : '#ffe6e6';
                             const borderColor = hlInfo ? hlInfo.border : '#ff6666';
                             const fontWeight = hlInfo ? 'bold' : 'normal';
+                            const borderRight = idx < len - 1 ? `2px solid ${borderColor}` : 'none';
                             return (
-                                <div key={idx} style={{ border: `2px solid ${borderColor}`, padding: '2px 8px', textAlign: 'center', backgroundColor: bgColor, minWidth: '30px', fontWeight: fontWeight }}>
+                                <div key={idx} style={{ flex: 1, borderRight: borderRight, padding: '18px 6px', textAlign: 'center', backgroundColor: bgColor, minWidth: '32px', fontWeight: fontWeight, fontSize: '1.1em' }}>
                                     {v}
                                 </div>
                             );
                         })}
-                        {len === 0 && <div style={{ color: '#999', fontStyle: 'italic', padding: '0 10px' }}>empty</div>}
+                        {len === 0 && <div style={{ flex: 1, color: '#999', fontStyle: 'italic', padding: '18px 10px', textAlign: 'center' }}>empty</div>}
                     </div>
                 );
                 break;
             case "queue":
                 shape = (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', backgroundColor: '#f0fff0', borderTop: '3px solid #00b300', borderBottom: '3px solid #00b300', padding: '4px', gap: '4px', verticalAlign: 'middle', flexWrap: 'wrap' }}>
-                        <span style={{ color: '#00b300', fontSize: '1.2em' }}>&larr;</span>
+                    <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', backgroundColor: '#f0fff0', borderTop: '3px solid #00b300', borderBottom: '3px solid #00b300', gap: '0px' }}>
+                        <span style={{ color: '#00b300', fontSize: '1.4em', display: 'flex', alignItems: 'center', padding: '0 6px' }}>&larr;</span>
                         {values.map((v: string, idx: number) => {
                             const hlInfo = getHighlight(idx, highlights);
                             const bgColor = hlInfo ? hlInfo.bg : '#fff';
                             const borderColor = hlInfo ? hlInfo.border : '#66cc66';
                             const fontWeight = hlInfo ? 'bold' : 'normal';
                             const borderStyle = hlInfo ? '2px solid' : '2px dashed';
+                            const borderRight = idx < len - 1 ? `${borderStyle} ${borderColor}` : 'none';
                             return (
-                                <div key={idx} style={{ border: `${borderStyle} ${borderColor}`, padding: '2px 8px', backgroundColor: bgColor, textAlign: 'center', fontWeight: fontWeight }}>
+                                <div key={idx} style={{ flex: 1, borderRight: borderRight, padding: '18px 6px', backgroundColor: bgColor, textAlign: 'center', fontWeight: fontWeight, fontSize: '1.1em', minWidth: '32px' }}>
                                     {v}
                                 </div>
                             );
                         })}
-                        {len === 0 && <div style={{ color: '#999', fontStyle: 'italic', padding: '2px 8px' }}>empty</div>}
-                        <span style={{ color: '#00b300', fontSize: '1.2em' }}>&larr;</span>
+                        {len === 0 && <div style={{ flex: 1, color: '#999', fontStyle: 'italic', padding: '18px 8px', textAlign: 'center' }}>empty</div>}
+                        <span style={{ color: '#00b300', fontSize: '1.4em', display: 'flex', alignItems: 'center', padding: '0 6px' }}>&larr;</span>
                     </div>
                 );
                 break;
             case "deque":
                 shape = (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', borderBottom: '4px solid #6600cc', paddingBottom: '4px', gap: '6px', verticalAlign: 'middle', flexWrap: 'wrap' }}>
-                        <span style={{ color: '#6600cc', fontSize: '1.2em' }}>&harr;</span>
+                    <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', borderBottom: '4px solid #6600cc', gap: '0px' }}>
+                        <span style={{ color: '#6600cc', fontSize: '1.4em', display: 'flex', alignItems: 'center', padding: '0 6px' }}>&harr;</span>
                         {values.map((v: string, idx: number) => {
                             const hlInfo = getHighlight(idx, highlights);
                             const bgColor = hlInfo ? hlInfo.bg : '#f9f2ff';
                             const borderColor = hlInfo ? hlInfo.border : '#b366ff';
                             const fontWeight = hlInfo ? 'bold' : 'normal';
+                            const borderRight = idx < len - 1 ? `2px solid ${borderColor}` : 'none';
                             return (
-                                <div key={idx} style={{ padding: '4px 10px', border: `2px solid ${borderColor}`, backgroundColor: bgColor, borderRadius: '4px', textAlign: 'center', fontWeight: fontWeight }}>
+                                <div key={idx} style={{ flex: 1, padding: '18px 6px', borderRight: borderRight, backgroundColor: bgColor, borderRadius: '4px', textAlign: 'center', fontWeight: fontWeight, fontSize: '1.1em', minWidth: '32px' }}>
                                     {v}
                                 </div>
                             );
                         })}
-                        {len === 0 && <div style={{ color: '#999', fontStyle: 'italic', padding: '4px 10px' }}>empty</div>}
-                        <span style={{ color: '#6600cc', fontSize: '1.2em' }}>&harr;</span>
+                        {len === 0 && <div style={{ flex: 1, color: '#999', fontStyle: 'italic', padding: '18px 10px', textAlign: 'center' }}>empty</div>}
+                        <span style={{ color: '#6600cc', fontSize: '1.4em', display: 'flex', alignItems: 'center', padding: '0 6px' }}>&harr;</span>
                     </div>
                 );
                 break;
@@ -749,25 +752,25 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     shape = this.renderRBTreeSVG(values, type, name);
                 } else {
                     shape = (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', verticalAlign: 'middle', flexWrap: 'wrap', border: '2px solid #009688', borderRadius: '20px', padding: '4px 10px', backgroundColor: '#e0f2f1' }}>
-                            <span style={{ color: '#009688', fontWeight: 'bold', fontSize: '0.85em', marginRight: '4px' }}>{`{`}</span>
+                        <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', border: '2px solid #009688', borderRadius: '12px', backgroundColor: '#e0f2f1', overflow: 'hidden' }}>
+                            <span style={{ color: '#009688', fontWeight: 'bold', fontSize: '1.2em', display: 'flex', alignItems: 'center', padding: '0 8px' }}>{`{`}</span>
                             {values.map((v: string, idx: number) => {
                                 const hlInfo = getHighlight(idx, highlights);
+                                const borderRight = idx < len - 1 ? '1px solid #80cbc4' : 'none';
                                 return (
                                     <React.Fragment key={idx}>
                                         <div style={{
-                                            padding: '2px 10px', borderRadius: '50px',
-                                            border: `2px solid ${hlInfo ? hlInfo.border : '#00796b'}`,
+                                            flex: 1, padding: '18px 6px', borderRight: borderRight,
+                                            border: hlInfo ? `2px solid ${hlInfo.border}` : 'none',
                                             backgroundColor: hlInfo ? hlInfo.bg : '#fff',
                                             fontWeight: hlInfo ? 'bold' : 'normal',
-                                            minWidth: '24px', textAlign: 'center', fontFamily: 'monospace',
+                                            minWidth: '32px', textAlign: 'center', fontFamily: 'monospace', fontSize: '1.1em',
                                         }}>{v}</div>
-                                        {idx < len - 1 && <span style={{ color: '#00796b', fontSize: '0.85em' }}>,</span>}
                                     </React.Fragment>
                                 );
                             })}
-                            {len === 0 && <span style={{ color: '#999', fontStyle: 'italic' }}>empty</span>}
-                            <span style={{ color: '#009688', fontWeight: 'bold', fontSize: '0.85em', marginLeft: '4px' }}>{`}`}</span>
+                            {len === 0 && <span style={{ flex: 1, color: '#999', fontStyle: 'italic', padding: '18px 10px', textAlign: 'center' }}>empty</span>}
+                            <span style={{ color: '#009688', fontWeight: 'bold', fontSize: '1.2em', display: 'flex', alignItems: 'center', padding: '0 8px' }}>{`}`}</span>
                         </div>
                     );
                 }
@@ -853,8 +856,10 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     </div>
                 </div>
                 {/* ── Body ── */}
-                <div style={{ overflowX: "auto" }}>
-                    {shape}
+                <div style={{ overflowX: "auto", display: "flex", justifyContent: "center", padding: "12px 0" }}>
+                    <div style={{ width: "90%" }}>
+                        {shape}
+                    </div>
                 </div>
                 {/* ── Maze color editor（迷宮模式時才顯示）── */}
                 {isMazeMode && this.renderMazeColorEditor(name)}

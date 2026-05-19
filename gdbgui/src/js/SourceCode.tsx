@@ -973,13 +973,32 @@ class SourceCode extends React.Component<{}, State> {
   }
 
   applyLayout = (lineNum: string | number) => {
-    const layoutMap = (global_variable as any).__layout;
+    const layoutMap = (global_variable as any).__layout || (this.state as any).layoutValues;
     if (!layoutMap) return;
     const layoutStr: string = layoutMap[String(lineNum)];
     if (!layoutStr) return;
 
+    console.log("[applyLayout] line:", lineNum, "layout:", layoutStr);
+
     const registry = (window as any).gdbgui_collapser_registry || {};
+    console.log("[applyLayout] registry keys:", Object.keys(registry));
+
+    // 先收集所有 open: 指定的 id，再關閉其他所有面板，達到「只顯示指定面板」的效果
     const tokens = layoutStr.trim().split(/\s+/);
+    const idsToOpen = new Set<string>();
+    for (const token of tokens) {
+      const colonIdx = token.indexOf(":");
+      if (colonIdx < 0) continue;
+      if (token.slice(0, colonIdx) === "open") {
+        token.slice(colonIdx + 1).split(",").forEach((id: string) => idsToOpen.add(id.trim()));
+      }
+    }
+    if (idsToOpen.size > 0) {
+      Object.keys(registry).forEach((id: string) => {
+        if (!idsToOpen.has(id) && registry[id]) registry[id].close();
+      });
+    }
+
     for (const token of tokens) {
       const colonIdx = token.indexOf(":");
       if (colonIdx < 0) continue;
@@ -989,19 +1008,25 @@ class SourceCode extends React.Component<{}, State> {
       if (key === "sidebar") {
         const pct = parseFloat(val);
         if (!isNaN(pct)) {
-          const splitObj = store.get("middle_panes_split_obj");
-          if (splitObj) {
-            const showFs = store.get("show_filesystem");
-            if (showFs) {
-              const fsPct = 30;
-              splitObj.setSizes([fsPct, Math.max(0, 69 - pct), pct]);
-            } else {
-              splitObj.setSizes([0, Math.max(0, 99 - pct), pct]);
+          try {
+            const splitObj = store.get("middle_panes_split_obj");
+            console.log("[applyLayout] splitObj:", splitObj, "hasSizes:", typeof splitObj?.setSizes);
+            if (splitObj && typeof splitObj.setSizes === "function") {
+              const showFs = store.get("show_filesystem");
+              if (showFs) {
+                const fsPct = 30;
+                splitObj.setSizes([fsPct, Math.max(0, 69 - pct), pct]);
+              } else {
+                splitObj.setSizes([0, Math.max(0, 99 - pct), pct]);
+              }
             }
+          } catch (e) {
+            console.warn("[applyLayout] sidebar setSizes failed:", e);
           }
         }
       } else if (key === "open") {
         val.split(",").forEach((id: string) => {
+          console.log("[applyLayout] opening:", id, "exists:", !!registry[id]);
           if (registry[id]) registry[id].open();
         });
       } else if (key === "close") {
