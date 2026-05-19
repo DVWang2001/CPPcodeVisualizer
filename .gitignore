@@ -16,3 +16,10 @@ site
 gdbgui/static/js/*
 __pycache__
 .coverage*
+*.json
+*.cpp
+*.in
+*.a
+*.png
+*.exe
+*.txt
