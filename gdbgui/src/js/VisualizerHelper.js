@@ -460,7 +460,7 @@ class VisualizerHelper {
       if (!(inst.startsWith('{') && inst.endsWith('}'))) {
         return Promise.resolve(inst);
       }
-      const trimmedInst = inst.slice(1, -1).trim();
+      let trimmedInst = inst.slice(1, -1).trim();
       // 若 trimmedInst 已經指定了明確的 scope (包含 ::)，則不再重複添加 funcName 前綴
       let displayKey = (funcName && trimmedInst.indexOf('::') === -1) ? `${funcName}::${trimmedInst}` : trimmedInst;
       const expressions = store.get("expressions");
@@ -505,7 +505,7 @@ class VisualizerHelper {
         indexExpr = indexMatch[2].trim();
         if (indexMatch[3]) highlightColor = indexMatch[3].trim();
 
-        if (/^\d+$/.test(indexExpr)) {
+        if (/^-?\d+$/.test(indexExpr)) {
           if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
           if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
 
@@ -722,6 +722,21 @@ class VisualizerHelper {
               console.log(`[GI] stored "${trimmedInst}" line=${frame_line} task=${myGraphicsTaskId} EMPTY`);
               resolve("{}");
             } else if (varObj.numchild > 0) {
+              // 若 children 數量與 numchild/new_num_children 不符（push/pop 後），強制重新 fetch
+              // new_num_children 是 dynamic varobj（pretty-printer）pop 後的正確新大小
+              const _newNch = (varObj.new_num_children !== undefined)
+                ? parseInt(String(varObj.new_num_children)) : NaN;
+              const _expectedSize = (!isNaN(_newNch)) ? _newNch : varObj.numchild;
+              if (varObj.children && varObj.children.length !== _expectedSize) {
+                // fetch_and_show_children_for_var 只在 children.length===0 時才真的送 GDB 命令
+                // 先清空，讓它觸發 -var-list-children，拿到最新子節點
+                varObj.children = [];
+                if (varObj.numchild !== _expectedSize) varObj.numchild = _expectedSize;
+                store.set("expressions", expressions);
+                GdbVariable.fetch_and_show_children_for_var(varObj.name);
+                setTimeout(checkStore, 200);
+                return;
+              }
               if (varObj.children && varObj.children.length > 0) {
                 // 若有 child 本身是容器（value 含 "of length"），需要遞迴展開
                 // 注意：GDB pretty-printer 回傳的 inner vector child.numchild 可能是 NaN，

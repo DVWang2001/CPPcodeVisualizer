@@ -7,9 +7,12 @@ type HighlightEntry = { index: number; color: string }; // color = 'default' 或
 
 // 回傳該索引的 {bg, border} 樣式，未命中回傳 null。
 // 'default' 沿用原有黃色配色；其他值直接套用為 CSS 顏色。
-function getHighlight(idx: number, highlights: HighlightEntry[] | undefined): { bg: string; border: string } | null {
+function getHighlight(idx: number, highlights: HighlightEntry[] | undefined, len?: number): { bg: string; border: string } | null {
     if (!highlights) return null;
-    const h = highlights.find(e => e.index === idx);
+    const h = highlights.find(e => {
+        const resolved = (e.index < 0 && len !== undefined) ? len + e.index : e.index;
+        return resolved === idx;
+    });
     if (!h) return null;
     if (h.color === 'default') return { bg: '#fff6b3', border: '#cca300' };
     return { bg: h.color, border: h.color };
@@ -643,7 +646,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                         <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', gap: '4px' }}>
                             <div style={{ display: 'flex', flex: 1, border: '2px solid #333', borderRadius: '6px', backgroundColor: '#f9f9f9', overflow: 'hidden' }}>
                                 {values.map((v: string, idx: number) => {
-                                    const hlInfo = getHighlight(idx, highlights);
+                                    const hlInfo = getHighlight(idx, highlights, len);
                                     const bgColor = hlInfo ? hlInfo.bg : 'transparent';
                                     const fontWeight = hlInfo ? 'bold' : 'normal';
                                     const borderRight = idx < len - 1 ? '1px solid #777' : 'none';
@@ -667,7 +670,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 shape = (
                     <div style={{ display: 'flex', width: '100%', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                         {values.map((v: string, idx: number) => {
-                            const hlInfo = getHighlight(idx, highlights);
+                            const hlInfo = getHighlight(idx, highlights, len);
                             const bgColor = hlInfo ? hlInfo.bg : '#e6f2ff';
                             const borderColor = hlInfo ? hlInfo.border : '#0056b3';
                             const fontWeight = hlInfo ? 'bold' : 'normal';
@@ -688,7 +691,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 shape = (
                     <div style={{ display: 'flex', flexDirection: 'row', width: '100%', border: '3px solid #b30000', borderRight: 'none', borderTopLeftRadius: '8px', borderBottomLeftRadius: '8px', alignItems: 'stretch', backgroundColor: '#fff', gap: '0px' }}>
                         {values.map((v: string, idx: number) => {
-                            const hlInfo = getHighlight(idx, highlights);
+                            const hlInfo = getHighlight(idx, highlights, len);
                             const bgColor = hlInfo ? hlInfo.bg : '#ffe6e6';
                             const borderColor = hlInfo ? hlInfo.border : '#ff6666';
                             const fontWeight = hlInfo ? 'bold' : 'normal';
@@ -708,7 +711,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', backgroundColor: '#f0fff0', borderTop: '3px solid #00b300', borderBottom: '3px solid #00b300', gap: '0px' }}>
                         <span style={{ color: '#00b300', fontSize: '1.4em', display: 'flex', alignItems: 'center', padding: '0 6px' }}>&larr;</span>
                         {values.map((v: string, idx: number) => {
-                            const hlInfo = getHighlight(idx, highlights);
+                            const hlInfo = getHighlight(idx, highlights, len);
                             const bgColor = hlInfo ? hlInfo.bg : '#fff';
                             const borderColor = hlInfo ? hlInfo.border : '#66cc66';
                             const fontWeight = hlInfo ? 'bold' : 'normal';
@@ -730,7 +733,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', borderBottom: '4px solid #6600cc', gap: '0px' }}>
                         <span style={{ color: '#6600cc', fontSize: '1.4em', display: 'flex', alignItems: 'center', padding: '0 6px' }}>&harr;</span>
                         {values.map((v: string, idx: number) => {
-                            const hlInfo = getHighlight(idx, highlights);
+                            const hlInfo = getHighlight(idx, highlights, len);
                             const bgColor = hlInfo ? hlInfo.bg : '#f9f2ff';
                             const borderColor = hlInfo ? hlInfo.border : '#b366ff';
                             const fontWeight = hlInfo ? 'bold' : 'normal';
@@ -755,7 +758,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                         <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', border: '2px solid #009688', borderRadius: '12px', backgroundColor: '#e0f2f1', overflow: 'hidden' }}>
                             <span style={{ color: '#009688', fontWeight: 'bold', fontSize: '1.2em', display: 'flex', alignItems: 'center', padding: '0 8px' }}>{`{`}</span>
                             {values.map((v: string, idx: number) => {
-                                const hlInfo = getHighlight(idx, highlights);
+                                const hlInfo = getHighlight(idx, highlights, len);
                                 const borderRight = idx < len - 1 ? '1px solid #80cbc4' : 'none';
                                 return (
                                     <React.Fragment key={idx}>
@@ -796,7 +799,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                     <tr><td colSpan={2} style={{ padding: '4px 12px', color: '#999', fontStyle: 'italic', textAlign: 'center', border: '1px solid #90caf9' }}>empty</td></tr>
                                 )}
                                 {pairs.map((pair, idx) => {
-                                    const hlInfo = getHighlight(idx, highlights);
+                                    const hlInfo = getHighlight(idx, highlights, len);
                                     return (
                                         <tr key={idx} style={{ backgroundColor: hlInfo ? hlInfo.bg : (idx % 2 === 0 ? '#e3f2fd' : '#fff') }}>
                                             <td style={{ padding: '3px 12px', border: '1px solid #90caf9', fontWeight: hlInfo ? 'bold' : 'normal', color: '#1a237e', borderRight: '2px solid #1565c0' }}>{pair.key}</td>
