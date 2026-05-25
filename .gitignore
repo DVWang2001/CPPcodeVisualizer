@@ -23,3 +23,8 @@ __pycache__
 *.png
 *.exe
 *.txt
+*.pptx
+*.cache
+gdbgui/server/uploads/
+generate_pptx.py
+.claude/settings.local.json

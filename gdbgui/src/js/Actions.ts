@@ -45,6 +45,10 @@ const Actions = {
   },
   inferior_program_starting: function () {
     Actions.stop_tts();
+    // 舊 GDB process 被 kill 時，in-flight 的 -var-create 不會有回應，
+    // 導致 VarCreator._is_fetching 永遠為 true，卡死所有後續變數建立。
+    // 透過 window 橋接（避免 Actions↔GdbVariable 循環 import）在此 reset。
+    (window as any).gdbgui_reset_var_queue?.();
     // 程式重新開始，重置每行的進入計數
     (global_variable as any).__line_visit_count = {};
     store.set("inferior_program", constants.inferior_states.running);
@@ -80,6 +84,9 @@ const Actions = {
     // 讀取指導，如果存在指導並且當前的frame有line這個資訊
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
     VisualizerHelper.processing_guide(frame.line, frame.func);
+    // 前瞻偵測 BST 容器 find/count 操作，在 TTS 開始前設好動畫 barrier
+    // @ts-expect-error
+    VisualizerHelper.detect_container_op(frame.line, frame.func);
     // 播放 TTS 語音
     // @ts-expect-error
     VisualizerHelper.play_tts(frame.line, frame.func);

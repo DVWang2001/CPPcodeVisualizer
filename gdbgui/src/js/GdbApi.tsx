@@ -916,10 +916,19 @@ GdbApi.socket = socket;
 // 自動播放指令執行器：由 VisualizerHelper 在 TTS 結束後呼叫
 (window as any).gdbgui_execute_autoplay_command = (command: string) => {
   const delay: number = (window as any).gdbgui_autoplay_delay ?? 600;
-  setTimeout(() => {
+  setTimeout(async () => {
     // 再次確認自動播放仍啟用（使用者可能在 TTS 播放中途關閉）
     if (!store.get("autoplay_enabled")) return;
     // 若目前處於暫停狀態，儲存指令等待恢復後執行
+    if (store.get("autoplay_paused")) {
+      store.set("autoplay_pending_command", command);
+      return;
+    }
+    // 等待 BST 插入比對動畫完成，再繼續執行 GDB 指令
+    const barrier = (window as any).gdbgui_bst_anim_done as Promise<void> | null | undefined;
+    if (barrier) await barrier;
+    // 動畫結束後再次確認狀態（使用者可能在動畫期間關閉 autoplay 或暫停）
+    if (!store.get("autoplay_enabled")) return;
     if (store.get("autoplay_paused")) {
       store.set("autoplay_pending_command", command);
       return;

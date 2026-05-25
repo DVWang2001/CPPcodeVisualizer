@@ -2,6 +2,8 @@ import { global_variable } from "./global_variable";
 import { store } from "statorgfc";
 import GdbVariable from "./GdbVariable";
 import GdbApi from "./GdbApi";
+import { animScheduler } from "./AnimScheduler";
+import { getPlugin } from "./ContainerPlugin";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
@@ -17,6 +19,23 @@ let _tts_subtitle_text = "";    // 去除所有標記後的純淨字幕文字
 
 // ── graphics_instruction 取消 token（模組級）──────────────────────────
 let _graphics_task_id = 0;      // 每次 graphics_instruction 遞增，舊任務自動放棄
+let _bst_op_task_id = 0;        // 每次 detect_container_op 遞增，舊任務自動放棄
+
+/**
+ * Eagerly call diffOps + pushOps for a container whenever __latest_containers is updated.
+ * Bypasses React's batched setState so every intermediate state triggers animation.
+ */
+function _eagerDiffOps(containerName, payload) {
+  if (typeof window.gdbgui_is_bst_mode !== 'function') return;
+  if (!window.gdbgui_is_bst_mode(containerName)) return;
+  const plugin = getPlugin(payload.type);
+  if (!plugin) return;
+  const rr = () => window.gdbgui_request_render?.();
+  const ops = plugin.diffOps(containerName, payload);
+  if (ops.length > 0) {
+    animScheduler.pushOps(containerName, ops, op => plugin.animateOp(containerName, op, rr));
+  }
+}
 
 /** 停止目前播放的音訊與停頓計時器。 */
 function _tts_cancel() {
@@ -709,6 +728,7 @@ class VisualizerHelper {
               global_variable.__containers_guide.get(frame_line).push(payload);
               if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
               global_variable.__latest_containers.set(trimmedInst, payload);
+              _eagerDiffOps(trimmedInst, payload);
               resolve(`{${strVal}}`);
             } else if ((varObj.value || "").includes("of length 0") ||
               (varObj.numchild === 0 && !(varObj.value || "").match(/(length|size)\s+[1-9]/i))) {
@@ -719,6 +739,7 @@ class VisualizerHelper {
               global_variable.__containers_guide.get(frame_line).push(payload);
               if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
               global_variable.__latest_containers.set(trimmedInst, payload);
+              _eagerDiffOps(trimmedInst, payload);
               console.log(`[GI] stored "${trimmedInst}" line=${frame_line} task=${myGraphicsTaskId} EMPTY`);
               resolve("{}");
             } else if (varObj.numchild > 0) {
@@ -838,6 +859,7 @@ class VisualizerHelper {
                 global_variable.__containers_guide.get(frame_line).push(payload);
                 if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
                 global_variable.__latest_containers.set(trimmedInst, payload);
+                _eagerDiffOps(trimmedInst, payload);
 
                 // Fetch RB-tree structure for ordered containers (values merged on frontend)
                 if (containerName === "set" || containerName === "multiset" ||
@@ -930,6 +952,117 @@ class VisualizerHelper {
     GdbApi.run_gdb_command(
       `-interpreter-exec console "python import base64; exec(base64.b64decode('${b64}').decode())"`
     );
+  }
+
+  /**
+   * 前瞻偵測：當 GDB 在某行暫停時，掃描該行是否對有 plugin 的容器呼叫：
+   *   (1) find / count / contains  → 比對路徑動畫 + 綠/紅結果
+   *   (2) insert / emplace 於 set/map → 若 key 已存在，比對路徑 + 琥珀色「重複」提示
+   * 必須在 inferior_program_paused 的早期同步部分呼叫，確保 barrier 在 TTS 結束前建立。
+   */
+  static detect_container_op(frame_line, funcName) {
+    const myTaskId = ++_bst_op_task_id;
+
+    const lineNum = parseInt(frame_line);
+    if (isNaN(lineNum)) return;
+
+    const fullname = store.get("fullname_to_render");
+    const cachedFiles = store.get("cached_source_files");
+    if (!fullname || !cachedFiles) return;
+
+    const fileObj = cachedFiles.find(f => f.fullname === fullname);
+    if (!fileObj || !fileObj.source_code_array) return;
+
+    const rawLineHtml = fileObj.source_code_array[lineNum - 1];
+    if (!rawLineHtml) return;
+
+    const rawLine = String(rawLineHtml)
+      .replace(/<[^>]+>/g, '')
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+
+    // ── 輔助：非同步 eval key 表達式 ──────────────────────────────────────────
+    const evalKey = async (keyExpr, displayKey) => {
+      if (/^-?\d+$/.test(keyExpr)) return keyExpr;
+      if (/^["'].+["']$/.test(keyExpr)) return keyExpr.replace(/^["'](.+)["']$/, '$1');
+      const existing = store.get("expressions").find(obj => obj.expression === displayKey && obj.in_scope === "true");
+      if (existing) GdbVariable.delete_gdb_variable(existing.name);
+      GdbVariable.create_variable(keyExpr, "expr", displayKey);
+      return new Promise(resolve => {
+        let tries = 0;
+        const poll = setInterval(() => {
+          if (myTaskId !== _bst_op_task_id) { clearInterval(poll); resolve(null); return; }
+          if (++tries > 20) { clearInterval(poll); resolve(null); return; }
+          const varObj = store.get("expressions").find(obj => obj.expression === displayKey && obj.in_scope === "true");
+          if (varObj && varObj.value !== undefined) {
+            clearInterval(poll);
+            resolve(String(varObj.value).replace(/^["'](.+)["']$/, '$1').trim());
+          }
+        }, 100);
+      });
+    };
+
+    // ── 輔助：取得 plugin 並嘗試 reserve barrier ──────────────────────────────
+    const tryReserve = (containerName) => {
+      const latestCont = global_variable.__latest_containers;
+      const cData = latestCont && latestCont.get(containerName);
+      if (!cData) return null;
+      const plugin = getPlugin(cData.type);
+      if (!plugin) return null;
+      const bstHist = global_variable.__bst_history;
+      if (!bstHist || !(containerName in bstHist)) return null;
+      if (!animScheduler.reserveBarrier()) return null; // barrier 已被佔用
+      return { plugin, cData };
+    };
+
+    // ── 偵測 find / count / contains ──────────────────────────────────────────
+    const matchFind = rawLine.match(/\b(\w+)\s*(?:\.|->>?)\s*(find|count|contains)\s*\(([^,)]+)/);
+    if (matchFind) {
+      const containerName = matchFind[1].trim();
+      const keyExpr = matchFind[3].trim();
+      const reserved = tryReserve(containerName);
+      if (!reserved) return;
+      const { plugin } = reserved;
+      const requestRender = () => window.gdbgui_request_render?.();
+      (async () => {
+        const dk = funcName ? `bst_find::${funcName}::${containerName}::${lineNum}` : `bst_find::${containerName}::${lineNum}`;
+        const value = await evalKey(keyExpr, dk);
+        if (myTaskId !== _bst_op_task_id || value == null) { animScheduler.releaseBarrier(); return; }
+        const animPromise = plugin.prospectiveOp(containerName, 'find', value, requestRender);
+        if (!animPromise) { animScheduler.releaseBarrier(); return; }
+        animPromise.then(() => animScheduler.releaseBarrier());
+      })();
+      return;
+    }
+
+    // ── 偵測 insert / emplace（重複鍵 for set/map）────────────────────────────
+    const matchIns = rawLine.match(/\b(\w+)\s*\.\s*(insert|emplace)\s*\(\s*\{?\s*([^,{})]+)/);
+    if (matchIns) {
+      const containerName = matchIns[1].trim();
+      const keyExpr = matchIns[3].trim();
+      const latestCont = global_variable.__latest_containers;
+      const cData = latestCont && latestCont.get(containerName);
+      if (!cData || (cData.type !== 'set' && cData.type !== 'map')) return;
+      const reserved = tryReserve(containerName);
+      if (!reserved) return;
+      const { plugin } = reserved;
+      const requestRender = () => window.gdbgui_request_render?.();
+      (async () => {
+        const dk = funcName ? `bst_dup::${funcName}::${containerName}::${lineNum}` : `bst_dup::${containerName}::${lineNum}`;
+        const value = await evalKey(keyExpr, dk);
+        if (myTaskId !== _bst_op_task_id || value == null) { animScheduler.releaseBarrier(); return; }
+        const keyStr = String(value);
+        const isDup = cData.type === 'map'
+          ? cData.values.some(v => String(v.key) === keyStr)
+          : cData.values.some(v => String(v) === keyStr);
+        if (isDup) {
+          const animPromise = plugin.prospectiveOp(containerName, 'dupInsert', keyStr, requestRender);
+          if (!animPromise) { animScheduler.releaseBarrier(); return; }
+          animPromise.then(() => animScheduler.releaseBarrier());
+        } else {
+          animScheduler.releaseBarrier(); // 非重複，讓 state diff 在下一個 pause 觸發 insert 動畫
+        }
+      })();
+    }
   }
 
   static extractBalancedBraces(str) {

@@ -661,7 +661,11 @@ class GdbVariable extends React.Component {
     // @ts-ignore
     ChildVarFetcher._queue = [];
     // @ts-ignore
+    ChildVarFetcher._is_fetching = false;
+    // @ts-ignore
     VarCreator._queue = [];
+    // @ts-ignore
+    VarCreator._is_fetching = false;
   }
 
   static fetch_and_show_children_for_var(gdb_var_name: any) {
@@ -871,5 +875,10 @@ class GdbVariable extends React.Component {
     }
   }
 }
+
+// Actions.ts 已被 GdbVariable import，為避免循環依賴，透過 window 橋接 reset 入口。
+// inferior_program_starting() 在每次 Run 時呼叫，確保舊 GDB session 的 in-flight
+// -var-create 不會讓 _is_fetching 永遠卡死。
+(window as any).gdbgui_reset_var_queue = () => GdbVariable.clear_visualizer_queues();
 
 export default GdbVariable;

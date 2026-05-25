@@ -59,6 +59,7 @@ class SourceCode extends React.Component<{}, State> {
         draftLayoutOpen: string;
         draftLayoutClose: string;
         draftLayoutMaze: string;
+        draftLayoutBst: string;
       },
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
@@ -808,7 +809,7 @@ class SourceCode extends React.Component<{}, State> {
 
   /** 將 Layout 字串拆解為結構化欄位 */
   _parseLayout(layout: string) {
-    const fields: any = { sidebar: '', open: '', close: '', maze: '' };
+    const fields: any = { sidebar: '', open: '', close: '', maze: '', bst: '' };
     (layout || '').trim().split(/\s+/).forEach(token => {
       const c = token.indexOf(':');
       if (c < 0) return;
@@ -819,12 +820,13 @@ class SourceCode extends React.Component<{}, State> {
   }
 
   /** 將結構化欄位重新組合成 Layout 字串 */
-  _buildLayout(sidebar: string, open: string, close: string, maze: string) {
+  _buildLayout(sidebar: string, open: string, close: string, maze: string, bst: string = '') {
     const parts: string[] = [];
     if (sidebar.trim()) parts.push(`sidebar:${sidebar.trim()}`);
     if (open.trim())    parts.push(`open:${open.trim()}`);
     if (close.trim())   parts.push(`close:${close.trim()}`);
     if (maze.trim())    parts.push(`maze:${maze.trim()}`);
+    if (bst.trim())     parts.push(`bst:${bst.trim()}`);
     return parts.join(' ');
   }
 
@@ -833,14 +835,14 @@ class SourceCode extends React.Component<{}, State> {
     const tts    = this.state.ttsValues[lineNum]    || '';
     const layout = this.state.layoutValues[lineNum] || '';
     const { speed, hasContinue, text: ttsText } = this._parseTts(tts);
-    const { sidebar, open, close, maze }         = this._parseLayout(layout);
+    const { sidebar, open, close, maze, bst }    = this._parseLayout(layout);
     this.setState({
       lineEditorModal: {
         lineNum, activeTab: tab,
         draftGuide: guide,
         draftTtsSpeed: speed, draftTtsContinue: hasContinue, draftTtsText: ttsText,
         draftLayoutSidebar: sidebar, draftLayoutOpen: open,
-        draftLayoutClose: close, draftLayoutMaze: maze,
+        draftLayoutClose: close, draftLayoutMaze: maze, draftLayoutBst: bst,
       }
     });
   };
@@ -850,9 +852,9 @@ class SourceCode extends React.Component<{}, State> {
     if (!m) return;
     const { lineNum, draftGuide,
             draftTtsSpeed, draftTtsContinue, draftTtsText,
-            draftLayoutSidebar, draftLayoutOpen, draftLayoutClose, draftLayoutMaze } = m;
+            draftLayoutSidebar, draftLayoutOpen, draftLayoutClose, draftLayoutMaze, draftLayoutBst } = m;
     const ttsStr    = this._buildTts(draftTtsSpeed, draftTtsContinue, draftTtsText);
-    const layoutStr = this._buildLayout(draftLayoutSidebar, draftLayoutOpen, draftLayoutClose, draftLayoutMaze);
+    const layoutStr = this._buildLayout(draftLayoutSidebar, draftLayoutOpen, draftLayoutClose, draftLayoutMaze, draftLayoutBst);
     this.handleInputChange(lineNum, draftGuide);
     this.handleTtsChange(lineNum, ttsStr);
     this.handleLayoutChange(lineNum, layoutStr);
@@ -1039,6 +1041,14 @@ class SourceCode extends React.Component<{}, State> {
         if (setMazeMode) {
           val.split(",").forEach((containerName: string) => {
             setMazeMode(containerName.trim(), true);
+          });
+        }
+      } else if (key === "bst") {
+        // bst:containerName1,containerName2 → 自動勾選 BST 模式
+        const setBstMode = (window as any).gdbgui_set_bst_mode;
+        if (setBstMode) {
+          val.split(",").forEach((containerName: string) => {
+            setBstMode(containerName.trim(), true);
           });
         }
       }
@@ -1379,6 +1389,15 @@ class SourceCode extends React.Component<{}, State> {
                     />
                   </div>
                   <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>BST容器 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>bst:名稱</code></label>
+                    <input type="text"
+                      value={lm.draftLayoutBst}
+                      onChange={(e) => this.updateModalField('draftLayoutBst', e.target.value)}
+                      placeholder="例：s,m"
+                      style={{ width: '100%', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
+                    />
+                  </div>
+                  <div>
                     <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>展開面板 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>open:id1,id2</code></label>
                     <input type="text"
                       value={lm.draftLayoutOpen}
@@ -1398,7 +1417,7 @@ class SourceCode extends React.Component<{}, State> {
                   </div>
                 </div>
                 <div style={{ background: '#f7f7f7', borderRadius: '4px', padding: '6px 10px', fontSize: '12px', color: '#666' }}>
-                  <strong>預覽：</strong> <code style={{ wordBreak: 'break-all' }}>{this._buildLayout(lm.draftLayoutSidebar, lm.draftLayoutOpen, lm.draftLayoutClose, lm.draftLayoutMaze) || '（空）'}</code>
+                  <strong>預覽：</strong> <code style={{ wordBreak: 'break-all' }}>{this._buildLayout(lm.draftLayoutSidebar, lm.draftLayoutOpen, lm.draftLayoutClose, lm.draftLayoutMaze, lm.draftLayoutBst) || '（空）'}</code>
                 </div>
               </div>
             )}
