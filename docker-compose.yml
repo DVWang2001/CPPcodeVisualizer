@@ -1,27 +1,12 @@
 version: '3.8'
 services:
-  npm-env:
-    image: node:16 # Node.js 16 comes with npm 8.5.1
-    volumes:
-      - ./:/app
-    working_dir: /app
-    command: sh -c "npm install --no-audit --no-fund --prefer-offline && npm run build"
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=development
-
   gdbgui:
     build:
       context: .
       dockerfile: Dockerfile.gdbgui
-    volumes:
-      - ./:/app
-      - ./gdbgui/server/uploads:/app/gdbgui/server/uploads
-    working_dir: /app
-    command: ["sh","-c",'pip install -r /app/requirements.txt || pip install -e /app || true && python -m gdbgui --host="0.0.0.0" --port="5000"']
     ports:
       - "5000:5000"
+    volumes:
+      - ./gdbgui/server/uploads:/app/gdbgui/server/uploads
     environment:
       - PYTHONUNBUFFERED=1
-

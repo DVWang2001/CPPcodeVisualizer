@@ -1,17 +1,19 @@
 FROM python:3.11-slim
 
-# Install build tools (g++), gdb and clean apt lists
-RUN set -eux \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends build-essential g++ gdb ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential g++ gdb ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-ENV PYTHONUNBUFFERED=1
 
-# Upgrade pip so installing requirements later is smoother
-RUN pip install --upgrade pip
+# Bake Python dependencies into the image so container startup is instant.
+# Copy only requirements.txt first so Docker can cache this layer.
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Copy and make executable the entry script
-COPY gdbgui-entry.sh /app/gdbgui-entry.sh
-RUN chmod +x /app/gdbgui-entry.sh
+# Copy full project (pre-built frontend already in gdbgui/static/js/)
+COPY . .
+RUN pip install -e . --no-deps
+
+EXPOSE 5000
+CMD ["python", "-m", "gdbgui", "--host=0.0.0.0", "--port=5000"]
