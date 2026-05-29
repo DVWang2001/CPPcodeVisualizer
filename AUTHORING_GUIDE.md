@@ -490,12 +490,9 @@ sidebar:55 open:container maze:maze
 
 所有「封鎖」等級的函式，在編譯時會透過 GCC `-Wl,--wrap=XXX` 連結選項，將呼叫導向 `sandbox/stub.c` 中的替換實作：執行時印出 `[sandbox] XXX() is blocked` 訊息並回傳 `-1`（`errno = EPERM`），**不會真正執行**。
 
-### 7.3 Layer 3 — 執行期 chroot 隔離與 ulimit 資源限制
+### 7.3 Layer 3 — 執行期資源限制（ulimit）與 Docker 部署隔離
 
-每次編譯完成後，後端會為該 session 建立一個專屬的 chroot 隔離環境（位於 `uploads/jails/<session>/`），包含 binary 本身及其最小化動態函式庫依賴。GDB 在啟動程式時透過 `set exec-wrapper <session>/run.sh` 指定 per-session wrapper：
-
-1. **chroot 檔案系統隔離**：wrapper 以 `chroot` 將程式限制在該 session 的 jail 目錄中執行，程式無法存取 jail 目錄外的任何檔案（包含宿主機的 `/etc`、`/home` 等）。不支援 chroot（如非 root 且無 `CAP_SYS_CHROOT`）時自動 fallback 為直接執行。
-2. **ulimit 資源限制**：chroot 前設定以下硬性限制，防止 DoS 攻擊：
+每次執行程式前，GDB 透過 `set exec-wrapper <session>/run.sh` 啟動 per-session wrapper，設定以下硬性資源限制，防止 DoS 攻擊：
 
 | 資源 | 限制 |
 |------|------|
@@ -505,9 +502,11 @@ sidebar:55 open:container maze:maze
 | CPU 時間 | 30 秒 |
 | 虛擬記憶體 | 512 MB |
 
-> 整個應用程式建議部署於 Docker 容器中（見專案根目錄的 `Dockerfile.gdbgui`），由 Docker 提供宿主機層級的隔離。chroot jail 則在容器內提供 per-session 的額外檔案系統隔離，即使攻擊者在 jail 內取得 root，能破壞的範圍也僅限於當次 session 的暫存工作目錄。
+> **為何不使用 chroot 隔離**：GDB 透過 `/proc/PID/exe` 路徑比對來確認執行中的 binary 是否與已載入的符號表相同。chroot 會在 `/proc/PID/exe` 路徑前加上 jail 目錄前綴，造成路徑不符，GDB 無法插入中斷點（回報 `Cannot access memory`）。這是 chroot 與 GDB exec-wrapper 的根本性不相容，無法繞過。
 
-即使攻擊者透過 inline asm 或其他方式繞過 Layer 2，Layer 3 的 chroot 隔離與 ulimit 雙重機制也能將傷害控制在最小範圍。
+> **檔案系統隔離**：整個應用程式應部署於 Docker 容器中（見 `Dockerfile.gdbgui`）。容器與宿主機的檔案系統完全隔離，即使程式在容器內取得 root，也無法影響宿主機。
+
+即使攻擊者透過 inline asm 繞過 Layer 2，Layer 3 的 ulimit 也能限制 CPU、記憶體與磁碟的消耗範圍。
 
 ---
 
