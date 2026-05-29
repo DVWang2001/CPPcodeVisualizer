@@ -10,3 +10,29 @@ services:
       - ./gdbgui/server/uploads:/app/gdbgui/server/uploads
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    # ── Security hardening ──────────────────────────────────────────────────
+    # Drop all Linux capabilities; re-add only SYS_PTRACE which GDB requires.
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - no-new-privileges        # block setuid/setcap privilege escalation
+      - seccomp=seccomp-gdbgui.json  # block kernel-level container escape syscalls
+    # Mount the image filesystem read-only; only tmpfs and the uploads
+    # bind-mount are writable at runtime.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    # Resource limits — deny fork-bombs, memory bombs, CPU spin loops.
+    pids_limit: 64
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.5
+    ulimits:
+      cpu:
+        soft: 30
+        hard: 30
+      fsize: 10485760    # 10 MB max single-file write

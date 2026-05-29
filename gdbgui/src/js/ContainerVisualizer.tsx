@@ -119,6 +119,12 @@ class ContainerVisualizer extends React.Component<{}, State> {
             }
         }
 
+        // Auto-open the container collapser when data is present
+        if (latestContainers.size > 0) {
+            const registry = (window as any).gdbgui_collapser_registry || {};
+            if (registry["container"]) registry["container"].open();
+        }
+
         if (!hasOps) {
             this.forceUpdate();
         }

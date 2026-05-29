@@ -601,7 +601,6 @@ class VisualizerHelper {
         const checkStore = () => {
           // 若有更新的 graphics_instruction 任務，立即放棄（不寫入 __latest_containers）
           if (_graphics_task_id !== myGraphicsTaskId) {
-            console.log(`[GI] task ${myGraphicsTaskId} cancelled for "${trimmedInst}" line=${frame_line}`);
             resolve(trimmedInst);
             return;
           }
@@ -693,7 +692,6 @@ class VisualizerHelper {
 
           const varObj = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
           if (varObj && highlightIndexReady) {
-
             // ── 判斷容器類型 ──
             const ty = varObj.type || "";
             let containerName = "unknown";
@@ -731,8 +729,10 @@ class VisualizerHelper {
               _eagerDiffOps(trimmedInst, payload);
               resolve(`{${strVal}}`);
             } else if ((varObj.value || "").includes("of length 0") ||
-              (varObj.numchild === 0 && !(varObj.value || "").match(/(length|size)\s+[1-9]/i))) {
-              // 空容器
+              (varObj.numchild === 0 &&
+               !(varObj.value || "").match(/(length|size)\s+[1-9]/i) &&
+               !(varObj.value || "").match(/^\{[^}]/))) {
+              // 空容器（numchild=0 且 value 沒有 "{elem..." 格式）
               const payload = buildPayload([]);
               if (!global_variable.__containers_guide) global_variable.__containers_guide = new Map();
               if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
@@ -742,6 +742,20 @@ class VisualizerHelper {
               _eagerDiffOps(trimmedInst, payload);
               console.log(`[GI] stored "${trimmedInst}" line=${frame_line} task=${myGraphicsTaskId} EMPTY`);
               resolve("{}");
+            } else if (varObj.numchild === 0 && (varObj.value || "").match(/^\{[^}]/)) {
+              // GDB pretty-printer 把容器值直接放在 value 字串（如 stack 回傳 "{1, 2, 3}"）
+              // numchild=0 但 value 有內容，直接解析
+              const raw = (varObj.value || "").replace(/^\{/, "").replace(/\}$/, "").trim();
+              const parsedValues = raw.length > 0 ? raw.split(",").map(s => s.trim()) : [];
+              const payload = buildPayload(parsedValues);
+              if (!global_variable.__containers_guide) global_variable.__containers_guide = new Map();
+              if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
+              global_variable.__containers_guide.get(frame_line).push(payload);
+              if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
+              global_variable.__latest_containers.set(trimmedInst, payload);
+              _eagerDiffOps(trimmedInst, payload);
+              console.log(`[GI] stored "${trimmedInst}" line=${frame_line} task=${myGraphicsTaskId} FROM_VALUE parsed=${parsedValues.length}`);
+              resolve(`{${parsedValues.join(', ')}}`);
             } else if (varObj.numchild > 0) {
               // 若 children 數量與 numchild/new_num_children 不符（push/pop 後），強制重新 fetch
               // new_num_children 是 dynamic varobj（pretty-printer）pop 後的正確新大小
@@ -763,9 +777,17 @@ class VisualizerHelper {
                 // 注意：GDB pretty-printer 回傳的 inner vector child.numchild 可能是 NaN，
                 // 所以改用 child.value 字串偵測
                 const isInnerContainer = (child) =>
-                  typeof child.value === 'string' && child.value.includes('of length');
+                  (typeof child.value === 'string' && child.value.includes('of length')) ||
+                  (typeof child.type  === 'string' && (
+                    child.type.includes('std::deque') ||
+                    child.type.includes('std::vector') ||
+                    child.type.includes('std::list')
+                  ));
                 const isEmptyInnerContainer = (child) =>
-                  isInnerContainer(child) && /of length 0\b/.test(child.value || '');
+                  isInnerContainer(child) && (
+                    /of length 0\b/.test(child.value || '') ||
+                    parseInt(child.numchild) === 0
+                  );
                 const hasInnerContainers = varObj.children.some(isInnerContainer);
                 let childValues;
                 if (hasInnerContainers) {

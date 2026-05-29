@@ -10,8 +10,12 @@ RUN npm run build
 FROM python:3.13-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential g++ gdb ffmpeg \
+    build-essential g++ gdb ffmpeg libstdc++-12-dev \
     && rm -rf /var/lib/apt/lists/*
+# Load libstdc++ Python pretty-printers.
+# python:3.13-slim installs stdlib at /usr/local/lib/python3.13 but GDB's embedded
+# Python looks at /usr/lib/python3.13 — fix the path before importing.
+RUN printf 'set auto-load safe-path /\npython\nimport sys\nfor p in ["/usr/local/lib/python3.13","/usr/local/lib/python3.13/lib-dynload","/usr/share/gcc/python"]:\n    if p not in sys.path: sys.path.insert(0, p)\nfrom libstdcxx.v6.printers import register_libstdcxx_printers\nregister_libstdcxx_printers(None)\nend\n' > /root/.gdbinit
 
 WORKDIR /app
 

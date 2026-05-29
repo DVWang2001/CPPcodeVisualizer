@@ -59,6 +59,7 @@ if (debug) {
 const initial_data = window.initial_data;
 let socket: SocketIOClient.Socket;
 let _pending_input_injection = false;
+let _injection_start_time = 0;
 let _next_request_id = 1;
 let _response_packet_buffer: any[] = [];
 const GdbApi = {
@@ -210,27 +211,40 @@ const GdbApi = {
     });
 
     // State-driven input injection via polling:
-    // When _pending_input_injection is set, poll every 300ms until the program pauses,
-    // then inject the program_input to the PTY and stop polling.
+    // When _pending_input_injection is set, poll every 300ms.
+    // Inject when paused (hit a breakpoint) OR when still running after
+    // STDIN_INJECT_DELAY_MS — the latter handles programs that block on
+    // stdin before reaching any breakpoint.
+    const STDIN_INJECT_DELAY_MS = 800;
+
+    const doInject = () => {
+      _pending_input_injection = false;
+      const input = store.get("program_input") || localStorage.getItem("gdbgui_program_input") || "";
+      console.log("[input-inject] INJECTING input: '" + input + "'");
+      if (input) {
+        const s = GdbApi.getSocket();
+        if (s && !s.disconnected) {
+          s.emit("pty_interaction", {
+            data: { pty_name: "program_pty", key: input + "\n\x04", action: "write" }
+          });
+          console.log("[input-inject] Sent to PTY successfully");
+        } else {
+          console.log("[input-inject] Socket not available");
+        }
+      }
+    };
+
     setInterval(() => {
       const state = store.get("inferior_program");
       if (_pending_input_injection) {
         console.log("[input-inject] polling: state=" + state + ", pending=" + _pending_input_injection);
-      }
-      if (_pending_input_injection && state === constants.inferior_states.paused) {
-        _pending_input_injection = false;
-        const input = store.get("program_input") || localStorage.getItem("gdbgui_program_input") || "";
-        console.log("[input-inject] INJECTING input: '" + input + "'");
-        if (input) {
-          const s = GdbApi.getSocket();
-          if (s && !s.disconnected) {
-            s.emit("pty_interaction", {
-              data: { pty_name: "program_pty", key: input + "\n", action: "write" }
-            });
-            console.log("[input-inject] Sent to PTY successfully");
-          } else {
-            console.log("[input-inject] Socket not available");
-          }
+        if (state === constants.inferior_states.paused) {
+          // Program hit a breakpoint — inject immediately.
+          doInject();
+        } else if (state === constants.inferior_states.running &&
+                   Date.now() - _injection_start_time >= STDIN_INJECT_DELAY_MS) {
+          // Program is still running after the delay — likely blocked on stdin.
+          doInject();
         }
       }
     }, 300);
@@ -552,7 +566,8 @@ const GdbApi = {
 
               GdbApi.run_gdb_command(cmds);
 
-              _pending_input_injection = true; // will inject when program first pauses
+              _pending_input_injection = true;
+              _injection_start_time = Date.now();
 
               Actions.inferior_program_starting();
             } else {
