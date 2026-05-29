@@ -461,18 +461,12 @@ sidebar:55 open:container maze:maze
 
 
 
-
-
-
-
-
-
 ### 7.1 Layer 1 — 靜態分析（編譯前）
 
-編譯前掃描原始碼（已去除注釋與字串常量），偵測到危險函式時在 Console 顯示警告：
+編譯前掃描原始碼（已去除注釋與字串常量），依嚴重程度分兩類處理：
 
-- **`[sandbox:封鎖]`**（紅色）— 連結層也會攔截，執行時回傳 `EPERM`
-- **`[sandbox:警告]`**（黃色）— 連結層無法攔截，但 ulimit 限制傷害範圍
+- **`[sandbox:封鎖]`**（紅色）— **直接拒絕編譯**，Console 顯示 `EPERM` 錯誤，流程終止。連結層（Layer 2）同樣針對這些函式設有 `--wrap` 攔截，作為雙重防禦。
+- **`[sandbox:警告]`**（黃色）— 允許編譯但在 Console 顯示提示。連結層無法攔截此類呼叫（如 `ofstream`），但 Layer 3 的 ulimit 可限制實際傷害範圍。
 
 | 分類 | 偵測目標 | 層級 |
 |------|----------|------|
@@ -496,9 +490,12 @@ sidebar:55 open:container maze:maze
 
 所有「封鎖」等級的函式，在編譯時會透過 GCC `-Wl,--wrap=XXX` 連結選項，將呼叫導向 `sandbox/stub.c` 中的替換實作：執行時印出 `[sandbox] XXX() is blocked` 訊息並回傳 `-1`（`errno = EPERM`），**不會真正執行**。
 
-### 7.3 Layer 3 — 執行期資源限制（ulimit）
+### 7.3 Layer 3 — 執行期 chroot 隔離與 ulimit 資源限制
 
-每次執行程式前，GDB 透過 `set exec-wrapper sandbox/wrapper.sh` 啟動 wrapper，設定以下限制：
+每次編譯完成後，後端會為該 session 建立一個專屬的 chroot 隔離環境（位於 `uploads/jails/<session>/`），包含 binary 本身及其最小化動態函式庫依賴。GDB 在啟動程式時透過 `set exec-wrapper <session>/run.sh` 指定 per-session wrapper：
+
+1. **chroot 檔案系統隔離**：wrapper 以 `chroot` 將程式限制在該 session 的 jail 目錄中執行，程式無法存取 jail 目錄外的任何檔案（包含宿主機的 `/etc`、`/home` 等）。不支援 chroot（如非 root 且無 `CAP_SYS_CHROOT`）時自動 fallback 為直接執行。
+2. **ulimit 資源限制**：chroot 前設定以下硬性限制，防止 DoS 攻擊：
 
 | 資源 | 限制 |
 |------|------|
@@ -508,7 +505,9 @@ sidebar:55 open:container maze:maze
 | CPU 時間 | 30 秒 |
 | 虛擬記憶體 | 512 MB |
 
-即使攻擊者透過 inline asm 或其他方式繞過 Layer 2，Layer 3 也能限制傷害範圍。
+> 整個應用程式建議部署於 Docker 容器中（見專案根目錄的 `Dockerfile.gdbgui`），由 Docker 提供宿主機層級的隔離。chroot jail 則在容器內提供 per-session 的額外檔案系統隔離，即使攻擊者在 jail 內取得 root，能破壞的範圍也僅限於當次 session 的暫存工作目錄。
+
+即使攻擊者透過 inline asm 或其他方式繞過 Layer 2，Layer 3 的 chroot 隔離與 ulimit 雙重機制也能將傷害控制在最小範圍。
 
 ---
 

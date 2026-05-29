@@ -137,7 +137,10 @@ def client_connected():
             gdb_command = request.args.get("gdb_command", app.config["gdb_command"])
             mi_version = request.args.get("mi_version", "mi2")
             debug_session = manager.add_new_debug_session(
-                gdb_command=gdb_command, mi_version=mi_version, client_id=request.sid
+                gdb_command=gdb_command,
+                mi_version=mi_version,
+                client_id=request.sid,
+                exec_wrapper=session.get("exec_wrapper"),
             )
             emit(
                 "debug_session_connection_event",

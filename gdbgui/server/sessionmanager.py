@@ -93,7 +93,8 @@ class SessionManager(object):
         return debug_session
 
     def add_new_debug_session(
-        self, *, gdb_command: str, mi_version: str, client_id: str
+        self, *, gdb_command: str, mi_version: str, client_id: str,
+        exec_wrapper: Optional[str] = None,
     ) -> DebugSession:
         pty_for_debugged_program = Pty(echo=False)
         pty_for_gdbgui = Pty(echo=False)
@@ -103,16 +104,16 @@ class SessionManager(object):
             "set pagination off",
         ]
 
-        # 若 sandbox wrapper.sh 存在且可執行，注入 exec-wrapper 命令
-        # GDB 每次 run/start 都會先呼叫 wrapper，wrapper 設定 ulimit 後再 exec 真正的 binary
+        # 優先使用 per-session chroot jail 的 run.sh（由 _setup_jail 產生）；
+        # 若無則 fallback 到全域 sandbox/wrapper.sh（ulimit only）。
         try:
-            wp = _SANDBOX_WRAPPER
+            wp = Path(exec_wrapper) if exec_wrapper else _SANDBOX_WRAPPER
             if wp.exists():
-                # 確保有執行權限
                 current_mode = wp.stat().st_mode
                 if not (current_mode & stat.S_IXUSR):
                     wp.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP)
                 gdbgui_startup_cmds.append(f"set exec-wrapper {wp}")
+                logger.info(f"[sandbox] exec-wrapper: {wp}")
         except Exception as e:
             logger.warning(f"[sandbox] Could not set exec-wrapper: {e}")
         # instead of writing to the pty after it starts, add startup

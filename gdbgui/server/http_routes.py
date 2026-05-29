@@ -80,18 +80,27 @@ def _setup_jail(exec_path: str, jail_dir: str) -> "str | None":
 
     binary_name = os.path.basename(exec_path)
     wrapper_path = os.path.join(jail_dir, "run.sh")
-    # Simple ulimit-only wrapper: chroot/bwrap change the process namespace in ways
-    # that prevent GDB from inserting breakpoints via ptrace (PIE address issue).
-    # Resource limits still protect against runaway programs.
+    # chroot wrapper：設定 ulimit 後進入 chroot 隔離環境執行 binary。
+    # binary 以 -no-pie 編譯，確保固定載入地址，GDB ptrace 不受 chroot 影響。
+    # 若 chroot 不可用（非 root / 無 CAP_SYS_CHROOT），自動 fallback 到直接執行。
     script = f"""#!/bin/bash
-# GDB exec-wrapper — resource limits only (GDB-compatible)
+# GDB exec-wrapper — chroot jail + resource limits
 # GDB calls: run.sh <host_binary_path> [args...]
 HOST_BIN="$1"; shift
-ulimit -c 0       # no core dumps
-ulimit -u 64      # max 64 child processes (fork bomb protection)
-ulimit -t 30      # 30 s CPU time limit
-ulimit -v 1048576 # 1 GB virtual memory limit
-exec "$HOST_BIN" "$@"
+BINARY_NAME="$(basename "$HOST_BIN")"
+SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
+
+ulimit -c 0       2>/dev/null  # no core dumps
+ulimit -u 64      2>/dev/null  # max 64 child processes (fork bomb protection)
+ulimit -t 30      2>/dev/null  # 30 s CPU time limit
+ulimit -v 524288  2>/dev/null  # 512 MB virtual memory limit
+ulimit -f 1024    2>/dev/null  # 512 KB max file write
+
+if [ -f "$SCRIPT_DIR/.created" ] && command -v chroot >/dev/null 2>&1; then
+    exec chroot "$SCRIPT_DIR" "/app/$BINARY_NAME" "$@"
+else
+    exec "$HOST_BIN" "$@"
+fi
 """
     try:
         with open(wrapper_path, "w") as f:
@@ -472,17 +481,25 @@ def create_and_upload():
     if ext.lower() in (".c", ".cpp", ".cc", ".cxx", ".c++"):
         # ── 靜態分析：偵測危險呼叫 ────────────────────────────────────────
         detected = _check_dangerous_code(code)
-        if detected:
-            for item in detected:
-                if item["severity"] == "block":
-                    sandbox_warnings.append(
-                        f"[sandbox:封鎖] {item['desc']}（執行時將被攔截並回傳 EPERM）"
-                    )
-                else:
-                    sandbox_warnings.append(
-                        f"[sandbox:警告] {item['desc']}（連結層無法攔截，請注意使用）"
-                    )
-            logger.info(f"[sandbox] detected dangerous calls: {[i['desc'] for i in detected]}")
+        block_items = [item for item in detected if item["severity"] == "block"]
+        warn_items  = [item for item in detected if item["severity"] == "warn"]
+
+        if block_items:
+            # 封鎖類直接中止，回傳 EPERM 並拒絕編譯
+            lines = ["安全政策封鎖（EPERM）：偵測到以下危險函式呼叫，編譯已中止："]
+            lines += [f"  • {item['desc']}" for item in block_items]
+            logger.warning(f"[sandbox] BLOCKED compilation: {[i['desc'] for i in block_items]}")
+            return client_error({
+                "message": "Compilation blocked by security policy (EPERM)",
+                "stderr": "\n".join(lines),
+            })
+
+        for item in warn_items:
+            sandbox_warnings.append(
+                f"[sandbox:警告] {item['desc']}（連結層無法攔截，請注意使用）"
+            )
+        if warn_items:
+            logger.info(f"[sandbox] warnings: {[i['desc'] for i in warn_items]}")
 
         # ── 編譯 stub.o（若尚未編譯）──────────────────────────────────────
         stub_available = _ensure_stub_compiled()
@@ -492,8 +509,8 @@ def create_and_upload():
         exec_path = os.path.join(upload_dir, exec_filename)
         compiler = current_app.config.get("c_compiler") or ("g++" if ext.lower() != ".c" else "gcc")
 
-        # 基本編譯命令；若 stub 可用則附加 --wrap flags 與 stub.o
-        compile_cmd = [compiler, "-g", "-O0", src_path, "-o", exec_path]
+        # 基本編譯命令；-no-pie 使 binary 有固定載入地址，讓 GDB 在 chroot 內也能正確設定斷點
+        compile_cmd = [compiler, "-g", "-O0", "-no-pie", src_path, "-o", exec_path]
         if stub_available:
             compile_cmd += [str(_STUB_O)] + _WRAP_FLAGS
 
