@@ -46,6 +46,11 @@ class Pty:
             self.stdin = master
             self.stdout = master
             self.name = os.ttyname(slave)
+            # Allow nobody (setpriv sandbox) to write program output to this tty.
+            try:
+                os.chmod(self.name, 0o622)
+            except Exception:
+                pass
             self.set_echo(echo)
 
     def set_echo(self, echo_on: bool) -> None:

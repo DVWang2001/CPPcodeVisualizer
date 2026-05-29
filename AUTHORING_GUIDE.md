@@ -466,7 +466,7 @@ sidebar:55 open:container maze:maze
 編譯前掃描原始碼（已去除注釋與字串常量），依嚴重程度分兩類處理：
 
 - **`[sandbox:封鎖]`**（紅色）— **直接拒絕編譯**，Console 顯示 `EPERM` 錯誤，流程終止。連結層（Layer 2）同樣針對這些函式設有 `--wrap` 攔截，作為雙重防禦。
-- **`[sandbox:警告]`**（黃色）— 允許編譯但在 Console 顯示提示。連結層無法攔截此類呼叫（如 `ofstream`），但 Layer 3 的 ulimit 可限制實際傷害範圍。
+- **`[sandbox:警告]`**（黃色）— 允許編譯但在 Console 顯示提示。連結層無法攔截此類呼叫（如 `ofstream`），但 Layer 3 的 ulimit 限制資源消耗，setpriv 降權則防止其覆寫應用程式檔案。
 
 | 分類 | 偵測目標 | 層級 |
 |------|----------|------|
@@ -490,9 +490,11 @@ sidebar:55 open:container maze:maze
 
 所有「封鎖」等級的函式，在編譯時會透過 GCC `-Wl,--wrap=XXX` 連結選項，將呼叫導向 `sandbox/stub.c` 中的替換實作：執行時印出 `[sandbox] XXX() is blocked` 訊息並回傳 `-1`（`errno = EPERM`），**不會真正執行**。
 
-### 7.3 Layer 3 — 執行期資源限制（ulimit）與 Docker 部署隔離
+### 7.3 Layer 3 — 執行期資源限制（ulimit）、降權（setpriv）與 Docker 部署隔離
 
-每次執行程式前，GDB 透過 `set exec-wrapper <session>/run.sh` 啟動 per-session wrapper，設定以下硬性資源限制，防止 DoS 攻擊：
+每次執行程式前，GDB 透過 `set exec-wrapper <session>/run.sh` 啟動 per-session wrapper，執行兩項保護：
+
+**（1）ulimit 硬性資源限制**（防 DoS）：
 
 | 資源 | 限制 |
 |------|------|
@@ -502,11 +504,17 @@ sidebar:55 open:container maze:maze
 | CPU 時間 | 30 秒 |
 | 虛擬記憶體 | 512 MB |
 
+**（2）setpriv 降權至 nobody**（防應用程式檔案遭覆寫）：
+
+wrapper 呼叫 `setpriv --reuid=65534 --regid=65534 --clear-groups` 將使用者程式降至 `nobody` 身分執行，使其無法覆寫由 root 擁有的應用程式檔案（如 `http_routes.py`）。GDB 本身仍以 root 執行，保有 `CAP_SYS_PTRACE`，可繼續 ptrace `nobody` 的子行程，中斷點功能不受影響。
+
+對應的 PTY 從裝置 (`/dev/pts/N`) 在建立後會 chmod 為 `0o622`，確保 `nobody` 進程能正常輸出至終端機。
+
 > **為何不使用 chroot 隔離**：GDB 透過 `/proc/PID/exe` 路徑比對來確認執行中的 binary 是否與已載入的符號表相同。chroot 會在 `/proc/PID/exe` 路徑前加上 jail 目錄前綴，造成路徑不符，GDB 無法插入中斷點（回報 `Cannot access memory`）。這是 chroot 與 GDB exec-wrapper 的根本性不相容，無法繞過。
 
 > **檔案系統隔離**：整個應用程式應部署於 Docker 容器中（見 `Dockerfile.gdbgui`）。容器與宿主機的檔案系統完全隔離，即使程式在容器內取得 root，也無法影響宿主機。
 
-即使攻擊者透過 inline asm 繞過 Layer 2，Layer 3 的 ulimit 也能限制 CPU、記憶體與磁碟的消耗範圍。
+即使攻擊者透過 inline asm 繞過 Layer 2，Layer 3 的 ulimit 限制 CPU/記憶體/磁碟消耗，setpriv 則防止其以 root 身分破壞應用程式本身。
 
 ---
 

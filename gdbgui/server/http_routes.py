@@ -54,19 +54,15 @@ _WRAPPER   = _SANDBOX_DIR / "wrapper.sh"
 
 def _setup_jail(exec_path: str, jail_dir: str) -> "str | None":
     """
-    為已編譯的 binary 建立 chroot jail，並產生一個供 GDB exec-wrapper 使用的
-    per-session wrapper 腳本。回傳 wrapper 腳本的絕對路徑；失敗回傳 None。
+    為已編譯的 binary 建立 per-session jail 目錄，並產生 GDB exec-wrapper 腳本。
+    回傳 wrapper 腳本的絕對路徑；失敗回傳 None。
 
-    Jail 結構（由 jail_manager.create_jail 建立）：
-      <jail_dir>/app/<binary>  — 執行檔
-      <jail_dir>/lib*, /usr    — 共享函式庫
-      <jail_dir>/tmp           — 可寫暫存
-      <jail_dir>/dev, /proc    — 裝置 / 行程資訊
+    Jail 目錄（jail_manager.create_jail 建立）存放 binary 與函式庫副本，
+    但 exec-wrapper 不呼叫 chroot（chroot 會破壞 GDB 的 /proc/PID/exe 比對）。
 
-    wrapper 腳本邏輯（優先序）：
-      1. root        → chroot(8) + exec
-      2. bwrap 可用  → bubblewrap --bind jail / + exec
-      3. 其他        → 直接 exec（只有 ulimit 保護）
+    wrapper 腳本負責：
+      1. ulimit 資源限制（防 fork bomb、CPU/記憶體/磁碟耗盡）
+      2. setpriv 降權至 nobody(65534)（防使用者程式覆寫應用程式檔案）
     """
     # 清除同 session 的舊 jail
     if os.path.exists(jail_dir):
@@ -79,13 +75,14 @@ def _setup_jail(exec_path: str, jail_dir: str) -> "str | None":
         return None
 
     wrapper_path = os.path.join(jail_dir, "run.sh")
-    # exec-wrapper 只做 ulimit 資源限制，不做 chroot。
-    # 原因：chroot 會改變 /proc/PID/exe 路徑（jail 前綴），
-    # 導致 GDB 無法將執行中的 binary 對應到已載入的符號表，
-    # ptrace 插中斷點時回傳 "Cannot access memory"。
-    # 檔案系統隔離由外層 Docker 部署提供。
+    # exec-wrapper 負責兩件事：
+    #   1. ulimit 資源限制（防 fork bomb、CPU 耗盡、磁碟寫爆）
+    #   2. setpriv 降權至 nobody(65534)，防止使用者程式以 root 身分覆寫應用程式檔案
+    # 不做 chroot：chroot 會改變 /proc/PID/exe 路徑，GDB 無法比對符號表，
+    # 導致 "Cannot access memory" 錯誤；檔案系統隔離由外層 Docker 提供。
+    # GDB 以 root 執行，保有 CAP_SYS_PTRACE，仍可 ptrace nobody 的子行程。
     script = """#!/bin/bash
-# GDB exec-wrapper — resource limits only
+# GDB exec-wrapper: resource limits + privilege drop to nobody
 # GDB calls: run.sh <host_binary_path> [args...]
 HOST_BIN="$1"; shift
 
@@ -95,7 +92,14 @@ ulimit -t 30      2>/dev/null  # 30 s CPU time limit
 ulimit -v 524288  2>/dev/null  # 512 MB virtual memory limit
 ulimit -f 1024    2>/dev/null  # 512 KB max file write
 
-exec "$HOST_BIN" "$@"
+# Drop to nobody (uid/gid 65534) before exec'ing user code.
+# GDB (root) retains CAP_SYS_PTRACE and can still debug the process.
+# This prevents user programs from writing to root-owned application files.
+if [ "$(id -u)" = "0" ] && command -v setpriv >/dev/null 2>&1; then
+    exec setpriv --reuid=65534 --regid=65534 --clear-groups -- "$HOST_BIN" "$@"
+else
+    exec "$HOST_BIN" "$@"
+fi
 """
     try:
         with open(wrapper_path, "w") as f:
