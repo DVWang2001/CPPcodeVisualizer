@@ -116,21 +116,36 @@ def create_jail(binary_path_str: str, jail_dir_str: str) -> bool:
 
     is_root = (os.geteuid() == 0)
 
+    # 偵測 bind-mount 是否可用：
+    # root 不代表能 mount —— 在無特權 Docker 中 CAP_SYS_ADMIN 被移除，mount 會靜默失敗。
+    # 先用第一個存在的 lib 目錄做探針，確認後再 mount 其餘；失敗則 fallback 到 ldd 複製。
+    can_bind = False
     if is_root:
-        # bind-mount 常見函式庫目錄（唯讀）
+        probe_dirs = ["/lib", "/lib64", "/usr/lib"]
+        for probe in probe_dirs:
+            probe_src = Path(probe)
+            if probe_src.exists():
+                probe_dst = jail_dir / probe.lstrip("/")
+                probe_dst.mkdir(parents=True, exist_ok=True)
+                can_bind = _bind_mount_ro(probe_src, probe_dst)
+                break  # 一次探針足以判斷
+
+    if can_bind:
+        # root + CAP_SYS_ADMIN：bind-mount 其餘函式庫目錄（探針已 mount 的跳過）
         for lib_dir in ("/lib", "/lib64", "/usr/lib", "/usr/lib64",
                         "/usr/local/lib", "/lib/x86_64-linux-gnu",
                         "/usr/lib/x86_64-linux-gnu"):
             src = Path(lib_dir)
-            if src.exists():
-                _bind_mount_ro(src, jail_dir / lib_dir.lstrip("/"))
+            dst = jail_dir / lib_dir.lstrip("/")
+            if src.exists() and not dst.is_mount():
+                _bind_mount_ro(src, dst)
 
         # 複製 ld.so.cache
         ldcache = Path("/etc/ld.so.cache")
         if ldcache.exists():
             shutil.copy2(ldcache, jail_dir / "etc" / "ld.so.cache")
 
-        # 建立裝置節點
+        # 建立裝置節點（需要 CAP_MKNOD，失敗時略過）
         for name, major, minor, mode in [
             ("null",    1, 3, "666"),
             ("zero",    1, 5, "666"),
@@ -147,11 +162,14 @@ def create_jail(binary_path_str: str, jail_dir_str: str) -> bool:
         # bind-mount /proc（唯讀）
         _bind_mount_ro(Path("/proc"), jail_dir / "proc")
 
+        # 記錄本 jail 使用 bind-mount，destroy_jail 需要 umount
+        (jail_dir / ".bindmounted").touch()
+
     else:
-        # 非 root：用 ldd 複製所有共享函式庫
+        # 非 root 或無特權 Docker（bind-mount 不可用）：用 ldd 複製動態函式庫依賴
         _copy_ldd_deps(binary_path, jail_dir)
 
-        # 複製 ld.so.cache（可能無法讀，忽略失敗）
+        # 複製 ld.so.cache
         ldcache = Path("/etc/ld.so.cache")
         if ldcache.exists():
             try:
@@ -159,13 +177,10 @@ def create_jail(binary_path_str: str, jail_dir_str: str) -> bool:
             except Exception:
                 pass
 
-        # 確保有 /usr/lib 軟連結目錄（部分 distro 的 lib 在這裡）
+        # 確保 /usr/lib 目錄存在（部分 distro 的 lib 在這裡，_copy_ldd_deps 以絕對路徑複製）
         for usr_lib in ("/usr/lib", "/usr/lib64"):
-            src = Path(usr_lib)
-            if src.is_dir():
-                dst = jail_dir / usr_lib.lstrip("/")
-                # 只建目錄，不 mount；_copy_ldd_deps 已用絕對路徑處理過
-                dst.mkdir(parents=True, exist_ok=True)
+            if Path(usr_lib).is_dir():
+                (jail_dir / usr_lib.lstrip("/")).mkdir(parents=True, exist_ok=True)
 
     # 寫入成功標記
     (jail_dir / ".created").touch()
@@ -178,8 +193,8 @@ def destroy_jail(jail_dir_str: str):
     if not jail_dir.exists():
         return
 
-    # 先嘗試 umount（只有 root 模式才有 mount，非 root 直接略過）
-    if os.geteuid() == 0:
+    # 只在 .bindmounted 標記存在時才嘗試 umount（ldd 複製模式沒有掛載點）
+    if (jail_dir / ".bindmounted").exists():
         for rel in ("proc", "lib", "lib64",
                     "usr/lib", "usr/lib64", "usr/local/lib",
                     "lib/x86_64-linux-gnu", "usr/lib/x86_64-linux-gnu"):
