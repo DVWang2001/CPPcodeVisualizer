@@ -1,8 +1,11 @@
 node_modules
 dist
-.git
+gdbgui/static/js/main.js
 __pycache__
 *.pyc
+*.pyo
 *.egg-info
+.git
+.pytest_cache
 gdbgui/server/uploads
 .claude
