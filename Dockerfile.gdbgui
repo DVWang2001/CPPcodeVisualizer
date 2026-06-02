@@ -1,10 +1,13 @@
 # ── Stage 1: build the React/Webpack frontend ─────────────────────────────
-FROM node:16.20.2-slim AS frontend-builder
+FROM node:20-slim AS frontend-builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm install --no-audit --no-fund
 COPY . .
-RUN npm run build
+# Webpack 4 needs --openssl-legacy-provider; pass it directly to node
+# so it works on any Node version regardless of NODE_OPTIONS restrictions.
+RUN NODE_ENV=production node --openssl-legacy-provider \
+    node_modules/.bin/webpack --mode production --config webpack.config.js
 
 # ── Stage 2: Python runtime ────────────────────────────────────────────────
 FROM python:3.13-slim
