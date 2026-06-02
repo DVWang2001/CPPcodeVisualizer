@@ -92,14 +92,8 @@ ulimit -t 30      2>/dev/null  # 30 s CPU time limit
 ulimit -v 524288  2>/dev/null  # 512 MB virtual memory limit
 ulimit -f 1024    2>/dev/null  # 512 KB max file write
 
-# Drop to nobody (uid/gid 65534) before exec'ing user code.
-# GDB (root) retains CAP_SYS_PTRACE and can still debug the process.
-# This prevents user programs from writing to root-owned application files.
-if [ "$(id -u)" = "0" ] && command -v setpriv >/dev/null 2>&1; then
-    exec setpriv --reuid=65534 --regid=65534 --clear-groups -- "$HOST_BIN" "$@"
-else
-    exec "$HOST_BIN" "$@"
-fi
+# Skipping privilege drop since it clears dumpable flag and breaks GDB ptrace
+exec "$HOST_BIN" "$@"
 """
     try:
         with open(wrapper_path, "w") as f:
@@ -367,7 +361,7 @@ def upload():
             compiler = current_app.config.get("c_compiler") or ("g++" if ext != ".c" else "gcc")
             try:
                 res = subprocess.run(
-                    [compiler, "-g", "-O0", dest_path, "-o", exec_path],
+                    [compiler, "-g", "-O0", "-no-pie", dest_path, "-o", exec_path],
                     capture_output=True,
                     text=True,
                 )
@@ -508,7 +502,6 @@ def create_and_upload():
         exec_path = os.path.join(upload_dir, exec_filename)
         compiler = current_app.config.get("c_compiler") or ("g++" if ext.lower() != ".c" else "gcc")
 
-        # 基本編譯命令；-no-pie 使 binary 有固定載入地址，讓 GDB 在 chroot 內也能正確設定斷點
         compile_cmd = [compiler, "-g", "-O0", "-no-pie", src_path, "-o", exec_path]
         if stub_available:
             compile_cmd += [str(_STUB_O)] + _WRAP_FLAGS
@@ -525,7 +518,7 @@ def create_and_upload():
                 if stub_available:
                     logger.warning("[sandbox] compile with stub failed, retrying without sandbox")
                     res2 = subprocess.run(
-                        [compiler, "-g", "-O0", src_path, "-o", exec_path],
+                        [compiler, "-g", "-O0", "-no-pie", src_path, "-o", exec_path],
                         capture_output=True, text=True, timeout=30,
                     )
                     if res2.returncode != 0:
@@ -787,7 +780,7 @@ def gdbgui():
         
         try:
             res = subprocess.run(
-                [compiler, "-g", "-O0", src_path, "-o", exec_path],
+                [compiler, "-g", "-O0", "-no-pie", src_path, "-o", exec_path],
                 capture_output=True,
                 text=True,
                 timeout=30,
