@@ -331,7 +331,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                 {values.map((v: string, idx: number) => {
                                     const hlInfo = getHighlight(idx, highlights, len);
                                     return (
-                                        <div key={`val-${idx}`} style={{ flex: 1, padding: '18px 6px', borderRight: idx < len - 1 ? '1px solid #777' : 'none', minWidth: '32px', textAlign: 'center', backgroundColor: hlInfo ? hlInfo.bg : 'transparent', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em' }}>
+                                        <div key={`val-${idx}`} data-testid="container-cell" data-value={String(v)} style={{ flex: 1, padding: '18px 6px', borderRight: idx < len - 1 ? '1px solid #777' : 'none', minWidth: '32px', textAlign: 'center', backgroundColor: hlInfo ? hlInfo.bg : 'transparent', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em' }}>
                                             {type === "string" && v !== "" ? `'${v}'` : v}
                                         </div>
                                     );
@@ -353,7 +353,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                             const hlInfo = getHighlight(idx, highlights, len);
                             return (
                                 <React.Fragment key={idx}>
-                                    <div style={{ flex: 1, padding: '18px 6px', borderRadius: '16px', border: `2px solid ${hlInfo ? hlInfo.border : '#0056b3'}`, backgroundColor: hlInfo ? hlInfo.bg : '#e6f2ff', minWidth: '32px', textAlign: 'center', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em' }}>{v}</div>
+                                    <div data-testid="container-cell" data-value={String(v)} style={{ flex: 1, padding: '18px 6px', borderRadius: '16px', border: `2px solid ${hlInfo ? hlInfo.border : '#0056b3'}`, backgroundColor: hlInfo ? hlInfo.bg : '#e6f2ff', minWidth: '32px', textAlign: 'center', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em' }}>{v}</div>
                                     {idx < len - 1 && <span style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '1.1em' }}>&harr;</span>}
                                 </React.Fragment>
                             );
@@ -368,7 +368,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                         {values.map((v: string, idx: number) => {
                             const hlInfo = getHighlight(idx, highlights, len);
                             return (
-                                <div key={idx} style={{ flex: 1, borderRight: idx < len - 1 ? `2px solid ${hlInfo ? hlInfo.border : '#ff6666'}` : 'none', padding: '18px 6px', textAlign: 'center', backgroundColor: hlInfo ? hlInfo.bg : '#ffe6e6', minWidth: '32px', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em' }}>
+                                <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ flex: 1, borderRight: idx < len - 1 ? `2px solid ${hlInfo ? hlInfo.border : '#ff6666'}` : 'none', padding: '18px 6px', textAlign: 'center', backgroundColor: hlInfo ? hlInfo.bg : '#ffe6e6', minWidth: '32px', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em' }}>
                                     {v}
                                 </div>
                             );
@@ -384,7 +384,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                         {values.map((v: string, idx: number) => {
                             const hlInfo = getHighlight(idx, highlights, len);
                             return (
-                                <div key={idx} style={{ flex: 1, borderRight: idx < len - 1 ? `${hlInfo ? '2px solid' : '2px dashed'} ${hlInfo ? hlInfo.border : '#66cc66'}` : 'none', padding: '18px 6px', backgroundColor: hlInfo ? hlInfo.bg : '#fff', textAlign: 'center', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em', minWidth: '32px' }}>{v}</div>
+                                <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ flex: 1, borderRight: idx < len - 1 ? `${hlInfo ? '2px solid' : '2px dashed'} ${hlInfo ? hlInfo.border : '#66cc66'}` : 'none', padding: '18px 6px', backgroundColor: hlInfo ? hlInfo.bg : '#fff', textAlign: 'center', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em', minWidth: '32px' }}>{v}</div>
                             );
                         })}
                         {len === 0 && <div style={{ flex: 1, color: '#999', fontStyle: 'italic', padding: '18px 8px', textAlign: 'center' }}>empty</div>}
@@ -399,7 +399,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                         {values.map((v: string, idx: number) => {
                             const hlInfo = getHighlight(idx, highlights, len);
                             return (
-                                <div key={idx} style={{ flex: 1, padding: '18px 6px', borderRight: idx < len - 1 ? `2px solid ${hlInfo ? hlInfo.border : '#b366ff'}` : 'none', backgroundColor: hlInfo ? hlInfo.bg : '#f9f2ff', borderRadius: '4px', textAlign: 'center', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em', minWidth: '32px' }}>{v}</div>
+                                <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ flex: 1, padding: '18px 6px', borderRight: idx < len - 1 ? `2px solid ${hlInfo ? hlInfo.border : '#b366ff'}` : 'none', backgroundColor: hlInfo ? hlInfo.bg : '#f9f2ff', borderRadius: '4px', textAlign: 'center', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em', minWidth: '32px' }}>{v}</div>
                             );
                         })}
                         {len === 0 && <div style={{ flex: 1, color: '#999', fontStyle: 'italic', padding: '18px 10px', textAlign: 'center' }}>empty</div>}
@@ -419,7 +419,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                 const hlInfo = getHighlight(idx, highlights, len);
                                 return (
                                     <React.Fragment key={idx}>
-                                        <div style={{ flex: 1, padding: '18px 6px', borderRight: idx < len - 1 ? '1px solid #80cbc4' : 'none', border: hlInfo ? `2px solid ${hlInfo.border}` : 'none', backgroundColor: hlInfo ? hlInfo.bg : '#fff', fontWeight: hlInfo ? 'bold' : 'normal', minWidth: '32px', textAlign: 'center', fontFamily: 'monospace', fontSize: '1.1em' }}>{v}</div>
+                                        <div data-testid="container-cell" data-value={String(v)} style={{ flex: 1, padding: '18px 6px', borderRight: idx < len - 1 ? '1px solid #80cbc4' : 'none', border: hlInfo ? `2px solid ${hlInfo.border}` : 'none', backgroundColor: hlInfo ? hlInfo.bg : '#fff', fontWeight: hlInfo ? 'bold' : 'normal', minWidth: '32px', textAlign: 'center', fontFamily: 'monospace', fontSize: '1.1em' }}>{v}</div>
                                     </React.Fragment>
                                 );
                             })}
@@ -452,7 +452,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                 {pairs.map((pair, idx) => {
                                     const hlInfo = getHighlight(idx, highlights, len);
                                     return (
-                                        <tr key={idx} style={{ backgroundColor: hlInfo ? hlInfo.bg : (idx % 2 === 0 ? '#e3f2fd' : '#fff') }}>
+                                        <tr key={idx} data-testid="container-row" data-key={String(pair.key)} data-value={String(pair.value)} style={{ backgroundColor: hlInfo ? hlInfo.bg : (idx % 2 === 0 ? '#e3f2fd' : '#fff') }}>
                                             <td style={{ padding: '3px 12px', border: '1px solid #90caf9', fontWeight: hlInfo ? 'bold' : 'normal', color: '#1a237e', borderRight: '2px solid #1565c0' }}>{pair.key}</td>
                                             <td style={{ padding: '3px 12px', border: '1px solid #90caf9', fontWeight: hlInfo ? 'bold' : 'normal', color: '#333' }}>{pair.value}</td>
                                         </tr>
@@ -476,7 +476,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
         const showBSTToggle = type === "set" || type === "multiset" || type === "map" || type === "multimap";
 
         return (
-            <div key={name} style={{ marginBottom: "16px", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", backgroundColor: "#fff" }}>
+            <div key={name} data-testid={`container-${name}`} data-container-type={type} style={{ marginBottom: "16px", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", backgroundColor: "#fff" }}>
                 <div style={{ marginBottom: "8px", fontWeight: "bold", fontFamily: "monospace", color: "#333", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
                     <span>
                         {name}{" "}
