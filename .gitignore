@@ -17,6 +17,7 @@ gdbgui/static/js/*
 __pycache__
 .coverage*
 *.json
+!e2e/package-lock.json
 *.cpp
 *.in
 *.a
