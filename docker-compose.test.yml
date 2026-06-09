@@ -14,7 +14,7 @@ services:
           /tmp/e2e_test
       "
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:5000/ > /dev/null"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/')\""]
       interval: 5s
       timeout: 5s
       retries: 15
