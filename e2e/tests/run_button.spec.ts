@@ -1,9 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { waitForContainerData, setupGuide } from './helpers';
 
-// When GDB hits the e2e_bp() breakpoint, all containers are populated.
-// We use container data availability as the "program responded" signal —
-// it requires the full pipeline (GDB run → breakpoint hit → data extraction → WebSocket → DOM).
 test('Run button causes GDB to respond within 3 seconds', async ({ page }) => {
     await page.goto('/');
     await setupGuide(page);
