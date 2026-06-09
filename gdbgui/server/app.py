@@ -190,6 +190,19 @@ def pty_interaction(message):
         if action == "write":
             key = data["key"]
             pty.write(key)
+        elif action == "flush":
+            import termios as _termios
+            try:
+                # TCOFLUSH on master only discards data before the line discipline;
+                # data already in the slave's canonical input buffer needs TCIFLUSH
+                # applied to the slave fd (opened by name).
+                slave_fd = os.open(pty.name, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+                try:
+                    _termios.tcflush(slave_fd, _termios.TCIFLUSH)
+                finally:
+                    os.close(slave_fd)
+            except Exception:
+                pass
         elif action == "set_winsize":
             pty.set_winsize(data["rows"], data["cols"])
         else:

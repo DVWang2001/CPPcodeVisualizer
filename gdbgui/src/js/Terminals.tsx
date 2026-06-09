@@ -68,18 +68,18 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
 
     this.state = {
       programOutput: "",
-      programInput: localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "",
+      program_input: localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "",
       showTerminals: false,
       terminalWidthPct: 50,
     } as any;
 
     this.sendInputToPty = this.sendInputToPty.bind(this);
     // @ts-expect-error
-    store.connectComponentState(this, ["tts_subtitle", "edit_mode"]);
+    store.connectComponentState(this, ["tts_subtitle", "edit_mode", "program_input"]);
   }
 
   sendInputToPty() {
-    const input = this.state.programInput || store.get("program_input") || "";
+    const input = (this.state as any).program_input || store.get("program_input") || "";
     if (!input) {
       return;
     }
@@ -272,11 +272,11 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
                       height="100%"
                       language="plaintext"
                       theme="light"
-                      value={this.state.programInput}
+                      value={(this.state as any).program_input}
                       editorDidMount={(getValue: any, editor: any) => {
                         editor.onDidChangeModelContent(() => {
                           const val = getValue();
-                          this.setState({ programInput: val });
+                          this.setState({ program_input: val });
                           store.set("program_input", val);
                           localStorage.setItem("gdbgui_program_input", val);
                         });

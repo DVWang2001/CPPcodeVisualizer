@@ -221,8 +221,15 @@ const GdbApi = {
       _pending_input_injection = false;
       const input = store.get("program_input") || localStorage.getItem("gdbgui_program_input") || "";
       console.log("[input-inject] INJECTING input: '" + input + "'");
+      const s = GdbApi.getSocket();
+      if (s && !s.disconnected) {
+        // Flush leftover data from previous run before writing new input.
+        // Socket.IO delivers messages in order, so flush arrives before write.
+        s.emit("pty_interaction", {
+          data: { pty_name: "program_pty", action: "flush" }
+        });
+      }
       if (input) {
-        const s = GdbApi.getSocket();
         if (s && !s.disconnected) {
           s.emit("pty_interaction", {
             data: { pty_name: "program_pty", key: input + "\n\x04", action: "write" }
