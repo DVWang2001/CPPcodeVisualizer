@@ -377,6 +377,8 @@ class BSTPlugin implements ContainerPlugin {
             nodeElems.push(
                 React.createElement('g', {
                     key: node.entry.id,
+                    'data-testid': 'bst-node',
+                    'data-key': node.entry.key,
                     style: { transform: `translate(${p.x}px, ${p.y}px)`, transition: 'transform 0.5s ease' }
                 },
                     React.createElement('g', {
@@ -398,9 +400,9 @@ class BSTPlugin implements ContainerPlugin {
             );
         }
 
-        return React.createElement('div', null,
+        return React.createElement('div', { 'data-testid': 'bst-tree' },
             React.createElement('div', { style: { overflowX: 'auto' } },
-                React.createElement('svg', { width: svgW, height: svgH, style: { display: 'block' } },
+                React.createElement('svg', { 'data-testid': 'bst-svg', width: svgW, height: svgH, style: { display: 'block' } },
                     React.createElement('g', null, ...edges),
                     React.createElement('g', null, ...nodeElems)
                 )
