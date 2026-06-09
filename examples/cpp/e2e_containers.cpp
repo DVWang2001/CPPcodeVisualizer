@@ -9,8 +9,22 @@
 #include <map>
 #include <unordered_map>
 
-// Stable GDB breakpoint target: `b e2e_bp`
-static void e2e_bp() { volatile int x = 0; (void)x; }
+static void e2e_bp(
+    const std::vector<int>&                v,
+    const std::array<int, 3>&              a,
+    const std::string&                     s,
+    const std::list<int>&                  l,
+    const std::stack<int>&                 st,
+    const std::queue<int>&                 q,
+    const std::deque<int>&                 dq,
+    const std::set<int>&                   se,
+    const std::multiset<int>&              ms,
+    const std::map<int, std::string>&      m,
+    const std::multimap<int, std::string>& mm,
+    const std::unordered_map<int, int>&    um
+) {
+    volatile int x = 0; (void)x;
+}
 
 int main() {
     std::vector<int>                v  = {10, 20, 30};
@@ -26,6 +40,6 @@ int main() {
     std::multimap<int, std::string> mm = {{1, "x"}, {1, "y"}};
     std::unordered_map<int, int>    um = {{42, 99}};
 
-    e2e_bp();   // GDB stops here — all containers populated
+    e2e_bp(v, a, s, l, st, q, dq, se, ms, m, mm, um);
     return 0;
 }
