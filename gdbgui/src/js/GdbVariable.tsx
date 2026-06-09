@@ -761,11 +761,13 @@ class GdbVariable extends React.Component {
           obj.values.push(obj._float_value);
         }
         // Dynamic varobjs (pretty-printer) use new_num_children instead of numchild.
-        // On pop, children array is stale; clear it and sync numchild so checkStore re-fetches.
+        // Always sync numchild so checkStore sees the correct size (fixes push-after-clear bug).
         if ("new_num_children" in changelist && obj.children) {
           const _newCount = parseInt(String(changelist["new_num_children"]));
-          if (!isNaN(_newCount) && obj.children.length > _newCount) {
-            obj.children = [];
+          if (!isNaN(_newCount)) {
+            if (obj.children.length > _newCount) {
+              obj.children = [];
+            }
             obj.numchild = _newCount;
           }
         }
