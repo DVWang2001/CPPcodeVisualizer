@@ -168,8 +168,9 @@ for (let key in initial_store_data) {
 try {
   const _as = JSON.parse(localStorage.getItem("gdbgui_autosave") || "null");
   if (_as && _as.version) {
-    // 1. 還原 fullname_to_render
-    if (_as.fullname_to_render) {
+    // 1. 還原 fullname_to_render（含空字串：tutorial import 後 fullname_to_render="" 也需還原，
+    //    否則 fallback 會設成 "__imported__"，導致 fullname_to_display="" 的斷點比對失敗）
+    if (typeof _as.fullname_to_render === 'string') {
       (initial_store_data as any).fullname_to_render = _as.fullname_to_render;
     }
 
