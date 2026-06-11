@@ -4,6 +4,7 @@ import GdbVariable from "./GdbVariable";
 import GdbApi from "./GdbApi";
 import { animScheduler } from "./AnimScheduler";
 import { getPlugin } from "./ContainerPlugin";
+import { resolveChildValues } from "./containerParsers/index";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
@@ -20,6 +21,10 @@ let _tts_subtitle_text = "";    // 去除所有標記後的純淨字幕文字
 // ── graphics_instruction 取消 token（模組級）──────────────────────────
 let _graphics_task_id = 0;      // 每次 graphics_instruction 遞增，舊任務自動放棄
 let _bst_op_task_id = 0;        // 每次 detect_container_op 遞增，舊任務自動放棄
+
+// ── 容器解析結果快取（同一 GDB stop 內重複解析同容器時直接返回）──────────
+let _gi_cache_version = -1;
+const _gi_result_cache = new Map();
 
 /**
  * Eagerly call diffOps + pushOps for a container whenever __latest_containers is updated.
@@ -360,7 +365,7 @@ class VisualizerHelper {
           const varObj = exprs.find(obj => obj.expression === displayKey && obj.in_scope === "true");
           if (varObj) {
             if (varObj.value !== undefined) {
-              // 無論是容器還是一般變數，TTS 儘量發音其值 
+              // 無論是容器還是一般變數，TTS 儘量發音其值
               // 如果是字串或容器，這裡簡單的處理為直接取值
               resolve(varObj.value);
             } else {
@@ -598,6 +603,7 @@ class VisualizerHelper {
       // 等待並獲取結果（與其他 {expr} 並行）
       return new Promise((resolve) => {
         let checkTicks = 0;
+
         const checkStore = () => {
           // 若有更新的 graphics_instruction 任務，立即放棄（不寫入 __latest_containers）
           if (_graphics_task_id !== myGraphicsTaskId) {
@@ -611,6 +617,9 @@ class VisualizerHelper {
             setTimeout(checkStore, 50);
             return;
           }
+          // 版本號變動時清除舊快取，確保跨 stop 不復用舊值
+          const _cv = window.__gdbgui_changelist_version || 0;
+          if (_cv !== _gi_cache_version) { _gi_result_cache.clear(); _gi_cache_version = _cv; }
           checkTicks++;
           if (checkTicks > 150) {
             console.warn(`[GI] TIMEOUT task=${myGraphicsTaskId} "${trimmedInst}" line=${frame_line}`);
@@ -692,6 +701,18 @@ class VisualizerHelper {
 
           const varObj = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
           if (varObj && highlightIndexReady) {
+            // ── 快取命中：同一 stop 內重複解析同容器直接返回 ──
+            const _ck = `${displayKey}:${frame_line}`;
+            const _cr = _gi_result_cache.get(_ck);
+            if (_cr) {
+              if (!global_variable.__containers_guide) global_variable.__containers_guide = new Map();
+              if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
+              global_variable.__containers_guide.get(frame_line).push(_cr.payload);
+              if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
+              global_variable.__latest_containers.set(trimmedInst, _cr.payload);
+              resolve(_cr.outputStr);
+              return;
+            }
             // ── 判斷容器類型 ──
             const ty = varObj.type || "";
             let containerName = "unknown";
@@ -700,13 +721,14 @@ class VisualizerHelper {
             else if (ty.includes("std::queue") || ty.includes("std::priority_queue")) containerName = "queue";
             else if (ty.includes("std::deque")) containerName = "deque";
             else if (ty.includes("std::vector")) { containerName = "vector"; expectsCapacity = true; }
-            else if (ty.includes("std::__cxx11::basic_string") || ty.includes("std::string")) { containerName = "string"; }
             else if (ty.includes("std::__cxx11::list") || ty.includes("std::list")) containerName = "list";
             else if (ty.includes("std::array")) containerName = "array";
             else if (ty.includes("std::unordered_set") || ty.includes("std::unordered_multiset")) containerName = "set";
             else if (ty.includes("std::set") || ty.includes("std::multiset")) containerName = "set";
             else if (ty.includes("std::unordered_map") || ty.includes("std::unordered_multimap")) containerName = "unordered_map";
             else if (ty.includes("std::map") || ty.includes("std::multimap")) containerName = "map";
+            // string check MUST come after map/set: map<K,string> type contains "basic_string"
+            else if (ty.includes("std::__cxx11::basic_string") || ty.includes("std::string")) { containerName = "string"; }
 
             // ── 建立 payload 函數 ──
             const buildPayload = (valuesArr) => {
@@ -717,9 +739,10 @@ class VisualizerHelper {
             if (containerName === "unknown") {
               resolve(varObj.value);
             } else if (containerName === "string") {
+              const _strResult = resolveChildValues(containerName, varObj, { trimmedInst, expressions, GdbVariable });
               let strVal = varObj.value || "";
               if (strVal.startsWith('"') && strVal.endsWith('"')) strVal = strVal.slice(1, -1);
-              const payload = buildPayload(strVal.split(''));
+              const payload = buildPayload(_strResult.values);
               // 寫入 containers_guide
               if (!global_variable.__containers_guide) global_variable.__containers_guide = new Map();
               if (!global_variable.__containers_guide.has(frame_line)) global_variable.__containers_guide.set(frame_line, []);
@@ -727,6 +750,7 @@ class VisualizerHelper {
               if (!global_variable.__latest_containers) global_variable.__latest_containers = new Map();
               global_variable.__latest_containers.set(trimmedInst, payload);
               _eagerDiffOps(trimmedInst, payload);
+              _gi_result_cache.set(`${displayKey}:${frame_line}`, { payload, outputStr: `{${strVal}}` });
               resolve(`{${strVal}}`);
             } else if ((varObj.value || "").includes("of length 0") ||
               (varObj.numchild === 0 &&
@@ -741,6 +765,7 @@ class VisualizerHelper {
               global_variable.__latest_containers.set(trimmedInst, payload);
               _eagerDiffOps(trimmedInst, payload);
               console.log(`[GI] stored "${trimmedInst}" line=${frame_line} task=${myGraphicsTaskId} EMPTY`);
+              _gi_result_cache.set(`${displayKey}:${frame_line}`, { payload, outputStr: "{}" });
               resolve("{}");
             } else if (varObj.numchild === 0 && (varObj.value || "").match(/^\{[^}]/)) {
               // GDB pretty-printer 把容器值直接放在 value 字串（如 stack 回傳 "{1, 2, 3}"）
@@ -755,6 +780,7 @@ class VisualizerHelper {
               global_variable.__latest_containers.set(trimmedInst, payload);
               _eagerDiffOps(trimmedInst, payload);
               console.log(`[GI] stored "${trimmedInst}" line=${frame_line} task=${myGraphicsTaskId} FROM_VALUE parsed=${parsedValues.length}`);
+              _gi_result_cache.set(`${displayKey}:${frame_line}`, { payload, outputStr: `{${parsedValues.join(', ')}}` });
               resolve(`{${parsedValues.join(', ')}}`);
             } else if (varObj.numchild > 0) {
               // 若 children 數量與 numchild/new_num_children 不符（push/pop 後），強制重新 fetch
@@ -773,88 +799,16 @@ class VisualizerHelper {
                 return;
               }
               if (varObj.children && varObj.children.length > 0) {
-                // 若有 child 本身是容器（value 含 "of length"），需要遞迴展開
-                // 注意：GDB pretty-printer 回傳的 inner vector child.numchild 可能是 NaN，
-                // 所以改用 child.value 字串偵測
-                const isInnerContainer = (child) =>
-                  (typeof child.value === 'string' && child.value.includes('of length')) ||
-                  (typeof child.type  === 'string' && (
-                    child.type.includes('std::deque') ||
-                    child.type.includes('std::vector') ||
-                    child.type.includes('std::list')
-                  ));
-                const isEmptyInnerContainer = (child) =>
-                  isInnerContainer(child) && (
-                    /of length 0\b/.test(child.value || '') ||
-                    parseInt(child.numchild) === 0
-                  );
-                const hasInnerContainers = varObj.children.some(isInnerContainer);
                 let childValues;
-                if (hasInnerContainers) {
-                  // 直接檢查 varObj.children[i].children（fetch 後會被 mutate 更新到 store）
-                  // 空的內層容器（"of length 0"）不需要 fetch，直接視為空陣列
-                  const innerMissing = varObj.children.filter(
-                    child => isInnerContainer(child) &&
-                             !isEmptyInnerContainer(child) &&
-                             !(child.children && child.children.length > 0)
-                  );
-                  if (innerMissing.length > 0) {
-                    // 逐一觸發展開（每次最多 5 個，避免 queue 塞滿）
-                    // 注意：動態 varobj 的 numchild 可能是 NaN（因為用 has_more 而非 numchild）
-                    // fetch_and_show_children_for_var 會檢查 obj.numchild，NaN 是 falsy 會跳過
-                    // → 先從 child.value 解析長度寫回 numchild，再觸發 fetch
-                    const exprs = store.get("expressions");
-                    innerMissing.slice(0, 5).forEach(child => {
-                      if (!child.numchild || isNaN(child.numchild)) {
-                        const m = (child.value || '').match(/of length (\d+)/);
-                        if (m) {
-                          child.numchild = parseInt(m[1]);
-                        } else {
-                          child.numchild = 1; // fallback: 給 truthy 值讓 fetch 能進行
-                        }
-                      }
-                    });
-                    store.set("expressions", exprs);
-                    innerMissing.slice(0, 5).forEach(child =>
-                      GdbVariable.fetch_and_show_children_for_var(child.name)
-                    );
-                    setTimeout(checkStore, 200);
+                {
+                  const _r = resolveChildValues(containerName, varObj, {
+                    trimmedInst, expressions, GdbVariable, containerName, store
+                  });
+                  if (!_r.done) {
+                    setTimeout(checkStore, _r.retryMs ?? 150);
                     return;
                   }
-                  // 所有內層均已展開，組成 nested array
-                  childValues = varObj.children.map(child => {
-                    if (isEmptyInnerContainer(child)) {
-                      return [];  // 空的內層容器（如空 deque）直接給空陣列
-                    }
-                    if (isInnerContainer(child) && child.children && child.children.length > 0) {
-                      return child.children.map(c => c.value);
-                    }
-                    return child.value;
-                  });
-                  // 對 queue/stack/deque 這類「單一內層容器包裝」類型做扁平化：
-                  // 無 pretty-printer 時 std::queue 只有一個 _M_c (deque) 子層，
-                  // 展開後為 [[elem0, elem1, ...]]，需攤平為 [elem0, elem1, ...]
-                  if (['queue', 'stack', 'deque'].includes(containerName) &&
-                      childValues.length === 1 && Array.isArray(childValues[0])) {
-                    childValues = childValues[0];
-                  }
-                } else if (containerName === "map" || containerName === "unordered_map") {
-                  // map 子節點是 {first = K, second = V} 結構，解析成 {key, value} 物件
-                  childValues = varObj.children.map(child => {
-                    const str = String(child.value || "").trim();
-                    // GDB pretty-printer 格式: {first = K, second = V}
-                    const firstIdx = str.indexOf('first = ');
-                    const secondIdx = str.lastIndexOf(', second = ');
-                    if (firstIdx !== -1 && secondIdx !== -1 && secondIdx > firstIdx) {
-                      const key = str.slice(firstIdx + 8, secondIdx).trim();
-                      const val = str.slice(secondIdx + 11).replace(/\s*\}$/, '').trim();
-                      return { key, value: val };
-                    }
-                    // 無法解析時使用 child.expression 當 key、value 當 value
-                    return { key: child.expression || String(varObj.children.indexOf(child)), value: str };
-                  });
-                } else {
-                  childValues = varObj.children.map(child => child.value);
+                  childValues = _r.values;
                 }
                 const payload = buildPayload(childValues);
 
@@ -890,6 +844,7 @@ class VisualizerHelper {
                 }
 
                 const valStr = childValues.join(', ');
+                _gi_result_cache.set(`${displayKey}:${frame_line}`, { payload, outputStr: `{${valStr}}` });
                 resolve(`{${valStr}}`);
               } else {
                 // children 未載入，繼續等待
