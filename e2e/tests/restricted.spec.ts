@@ -1,46 +1,57 @@
-import { test, expect } from '@playwright/test';
-import { runToBreakpoint } from './helpers';
+import { test, expect, Page } from '@playwright/test';
+import { runToBreakpoint, setupPage, waitForContainer } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await runToBreakpoint(page);
-});
+let page: Page;
 
-// ── stack ─────────────────────────────────────────────────────────────────────
+test.describe('restricted containers', () => {
+    test.beforeAll(async ({ browser }) => {
+        page = await browser.newPage();
+        await setupPage(page);
+        await page.goto('/');
+        await runToBreakpoint(page, '{st} {q} {dq}');
+        await waitForContainer(page, 'dq');
+    });
 
-test('stack: cells show 1 and 2', async ({ page }) => {
-    const cells = page.locator('[data-testid="container-st"] [data-testid="container-cell"]');
-    await expect(cells).toHaveCount(2);
-    await expect(cells.nth(0)).toHaveAttribute('data-value', '1');
-    await expect(cells.nth(1)).toHaveAttribute('data-value', '2');
-});
+    test.afterAll(async () => {
+        await page?.close();
+    });
 
-// ── queue ─────────────────────────────────────────────────────────────────────
+    // ── stack ─────────────────────────────────────────────────────────────────────
 
-test('queue: cells show 7 and 8', async ({ page }) => {
-    const cells = page.locator('[data-testid="container-q"] [data-testid="container-cell"]');
-    await expect(cells).toHaveCount(2);
-    await expect(cells.nth(0)).toHaveAttribute('data-value', '7');
-    await expect(cells.nth(1)).toHaveAttribute('data-value', '8');
-});
+    test('stack: cells show 1 and 2', async () => {
+        const cells = page.locator('[data-testid="container-st"] [data-testid="container-cell"]');
+        await expect(cells).toHaveCount(2);
+        await expect(cells.nth(0)).toHaveAttribute('data-value', '1');
+        await expect(cells.nth(1)).toHaveAttribute('data-value', '2');
+    });
 
-test('queue: left arrow is visible', async ({ page }) => {
-    await expect(
-        page.locator('[data-testid="container-q"]').getByText('←').first()
-    ).toBeVisible();
-});
+    // ── queue ─────────────────────────────────────────────────────────────────────
 
-// ── deque ─────────────────────────────────────────────────────────────────────
+    test('queue: cells show 7 and 8', async () => {
+        const cells = page.locator('[data-testid="container-q"] [data-testid="container-cell"]');
+        await expect(cells).toHaveCount(2);
+        await expect(cells.nth(0)).toHaveAttribute('data-value', '7');
+        await expect(cells.nth(1)).toHaveAttribute('data-value', '8');
+    });
 
-test('deque: cells show 9 and 10', async ({ page }) => {
-    const cells = page.locator('[data-testid="container-dq"] [data-testid="container-cell"]');
-    await expect(cells).toHaveCount(2);
-    await expect(cells.nth(0)).toHaveAttribute('data-value', '9');
-    await expect(cells.nth(1)).toHaveAttribute('data-value', '10');
-});
+    test('queue: left arrow is visible', async () => {
+        await expect(
+            page.locator('[data-testid="container-q"]').getByText('←').first()
+        ).toBeVisible();
+    });
 
-test('deque: harr arrow is visible', async ({ page }) => {
-    await expect(
-        page.locator('[data-testid="container-dq"]').getByText('↔').first()
-    ).toBeVisible();
+    // ── deque ─────────────────────────────────────────────────────────────────────
+
+    test('deque: cells show 9 and 10', async () => {
+        const cells = page.locator('[data-testid="container-dq"] [data-testid="container-cell"]');
+        await expect(cells).toHaveCount(2);
+        await expect(cells.nth(0)).toHaveAttribute('data-value', '9');
+        await expect(cells.nth(1)).toHaveAttribute('data-value', '10');
+    });
+
+    test('deque: harr arrow is visible', async () => {
+        await expect(
+            page.locator('[data-testid="container-dq"]').getByText('↔').first()
+        ).toBeVisible();
+    });
 });

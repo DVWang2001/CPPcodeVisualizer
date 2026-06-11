@@ -1,10 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { waitForContainerData, setupGuide } from './helpers';
+import { waitForContainerData, setupGuide, setupPage } from './helpers';
 
 test('Run button causes GDB to respond within 3 seconds', async ({ page }) => {
+    await setupPage(page);
     await page.goto('/');
     await setupGuide(page);
 
+    await page.evaluate(() => {
+        (window as any).gdbgui_get_editor_value = () => "";
+    });
     const start = Date.now();
     await page.click('#run_button');
     await waitForContainerData(page, 3_000);
