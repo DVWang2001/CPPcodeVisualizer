@@ -1,18 +1,15 @@
-version: '3.8'
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile.gdbgui
-    command: >
-      bash -c "
+    command:
+      - bash
+      - -c
+      - |
         g++ -g /app/examples/cpp/e2e_containers.cpp -o /tmp/e2e_test &&
         echo 'b e2e_bp' > /tmp/gdb_init.txt &&
-        python -m gdbgui --host=0.0.0.0 --port=5000 --no-browser
-          --gdb-cmd='gdb -x /tmp/gdb_init.txt'
-          /tmp/e2e_test
-      "
+        python -m gdbgui --host=0.0.0.0 --port=5000 --no-browser --gdb-cmd='gdb -x /tmp/gdb_init.txt' /tmp/e2e_test
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/')\""]
       interval: 5s
@@ -29,6 +26,11 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    environment:
+      - PLAYWRIGHT_BASE_URL=http://app:5000
+    volumes:
+      - ./e2e/test-results:/e2e/test-results
+      - ./e2e/playwright-report:/e2e/playwright-report
     networks:
       - test-net
 

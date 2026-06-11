@@ -3,4 +3,4 @@ WORKDIR /e2e
 COPY package*.json ./
 RUN npm ci
 COPY . .
-CMD ["npx", "playwright", "test", "--reporter=list"]
+CMD ["npx", "playwright", "test", "--reporter=list,html"]

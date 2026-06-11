@@ -29,3 +29,8 @@ __pycache__
 gdbgui/server/uploads/
 generate_pptx.py
 .claude/settings.local.json
+e2e/test-results/
+e2e/playwright-report/
+docs/superpowers/
+test_http.py
+test_pty.py
