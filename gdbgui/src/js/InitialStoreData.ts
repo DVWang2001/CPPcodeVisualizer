@@ -46,6 +46,10 @@ const initial_store_data = {
   autoplay_paused: false, // 暫停自動播放：保留進度，下次恢復時從該步驟繼續
   autoplay_pending_command: null as string | null, // 暫停時儲存的待執行指令
   tts_speed: 1.0, // TTS 播放速度（0.5x ~ 2.0x）
+  container_font_size: 1.1, // 容器視覺化的字體大小（em），可在 Settings 或 layout 調整
+  monaco_font_size: 14, // Monaco 編輯器字體大小（px），可在 Settings 調整
+  monaco_line_height: 21, // Monaco 實際算出的 line height（px），mount 後由 SourceCode.tsx 回寫
+  monaco_content_height: 400, // Monaco 編輯器可視高度（px），mount 後由 SourceCode.tsx 回寫
   edit_mode: true, // 編輯模式：顯示 Guide/TTS 輸入欄；按下 Run 自動切為 false
 
   pretty_print: true, // whether gdb should "pretty print" variables. There is an option for this in Settings

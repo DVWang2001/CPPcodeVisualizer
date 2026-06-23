@@ -25,7 +25,9 @@ class Settings extends React.Component {
       "pretty_print",
       "refresh_state_after_sending_console_command",
       "show_all_sent_commands_in_console",
-      "highlight_source_code"
+      "highlight_source_code",
+      "container_font_size",
+      "monaco_font_size"
     ]);
     this.get_update_max_lines_of_code_to_fetch = this.get_update_max_lines_of_code_to_fetch.bind(
       this
@@ -103,6 +105,50 @@ class Settings extends React.Component {
             "highlight_source_code",
             "Add syntax highlighting to source files"
           )}
+
+          <tr>
+            <td>
+              Monaco editor font size:{" "}
+              <input
+                type="range"
+                min="10"
+                max="28"
+                step="1"
+                value={store.get("monaco_font_size")}
+                style={{ verticalAlign: "middle", width: "120px", margin: "0 8px" }}
+                onChange={(e) => {
+                  const v = parseInt(e.currentTarget.value, 10);
+                  store.set("monaco_font_size", v);
+                  localStorage.setItem("monaco_font_size", String(v));
+                }}
+              />
+              <span style={{ fontFamily: "monospace" }}>
+                {store.get("monaco_font_size")}px
+              </span>
+            </td>
+          </tr>
+
+          <tr>
+            <td>
+              Visualizer font size:{" "}
+              <input
+                type="range"
+                min="0.7"
+                max="2.0"
+                step="0.1"
+                value={store.get("container_font_size")}
+                style={{ verticalAlign: "middle", width: "120px", margin: "0 8px" }}
+                onChange={(e) => {
+                  const v = parseFloat(e.currentTarget.value);
+                  store.set("container_font_size", v);
+                  localStorage.setItem("container_font_size", String(v));
+                }}
+              />
+              <span style={{ fontFamily: "monospace" }}>
+                {(store.get("container_font_size") as number).toFixed(1)}em
+              </span>
+            </td>
+          </tr>
 
           <tr>
             <td>

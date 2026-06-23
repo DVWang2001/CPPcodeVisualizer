@@ -85,6 +85,7 @@ class SourceCode extends React.Component<{}, State> {
       "inferior_program",
       "compile_errors",
       "user_source_fullname",
+      "monaco_font_size",
     ]);
 
     // bind methods
@@ -278,6 +279,21 @@ class SourceCode extends React.Component<{}, State> {
       setTimeout(() => this.showTtsBubble(), 100);
     }
 
+    // Read Monaco's actual computed line height and content height so Visualizer
+    // can use the exact same values for row sizing and scroll-area height.
+    const _syncMonacoMetrics = () => {
+      if (!this.editorInstance || !this.monaco) return;
+      const actualLH: number = this.editorInstance.getOption(
+        this.monaco.editor.EditorOption.lineHeight
+      );
+      if (actualLH > 0) store.set("monaco_line_height", actualLH);
+      const h: number = this.editorInstance.getLayoutInfo().height;
+      if (h > 0) store.set("monaco_content_height", h);
+    };
+    setTimeout(_syncMonacoMetrics, 100);
+    // Keep height in sync when the pane is resized (e.g., Split.js drag)
+    editor.onDidLayoutChange(() => _syncMonacoMetrics());
+
     // Sync scroll
     editor.onDidScrollChange((e: any) => {
       if (this.inputContainerRef.current) {
@@ -288,6 +304,10 @@ class SourceCode extends React.Component<{}, State> {
       }
       if (this.dragHandleContainerRef.current) {
         this.dragHandleContainerRef.current.scrollTop = e.scrollTop;
+      }
+      // Sync right-sidebar Visualizer scroll so line numbers align with Monaco
+      if (typeof (window as any).gdbgui_set_visualizer_scroll === "function") {
+        (window as any).gdbgui_set_visualizer_scroll(e.scrollTop);
       }
     });
 
@@ -1051,6 +1071,13 @@ class SourceCode extends React.Component<{}, State> {
             setBstMode(containerName.trim(), true);
           });
         }
+      } else if (key === "font") {
+        // font:1.5 → 設定 Container Visualizer 字體大小（em）
+        const size = parseFloat(val);
+        if (!isNaN(size) && size > 0) {
+          store.set("container_font_size", size);
+          localStorage.setItem("container_font_size", String(size));
+        }
       }
     }
   };
@@ -1462,7 +1489,8 @@ class SourceCode extends React.Component<{}, State> {
     this.lastLoadedFilename = ftrForMonaco;
 
       const theme = this.state.current_theme === 'dark' ? 'vs-dark' : 'light';
-      const LINE_HEIGHT = 19;
+      const monacoFontSize: number = (this.state as any).monaco_font_size || 14;
+      const LINE_HEIGHT = Math.round(monacoFontSize * 1.5);
       // Use dynamic line count if available, otherwise fallback to static
       const numLines = this.state.lineCount > 0 ? this.state.lineCount : (obj?.num_lines_in_file ?? 0);
 
@@ -1708,6 +1736,7 @@ class SourceCode extends React.Component<{}, State> {
                   scrollBeyondLastLine: false,
                   automaticLayout: true,
                   fontFamily: "monospace",
+                  fontSize: monacoFontSize,
                   lineHeight: LINE_HEIGHT
                 }}
               />
@@ -1784,6 +1813,22 @@ class SourceCode extends React.Component<{}, State> {
         readOnly: !this.state.edit_mode,
         extraEditorClassName: this.state.edit_mode ? '' : 'gdbgui-readonly-editor',
       });
+    }
+
+    // Sync Monaco font size when monaco_font_size changes
+    if ((prevState as any).monaco_font_size !== (this.state as any).monaco_font_size && this.editorInstance) {
+      const fs = (this.state as any).monaco_font_size || 14;
+      this.editorInstance.updateOptions({
+        fontSize: fs,
+        lineHeight: Math.round(fs * 1.5),
+      });
+      // Read back Monaco's actual computed line height after options are applied
+      if (this.monaco) {
+        const actualLH: number = this.editorInstance.getOption(
+          this.monaco.editor.EditorOption.lineHeight
+        );
+        if (actualLH > 0) store.set("monaco_line_height", actualLH);
+      }
     }
 
     // 當 FILE_MISSING 時，嘗試從 localStorage 恢復程式碼（例如 Docker container 重啟後舊 temp 檔消失）
