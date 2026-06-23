@@ -19,7 +19,9 @@ function getHighlight(idx: number, highlights: HighlightEntry[] | undefined, len
         return resolved === idx;
     });
     if (!h) return null;
-    if (h.color === 'default') return { bg: '#fff6b3', border: '#cca300' };
+    // 'default' = the animation's focus state → amber (compare/swap).
+    // Explicit colors (maze rules, custom highlights) pass through unchanged.
+    if (h.color === 'default') return { bg: 'var(--highlight-soft)', border: 'var(--highlight)' };
     return { bg: h.color, border: h.color };
 }
 
@@ -42,7 +44,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             bstMode: new Set<string>(),
         };
         // @ts-expect-error ts-migrate(2339)
-        store.connectComponentState(this, ["inferior_program", "rbtree_updated"]);
+        store.connectComponentState(this, ["inferior_program", "rbtree_updated", "container_font_size"]);
     }
 
     componentDidMount() {
@@ -179,7 +181,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             for (const h of highlights) {
                 const r = Math.floor(h.index / cols);
                 const c = h.index % cols;
-                mazePosMap.set(`${r},${c}`, h.color === 'default' ? '#ff6b35' : h.color);
+                mazePosMap.set(`${r},${c}`, h.color === 'default' ? '#f59e0b' : h.color);
             }
         }
 
@@ -244,9 +246,9 @@ class ContainerVisualizer extends React.Component<{}, State> {
         };
 
         return (
-            <div style={{ marginTop: 8, padding: '6px 8px', backgroundColor: '#f9f6f0', border: '1px solid #ddd', borderRadius: 4, fontSize: '0.82em' }}>
+            <div style={{ marginTop: 8, padding: '8px 10px', backgroundColor: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 8, fontSize: '0.82em' }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 'bold', color: '#555' }}>顏色對照：</span>
+                    <span style={{ fontWeight: 600, color: 'var(--ink-soft)' }}>顏色對照：</span>
                     {[{ bg: '#f5f0e8', label: '0 地板' }, { bg: '#2c2c2c', label: '1 牆壁' }].map(({ bg, label }) => (
                         <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             <span style={{ width: 14, height: 14, backgroundColor: bg, border: '1px solid #aaa', display: 'inline-block', borderRadius: 2 }} />
@@ -269,7 +271,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     <input type="color" value={input.color} onChange={e => setInput({ color: e.target.value })}
                         style={{ width: 32, height: 24, padding: 1, border: '1px solid #bbb', borderRadius: 3, cursor: 'pointer' }} />
                     <button onClick={addRule}
-                        style={{ padding: '2px 10px', backgroundColor: '#b05000', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: '0.9em' }}>
+                        style={{ padding: '2px 12px', backgroundColor: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.9em', fontFamily: 'var(--font-body)' }}>
                         新增
                     </button>
                 </div>
@@ -286,6 +288,38 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
         const isMazeMode = this.state.mazeMode.has(name);
         const isBSTMode  = this.state.bstMode.has(name);
+
+        // Font sizes scaled from the user-configurable base (default 1.1em)
+        const fs     = (store.get("container_font_size") as number) || 1.1;
+        const fsPx   = `${fs}em`;
+        const fsArrow = `${(fs * 1.27).toFixed(2)}em`;
+        const fsBrace = `${(fs * 1.09).toFixed(2)}em`;
+        const fsMap   = `${(fs * 0.82).toFixed(2)}em`;
+
+        // ── Unified node language ─────────────────────────────────────────────
+        // Every element is the same cell primitive; the container TYPE is shown
+        // by frame + connectors, and COLOR only encodes state (resting / focus).
+        const cellBase: React.CSSProperties = {
+            flex: 1, minWidth: "34px", padding: "12px 10px", textAlign: "center",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontFamily: "var(--font-mono)", fontSize: fsPx, color: "var(--ink)", boxSizing: "border-box",
+        };
+        const restNode: React.CSSProperties = {
+            background: "var(--surface)", border: "1px solid var(--struct-border)", borderRadius: "6px", fontWeight: 500,
+        };
+        const stateStyle = (hl: { bg: string; border: string } | null): React.CSSProperties =>
+            hl ? { background: hl.bg, border: `1px solid ${hl.border}`, borderRadius: "6px", fontWeight: 700, boxShadow: `0 0 0 1px ${hl.border}` } : restNode;
+        const frame: React.CSSProperties = {
+            display: "flex", border: "1px solid var(--line)", borderRadius: "10px",
+            background: "var(--paper)", padding: "6px", gap: "4px", width: "100%", alignItems: "stretch",
+        };
+        const emptyCell: React.CSSProperties = {
+            ...cellBase, border: "1px dashed var(--struct-border)", background: "var(--empty-bg)",
+            borderRadius: "6px", color: "var(--ink-faint)", fontStyle: "italic",
+        };
+        const conn = (ch: string, key?: string) => (
+            <span key={key} style={{ color: "var(--accent)", fontWeight: 700, fontSize: fsArrow, display: "flex", alignItems: "center", padding: "0 4px" }}>{ch}</span>
+        );
 
         switch (type) {
             case "string":
@@ -308,38 +342,38 @@ class ContainerVisualizer extends React.Component<{}, State> {
                         }
                     }
                     shape = (
-                        <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '3px', backgroundColor: '#f9f9f9', padding: '6px', border: '2px solid #333', borderRadius: '6px' }}>
+                        <div style={{ ...frame, display: "inline-flex", flexDirection: "column", width: "auto" }}>
                             {values.map((row: any[], rowIdx: number) => (
-                                <div key={`row-${rowIdx}`} style={{ display: 'flex', gap: '3px' }}>
+                                <div key={`row-${rowIdx}`} style={{ display: "flex", gap: "4px" }}>
                                     {(row as any[]).map((colVal: string, colIdx: number) => {
-                                        const hlInfo2D = hlPosMap2D.get(`${rowIdx},${colIdx}`);
+                                        const hl2D = hlPosMap2D.get(`${rowIdx},${colIdx}`) || null;
                                         return (
-                                            <div key={`col-${rowIdx}-${colIdx}`} style={{ border: `1px solid ${hlInfo2D ? hlInfo2D.border : '#888'}`, padding: '4px 10px', minWidth: '35px', textAlign: 'center', backgroundColor: hlInfo2D ? hlInfo2D.bg : '#fff', fontWeight: hlInfo2D ? 'bold' : 'normal', borderRadius: '3px', boxShadow: '1px 1px 3px rgba(0,0,0,0.1)' }}>
+                                            <div key={`col-${rowIdx}-${colIdx}`} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none" }}>
                                                 {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
                                             </div>
                                         );
                                     })}
-                                    {row.length === 0 && <div style={{ padding: '4px 10px', color: '#999', fontStyle: 'italic', border: '1px dashed #999', backgroundColor: '#fff', borderRadius: '3px' }}>empty row</div>}
+                                    {row.length === 0 && <div style={{ ...emptyCell, padding: "8px 12px", flex: "none" }}>empty row</div>}
                                 </div>
                             ))}
                         </div>
                     );
                 } else {
                     shape = (
-                        <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', gap: '4px' }}>
-                            <div style={{ display: 'flex', flex: 1, border: '2px solid #333', borderRadius: '6px', backgroundColor: '#f9f9f9', overflow: 'hidden' }}>
+                        <div style={{ display: "flex", width: "100%", alignItems: "stretch", gap: "4px" }}>
+                            <div style={frame}>
                                 {values.map((v: string, idx: number) => {
                                     const hlInfo = getHighlight(idx, highlights, len);
                                     return (
-                                        <div key={`val-${idx}`} data-testid="container-cell" data-value={String(v)} style={{ flex: 1, padding: '18px 6px', borderRight: idx < len - 1 ? '1px solid #777' : 'none', minWidth: '32px', textAlign: 'center', backgroundColor: hlInfo ? hlInfo.bg : 'transparent', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em' }}>
+                                        <div key={`val-${idx}`} data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo) }}>
                                             {type === "string" && v !== "" ? `'${v}'` : v}
                                         </div>
                                     );
                                 })}
-                                {len === 0 && <div style={{ flex: 1, padding: '18px 6px', color: '#999', fontStyle: 'italic', textAlign: 'center' }}>empty</div>}
+                                {len === 0 && <div style={emptyCell}>empty</div>}
                             </div>
                             {emptySlots > 0 && Array.from({ length: emptySlots }).map((_, idx) => (
-                                <div key={`cap-${idx}`} style={{ flex: 1, minWidth: '32px', border: '2px dashed #aaa', backgroundColor: '#f0f0f0', borderRadius: '4px' }} title="Unused Capacity" />
+                                <div key={`cap-${idx}`} style={{ ...emptyCell, padding: "6px" }} title="未使用容量 (Unused Capacity)" />
                             ))}
                         </div>
                     );
@@ -348,62 +382,74 @@ class ContainerVisualizer extends React.Component<{}, State> {
             }
             case "list":
                 shape = (
-                    <div style={{ display: 'flex', width: '100%', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    <div style={{ display: "flex", width: "100%", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
                         {values.map((v: string, idx: number) => {
                             const hlInfo = getHighlight(idx, highlights, len);
                             return (
                                 <React.Fragment key={idx}>
-                                    <div data-testid="container-cell" data-value={String(v)} style={{ flex: 1, padding: '18px 6px', borderRadius: '16px', border: `2px solid ${hlInfo ? hlInfo.border : '#0056b3'}`, backgroundColor: hlInfo ? hlInfo.bg : '#e6f2ff', minWidth: '32px', textAlign: 'center', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em' }}>{v}</div>
-                                    {idx < len - 1 && <span style={{ color: '#0056b3', fontWeight: 'bold', fontSize: '1.1em' }}>&harr;</span>}
+                                    <div data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo), borderRadius: "999px" }}>{v}</div>
+                                    {idx < len - 1 && conn("↔", `c${idx}`)}
                                 </React.Fragment>
                             );
                         })}
-                        {len === 0 && <div style={{ flex: 1, padding: '18px 6px', borderRadius: '16px', border: '2px dashed #0056b3', color: '#999', fontStyle: 'italic', textAlign: 'center' }}>empty node</div>}
+                        {len === 0 && <div style={{ ...emptyCell, borderRadius: "999px" }}>empty node</div>}
                     </div>
                 );
                 break;
-            case "stack":
+            case "stack": {
+                // LIFO: cells in a frame, with an accent "top" tag marking the open end.
+                const endTag = (label: string) => (
+                    <span style={{ display: "flex", alignItems: "center", padding: "0 8px", color: "var(--accent)", fontWeight: 700, fontFamily: "var(--font-display)", fontSize: "0.78em", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{label}</span>
+                );
                 shape = (
-                    <div style={{ display: 'flex', flexDirection: 'row', width: '100%', border: '3px solid #b30000', borderRight: 'none', borderTopLeftRadius: '8px', borderBottomLeftRadius: '8px', alignItems: 'stretch', backgroundColor: '#fff' }}>
-                        {values.map((v: string, idx: number) => {
-                            const hlInfo = getHighlight(idx, highlights, len);
-                            return (
-                                <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ flex: 1, borderRight: idx < len - 1 ? `2px solid ${hlInfo ? hlInfo.border : '#ff6666'}` : 'none', padding: '18px 6px', textAlign: 'center', backgroundColor: hlInfo ? hlInfo.bg : '#ffe6e6', minWidth: '32px', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em' }}>
-                                    {v}
-                                </div>
-                            );
-                        })}
-                        {len === 0 && <div style={{ flex: 1, color: '#999', fontStyle: 'italic', padding: '18px 10px', textAlign: 'center' }}>empty</div>}
+                    <div style={{ display: "flex", width: "100%", alignItems: "stretch", gap: "4px" }}>
+                        <div style={frame}>
+                            {values.map((v: string, idx: number) => {
+                                const hlInfo = getHighlight(idx, highlights, len);
+                                return (
+                                    <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo) }}>{v}</div>
+                                );
+                            })}
+                            {len === 0 && <div style={emptyCell}>empty</div>}
+                        </div>
+                        {len > 0 && endTag("↑ top")}
                     </div>
                 );
                 break;
+            }
             case "queue":
+                // FIFO: accent arrows show direction of flow (rear → front).
                 shape = (
-                    <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', backgroundColor: '#f0fff0', borderTop: '3px solid #00b300', borderBottom: '3px solid #00b300' }}>
-                        <span style={{ color: '#00b300', fontSize: '1.4em', display: 'flex', alignItems: 'center', padding: '0 6px' }}>&larr;</span>
-                        {values.map((v: string, idx: number) => {
-                            const hlInfo = getHighlight(idx, highlights, len);
-                            return (
-                                <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ flex: 1, borderRight: idx < len - 1 ? `${hlInfo ? '2px solid' : '2px dashed'} ${hlInfo ? hlInfo.border : '#66cc66'}` : 'none', padding: '18px 6px', backgroundColor: hlInfo ? hlInfo.bg : '#fff', textAlign: 'center', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em', minWidth: '32px' }}>{v}</div>
-                            );
-                        })}
-                        {len === 0 && <div style={{ flex: 1, color: '#999', fontStyle: 'italic', padding: '18px 8px', textAlign: 'center' }}>empty</div>}
-                        <span style={{ color: '#00b300', fontSize: '1.4em', display: 'flex', alignItems: 'center', padding: '0 6px' }}>&larr;</span>
+                    <div style={{ display: "flex", width: "100%", alignItems: "stretch" }}>
+                        {conn("←", "qf")}
+                        <div style={frame}>
+                            {values.map((v: string, idx: number) => {
+                                const hlInfo = getHighlight(idx, highlights, len);
+                                return (
+                                    <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo) }}>{v}</div>
+                                );
+                            })}
+                            {len === 0 && <div style={emptyCell}>empty</div>}
+                        </div>
+                        {conn("←", "qb")}
                     </div>
                 );
                 break;
             case "deque":
+                // double-ended: accent arrows on both ends.
                 shape = (
-                    <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', borderBottom: '4px solid #6600cc' }}>
-                        <span style={{ color: '#6600cc', fontSize: '1.4em', display: 'flex', alignItems: 'center', padding: '0 6px' }}>&harr;</span>
-                        {values.map((v: string, idx: number) => {
-                            const hlInfo = getHighlight(idx, highlights, len);
-                            return (
-                                <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ flex: 1, padding: '18px 6px', borderRight: idx < len - 1 ? `2px solid ${hlInfo ? hlInfo.border : '#b366ff'}` : 'none', backgroundColor: hlInfo ? hlInfo.bg : '#f9f2ff', borderRadius: '4px', textAlign: 'center', fontWeight: hlInfo ? 'bold' : 'normal', fontSize: '1.1em', minWidth: '32px' }}>{v}</div>
-                            );
-                        })}
-                        {len === 0 && <div style={{ flex: 1, color: '#999', fontStyle: 'italic', padding: '18px 10px', textAlign: 'center' }}>empty</div>}
-                        <span style={{ color: '#6600cc', fontSize: '1.4em', display: 'flex', alignItems: 'center', padding: '0 6px' }}>&harr;</span>
+                    <div style={{ display: "flex", width: "100%", alignItems: "stretch" }}>
+                        {conn("↔", "df")}
+                        <div style={frame}>
+                            {values.map((v: string, idx: number) => {
+                                const hlInfo = getHighlight(idx, highlights, len);
+                                return (
+                                    <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo) }}>{v}</div>
+                                );
+                            })}
+                            {len === 0 && <div style={emptyCell}>empty</div>}
+                        </div>
+                        {conn("↔", "db")}
                     </div>
                 );
                 break;
@@ -412,19 +458,22 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 if (isBSTMode) {
                     shape = getPlugin(type)?.render(name) ?? null;
                 } else {
+                    const brace = (ch: string) => (
+                        <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: fsBrace, display: "flex", alignItems: "center", padding: "0 8px" }}>{ch}</span>
+                    );
                     shape = (
-                        <div style={{ display: 'flex', width: '100%', alignItems: 'stretch', border: '2px solid #009688', borderRadius: '12px', backgroundColor: '#e0f2f1', overflow: 'hidden' }}>
-                            <span style={{ color: '#009688', fontWeight: 'bold', fontSize: '1.2em', display: 'flex', alignItems: 'center', padding: '0 8px' }}>{`{`}</span>
-                            {values.map((v: string, idx: number) => {
-                                const hlInfo = getHighlight(idx, highlights, len);
-                                return (
-                                    <React.Fragment key={idx}>
-                                        <div data-testid="container-cell" data-value={String(v)} style={{ flex: 1, padding: '18px 6px', borderRight: idx < len - 1 ? '1px solid #80cbc4' : 'none', border: hlInfo ? `2px solid ${hlInfo.border}` : 'none', backgroundColor: hlInfo ? hlInfo.bg : '#fff', fontWeight: hlInfo ? 'bold' : 'normal', minWidth: '32px', textAlign: 'center', fontFamily: 'monospace', fontSize: '1.1em' }}>{v}</div>
-                                    </React.Fragment>
-                                );
-                            })}
-                            {len === 0 && <span style={{ flex: 1, color: '#999', fontStyle: 'italic', padding: '18px 10px', textAlign: 'center' }}>empty</span>}
-                            <span style={{ color: '#009688', fontWeight: 'bold', fontSize: '1.2em', display: 'flex', alignItems: 'center', padding: '0 8px' }}>{`}`}</span>
+                        <div style={{ display: "flex", width: "100%", alignItems: "stretch" }}>
+                            {brace("{")}
+                            <div style={frame}>
+                                {values.map((v: string, idx: number) => {
+                                    const hlInfo = getHighlight(idx, highlights, len);
+                                    return (
+                                        <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo) }}>{v}</div>
+                                    );
+                                })}
+                                {len === 0 && <div style={emptyCell}>empty</div>}
+                            </div>
+                            {brace("}")}
                         </div>
                     );
                 }
@@ -437,24 +486,26 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     shape = getPlugin(type)?.render(name) ?? null;
                 } else {
                     const pairs: { key: string; value: string }[] = values as any;
+                    const thStyle: React.CSSProperties = { padding: "5px 14px", backgroundColor: "var(--accent)", color: "#fff", fontWeight: 600, textAlign: "center", fontFamily: "var(--font-display)", letterSpacing: "0.04em", textTransform: "uppercase", fontSize: "0.92em" };
                     shape = (
-                        <table style={{ borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: '0.9em' }}>
+                        <table style={{ borderCollapse: "separate", borderSpacing: 0, fontFamily: "var(--font-mono)", fontSize: fsMap, border: "1px solid var(--line)", borderRadius: "10px", overflow: "hidden" }}>
                             <thead>
                                 <tr>
-                                    <th style={{ padding: '3px 10px', backgroundColor: '#1565c0', color: '#fff', borderRadius: '4px 0 0 0', fontWeight: 'bold', textAlign: 'center' }}>key</th>
-                                    <th style={{ padding: '3px 10px', backgroundColor: '#1565c0', color: '#fff', borderRadius: '0 4px 0 0', fontWeight: 'bold', textAlign: 'center' }}>value</th>
+                                    <th style={{ ...thStyle, borderTopLeftRadius: "10px" }}>key</th>
+                                    <th style={{ ...thStyle, borderTopRightRadius: "10px" }}>value</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {pairs.length === 0 && (
-                                    <tr><td colSpan={2} style={{ padding: '4px 12px', color: '#999', fontStyle: 'italic', textAlign: 'center', border: '1px solid #90caf9' }}>empty</td></tr>
+                                    <tr><td colSpan={2} style={{ padding: "6px 14px", color: "var(--ink-faint)", fontStyle: "italic", textAlign: "center" }}>empty</td></tr>
                                 )}
                                 {pairs.map((pair, idx) => {
                                     const hlInfo = getHighlight(idx, highlights, len);
+                                    const rowBg = hlInfo ? hlInfo.bg : (idx % 2 === 0 ? "var(--paper)" : "var(--surface)");
                                     return (
-                                        <tr key={idx} data-testid="container-row" data-key={String(pair.key)} data-value={String(pair.value)} style={{ backgroundColor: hlInfo ? hlInfo.bg : (idx % 2 === 0 ? '#e3f2fd' : '#fff') }}>
-                                            <td style={{ padding: '3px 12px', border: '1px solid #90caf9', fontWeight: hlInfo ? 'bold' : 'normal', color: '#1a237e', borderRight: '2px solid #1565c0' }}>{pair.key}</td>
-                                            <td style={{ padding: '3px 12px', border: '1px solid #90caf9', fontWeight: hlInfo ? 'bold' : 'normal', color: '#333' }}>{pair.value}</td>
+                                        <tr key={idx} data-testid="container-row" data-key={String(pair.key)} data-value={String(pair.value)} style={{ backgroundColor: rowBg }}>
+                                            <td style={{ padding: "5px 14px", borderTop: "1px solid var(--line)", borderRight: "2px solid var(--accent-soft)", fontWeight: hlInfo ? 700 : 600, color: "var(--accent)" }}>{pair.key}</td>
+                                            <td style={{ padding: "5px 14px", borderTop: "1px solid var(--line)", fontWeight: hlInfo ? 700 : 400, color: "var(--ink)" }}>{pair.value}</td>
                                         </tr>
                                     );
                                 })}
@@ -465,7 +516,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 break;
             }
             default:
-                shape = <span style={{ fontFamily: 'monospace', color: 'blue' }}>{values.join(", ")}</span>;
+                shape = <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent)" }}>{values.join(", ")}</span>;
         }
 
         const displayCapacity = data.capacity !== undefined ? data.capacity : len;
@@ -475,33 +526,32 @@ class ContainerVisualizer extends React.Component<{}, State> {
         const showMazeToggle = is2D && (type === "vector" || type === "array");
         const showBSTToggle = type === "set" || type === "multiset" || type === "map" || type === "multimap";
 
+        const chip: React.CSSProperties = { color: "var(--accent)", fontSize: "0.8em", backgroundColor: "var(--accent-soft)", padding: "2px 8px", borderRadius: "999px", fontFamily: "var(--font-mono)", fontWeight: 500 };
+        const toggleLabel = (on: boolean): React.CSSProperties => ({ display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", fontWeight: on ? 600 : 400, fontSize: "0.85em", color: on ? "var(--accent)" : "var(--ink-soft)", userSelect: "none" });
+
         return (
-            <div key={name} data-testid={`container-${name}`} data-container-type={type} style={{ marginBottom: "16px", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", backgroundColor: "#fff" }}>
-                <div style={{ marginBottom: "8px", fontWeight: "bold", fontFamily: "monospace", color: "#333", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
-                    <span>
+            <div key={name} data-testid={`container-${name}`} data-container-type={type} style={{ marginBottom: "16px", padding: "12px", border: "1px solid var(--line)", borderRadius: "12px", backgroundColor: "var(--surface)", boxShadow: "0 1px 2px rgba(27,31,36,0.04)" }}>
+                <div style={{ marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--ink)" }}>
                         {name}{" "}
-                        <span style={{ color: "#888", fontWeight: "normal", fontSize: "0.9em" }}>({type})</span>
+                        <span style={{ color: "var(--ink-soft)", fontWeight: 400, fontSize: "0.82em", border: "1px solid var(--line)", borderRadius: "4px", padding: "1px 6px", marginLeft: "2px" }}>{type}</span>
                     </span>
                     <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                         {showCapacitySize && (
-                            <span style={{ color: "#0066cc", fontSize: "0.85em", backgroundColor: "#e6f2ff", padding: "2px 6px", borderRadius: "4px" }}>
-                                Size: {len}, Capacity: {displayCapacity}
-                            </span>
+                            <span style={chip}>size {len} · cap {displayCapacity}</span>
                         )}
                         {showSizeOnly && (
-                            <span style={{ color: "#0066cc", fontSize: "0.85em", backgroundColor: "#e6f2ff", padding: "2px 6px", borderRadius: "4px" }}>
-                                Size: {len}
-                            </span>
+                            <span style={chip}>size {len}</span>
                         )}
                         {showMazeToggle && (
-                            <label style={{ display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", fontWeight: "normal", fontSize: "0.85em", color: isMazeMode ? "#b05000" : "#555", userSelect: "none" }}>
-                                <input type="checkbox" checked={isMazeMode} onChange={() => this.toggleMazeMode(name)} style={{ cursor: "pointer", accentColor: "#b05000" }} />
+                            <label style={toggleLabel(isMazeMode)}>
+                                <input type="checkbox" checked={isMazeMode} onChange={() => this.toggleMazeMode(name)} style={{ cursor: "pointer", accentColor: "var(--accent)" }} />
                                 迷宮模式
                             </label>
                         )}
                         {showBSTToggle && (
-                            <label style={{ display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", fontWeight: "normal", fontSize: "0.85em", color: isBSTMode ? "#1565c0" : "#555", userSelect: "none" }}>
-                                <input type="checkbox" checked={isBSTMode} onChange={() => this.toggleBSTMode(name)} style={{ cursor: "pointer", accentColor: "#1565c0" }} />
+                            <label style={toggleLabel(isBSTMode)}>
+                                <input type="checkbox" checked={isBSTMode} onChange={() => this.toggleBSTMode(name)} style={{ cursor: "pointer", accentColor: "var(--accent)" }} />
                                 BST模式
                             </label>
                         )}
@@ -520,13 +570,13 @@ class ContainerVisualizer extends React.Component<{}, State> {
     render() {
         const latestContainers = (global_variable as any).__latest_containers as Map<string, any>;
         if (!latestContainers || latestContainers.size === 0) {
-            return <div style={{ padding: "10px", color: "#666", fontStyle: "italic" }}>No container data available. Run and trace code to see containers.</div>;
+            return <div style={{ padding: "12px", color: "var(--ink-soft)", fontStyle: "italic" }}>執行並追蹤程式後，這裡會顯示資料結構。</div>;
         }
 
         const latestHighlights = (global_variable as any).__latest_highlights as Map<string, HighlightEntry[]> || new Map<string, HighlightEntry[]>();
 
         return (
-            <div style={{ padding: "10px", backgroundColor: "#fdfdfd" }}>
+            <div style={{ padding: "10px", backgroundColor: "var(--paper)" }}>
                 {Array.from(latestContainers.entries()).map(([name, data]) =>
                     this.renderContainerShape(name, data, latestHighlights.get(name))
                 )}

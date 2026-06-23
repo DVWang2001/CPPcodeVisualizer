@@ -337,7 +337,7 @@ class TopBar extends React.Component<{}, State> {
     return (
       <div
         id="top"
-        style={{ background: "#f5f6f7", position: "absolute", width: "100%" }}
+        style={{ background: "var(--paper)", position: "absolute", width: "100%" }}
       >
         <div className="flexrow">
 

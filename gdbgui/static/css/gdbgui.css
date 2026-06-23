@@ -2,14 +2,38 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
+/* ── Design tokens ─────────────────────────────────────────────────────────
+   "Whiteboard / textbook" direction. Color encodes STATE, not container type.
+   The data-structure animation is the hero; everything else stays quiet. */
+:root {
+  --paper: #f7f8fa; /* app background */
+  --surface: #ffffff; /* cards, cells */
+  --ink: #1b1f24; /* primary text */
+  --ink-soft: #5a6472; /* labels, captions */
+  --ink-faint: #99a2ae; /* placeholders, line numbers */
+  --line: #e3e7ec; /* hairline dividers */
+  --struct-border: #cbd2da; /* resting node border */
+  --accent: #4f46e5; /* indigo — active pointer / structural connectors */
+  --accent-soft: #eef0fe; /* indigo tint background */
+  --highlight: #f59e0b; /* amber — animation focus (compare/swap) */
+  --highlight-soft: #fef3c7; /* amber tint background */
+  --visited: #94a3b8; /* already processed */
+  --empty-bg: #f1f3f5; /* empty slots / unused capacity */
+
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+
 /* styling for all html tags */
 body {
-  background: #f5f6f7;
-  color: grey;
-  border-color: grey;
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
   overflow: hidden;
   padding: 0px;
   height: 100%;
+  font-family: var(--font-body);
 }
 pre {
   overflow: visible !important;
@@ -39,16 +63,16 @@ td {
   white-space: pre;
 }
 .monospace {
-  font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
 }
 .memadr,
 .memadr_react {
   /* todo - migrate everything to react, then rename memadr_react to memadr  */
-  color: #489ce4;
+  color: var(--accent);
   text-decoration: none;
 }
 .lighttext {
-  color: #4a4a4a;
+  color: var(--ink-soft);
 }
 .glyphicon {
   /* glyphicons are too bold, make them lighter*/
@@ -72,14 +96,41 @@ td {
   display: flex;
   flex-direction: column;
 }
-/* components get their own titlebars */
+/* components get their own titlebars — flat neutral section headers */
 .titlebar {
   width: 100%;
-  color: black;
-  background-color: #ddf1ff;
-  border-color: #c3c3c3;
-  border-width: 1px;
-  border-style: solid;
+  color: var(--ink-soft);
+  background-color: var(--paper);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-family: var(--font-display);
+  font-size: 0.82em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.titlebar .lighttext {
+  color: var(--ink-soft);
+}
+.titlebar .glyphicon {
+  color: var(--ink-faint);
+}
+/* Hero panels (the data-structure views) earn an accent rule + ink text */
+.titlebar--primary {
+  color: var(--ink);
+  background-color: var(--surface);
+  border-left: 3px solid var(--accent);
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+.titlebar--primary .lighttext {
+  color: var(--ink);
+}
+.titlebar--primary .glyphicon {
+  color: var(--accent);
 }
 .pointer {
   cursor: pointer;
@@ -111,7 +162,7 @@ td {
   padding: 2px !important;
 }
 .highlight {
-  background: rgba(255, 255, 0, 0.5) !important;
+  background: var(--highlight-soft) !important;
 }
 div.breakpoint {
   border: solid;
@@ -145,10 +196,10 @@ div.breakpoint:hover div.breakpoint_trashcan,
   border-width: 0px;
   border-right-width: 1px;
   border-style: solid;
-  border-right-color: #c7c7c7;
+  border-right-color: var(--line);
   padding: 0;
   font-size: 0.9em;
-  color: #ababab;
+  color: var(--ink-faint);
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -164,7 +215,7 @@ td.assembly {
   display: inline-block;
 }
 #code_table {
-  font-family: monospace;
+  font-family: var(--font-mono);
   border-collapse: collapse;
   font-size: 0.9em;
   table-layout: auto;
@@ -184,7 +235,7 @@ td.line_num {
   border-top-width: 0px;
   border-bottom-width: 0px;
   border-left-width: 0px;
-  border-right-color: #d4d4d4;
+  border-right-color: var(--line);
 }
 /* wsp == whitespace. Needed to preserve leading whitespace.
     this span wraps syntax-highlighted source code */
@@ -204,12 +255,12 @@ td.line_num {
   height: 19px;
   padding-left: 6px;
 }
-/* 當前暫停行：與 Monaco 的高亮行同感 */
+/* 當前暫停行：與 Monaco 的高亮行同感（amber = 執行焦點）*/
 .paused_on_line {
-  background-color: rgba(255, 255, 0, 0.15) !important;
+  background-color: var(--highlight-soft) !important;
 }
 .paused_on_line td {
-  background-color: rgba(255, 255, 0, 0.15) !important;
+  background-color: var(--highlight-soft) !important;
 }
 .dropdown-btn {
   vertical-align: top;
@@ -230,11 +281,9 @@ td.line_num {
   top: 0;
   margin-top: 0;
   width: 100%;
-  border-bottom: black;
-  border-style: solid;
-  border-width: 0px;
+  border-bottom: 1px solid var(--line);
   z-index: 1000;
-  background: #f1f1f1;
+  background: var(--paper);
 }
 /* .chad {
   @apply font-bold py-2 px-4 rounded;
@@ -503,4 +552,33 @@ tr.compile-warning-tr td {
 }
 .gdbgui-readonly-editor .cursors-layer {
   display: none !important;
+}
+
+/* ── Flat toolbar buttons (override Bootstrap's gradient defaults) ─────────── */
+.btn-default {
+  background-image: none;
+  background-color: var(--surface);
+  border: 1px solid var(--struct-border);
+  color: var(--ink);
+  border-radius: 6px;
+  font-family: var(--font-body);
+  box-shadow: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.btn-default:hover,
+.btn-default:focus {
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn-default:active,
+.btn-default.active {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: none;
+}
+/* keep grouped control buttons visually joined */
+.btn-group > .btn-default:not(:first-child) {
+  margin-left: -1px;
 }

@@ -11,6 +11,8 @@ type State = any;
 
 class Visualizer extends React.Component<{}, State> {
   updateInterval: any;
+  scrollContainerRef = React.createRef<HTMLDivElement>();
+
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
@@ -19,6 +21,9 @@ class Visualizer extends React.Component<{}, State> {
       "current_theme",
       "expressions",
       "inferior_program",
+      "monaco_font_size",
+      "monaco_line_height",
+      "monaco_content_height",
     ]);
   }
 
@@ -27,7 +32,6 @@ class Visualizer extends React.Component<{}, State> {
     const expressions: any[] = store.get("expressions") || [];
     return raw.replace(/\{([^{}]+)\}/g, (_match, varName) => {
       const name = varName.trim();
-      // Try exact match first, then suffix match (handles funcName::varName)
       const found = expressions.find(
         (obj: any) => obj.in_scope === "true" && obj.value !== undefined &&
           (obj.expression === name || obj.expression.endsWith("::" + name))
@@ -35,6 +39,7 @@ class Visualizer extends React.Component<{}, State> {
       return found ? found.value : `{${name}}`;
     });
   }
+
   static clear() {
     if ("__guide" in global_variable) {
       (global_variable as any).__guide.clear();
@@ -49,12 +54,12 @@ class Visualizer extends React.Component<{}, State> {
       (global_variable as any).__latest_highlights.clear();
     }
   }
+
   renderGuideTable() {
     const guide = (global_variable as any).__guide as Map<string, any[]>;
     if (!guide || guide.size === 0) {
       return <div>No guide data available</div>;
     }
-    // 水平表格
     const maxValues = Math.max(...Array.from(guide.values()).map(v => v.length));
     const rows = Array.from(guide.entries()).map(([key, values]) => {
       const cells = [<td key="expr" style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{key}</td>];
@@ -70,93 +75,107 @@ class Visualizer extends React.Component<{}, State> {
     );
   }
 
-
   renderSourceCode() {
     const sourceText: string = (global_variable as any).__source_text || "";
     const lineGuide: Record<string | number, string> = (global_variable as any).__line || {};
     const guide: Map<string, any[]> = (global_variable as any).__guide;
 
     if (!sourceText) {
-      return <div style={{ padding: "8px", color: "#888", fontSize: "12px" }}>尚未載入源碼，請先在編輯器開啟並編譯。</div>;
+      return <div style={{ padding: "8px", color: "var(--ink-soft)", fontSize: "12px" }}>尚未載入源碼，請先在編輯器開啟並編譯。</div>;
     }
 
     const lines = sourceText.split(/\r?\n/);
     if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
 
-    // Max step count across all tracked lines
     const guideArrays = guide ? Array.from(guide.values()) : [];
     const maxSteps = guideArrays.length > 0 ? Math.max(...guideArrays.map(a => a.length)) : 0;
+    const stepColCount = Math.max(maxSteps, 1);
 
-    // Which lines have guide text written by the user
     const linesWithGuide = new Set<number>();
     lines.forEach((_, idx) => {
       const n = idx + 1;
       if ((lineGuide[n] || lineGuide[String(n)] || "").trim().length > 0) linesWithGuide.add(n);
     });
 
-    const tdCode: React.CSSProperties = { padding: "1px 8px", whiteSpace: "pre", fontFamily: "monospace", fontSize: "12px", color: "#333" };
-    const tdNum: React.CSSProperties  = { padding: "1px 6px", textAlign: "right", color: "#aaa", userSelect: "none", minWidth: "26px", fontSize: "11px" };
+    const fs = (store.get("monaco_font_size") as number) || 14;
+    const lineHeight = (store.get("monaco_line_height") as number) || Math.round(fs * 1.5);
+    const contentHeight = (store.get("monaco_content_height") as number) || 400;
+    const h = `${lineHeight}px`;
 
-    const tableRows = lines.map((code, idx) => {
+    // CSS Grid with max-content code column: the browser uses its own rendering
+    // engine to size the column to the widest line, so no JS font measurement is
+    // needed and the separator is guaranteed to start at the same x for every row.
+    const gridTemplateColumns = `32px max-content ${Array(stepColCount).fill("minmax(60px, 200px)").join(" ")}`;
+
+    const cells: React.ReactNode[] = [];
+
+    lines.forEach((code, idx) => {
       const lineNum = idx + 1;
       const hasGuideInput = linesWithGuide.has(lineNum);
+      const stepValues: any[] = hasGuideInput
+        ? ((guide && (guide.get(String(lineNum)) || guide.get(lineNum as any))) || [])
+        : [];
+      const hasData = stepValues.length > 0;
+      const bg = hasData ? "var(--accent-soft)" : undefined;
 
-      if (!hasGuideInput) {
-        // No guide — just show code, no step cells
-        return (
-          <tr key={lineNum}>
-            <td style={tdNum}>{lineNum}</td>
-            <td style={tdCode}>{code}</td>
-          </tr>
-        );
-      }
+      const cellBase: React.CSSProperties = {
+        height: h, overflow: "hidden", background: bg,
+        display: "flex", alignItems: "center",
+      };
 
-      // This line has guide text — build step cells from __guide
-      const stepValues: any[] = (guide && (guide.get(String(lineNum)) || guide.get(lineNum as any))) || [];
+      cells.push(
+        <span key={`n${lineNum}`} style={{
+          ...cellBase, justifyContent: "flex-end",
+          paddingRight: "6px", color: "var(--ink-faint)", userSelect: "none" as const,
+          fontSize: `${Math.round(fs * 0.92)}px`, fontFamily: "var(--font-mono)",
+        }}>
+          {lineNum}
+        </span>
+      );
 
-      const stepCells = Array.from({ length: maxSteps }, (_, step) => {
-        const raw = stepValues[step];
+      cells.push(
+        <span key={`c${lineNum}`} style={{
+          ...cellBase,
+          overflow: "visible",
+          padding: "0 8px", fontFamily: "var(--font-mono)",
+          fontSize: `${fs}px`, color: "var(--ink)", whiteSpace: "pre",
+        }}>
+          {code}
+        </span>
+      );
+
+      for (let step = 0; step < stepColCount; step++) {
+        if (!hasGuideInput) {
+          // Placeholder keeps the grid column count consistent across all rows.
+          cells.push(<span key={`s${lineNum}-${step}`} style={{ height: h }} />);
+          continue;
+        }
+        const raw = step < stepValues.length ? stepValues[step] : undefined;
         const isEmpty = raw === undefined || raw === null || String(raw).trim() === "" || raw === " ";
-        return (
-          <td key={step} style={{
-            padding: "1px 8px",
-            borderLeft: step === 0 ? "2px solid #90caf9" : "1px solid #e8e8e8",
-            color: isEmpty ? "#ccc" : "#1565c0",
-            whiteSpace: "pre-wrap",
-            fontSize: "12px",
-            minWidth: "60px",
-            maxWidth: "200px",
-            verticalAlign: "top",
-            textAlign: "center",
+        cells.push(
+          <span key={`s${lineNum}-${step}`} style={{
+            ...cellBase, justifyContent: "center",
+            padding: "0 8px", fontSize: `${fs}px`,
+            fontFamily: "var(--font-mono)",
+            color: isEmpty ? "var(--ink-faint)" : "var(--accent)",
+            fontWeight: isEmpty ? 400 : 600,
+            borderLeft: step === 0 ? "2px solid var(--accent)" : "1px solid var(--line)",
+            whiteSpace: "nowrap", textOverflow: "ellipsis",
           }}>
             {isEmpty ? "·" : String(raw)}
-          </td>
-        );
-      });
-
-      // Not yet visited at all — show a single placeholder column
-      if (maxSteps === 0) {
-        stepCells.push(
-          <td key="placeholder" style={{ padding: "1px 8px", borderLeft: "2px solid #e0e0e0", color: "#ccc", fontSize: "12px", minWidth: "60px" }}>
-            ·
-          </td>
+          </span>
         );
       }
-
-      return (
-        <tr key={lineNum} style={{ background: stepValues.length > 0 ? "rgba(21,101,192,0.05)" : undefined }}>
-          <td style={tdNum}>{lineNum}</td>
-          <td style={tdCode}>{code}</td>
-          {stepCells}
-        </tr>
-      );
     });
 
     return (
-      <div style={{ maxHeight: "340px", overflowY: "auto", overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", tableLayout: "auto" }}>
-          <tbody>{tableRows}</tbody>
-        </table>
+      <div
+        ref={this.scrollContainerRef}
+        style={{ overflow: "auto", height: `${contentHeight}px` }}
+      >
+        <div style={{ display: "grid", gridTemplateColumns, width: "max-content" }}>
+          {cells}
+        </div>
       </div>
     );
   }
@@ -168,21 +187,30 @@ class Visualizer extends React.Component<{}, State> {
       prog === constants.inferior_states.paused;
 
     return (
-      <div className={this.state.current_theme}>
+      <div className={this.state.current_theme} style={{ height: "100%" }}>
         {isActive
           ? this.renderSourceCode()
-          : <div style={{ padding: "10px 12px", color: "#888", fontStyle: "italic", fontSize: "0.88em" }}>
+          : <div style={{ padding: "10px 12px", color: "var(--ink-soft)", fontStyle: "italic", fontSize: "0.88em" }}>
               執行程式後顯示追蹤表格。
             </div>
         }
       </div>
     );
   }
+
   componentDidMount() {
     this.updateInterval = setInterval(() => this.forceUpdate(), 1000);
+    (window as any).gdbgui_set_visualizer_scroll = (scrollTop: number) => {
+      if (this.scrollContainerRef.current) {
+        this.scrollContainerRef.current.scrollTop = scrollTop;
+      }
+    };
   }
+
   componentWillUnmount() {
     if (this.updateInterval) clearInterval(this.updateInterval);
+    delete (window as any).gdbgui_set_visualizer_scroll;
   }
 }
+
 export default Visualizer;
