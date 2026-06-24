@@ -207,13 +207,13 @@ class LinearPluginImpl implements ContainerPlugin {
         payload: { cellId: string },
         requestRender: () => void
     ): Promise<void> {
-        // entering → visible (CSS transition: opacity 0→1, scale 0.5→1)
+        // Paint the cell at opacity 0 first (entering = true → transition: none)
+        requestRender();
+        await afterFrame();
+        // Now reveal: entering → false triggers CSS transition opacity 0→1
         const enterSet = this.entering.get(containerName) ?? new Set<string>();
         enterSet.delete(payload.cellId);
         this.entering.set(containerName, enterSet);
-        requestRender();
-        await afterFrame();
-        // Now opacity transitions from 0 to 1 via CSS
         requestRender();
         await delay(400);
     }
