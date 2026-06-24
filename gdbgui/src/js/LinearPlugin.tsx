@@ -117,10 +117,12 @@ class LinearPluginImpl implements ContainerPlugin {
                 if (oldVals[a] === newVals[b] && oldVals[b] === newVals[a]) {
                     // Swap: exchange cells in the display
                     const c = this.cells.get(containerName)!;
+                    const cellIdA = c[a].id;
+                    const cellIdB = c[b].id;
                     const tmp = c[a]; c[a] = c[b]; c[b] = tmp;
                     c[a].value = newVals[a];
                     c[b].value = newVals[b];
-                    ops.push({ type: 'swap', payload: { indexA: a, indexB: b, cellIdA: c[a].id, cellIdB: c[b].id } as SwapPayload });
+                    ops.push({ type: 'swap', payload: { indexA: a, indexB: b, cellIdA, cellIdB } as SwapPayload });
                     return ops;
                 }
             }
