@@ -110,6 +110,11 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 bstPlugin.resetContainer(name);
             }
         }
+        for (const name of linearPlugin.trackedNames()) {
+            if (!latestContainers.has(name)) {
+                linearPlugin.resetContainer(name);
+            }
+        }
 
         const requestRender = () => this.forceUpdate();
         let hasOps = false;

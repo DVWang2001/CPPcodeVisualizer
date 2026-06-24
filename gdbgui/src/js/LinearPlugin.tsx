@@ -478,6 +478,10 @@ class LinearPluginImpl implements ContainerPlugin {
         this.highlighted.clear();
     }
 
+    trackedNames(): string[] {
+        return Array.from(this.history.keys());
+    }
+
     resetContainer(containerName: string): void {
         this.history.delete(containerName);
         this.prevJson.delete(containerName);
