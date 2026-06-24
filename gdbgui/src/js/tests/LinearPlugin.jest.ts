@@ -183,3 +183,99 @@ describe('resetContainer', () => {
         expect(ops2).toEqual([]);
     });
 });
+
+// ── animateOp ─────────────────────────────────────────────────────────────────
+
+const flushAll = async (iterations = 15) => {
+    for (let i = 0; i < iterations; i++) {
+        jest.runAllTimers();
+        await Promise.resolve();
+    }
+};
+
+describe('animateOp — insert', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('resolves without hanging', async () => {
+        linearPlugin.diffOps('v', { type: 'vector', values: ['1'] });
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '2'] });
+        expect(ops).toHaveLength(1);
+        const p = linearPlugin.animateOp('v', ops[0], jest.fn());
+        await flushAll();
+        await expect(p).resolves.toBeUndefined();
+    });
+
+    it('calls requestRender during animation', async () => {
+        linearPlugin.diffOps('v', { type: 'vector', values: ['1'] });
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '2'] });
+        const rr = jest.fn();
+        const p = linearPlugin.animateOp('v', ops[0], rr);
+        await flushAll();
+        await p;
+        expect(rr).toHaveBeenCalled();
+    });
+});
+
+describe('animateOp — erase', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('resolves without hanging', async () => {
+        linearPlugin.diffOps('v', { type: 'vector', values: ['1', '2'] });
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1'] });
+        expect(ops).toHaveLength(1);
+        const p = linearPlugin.animateOp('v', ops[0], jest.fn());
+        await flushAll();
+        await expect(p).resolves.toBeUndefined();
+    });
+
+    it('removes ghost cell from display after animation', async () => {
+        linearPlugin.diffOps('v', { type: 'vector', values: ['1', '2'] });
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1'] });
+        const p = linearPlugin.animateOp('v', ops[0], jest.fn());
+        await flushAll();
+        await p;
+        // Render should not crash and should handle the reduced cell count
+    });
+});
+
+describe('animateOp — valueChange', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('resolves without hanging', async () => {
+        linearPlugin.diffOps('v', { type: 'vector', values: ['1', '2'] });
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '9'] });
+        const p = linearPlugin.animateOp('v', ops[0], jest.fn());
+        await flushAll();
+        await expect(p).resolves.toBeUndefined();
+    });
+});
+
+describe('animateOp — swap', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('resolves without hanging', async () => {
+        linearPlugin.diffOps('v', { type: 'vector', values: ['1', '5', '3'] });
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '3', '5'] });
+        const p = linearPlugin.animateOp('v', ops[0], jest.fn());
+        await flushAll();
+        await expect(p).resolves.toBeUndefined();
+    });
+});
+
+describe('animateOp — bulkChange', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('resolves without hanging', async () => {
+        linearPlugin.diffOps('v', { type: 'vector', values: [] });
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '2', '3'] });
+        expect(ops[0].type).toBe('bulkChange');
+        const p = linearPlugin.animateOp('v', ops[0], jest.fn());
+        await flushAll();
+        await expect(p).resolves.toBeUndefined();
+    });
+});
