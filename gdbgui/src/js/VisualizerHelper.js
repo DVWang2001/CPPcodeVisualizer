@@ -792,9 +792,14 @@ class VisualizerHelper {
               const _newNch = (varObj.new_num_children !== undefined)
                 ? parseInt(String(varObj.new_num_children)) : NaN;
               const _expectedSize = (!isNaN(_newNch)) ? _newNch : varObj.numchild;
-              if (varObj.children && varObj.children.length !== _expectedSize) {
-                // fetch_and_show_children_for_var 只在 children.length===0 時才真的送 GDB 命令
-                // 先清空，讓它觸發 -var-list-children，拿到最新子節點
+              // GDB changelist 對 dynamic varobj 可能不會更新個別子節點的值（只報告
+              // parent 改變），因此每次 stop（changelist 版本更新）都必須重新 fetch
+              // children，確保拿到最新值。用 _lastChildRefetchCV 避免同一 stop 重複 fetch。
+              const _needRefetch = varObj.children &&
+                (varObj.children.length !== _expectedSize ||
+                 (varObj._lastChildRefetchCV || -1) < _cv);
+              if (_needRefetch) {
+                varObj._lastChildRefetchCV = _cv;
                 varObj.children = [];
                 if (varObj.numchild !== _expectedSize) varObj.numchild = _expectedSize;
                 store.set("expressions", expressions);
