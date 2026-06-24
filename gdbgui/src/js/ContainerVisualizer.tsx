@@ -4,10 +4,13 @@ import { global_variable } from "./global_variable";
 import { animScheduler } from "./AnimScheduler";
 import { registerPlugin, getPlugin, allPlugins } from "./ContainerPlugin";
 import { bstPlugin } from "./BSTPlugin";
+import { linearPlugin } from "./LinearPlugin";
+import { mazePlugin } from "./MazePlugin";
 
 // Register all plugins once at module load.
 // To add a new container type: create a plugin file and call registerPlugin() here.
 registerPlugin(bstPlugin);
+registerPlugin(linearPlugin);
 
 type ColorRule = { value: string; color: string };
 type HighlightEntry = { index: number; color: string };
@@ -81,6 +84,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     }
                 } else {
                     next.delete(containerName);
+                    mazePlugin.resetContainer(containerName);
                 }
                 return { mazeMode: next, mazeColorRules: nextRules };
             });
@@ -91,9 +95,9 @@ class ContainerVisualizer extends React.Component<{}, State> {
         const latestContainers = (global_variable as any).__latest_containers as Map<string, any>;
         if (!latestContainers) { this.forceUpdate(); return; }
 
-        // Reset on program restart
         if (store.get("inferior_program") === "running") {
             allPlugins().forEach(p => p.resetAll());
+            mazePlugin.resetAll();
             animScheduler.resetAll();
             this.forceUpdate();
             return;
@@ -109,9 +113,27 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
         const requestRender = () => this.forceUpdate();
         let hasOps = false;
+        const bstTypes = new Set(['set', 'map', 'multiset', 'multimap']);
 
         for (const [name, data] of Array.from(latestContainers.entries())) {
-            if (!this.state.bstMode.has(name)) continue;
+            const is2D = data.values.length > 0 && Array.isArray(data.values[0]);
+            const isMazeMode = this.state.mazeMode.has(name);
+            const isBSTMode = this.state.bstMode.has(name);
+
+            // Maze mode: use MazePlugin directly
+            if (is2D && isMazeMode) {
+                const ops = mazePlugin.diffOps(name, data);
+                if (ops.length > 0) {
+                    hasOps = true;
+                    animScheduler.pushOps(name, ops, (op) => mazePlugin.animateOp(name, op, requestRender));
+                }
+                continue;
+            }
+
+            // BST types without BST mode: skip (no animation)
+            if (bstTypes.has(data.type) && !isBSTMode) continue;
+
+            // Plugin path: BST or Linear via registry
             const plugin = getPlugin(data.type);
             if (!plugin) continue;
             const ops = plugin.diffOps(name, data);
@@ -121,7 +143,6 @@ class ContainerVisualizer extends React.Component<{}, State> {
             }
         }
 
-        // Auto-open the container collapser when data is present
         if (latestContainers.size > 0) {
             const registry = (window as any).gdbgui_collapser_registry || {};
             if (registry["container"]) registry["container"].open();
@@ -145,7 +166,12 @@ class ContainerVisualizer extends React.Component<{}, State> {
     toggleMazeMode = (name: string) => {
         this.setState(prev => {
             const next = new Set<string>(prev.mazeMode);
-            next.has(name) ? next.delete(name) : next.add(name);
+            if (next.has(name)) {
+                next.delete(name);
+                mazePlugin.resetContainer(name);
+            } else {
+                next.add(name);
+            }
             return { mazeMode: next };
         });
     };
@@ -162,55 +188,6 @@ class ContainerVisualizer extends React.Component<{}, State> {
             return { bstMode: next };
         });
     };
-
-    // ── Maze renderer ─────────────────────────────────────────────────────────
-
-    renderMaze(values: any[][], highlights: HighlightEntry[] | undefined, colorRules: ColorRule[]) {
-        const CELL = 20;
-        const rows = values.length;
-        const cols = rows > 0 ? (values[0] as any[]).length : 0;
-
-        const customColorMap = new Map<number, string>();
-        for (const rule of colorRules) {
-            const n = parseInt(rule.value);
-            if (!isNaN(n) && n !== 0 && n !== 1) customColorMap.set(n, rule.color);
-        }
-
-        const mazePosMap = new Map<string, string>();
-        if (highlights && cols > 0) {
-            for (const h of highlights) {
-                const r = Math.floor(h.index / cols);
-                const c = h.index % cols;
-                mazePosMap.set(`${r},${c}`, h.color === 'default' ? '#f59e0b' : h.color);
-            }
-        }
-
-        return (
-            <div style={{ display: 'inline-block', border: '3px solid #444', lineHeight: 0, boxShadow: '2px 2px 8px rgba(0,0,0,0.35)' }}>
-                {values.map((row: any[], rowIdx: number) => (
-                    <div key={rowIdx} style={{ display: 'flex' }}>
-                        {(row as any[]).map((cell: any, colIdx: number) => {
-                            const cellNum = parseInt(cell);
-                            const mazeHL = mazePosMap.get(`${rowIdx},${colIdx}`);
-                            let bg: string;
-                            if (mazeHL) { bg = mazeHL; }
-                            else if (cellNum === 0) { bg = '#f5f0e8'; }
-                            else if (cellNum === 1) { bg = '#2c2c2c'; }
-                            else if (customColorMap.has(cellNum)) { bg = customColorMap.get(cellNum)!; }
-                            else { bg = '#888888'; }
-                            return (
-                                <div key={colIdx} title={`[${rowIdx}][${colIdx}] = ${cell}`} style={{
-                                    width: CELL, height: CELL, backgroundColor: bg,
-                                    boxSizing: 'border-box',
-                                    border: cellNum === 1 ? 'none' : '1px solid rgba(180,160,120,0.25)',
-                                }} />
-                            );
-                        })}
-                    </div>
-                ))}
-            </div>
-        );
-    }
 
     // ── Maze color rule editor ────────────────────────────────────────────────
 
@@ -288,176 +265,85 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
         const isMazeMode = this.state.mazeMode.has(name);
         const isBSTMode  = this.state.bstMode.has(name);
+        const is2D = len > 0 && Array.isArray(values[0]);
 
-        // Font sizes scaled from the user-configurable base (default 1.1em)
         const fs     = (store.get("container_font_size") as number) || 1.1;
         const fsPx   = `${fs}em`;
-        const fsArrow = `${(fs * 1.27).toFixed(2)}em`;
         const fsBrace = `${(fs * 1.09).toFixed(2)}em`;
         const fsMap   = `${(fs * 0.82).toFixed(2)}em`;
 
-        // ── Unified node language ─────────────────────────────────────────────
-        // Every element is the same cell primitive; the container TYPE is shown
-        // by frame + connectors, and COLOR only encodes state (resting / focus).
-        const cellBase: React.CSSProperties = {
-            flex: 1, minWidth: "34px", padding: "12px 10px", textAlign: "center",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontFamily: "var(--font-mono)", fontSize: fsPx, color: "var(--ink)", boxSizing: "border-box",
-        };
-        const restNode: React.CSSProperties = {
-            background: "var(--surface)", border: "1px solid var(--struct-border)", borderRadius: "6px", fontWeight: 500,
-        };
-        const stateStyle = (hl: { bg: string; border: string } | null): React.CSSProperties =>
-            hl ? { background: hl.bg, border: `1px solid ${hl.border}`, borderRadius: "6px", fontWeight: 700, boxShadow: `0 0 0 1px ${hl.border}` } : restNode;
-        const frame: React.CSSProperties = {
-            display: "flex", border: "1px solid var(--line)", borderRadius: "10px",
-            background: "var(--paper)", padding: "6px", gap: "4px", width: "100%", alignItems: "stretch",
-        };
-        const emptyCell: React.CSSProperties = {
-            ...cellBase, border: "1px dashed var(--struct-border)", background: "var(--empty-bg)",
-            borderRadius: "6px", color: "var(--ink-faint)", fontStyle: "italic",
-        };
-        const conn = (ch: string, key?: string) => (
-            <span key={key} style={{ color: "var(--accent)", fontWeight: 700, fontSize: fsArrow, display: "flex", alignItems: "center", padding: "0 4px" }}>{ch}</span>
-        );
+        // ── Plugin-delegated rendering ────────────────────────────────────────
 
-        switch (type) {
-            case "string":
-            case "vector":
-            case "array": {
-                const rawCap = data.capacity !== undefined ? parseInt(data.capacity) : len;
-                const cap = (!isNaN(rawCap) && rawCap >= 0) ? rawCap : len;
-                const emptySlots = (cap > len && cap - len < 1000) ? cap - len : 0;
-                const is2D = len > 0 && Array.isArray(values[0]);
+        if (is2D && isMazeMode) {
+            // Maze mode
+            shape = mazePlugin.render(name, values, this.state.mazeColorRules.get(name) || [], highlights);
+        } else if (isBSTMode && ['set', 'multiset', 'map', 'multimap'].includes(type)) {
+            // BST mode
+            shape = getPlugin(type)?.render(name) ?? null;
+        } else if (!is2D && ['vector', 'array', 'string', 'list', 'queue', 'stack', 'deque'].includes(type)) {
+            // LinearPlugin
+            shape = getPlugin(type)?.render(name) ?? null;
+        }
 
-                if (is2D && isMazeMode) {
-                    shape = this.renderMaze(values, highlights, this.state.mazeColorRules.get(name) || []);
-                } else if (is2D) {
-                    const cols = values.length > 0 ? (values[0] as any[]).length : 0;
-                    const hlPosMap2D = new Map<string, { bg: string; border: string }>();
-                    if (highlights && cols > 0) {
-                        for (const h of highlights) {
-                            const hl = getHighlight(h.index, highlights);
-                            if (hl) hlPosMap2D.set(`${Math.floor(h.index / cols)},${h.index % cols}`, hl);
+        // ── Fallback: inline rendering for types not handled by plugins ───────
+
+        if (shape === null) {
+            // Style helpers (same as before, for fallback types)
+            const cellBase: React.CSSProperties = {
+                flex: 1, minWidth: "34px", padding: "12px 10px", textAlign: "center",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "var(--font-mono)", fontSize: fsPx, color: "var(--ink)", boxSizing: "border-box",
+            };
+            const restNode: React.CSSProperties = {
+                background: "var(--surface)", border: "1px solid var(--struct-border)", borderRadius: "6px", fontWeight: 500,
+            };
+            const stateStyle = (hl: { bg: string; border: string } | null): React.CSSProperties =>
+                hl ? { background: hl.bg, border: `1px solid ${hl.border}`, borderRadius: "6px", fontWeight: 700, boxShadow: `0 0 0 1px ${hl.border}` } : restNode;
+            const frame: React.CSSProperties = {
+                display: "flex", border: "1px solid var(--line)", borderRadius: "10px",
+                background: "var(--paper)", padding: "6px", gap: "4px", width: "100%", alignItems: "stretch",
+            };
+            const emptyCell: React.CSSProperties = {
+                ...cellBase, border: "1px dashed var(--struct-border)", background: "var(--empty-bg)",
+                borderRadius: "6px", color: "var(--ink-faint)", fontStyle: "italic",
+            };
+
+            switch (type) {
+                case "vector":
+                case "array":
+                case "string": {
+                    // 2D non-maze grid (only reaches here for 2D arrays without maze mode)
+                    if (is2D) {
+                        const cols = values.length > 0 ? (values[0] as any[]).length : 0;
+                        const hlPosMap2D = new Map<string, { bg: string; border: string }>();
+                        if (highlights && cols > 0) {
+                            for (const h of highlights) {
+                                const hl = getHighlight(h.index, highlights);
+                                if (hl) hlPosMap2D.set(`${Math.floor(h.index / cols)},${h.index % cols}`, hl);
+                            }
                         }
-                    }
-                    shape = (
-                        <div style={{ ...frame, display: "inline-flex", flexDirection: "column", width: "auto" }}>
-                            {values.map((row: any[], rowIdx: number) => (
-                                <div key={`row-${rowIdx}`} style={{ display: "flex", gap: "4px" }}>
-                                    {(row as any[]).map((colVal: string, colIdx: number) => {
-                                        const hl2D = hlPosMap2D.get(`${rowIdx},${colIdx}`) || null;
-                                        return (
-                                            <div key={`col-${rowIdx}-${colIdx}`} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none" }}>
-                                                {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
-                                            </div>
-                                        );
-                                    })}
-                                    {row.length === 0 && <div style={{ ...emptyCell, padding: "8px 12px", flex: "none" }}>empty row</div>}
-                                </div>
-                            ))}
-                        </div>
-                    );
-                } else {
-                    shape = (
-                        <div style={{ display: "flex", width: "100%", alignItems: "stretch", gap: "4px" }}>
-                            <div style={frame}>
-                                {values.map((v: string, idx: number) => {
-                                    const hlInfo = getHighlight(idx, highlights, len);
-                                    return (
-                                        <div key={`val-${idx}`} data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo) }}>
-                                            {type === "string" && v !== "" ? `'${v}'` : v}
-                                        </div>
-                                    );
-                                })}
-                                {len === 0 && <div style={emptyCell}>empty</div>}
+                        shape = (
+                            <div style={{ ...frame, display: "inline-flex", flexDirection: "column", width: "auto" }}>
+                                {values.map((row: any[], rowIdx: number) => (
+                                    <div key={`row-${rowIdx}`} style={{ display: "flex", gap: "4px" }}>
+                                        {(row as any[]).map((colVal: string, colIdx: number) => {
+                                            const hl2D = hlPosMap2D.get(`${rowIdx},${colIdx}`) || null;
+                                            return (
+                                                <div key={`col-${rowIdx}-${colIdx}`} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none" }}>
+                                                    {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
+                                                </div>
+                                            );
+                                        })}
+                                        {row.length === 0 && <div style={{ ...emptyCell, padding: "8px 12px", flex: "none" }}>empty row</div>}
+                                    </div>
+                                ))}
                             </div>
-                            {emptySlots > 0 && Array.from({ length: emptySlots }).map((_, idx) => (
-                                <div key={`cap-${idx}`} style={{ ...emptyCell, padding: "6px" }} title="未使用容量 (Unused Capacity)" />
-                            ))}
-                        </div>
-                    );
+                        );
+                    }
+                    break;
                 }
-                break;
-            }
-            case "list":
-                shape = (
-                    <div style={{ display: "flex", width: "100%", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
-                        {values.map((v: string, idx: number) => {
-                            const hlInfo = getHighlight(idx, highlights, len);
-                            return (
-                                <React.Fragment key={idx}>
-                                    <div data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo), borderRadius: "999px" }}>{v}</div>
-                                    {idx < len - 1 && conn("↔", `c${idx}`)}
-                                </React.Fragment>
-                            );
-                        })}
-                        {len === 0 && <div style={{ ...emptyCell, borderRadius: "999px" }}>empty node</div>}
-                    </div>
-                );
-                break;
-            case "stack": {
-                // LIFO: cells in a frame, with an accent "top" tag marking the open end.
-                const endTag = (label: string) => (
-                    <span style={{ display: "flex", alignItems: "center", padding: "0 8px", color: "var(--accent)", fontWeight: 700, fontFamily: "var(--font-display)", fontSize: "0.78em", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{label}</span>
-                );
-                shape = (
-                    <div style={{ display: "flex", width: "100%", alignItems: "stretch", gap: "4px" }}>
-                        <div style={frame}>
-                            {values.map((v: string, idx: number) => {
-                                const hlInfo = getHighlight(idx, highlights, len);
-                                return (
-                                    <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo) }}>{v}</div>
-                                );
-                            })}
-                            {len === 0 && <div style={emptyCell}>empty</div>}
-                        </div>
-                        {len > 0 && endTag("↑ top")}
-                    </div>
-                );
-                break;
-            }
-            case "queue":
-                // FIFO: accent arrows show direction of flow (rear → front).
-                shape = (
-                    <div style={{ display: "flex", width: "100%", alignItems: "stretch" }}>
-                        {conn("←", "qf")}
-                        <div style={frame}>
-                            {values.map((v: string, idx: number) => {
-                                const hlInfo = getHighlight(idx, highlights, len);
-                                return (
-                                    <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo) }}>{v}</div>
-                                );
-                            })}
-                            {len === 0 && <div style={emptyCell}>empty</div>}
-                        </div>
-                        {conn("←", "qb")}
-                    </div>
-                );
-                break;
-            case "deque":
-                // double-ended: accent arrows on both ends.
-                shape = (
-                    <div style={{ display: "flex", width: "100%", alignItems: "stretch" }}>
-                        {conn("↔", "df")}
-                        <div style={frame}>
-                            {values.map((v: string, idx: number) => {
-                                const hlInfo = getHighlight(idx, highlights, len);
-                                return (
-                                    <div key={idx} data-testid="container-cell" data-value={String(v)} style={{ ...cellBase, ...stateStyle(hlInfo) }}>{v}</div>
-                                );
-                            })}
-                            {len === 0 && <div style={emptyCell}>empty</div>}
-                        </div>
-                        {conn("↔", "db")}
-                    </div>
-                );
-                break;
-            case "set":
-            case "multiset": {
-                if (isBSTMode) {
-                    shape = getPlugin(type)?.render(name) ?? null;
-                } else {
+                case "set":
+                case "multiset": {
                     const brace = (ch: string) => (
                         <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: fsBrace, display: "flex", alignItems: "center", padding: "0 8px" }}>{ch}</span>
                     );
@@ -476,15 +362,11 @@ class ContainerVisualizer extends React.Component<{}, State> {
                             {brace("}")}
                         </div>
                     );
+                    break;
                 }
-                break;
-            }
-            case "map":
-            case "unordered_map":
-            case "multimap": {
-                if (isBSTMode && type !== "unordered_map") {
-                    shape = getPlugin(type)?.render(name) ?? null;
-                } else {
+                case "map":
+                case "unordered_map":
+                case "multimap": {
                     const pairs: { key: string; value: string }[] = values as any;
                     const thStyle: React.CSSProperties = { padding: "5px 14px", backgroundColor: "var(--accent)", color: "#fff", fontWeight: 600, textAlign: "center", fontFamily: "var(--font-display)", letterSpacing: "0.04em", textTransform: "uppercase", fontSize: "0.92em" };
                     shape = (
@@ -512,17 +394,18 @@ class ContainerVisualizer extends React.Component<{}, State> {
                             </tbody>
                         </table>
                     );
+                    break;
                 }
-                break;
+                default:
+                    shape = <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent)" }}>{values.join(", ")}</span>;
             }
-            default:
-                shape = <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent)" }}>{values.join(", ")}</span>;
         }
+
+        // ── Card wrapper (UNCHANGED from existing code) ───────────────────────
 
         const displayCapacity = data.capacity !== undefined ? data.capacity : len;
         const showCapacitySize = type === "vector";
         const showSizeOnly = type === "set" || type === "multiset" || type === "map" || type === "unordered_map" || type === "multimap";
-        const is2D = len > 0 && Array.isArray(values[0]);
         const showMazeToggle = is2D && (type === "vector" || type === "array");
         const showBSTToggle = type === "set" || type === "multiset" || type === "map" || type === "multimap";
 

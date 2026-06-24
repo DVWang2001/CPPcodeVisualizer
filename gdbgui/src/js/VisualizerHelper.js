@@ -31,10 +31,14 @@ const _gi_result_cache = new Map();
  * Bypasses React's batched setState so every intermediate state triggers animation.
  */
 function _eagerDiffOps(containerName, payload) {
-  if (typeof window.gdbgui_is_bst_mode !== 'function') return;
-  if (!window.gdbgui_is_bst_mode(containerName)) return;
   const plugin = getPlugin(payload.type);
   if (!plugin) return;
+  // BST types need BST mode toggle to be on
+  const bstTypes = new Set(['set', 'map', 'multiset', 'multimap']);
+  if (bstTypes.has(payload.type)) {
+    if (typeof window.gdbgui_is_bst_mode !== 'function') return;
+    if (!window.gdbgui_is_bst_mode(containerName)) return;
+  }
   const rr = () => window.gdbgui_request_render?.();
   const ops = plugin.diffOps(containerName, payload);
   if (ops.length > 0) {
