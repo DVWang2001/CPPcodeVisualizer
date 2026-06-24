@@ -503,10 +503,12 @@ class Breakpoints extends React.Component {
     // add the breakpoint if it's not stored already
     let bkpts = store.get("breakpoints");
     if (bkpts.indexOf(bkpt) === -1) {
-      // 同一行只允許一個 normal breakpoint（排除 child breakpoint）
+      // 同一檔案同一行只允許一個 normal breakpoint（排除 child breakpoint）
       if (bkpt.is_normal_breakpoint && !bkpt.is_child_breakpoint) {
+        const _bkptFn = bkpt.fullname_to_display || "";
         const dupIdx = bkpts.findIndex(
           (b: any) => b.line == bkpt.line && b.is_normal_breakpoint && !b.is_child_breakpoint
+            && (b.fullname_to_display || "") === _bkptFn
         );
         if (dupIdx !== -1) {
           bkpts.splice(dupIdx, 1); // 移除舊的，以新的取代

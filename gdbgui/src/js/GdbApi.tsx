@@ -422,10 +422,15 @@ const GdbApi = {
               // Store real source path for GDB operations (breakpoint insertion, re-runs)
               if (gdbSourcePath) {
                 (window as any).gdbgui_real_source_path = gdbSourcePath;
+                localStorage.setItem("gdbgui_gdb_source_path", gdbSourcePath);
               }
               // Store real source path for GDB "code unchanged" re-run
               if (gdbSourcePath) {
                 (window as any).gdbgui_current_source_path = gdbSourcePath;
+              }
+              // Persist substitute-path so F5 reload can configure the new GDB session
+              if (gdbSubstCmd) {
+                localStorage.setItem("gdbgui_gdb_subst_cmd", gdbSubstCmd);
               }
               // Always write the CURRENT in-memory guide/TTS/layout to the new virtual path.
               // Using global_variable (live state) prevents stale localStorage data from a
@@ -883,6 +888,15 @@ const GdbApi = {
       `-exec-arguments ${args}`, // Set the inferior program arguments, to be used in the next `-exec-run`
       `-file-exec-and-symbols ${binary}` // Specify the executable file to be debugged. This file is the one from which the symbol table is also read.
     ];
+
+    // Restore substitute-path from previous compile so GDB can resolve virtual paths
+    // (lost on F5 since the compile AJAX response only sets it as a window property)
+    const _savedSubstCmd = localStorage.getItem("gdbgui_gdb_subst_cmd");
+    if (_savedSubstCmd) {
+      cmds.push(`-interpreter-exec console "unset substitute-path"`);
+      cmds.push(`-interpreter-exec console "${_savedSubstCmd}"`);
+    }
+
     // add breakpoint if we don't already have one
     if (store.get("auto_add_breakpoint_to_main")) {
       cmds.push("-break-insert -f main");
@@ -902,7 +916,9 @@ const GdbApi = {
     const frontend_bkpts = bkpts.filter((b: any) => typeof b.number === 'string' && b.number.startsWith('frontend_'));
 
     // Prefer real filesystem path for GDB (virtual /workspace paths are not in DWARF)
-    const _realSrcForBkpt = (window as any).gdbgui_real_source_path || "";
+    const _realSrcForBkpt = (window as any).gdbgui_real_source_path
+      || localStorage.getItem("gdbgui_gdb_source_path")
+      || "";
     for (let b of frontend_bkpts) {
       let cmd = "-break-insert -f";
       if (b.enabled !== "y") cmd += " -d";
