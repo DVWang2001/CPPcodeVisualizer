@@ -1,346 +1,263 @@
 import React from "react";
 import { store } from "statorgfc";
+import type { CallNode, CallEdge } from "./callTree";
 
-// vis is loaded globally via HTML script tag, not NPM
-const vis = (window as any).vis;
+// Layout constants (small teaching trees, ≤ ~30 nodes).
+const NODE_W = 150;
+const NODE_H = 50;
+const GAP_X = 28;
+const GAP_Y = 46;
+const COL = NODE_W + GAP_X;
+const ROW = NODE_H + GAP_Y;
+const PAD = 16;
+
+// Desaturated custom-label colors, harmonized with the design tokens.
+const CUSTOM_COLORS: Record<string, string> = {
+    green: "#3AA76D",
+    red: "#DC5B5B",
+    blue: "#4F46E5",
+};
 
 type CallGraphState = {
     call_graph_updated: number;
     locals: any[];
     paused_on_frame: any;
+    expressions: any[];
 };
 
+type Placed = CallNode & { x: number; y: number };
+
 class CallGraph extends React.Component<{}, CallGraphState> {
-    network: any | null = null;
-    nodes: any | null = null;
-    edges: any | null = null;
-    containerRef: React.RefObject<HTMLDivElement>;
-    resizeObserver: ResizeObserver | null = null;
-    _lastNodeCount: number = 0;
-    _lastActiveNodeId: string = "";
-    _isFirstVisible: boolean = true;
-    _lastVisNodesStr: string = "";
-    _lastEdgesStr: string = "";
+    scrollRef = React.createRef<HTMLDivElement>();
+    activeRef = React.createRef<HTMLDivElement>();
 
     constructor(props: any) {
         super(props);
-        this.containerRef = React.createRef();
-        this.state = { call_graph_updated: 0, locals: [], paused_on_frame: null };
-        // @ts-expect-error
+        this.state = { call_graph_updated: 0, locals: [], paused_on_frame: null, expressions: [] };
+        // @ts-expect-error statorgfc augmentation
         store.connectComponentState(this, ["call_graph_updated", "locals", "paused_on_frame", "expressions"]);
     }
 
-    componentDidMount() {
-        this.nodes = new vis.DataSet();
-        this.edges = new vis.DataSet();
-
-        const data = {
-            nodes: this.nodes,
-            edges: this.edges,
-        };
-
-        const options = {
-            layout: {
-                hierarchical: {
-                    enabled: true,
-                    direction: "UD",
-                    sortMethod: "directed", // Strictly from top to bottom
-                    levelSeparation: 120,
-                    nodeSpacing: 150
-                }
-            },
-            nodes: {
-                shape: "box",
-                margin: 10,
-                color: {
-                    background: "#ecf0f1",
-                    border: "#bdc3c7",
-                    highlight: {
-                        background: "#3498db",
-                        border: "#2980b9"
-                    }
-                },
-                font: { face: "monospace", size: 14 }
-            },
-            edges: {
-                arrows: "to",
-                smooth: {
-                    type: "cubicBezier",
-                    forceDirection: "vertical",
-                    roundness: 0.4
-                },
-                color: { color: "#7f8c8d" }
-            },
-            physics: {
-                enabled: true,
-                hierarchicalRepulsion: {
-                    centralGravity: 0.0,
-                    springLength: 100,
-                    springConstant: 1.0, // High stiffness
-                    nodeDistance: 150,
-                    damping: 1.0, // Max friction to stop all bouncy oscillations instantly
-                    avoidOverlap: 1
-                },
-                solver: 'hierarchicalRepulsion',
-                stabilization: {
-                    enabled: true,
-                    iterations: 50,
-                    fit: false
-                }
-            },
-            interaction: {
-                dragNodes: true,
-                dragView: true,
-                zoomView: true
-            }
-        };
-
-        if (this.containerRef.current) {
-            this.network = new vis.Network(this.containerRef.current, data, options);
-            
-            // 監聽容器大小，避免畫布初始 0x0
-            if (window.ResizeObserver) {
-                this.resizeObserver = new ResizeObserver((entries) => {
-                    if (this.network) {
-                        for (let entry of entries) {
-                            if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
-                                if (this._isFirstVisible) {
-                                    this.network.setSize(entry.contentRect.width + 'px', entry.contentRect.height + 'px');
-                                    this.network.redraw();
-                                    this.network.fit({ animation: false });
-                                    this._isFirstVisible = false;
-                                }
-                            } else {
-                                this._isFirstVisible = true;
-                            }
-                        }
-                    }
-                });
-                this.resizeObserver.observe(this.containerRef.current);
-            }
-        }
-
-        // 初始畫圖
-        this.refreshGraph();
-    }
-
-    componentWillUnmount() {
-        if (this.resizeObserver && this.containerRef.current) {
-            this.resizeObserver.unobserve(this.containerRef.current);
-            this.resizeObserver.disconnect();
-        }
-        if (this.network) {
-            this.network.destroy();
-            this.network = null;
+    componentDidUpdate() {
+        // Keep the current frame in view without yanking the whole tree around.
+        if (this.activeRef.current) {
+            this.activeRef.current.scrollIntoView({ block: "nearest", inline: "nearest" });
         }
     }
 
-    componentDidUpdate(prevProps: any, prevState: CallGraphState) {
-        this.refreshGraph();
+    // Expand an array/vector arg or local into [v0, v1, …] when expressions has
+    // child values for it; otherwise return the raw value.
+    private expand(funcName: string, varName: string, rawValue: any): string {
+        const expressions = store.get("expressions") as any[] || [];
+        const displayKey = funcName ? `${funcName}::${varName}` : varName;
+        const exprObj = expressions.find((o: any) =>
+            (o.expression === displayKey || o.expression === varName) && o.in_scope === "true");
+        if (exprObj && exprObj.children && exprObj.children.length > 0) {
+            return `[${exprObj.children.map((c: any) => c.value ?? "?").join(", ")}]`;
+        }
+        return rawValue ?? "?";
     }
 
-    refreshGraph() {
-        let global_variable = (window as any).gdbgui_global_variable;
-        if (!global_variable || !this.nodes || !this.edges) {
-            return;
-        }
+    // Resolve the text + optional color override for one node.
+    private resolveLabel(node: CallNode, isActive: boolean): { lines: string[]; color: string | null } {
+        const gv = (window as any).gdbgui_global_variable || {};
+        const argsStr = (node.args || [])
+            .map((a: any) => `${a.name}=${this.expand(node.func, a.name, a.value)}`)
+            .join(", ");
+        let lines = [`${node.func}(${argsStr})`];
+        if (node.line) lines.push(`L${node.line}`);
+        let color: string | null = null;
 
-        const gNodes = global_variable.__call_graph_nodes;
-        const gEdges = global_variable.__call_graph_edges;
-        const activeNodeId = global_variable.__active_node_id;
-
-        if (gNodes) {
-             // 從 store 取最新狀態 (因為我們不用 state 了) -> 這裡需要改回用 state
-            const locals = store.get("locals") || [];
-
-            const allExpressions = store.get("expressions") || [];
-
-            const visNodes = gNodes.map((n: any) => {
-                // 展開 args 中的陣列/向量（若 expressions 有 children 資料）
-                const expandArg = (name: string, rawValue: any): string => {
-                    const displayKey = n.func_name ? `${n.func_name}::${name}` : name;
-                    const exprObj = allExpressions.find((obj: any) =>
-                        (obj.expression === displayKey || obj.expression === name) && obj.in_scope === "true");
-                    if (exprObj && exprObj.children && exprObj.children.length > 0) {
-                        const childVals = exprObj.children.map((c: any) => c.value ?? '?');
-                        return `[${childVals.join(', ')}]`;
-                    }
-                    return rawValue ?? '?';
-                };
-
-                let argsStr = "";
-                if (n.args && n.args.length > 0) {
-                    argsStr = n.args.map((a: any) => `${a.name}=${expandArg(a.name, a.value)}`).join(", ");
-                }
-                let label = `${n.func_name}(${argsStr})`;
-
-                let color;
-                const font = { face: "monospace", size: 13, color: "#2c3e50" };
-
-                // 顯示當前行號
-                if (n.line) {
-                    label += `\n\nLine: ${n.line}`;
-                }
-
-                if (n.id === activeNodeId) {
-                    const expressions = store.get("expressions") || [];
-
-                    // 展開陣列/向量：若 varobj 有 children，以 [v0, v1, ...] 取代原始 value
-                    const expandedValue = (varName: string, rawValue: any): string => {
-                        const displayKey = n.func_name ? `${n.func_name}::${varName}` : varName;
-                        const exprObj = expressions.find((obj: any) =>
-                            (obj.expression === displayKey || obj.expression === varName) && obj.in_scope === "true");
-                        if (exprObj && exprObj.children && exprObj.children.length > 0) {
-                            const childVals = exprObj.children.map((c: any) => c.value ?? '?');
-                            return `[${childVals.join(', ')}]`;
-                        }
-                        return rawValue ?? '...';
-                    };
-
-                    let trueLocals: any[] = [];
-                    const paramNames = n.args ? n.args.map((a: any) => a.name) : [];
-
-                    if (locals && locals.length > 0) {
-                        trueLocals = locals.filter((l: any) => !paramNames.includes(l.name));
-                        if (trueLocals.length > 0) {
-                            const localsStr = trueLocals.map((l: any) =>
-                                `${l.name} = ${expandedValue(l.name, l.value)}`
-                            ).join('\n');
-                            label += `\n\n[Local Variables]\n${localsStr}`;
-                        }
-                    }
-
-                    color = { background: '#f1c40f', border: '#e67e22', highlight: { background: '#f39c12', border: '#e67e22' } };
-
-                    // 檢查是否有自訂的 Call Graph 標籤
-                    const customLabels = global_variable.__call_graph_custom_labels;
-                    if (customLabels && n.line && customLabels[n.line]) {
-                        const customData = customLabels[n.line];
-
-                        // Inline-substitute {varName} within the label name,
-                        // and collect vars not embedded in the label as separate lines.
-                        let resolvedLabelName = customData.labelName;
-                        const extraLines: string[] = [];
-
-                        if (customData.vars && customData.vars.length > 0) {
-                            customData.vars.forEach((varName: string) => {
-                                const displayKey = n.func_name ? `${n.func_name}::${varName}` : varName;
-                                const exprObj = expressions.find((obj: any) => obj.expression === displayKey && obj.in_scope === "true") ||
-                                                expressions.find((obj: any) => obj.expression === varName && obj.in_scope === "true");
-                                const varValue = exprObj ? expandedValue(varName, exprObj.value) : "...";
-                                const placeholder = `{${varName}}`;
-                                if (resolvedLabelName.includes(placeholder)) {
-                                    // Inline substitution: [啟動遞迴 n={n}] → [啟動遞迴 n=13]
-                                    resolvedLabelName = resolvedLabelName.split(placeholder).join(varValue);
-                                } else {
-                                    // Not in label name → show as separate line (original behaviour)
-                                    extraLines.push(`${varName} = ${varValue}`);
-                                }
-                            });
-                        }
-
-                        label = `[${resolvedLabelName}]`;
-                        if (extraLines.length > 0) {
-                            label += `\n\n` + extraLines.join('\n');
-                        }
-
-                        // 如果有指定顏色，覆蓋顏色
-                        if (customData.color) {
-                            const c = customData.color.toLowerCase();
-                            if (c === 'green') {
-                                color = { background: '#2ecc71', border: '#27ae60', highlight: { background: '#2ecc71', border: '#27ae60' } };
-                            } else if (c === 'red') {
-                                color = { background: '#e74c3c', border: '#c0392b', highlight: { background: '#e74c3c', border: '#c0392b' } };
-                            } else if (c === 'blue') {
-                                color = { background: '#3498db', border: '#2980b9', highlight: { background: '#3498db', border: '#2980b9' } };
-                            } else {
-                                color = { background: c, border: c, highlight: { background: c, border: c } };
-                            }
-                        }
-                    }
-
-                } else {
-                    color = {
-                        background: "#ecf0f1",
-                        border: "#bdc3c7",
-                        highlight: { background: "#3498db", border: "#2980b9" }
-                    };
-                }
-
-                return { ...n, label, color, font };
+        // Teacher-authored custom labels for the active frame's current line.
+        const custom = gv.__call_graph_custom_labels;
+        if (isActive && custom && node.line && custom[node.line]) {
+            const data = custom[node.line];
+            const expressions = store.get("expressions") as any[] || [];
+            let labelName: string = data.labelName;
+            const extra: string[] = [];
+            (data.vars || []).forEach((varName: string) => {
+                const key = node.func ? `${node.func}::${varName}` : varName;
+                const exprObj = expressions.find((o: any) => o.expression === key && o.in_scope === "true")
+                    || expressions.find((o: any) => o.expression === varName && o.in_scope === "true");
+                const value = exprObj ? this.expand(node.func, varName, exprObj.value) : "...";
+                const ph = `{${varName}}`;
+                if (labelName.includes(ph)) labelName = labelName.split(ph).join(value);
+                else extra.push(`${varName} = ${value}`);
             });
+            lines = [`[${labelName}]`, ...extra];
+            if (data.color) color = CUSTOM_COLORS[String(data.color).toLowerCase()] || data.color;
+        }
+        return { lines, color };
+    }
 
-            const newDataStr = JSON.stringify(visNodes);
-            if (this._lastVisNodesStr !== newDataStr) {
-                this._lastVisNodesStr = newDataStr;
-                
-                // Remove nodes that are no longer in the state
-                const newIds = visNodes.map((n: any) => n.id);
-                const currentIds = this.nodes.getIds();
-                const idsToRemove = currentIds.filter((id: any) => !newIds.includes(id));
-                if (idsToRemove.length > 0) {
-                    this.nodes.remove(idsToRemove);
-                }
+    private layout(nodes: CallNode[]): { placed: Placed[]; width: number; height: number } {
+        if (nodes.length === 0) return { placed: [], width: 0, height: 0 };
 
-                this.nodes.update(visNodes);
+        const byId = new Map<number, CallNode>(nodes.map(n => [n.invId, n]));
+        const children = new Map<number, number[]>();
+        const roots: number[] = [];
+        for (const n of nodes) {
+            if (n.parentInvId != null && byId.has(n.parentInvId)) {
+                if (!children.has(n.parentInvId)) children.set(n.parentInvId, []);
+                children.get(n.parentInvId)!.push(n.invId);
+            } else {
+                roots.push(n.invId);
             }
         }
 
-        if (gEdges) {
-            const newEdgesStr = JSON.stringify(gEdges);
-            if (this._lastEdgesStr !== newEdgesStr) {
-                this._lastEdgesStr = newEdgesStr;
-                
-                // Remove edges that are no longer in the state
-                const newEdgeIds = gEdges.map((e: any) => e.id);
-                const currentEdgeIds = this.edges.getIds();
-                const edgeIdsToRemove = currentEdgeIds.filter((id: any) => !newEdgeIds.includes(id));
-                if (edgeIdsToRemove.length > 0) {
-                    this.edges.remove(edgeIdsToRemove);
-                }
-
-                this.edges.update(gEdges);
+        const depth = new Map<number, number>();
+        const xSlot = new Map<number, number>();
+        let nextLeaf = 0;
+        const walk = (id: number, d: number) => {
+            depth.set(id, d);
+            const kids = children.get(id) ?? [];
+            if (kids.length === 0) {
+                xSlot.set(id, nextLeaf++);
+            } else {
+                kids.forEach(k => walk(k, d + 1));
+                xSlot.set(id, (xSlot.get(kids[0])! + xSlot.get(kids[kids.length - 1])!) / 2);
             }
-        }
+        };
+        roots.forEach(r => walk(r, 0));
 
-        if (this.network && gNodes && gNodes.length > 0) {
-            const currentNodesLength = gNodes.length;
-            const needsFit = currentNodesLength !== this._lastNodeCount;
-            this._lastNodeCount = currentNodesLength;
-
-            if (activeNodeId) {
-                this.network.selectNodes([activeNodeId]);
-                
-                if (needsFit || this._lastActiveNodeId !== activeNodeId) {
-                    this._lastActiveNodeId = activeNodeId;
-                    
-                    // Focus on the active node instead of zooming out to fit everything.
-                    // Keep the user's current zoom scale.
-                    this.network.focus(activeNodeId, {
-                        scale: this.network.getScale(),
-                        animation: {
-                            duration: 300,
-                            easingFunction: "easeOutQuad"
-                        }
-                    });
-                }
-            }
-        }
+        const placed: Placed[] = nodes.map(n => ({
+            ...n,
+            x: PAD + xSlot.get(n.invId)! * COL,
+            y: PAD + depth.get(n.invId)! * ROW,
+        }));
+        const maxDepth = Math.max(...Array.from(depth.values()));
+        const width = PAD * 2 + (nextLeaf > 0 ? nextLeaf - 1 : 0) * COL + NODE_W;
+        const height = PAD * 2 + maxDepth * ROW + NODE_H;
+        return { placed, width, height };
     }
 
     render() {
+        const gv = (window as any).gdbgui_global_variable || {};
+        const nodes: CallNode[] = gv.__call_graph_nodes || [];
+        const edges: CallEdge[] = gv.__call_graph_edges || [];
+        const activeNodeId: number | null = gv.__active_node_id ?? null;
+        const activeSet = new Set<number>(gv.__active_path || []);
+
+        if (nodes.length === 0) {
+            return (
+                <div style={{ padding: "12px", color: "var(--ink-soft)", fontStyle: "italic", fontSize: "0.9em" }}>
+                    執行並逐步追蹤後，這裡會畫出函式呼叫樹。
+                </div>
+            );
+        }
+
+        const { placed, width, height } = this.layout(nodes);
+        const posById = new Map<number, Placed>(placed.map(p => [p.invId, p]));
+
+        // Active node's locals (excluding params) for the detail strip below.
+        const activeNode = activeNodeId != null ? posById.get(activeNodeId) : undefined;
+        const locals = (store.get("locals") as any[]) || [];
+        let activeLocals: { name: string; value: string }[] = [];
+        if (activeNode) {
+            const paramNames = (activeNode.args || []).map((a: any) => a.name);
+            activeLocals = locals
+                .filter((l: any) => !paramNames.includes(l.name))
+                .map((l: any) => ({ name: l.name, value: this.expand(activeNode.func, l.name, l.value) }));
+        }
+
         return (
-            <div style={{ width: "100%", padding: "5px" }}>
+            <div style={{ width: "100%", padding: "6px" }}>
                 <div
-                    ref={this.containerRef}
-                    style={{ 
-                        width: "100%", 
-                        height: "400px", 
-                        border: "1px solid #ddd", 
-                        backgroundColor: "#fafafa",
-                        display: "block" 
+                    ref={this.scrollRef}
+                    style={{
+                        width: "100%", height: "360px", overflow: "auto",
+                        border: "1px solid var(--line)", borderRadius: "10px",
+                        background: "var(--paper)", position: "relative",
                     }}
-                />
+                >
+                    <div style={{ position: "relative", width: `${width}px`, height: `${height}px` }}>
+                        <svg width={width} height={height} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                            <defs>
+                                <marker id="cg-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+                                    <path d="M0,0 L6,3 L0,6 Z" fill="var(--struct-border)" />
+                                </marker>
+                                <marker id="cg-arrow-active" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+                                    <path d="M0,0 L6,3 L0,6 Z" fill="var(--accent)" />
+                                </marker>
+                            </defs>
+                            {edges.map(e => {
+                                const a = posById.get(e.from);
+                                const b = posById.get(e.to);
+                                if (!a || !b) return null;
+                                const onPath = activeSet.has(e.from) && activeSet.has(e.to);
+                                const x1 = a.x + NODE_W / 2, y1 = a.y + NODE_H;
+                                const x2 = b.x + NODE_W / 2, y2 = b.y;
+                                return (
+                                    <line
+                                        key={e.id} x1={x1} y1={y1} x2={x2} y2={y2 - 7}
+                                        stroke={onPath ? "var(--accent)" : "var(--struct-border)"}
+                                        strokeWidth={onPath ? 2 : 1}
+                                        markerEnd={`url(#${onPath ? "cg-arrow-active" : "cg-arrow"})`}
+                                    />
+                                );
+                            })}
+                        </svg>
+
+                        {placed.map(node => {
+                            const isCurrent = node.invId === activeNodeId;
+                            const onPath = activeSet.has(node.invId) && !isCurrent;
+                            const { lines, color } = this.resolveLabel(node, isCurrent);
+
+                            let style: React.CSSProperties;
+                            if (color) {
+                                style = { background: color, border: `1px solid ${color}`, color: "#fff", fontWeight: 600 };
+                            } else if (isCurrent) {
+                                style = { background: "#fff", border: "2px solid var(--highlight)", color: "var(--ink)", boxShadow: "0 0 0 1px var(--highlight)", fontWeight: 700 };
+                            } else if (onPath) {
+                                style = { background: "var(--accent-soft)", border: "1px solid var(--accent)", color: "var(--ink)", fontWeight: 600 };
+                            } else {
+                                style = { background: "#F1F3F5", border: "1px solid #D0D7DE", color: "#99A2AE", fontWeight: 400 };
+                            }
+
+                            return (
+                                <div
+                                    key={node.invId}
+                                    ref={isCurrent ? this.activeRef : undefined}
+                                    title={lines.join("\n")}
+                                    style={{
+                                        position: "absolute", left: `${node.x}px`, top: `${node.y}px`,
+                                        width: `${NODE_W}px`, minHeight: `${NODE_H}px`, boxSizing: "border-box",
+                                        padding: "6px 8px", borderRadius: "8px", fontFamily: "var(--font-mono)",
+                                        fontSize: "0.78em", lineHeight: 1.35, textAlign: "center",
+                                        display: "flex", flexDirection: "column", justifyContent: "center",
+                                        overflow: "hidden", transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
+                                        ...style,
+                                    }}
+                                >
+                                    {lines.map((l, i) => (
+                                        <span key={i} style={{
+                                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                                            fontSize: i === 0 ? "1em" : "0.86em",
+                                            opacity: i === 0 ? 1 : 0.8,
+                                        }}>{l}</span>
+                                    ))}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {activeNode && activeLocals.length > 0 && (
+                    <div style={{
+                        marginTop: "6px", padding: "6px 10px", borderRadius: "8px",
+                        background: "var(--accent-soft)", border: "1px solid var(--line)",
+                        fontFamily: "var(--font-mono)", fontSize: "0.78em", color: "var(--ink)",
+                    }}>
+                        <span style={{ color: "var(--accent)", fontWeight: 600, marginRight: "8px" }}>
+                            {activeNode.func} 區域變數
+                        </span>
+                        {activeLocals.map((l, i) => (
+                            <span key={i} style={{ marginRight: "12px", whiteSpace: "nowrap" }}>
+                                {l.name} = {l.value}
+                            </span>
+                        ))}
+                    </div>
+                )}
             </div>
         );
     }

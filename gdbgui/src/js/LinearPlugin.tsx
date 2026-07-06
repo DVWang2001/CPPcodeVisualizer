@@ -92,6 +92,7 @@ class LinearPluginImpl implements ContainerPlugin {
         this.prevJson.set(containerName, json);
 
         const oldVals = this.history.get(containerName);
+        console.log(`[LinearPlugin.diffOps] "${containerName}" old=${JSON.stringify(oldVals)} new=${JSON.stringify(newVals)}`);
         this.history.set(containerName, [...newVals]);
 
         // First encounter
@@ -138,6 +139,8 @@ class LinearPluginImpl implements ContainerPlugin {
             const newCell: LinearCell = { id: `lin-${++_cellId}`, value: newVals[insertIdx] };
             const c = this.cells.get(containerName)!;
             c.splice(insertIdx, 0, newCell);
+            // Sync all cell values — existing elements may have changed alongside the insert
+            for (let i = 0; i < c.length; i++) c[i].value = newVals[i];
 
             // Pre-hide new cell
             const enterSet = this.entering.get(containerName) ?? new Set<string>();
@@ -163,6 +166,11 @@ class LinearPluginImpl implements ContainerPlugin {
             } else {
                 ops.push({ type: 'erase', payload: { index: eraseIdx, value: oldVals[eraseIdx], cellId } as ErasePayload });
             }
+            // Sync surviving cell values in case they changed alongside the erase
+            for (let i = 0, ci = 0; ci < c.length; ci++) {
+                if (ci === eraseIdx) continue;
+                c[ci].value = newVals[i++];
+            }
             // Don't remove from cells yet — ghost stays for erase animation
         } else {
             // Bulk change: replace all cells
@@ -171,6 +179,7 @@ class LinearPluginImpl implements ContainerPlugin {
             ops.push({ type: 'bulkChange', payload: {} });
         }
 
+        console.log(`[LinearPlugin.diffOps] "${containerName}" ops=${JSON.stringify(ops.map(o=>o.type))} cells=${JSON.stringify(this.cells.get(containerName)?.map(c=>c.value))}`);
         return ops;
     }
 
@@ -310,6 +319,7 @@ class LinearPluginImpl implements ContainerPlugin {
         }
 
         const cells = this.cells.get(containerName)!;
+        console.log(`[LinearPlugin.render] "${containerName}" cells=${JSON.stringify(cells.map(c=>c.value))}`);
         const enteringSet   = this.entering.get(containerName)    ?? new Set<string>();
         const fadingOutSet  = this.fadingOut.get(containerName)   ?? new Set<string>();
         const highlightSet  = this.highlighted.get(containerName) ?? new Set<string>();

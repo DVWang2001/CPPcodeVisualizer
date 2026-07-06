@@ -5,6 +5,7 @@ import GdbApi from "./GdbApi";
 import Memory from "./Memory";
 import { FileLink } from "./Links";
 import MemoryLink from "./MemoryLink";
+import { createCallTree, ingestStack } from "./callTree";
 
 class FrameArguments extends React.Component {
   render_frame_arg(frame_arg: any) {
@@ -239,72 +240,22 @@ class Threads extends React.Component<{}, ThreadsState> {
     store.set("current_assembly_address", store.get("paused_on_frame").addr);
     store.set("make_current_line_visible", true);
 
-    // Call Graph Tracking Logic
+    // Call Graph Tracking Logic — reconstruct an accurate call tree from the
+    // stack snapshot. Per-invocation identity (callTree.ts) makes linear
+    // recursion a chain and tree recursion a real branching tree; returned
+    // frames are kept and dimmed by the renderer. See callTree.ts for details.
     if (stack && stack.length >= 1) {
-      let global_variable = (window as any).gdbgui_global_variable;
+      const global_variable = (window as any).gdbgui_global_variable;
       if (!global_variable) return;
 
-      if (!global_variable.__call_graph_nodes) global_variable.__call_graph_nodes = [];
-      if (!global_variable.__call_graph_edges) global_variable.__call_graph_edges = [];
-
-      const L = stack.length;
-
-      // Mark which node is currently active (deepest/top frame)
-      const topFuncStr = String(stack[0].func);
-      global_variable.__active_node_id = `${topFuncStr}_${L - 1}`;
-
-      // Helper: find or create a node and always update its line number and args
-      const upsertNode = (id: string, funcName: string, line: string | number, args?: any[]) => {
-        const existing = global_variable.__call_graph_nodes.find((n: any) => n.id === id);
-        if (existing) {
-          // Always update line and args to reflect latest observed position for this frame slot
-          existing.line = line;
-          if (args) existing.args = args;
-        } else {
-          global_variable.__call_graph_nodes.push({ id, label: funcName, func_name: funcName, line, args: args || [] });
-        }
-      };
-
-      // Process every frame in the stack
-      for (let i = 0; i < L; i++) {
-        const frame = stack[i];
-        const funcStr = String(frame.func);
-        const depth = L - 1 - i;
-        const nodeId = `${funcStr}_${depth}`;
-        upsertNode(nodeId, funcStr, frame.line, frame.args);
+      if (!global_variable.__call_tree) {
+        global_variable.__call_tree = createCallTree();
       }
-
-      // Register edges for every caller→callee pair
-      for (let i = 0; i < L - 1; i++) {
-        const calleeStr = String(stack[i].func);
-        const callerStr = String(stack[i + 1].func);
-        const calleeDepth = L - 1 - i;
-        const callerDepth = L - 1 - (i + 1);
-        const calleeId = `${calleeStr}_${calleeDepth}`;
-        const callerId = `${callerStr}_${callerDepth}`;
-
-        const edgeId = `${callerId}->${calleeId}`;
-        const hasEdge = global_variable.__call_graph_edges.some((e: any) => e.id === edgeId);
-        if (!hasEdge) {
-          global_variable.__call_graph_edges.push({ id: edgeId, from: callerId, to: calleeId });
-        }
-      }
-
-      // Prune nodes and edges that represent backtracked (returned) functions
-      const maxAllowedDepth = L - 1;
-      global_variable.__call_graph_nodes = global_variable.__call_graph_nodes.filter((n: any) => {
-        const parts = n.id.split('_');
-        const depth = parseInt(parts[parts.length - 1], 10);
-        return depth <= maxAllowedDepth;
-      });
-
-      global_variable.__call_graph_edges = global_variable.__call_graph_edges.filter((e: any) => {
-        const fromParts = e.from.split('_');
-        const toParts = e.to.split('_');
-        const fromDepth = parseInt(fromParts[fromParts.length - 1], 10);
-        const toDepth = parseInt(toParts[toParts.length - 1], 10);
-        return fromDepth <= maxAllowedDepth && toDepth <= maxAllowedDepth;
-      });
+      const result = ingestStack(global_variable.__call_tree, stack);
+      global_variable.__call_graph_nodes = result.nodes;
+      global_variable.__call_graph_edges = result.edges;
+      global_variable.__active_node_id = result.activeNodeId;
+      global_variable.__active_path = result.activePath;
 
       // Trigger a re-render signal for CallGraph
       store.set("call_graph_updated", Date.now());

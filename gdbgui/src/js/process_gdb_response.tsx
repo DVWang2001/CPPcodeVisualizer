@@ -142,20 +142,21 @@ const process_gdb_response = function (response_array: any) {
         Threads.update_stack(r.payload.stack);
       }
       if ("stack-args" in r.payload) {
-        // Update args for nodes matching frame level
+        // Args arrive separately from -stack-list-arguments. Map each frame
+        // level onto the live invocation at that depth (activePath is root→top,
+        // level 0 is the top frame) and patch its args on the call-tree node.
         let global_variable = (window as any).gdbgui_global_variable;
-        if (global_variable && global_variable.__call_graph_nodes) {
+        const activePath: number[] = global_variable && global_variable.__active_path;
+        const nodes: any[] = global_variable && global_variable.__call_graph_nodes;
+        if (global_variable && Array.isArray(activePath) && Array.isArray(nodes)) {
           let argsByLevel = r.payload["stack-args"];
           if (Array.isArray(argsByLevel)) {
             for (let frameInfo of argsByLevel) {
-              let level = frameInfo.level;
-              let args = frameInfo.args;
-              let depth = argsByLevel.length - 1 - parseInt(level);
-
-              // Find all nodes that might match this depth and give them args
-              let node = global_variable.__call_graph_nodes.find((n: any) => n.id.endsWith(`_${depth}`));
-              if (node) {
-                node.args = args;
+              const level = parseInt(frameInfo.level);
+              const invId = activePath[activePath.length - 1 - level];
+              const node = nodes.find((n: any) => n.invId === invId);
+              if (node && frameInfo.args) {
+                node.args = frameInfo.args;
               }
             }
             // Trigger a re-render signal for CallGraph

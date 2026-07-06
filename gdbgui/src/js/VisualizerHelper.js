@@ -382,8 +382,8 @@ class VisualizerHelper {
         checkStore();
       });
       console.log(`[play_tts] Evaluated expression ${trimmedInst} -> ${result}`);
-      // 收錄非同步查詢到的值
-      outputArray.push(result);
+      // 收錄非同步查詢到的值；先把 [] 轉成 ⟦⟧ 避免被 TTS 控制標記 regex 吃掉
+      outputArray.push(String(result).replace(/\[/g, '⟦').replace(/\]/g, '⟧'));
     }
 
     // 合併所有被替換成實值的字串
@@ -397,6 +397,7 @@ class VisualizerHelper {
     const displayText = evaluateSpokenText
       .replace(/\[(?:wait|pause):[\d.]+\]/g, '')
       .replace(/\[([^\[\]]+)\]/g, '')
+      .replace(/⟦/g, '[').replace(/⟧/g, ']')
       .trim();
 
     _tts_subtitle_text = displayText;
@@ -415,7 +416,7 @@ class VisualizerHelper {
         const regexPronounce = /([^\[\]]+)\[([^\[\]]+)\]/g;
         const spokenSegText = segText.replace(regexPronounce, (_match, prefix, pronunciation) => {
           return prefix.slice(0, -1) + pronunciation;
-        });
+        }).replace(/⟦/g, '[').replace(/⟧/g, ']');
         if (spokenSegText.trim()) {
           const url = `/tts_audio?text=${encodeURIComponent(spokenSegText.trim())}`;
           playlist.push({ type: 'audio', text: spokenSegText.trim(), url: url, currentTime: 0 });

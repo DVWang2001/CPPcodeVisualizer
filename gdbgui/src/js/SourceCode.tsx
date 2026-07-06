@@ -765,9 +765,15 @@ class SourceCode extends React.Component<{}, State> {
     // console.log(`第${index}行儲存的指導為${value}`);
     (global_variable as any).__line[index] = value;
     
-    // 即時解析指導 (抽出 [標籤#顏色] 等資訊)，並打亂 store 讓 CallGraph 重新刷新
-    VisualizerHelper.processing_guide(index, null);
-    store.set("call_graph_updated", Math.random());
+    // 即時解析指導 (抽出 [標籤#顏色] 等資訊)，並打亂 store 讓 CallGraph 重新刷新。
+    // 只在程式執行/暫停時解析：否則 graphics_instruction 會重新寫入 __latest_containers，
+    // ContainerVisualizer 的 1 秒輪詢便會 diff 出變化並重播動畫，導致沒跑程式時調整 guide
+    // 記憶體欄突然動起來。
+    const prog = store.get("inferior_program");
+    if (prog === constants.inferior_states.running || prog === constants.inferior_states.paused) {
+      VisualizerHelper.processing_guide(index, null);
+      store.set("call_graph_updated", Math.random());
+    }
   }
 
   handleTtsChange(index: number, value: string) {
@@ -1005,6 +1011,12 @@ class SourceCode extends React.Component<{}, State> {
     const registry = (window as any).gdbgui_collapser_registry || {};
     console.log("[applyLayout] registry keys:", Object.keys(registry));
 
+    // 面板別名：UI 提示與教案常用 "memory"/"pointer"，但實際 Collapser id 是 "memory_watch"。
+    // 不解析別名的話 open:memory 既開不到面板，又會被「關閉其他面板」邏輯把真正的
+    // 記憶體與指標追蹤面板關掉。
+    const PANEL_ALIASES: Record<string, string> = { memory: "memory_watch", pointer: "memory_watch" };
+    const resolveId = (id: string) => PANEL_ALIASES[id] || id;
+
     // 先收集所有 open: 指定的 id，再關閉其他所有面板，達到「只顯示指定面板」的效果
     const tokens = layoutStr.trim().split(/\s+/);
     const idsToOpen = new Set<string>();
@@ -1012,7 +1024,7 @@ class SourceCode extends React.Component<{}, State> {
       const colonIdx = token.indexOf(":");
       if (colonIdx < 0) continue;
       if (token.slice(0, colonIdx) === "open") {
-        token.slice(colonIdx + 1).split(",").forEach((id: string) => idsToOpen.add(id.trim()));
+        token.slice(colonIdx + 1).split(",").forEach((id: string) => idsToOpen.add(resolveId(id.trim())));
       }
     }
     if (idsToOpen.size > 0) {
@@ -1047,12 +1059,14 @@ class SourceCode extends React.Component<{}, State> {
           }
         }
       } else if (key === "open") {
-        val.split(",").forEach((id: string) => {
-          console.log("[applyLayout] opening:", id, "exists:", !!registry[id]);
+        val.split(",").forEach((raw: string) => {
+          const id = resolveId(raw.trim());
+          console.log("[applyLayout] opening:", raw, "→", id, "exists:", !!registry[id]);
           if (registry[id]) registry[id].open();
         });
       } else if (key === "close") {
-        val.split(",").forEach((id: string) => {
+        val.split(",").forEach((raw: string) => {
+          const id = resolveId(raw.trim());
           if (registry[id]) registry[id].close();
         });
       } else if (key === "maze") {

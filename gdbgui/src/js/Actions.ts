@@ -51,6 +51,12 @@ const Actions = {
     (window as any).gdbgui_reset_var_queue?.();
     // 程式重新開始，重置每行的進入計數
     (global_variable as any).__line_visit_count = {};
+    // 重置呼叫樹，避免上一次執行的節點殘留
+    delete (global_variable as any).__call_tree;
+    (global_variable as any).__call_graph_nodes = [];
+    (global_variable as any).__call_graph_edges = [];
+    (global_variable as any).__active_node_id = null;
+    (global_variable as any).__active_path = [];
     store.set("inferior_program", constants.inferior_states.running);
     window.dispatchEvent(new Event('gdbgui:clear_program_output'));
     Actions.clear_program_state();
