@@ -432,17 +432,8 @@ const GdbApi = {
               if (gdbSubstCmd) {
                 localStorage.setItem("gdbgui_gdb_subst_cmd", gdbSubstCmd);
               }
-              // Always write the CURRENT in-memory guide/TTS/layout to the new virtual path.
-              // Using global_variable (live state) prevents stale localStorage data from a
-              // previous run or JSON import from overwriting what the user currently sees.
+              // Virtual display path is the single source of truth for UI state keying
               if (sourcePath) {
-                const currentGuide  = JSON.stringify((global_variable as any).__line   || {});
-                const currentTts    = JSON.stringify((global_variable as any).__tts    || {});
-                const currentLayout = JSON.stringify((global_variable as any).__layout || {});
-                localStorage.setItem("gdbgui_guide_inputs_"  + sourcePath, currentGuide);
-                localStorage.setItem("gdbgui_tts_inputs_"    + sourcePath, currentTts);
-                localStorage.setItem("gdbgui_layout_inputs_" + sourcePath, currentLayout);
-                // Virtual display path is the single source of truth for UI state keying
                 store.set("user_source_fullname", sourcePath);
               }
               // Store the run token so it can be attached to every GDB command and

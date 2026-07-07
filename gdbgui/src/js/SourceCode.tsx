@@ -658,10 +658,14 @@ class SourceCode extends React.Component<{}, State> {
     if (model && this.monaco) {
       const oldLine = model.getLineContent(lineNum);
       const newLine = upsertLineAnnotation(oldLine, annotation);
-      this.editorInstance.executeEdits("annotation-modal", [{
-        range: new this.monaco.Range(lineNum, 1, lineNum, oldLine.length + 1),
-        text: newLine,
-      }]);
+      // Use a model-level edit (not editor.executeEdits, which is a no-op when the
+      // editor is readOnly) so the modal's save works in play mode too, where the
+      // editor is mounted with readOnly: !edit_mode.
+      model.pushEditOperations(
+        [],
+        [{ range: new this.monaco.Range(lineNum, 1, lineNum, oldLine.length + 1), text: newLine }],
+        () => null
+      );
     }
     this.setState({ lineEditorModal: null });
   };
@@ -777,35 +781,20 @@ class SourceCode extends React.Component<{}, State> {
   };
 
   exportProject = () => {
+    // Mirror saveAutosave's v2 bundle shape exactly: source_code already carries
+    // the //@ comments inline, so there is no separate line_data to emit. Emitting
+    // line_data here would make normalizeBundle() re-append every directive on
+    // import, corrupting the source and compounding on each export/import cycle.
     const source_code = this.editorInstance ? this.editorInstance.getValue() : "";
-    const line_data: any = {};
-    // guide/tts/layout now live inside the source as //@ comments; parse them
-    // back out here to keep the exported JSON's line_data format unchanged.
-    const { guide, tts, layout } = parseAnnotations(source_code);
-
-    const allLines = new Set([
-      ...Object.keys(guide),
-      ...Object.keys(tts),
-      ...Object.keys(layout),
-    ]);
-    allLines.forEach(line => {
-      line_data[line] = {
-        guide: guide[line] || "",
-        tts: tts[line] || "",
-        ...(layout[line] ? { layout: layout[line] } : {}),
-      };
-    });
-
     const programInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
     const breakpoints = store.get("breakpoints") || [];
 
     const projectData = {
-      version: "1.0",
-      project_name: "gdbgui_project",
+      version: "2.0",
+      fullname_to_render: this.state.fullname_to_render || "",
       source_code: source_code,
-      line_data: line_data,
+      breakpoints: breakpoints,
       program_input: programInput,
-      breakpoints: breakpoints
     };
 
     const jsonStr = JSON.stringify(projectData, null, 2);
