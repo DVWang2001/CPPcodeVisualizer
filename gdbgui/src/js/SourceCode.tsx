@@ -14,6 +14,8 @@ import Actions from "./Actions";
 import { global_variable } from "./global_variable";
 import VisualizerHelper from "./VisualizerHelper";
 import GdbApi from "./GdbApi";
+import { parseAnnotations } from "./sourceAnnotations";
+import { normalizeBundle } from "./bundleAdapter";
 
 type State = any;
 
@@ -99,24 +101,26 @@ class SourceCode extends React.Component<{}, State> {
     this.handleLayoutChange = this.handleLayoutChange.bind(this);
   }
 
+  refreshAnnotationGlobals = () => {
+    const code = this.editorInstance?.getValue?.() || "";
+    const { guide, tts, layout } = parseAnnotations(code);
+    (global_variable as any).__line = guide;
+    (global_variable as any).__tts = tts;
+    (global_variable as any).__layout = layout;
+  };
+
   componentDidMount() {
     // 優先從 autosave JSON 還原（最可靠，格式同 Export JSON）
     try {
-      const _as = JSON.parse(localStorage.getItem("gdbgui_autosave") || "null");
-      if (_as && _as.version && _as.line_data && Object.keys(_as.line_data).length > 0) {
-        const newInputs: any = {};
-        const newTts: any = {};
-        const newLayout: any = {};
-        for (const [line, data] of Object.entries(_as.line_data as any)) {
-          const d = data as any;
-          if (d.guide) newInputs[line] = d.guide;
-          if (d.tts) newTts[line] = d.tts;
-          if (d.layout) newLayout[line] = d.layout;
-        }
-        this.setState({ inputValues: newInputs, ttsValues: newTts, layoutValues: newLayout });
-        (global_variable as any).__line = { ...newInputs };
-        (global_variable as any).__tts = { ...newTts };
-        (global_variable as any).__layout = { ...newLayout };
+      const raw = JSON.parse(localStorage.getItem("gdbgui_autosave") || "null");
+      if (raw && (raw.source_code || raw.line_data)) {
+        const v2 = normalizeBundle(raw);
+        // if we upgraded a v1 bundle, persist the v2 form back
+        if (raw.line_data) localStorage.setItem("gdbgui_autosave", JSON.stringify(v2));
+        if (v2.fullname_to_render) this.setState({ fullname_to_render: v2.fullname_to_render } as any);
+        (global_variable as any).__pending_source_code = v2.source_code;
+        if (v2.breakpoints) store.set("breakpoints", v2.breakpoints);
+        if (v2.program_input) store.set("program_input", v2.program_input);
         window.addEventListener("beforeunload", this.saveAutosave);
         return;
       }
@@ -195,27 +199,10 @@ class SourceCode extends React.Component<{}, State> {
         return;
       }
 
-      const inputValues = this.state.inputValues || {};
-      const ttsValues = this.state.ttsValues || {};
-      const layoutValues = (global_variable as any).__layout || this.state.layoutValues || {};
-
-      const line_data: any = {};
-      new Set([...Object.keys(inputValues), ...Object.keys(ttsValues), ...Object.keys(layoutValues)])
-        .forEach(line => {
-          if (inputValues[line] || ttsValues[line] || layoutValues[line]) {
-            line_data[line] = {
-              guide: inputValues[line] || "",
-              tts: ttsValues[line] || "",
-              ...(layoutValues[line] ? { layout: layoutValues[line] } : {}),
-            };
-          }
-        });
-
       localStorage.setItem("gdbgui_autosave", JSON.stringify({
-        version: "1.0",
+        version: "2.0",
         fullname_to_render: this.state.fullname_to_render || "",
         source_code,
-        line_data,
         breakpoints: store.get("breakpoints") || [],
         program_input: store.get("program_input") || "",
       }));
@@ -258,6 +245,12 @@ class SourceCode extends React.Component<{}, State> {
 
   handleEditorDidMount = (_getValue: any, editor: any) => {
     this.editorInstance = editor;
+    const pending = (global_variable as any).__pending_source_code;
+    if (typeof pending === "string") {
+      editor.setValue(pending);
+      (global_variable as any).__pending_source_code = undefined;
+    }
+    this.refreshAnnotationGlobals();
     this.monaco = (window as any).monaco;
     // Expose editor content getter for GdbApi to use
     (window as any).gdbgui_get_editor_value = () => this.editorInstance.getValue();
@@ -454,6 +447,7 @@ class SourceCode extends React.Component<{}, State> {
     editor.onDidChangeModelContent((e: any) => {
       shiftGuideOnLineChange(e.changes);
       updateLineCount();
+      this.refreshAnnotationGlobals();
       if (saveTimeout) clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => {
         if (this.editorInstance && this.state.fullname_to_render) {
