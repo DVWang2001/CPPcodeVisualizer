@@ -6,6 +6,7 @@ import React from "react";
 import { global_variable } from "./global_variable";
 import { store } from "statorgfc";
 import constants from "./constants";
+import { stripDirective } from "./sourceAnnotations";
 
 type State = any;
 
@@ -140,7 +141,7 @@ class Visualizer extends React.Component<{}, State> {
           padding: "0 8px", fontFamily: "var(--font-mono)",
           fontSize: `${fs}px`, color: "var(--ink)", whiteSpace: "pre",
         }}>
-          {code}
+          {stripDirective(code)}
         </span>
       );
 

@@ -26,6 +26,12 @@ export function directiveBody(line: string): string | null {
   return line.slice(idx + 3);
 }
 
+/** Return the code portion of a line, with any trailing `//@` directive removed. */
+export function stripDirective(line: string): string {
+  const idx = line.indexOf("//@");
+  return idx === -1 ? line : line.slice(0, idx).replace(/\s+$/, "");
+}
+
 export function parseAnnotations(code: string) {
   const guide: Record<string, string> = {};
   const tts: Record<string, string> = {};

@@ -3,7 +3,21 @@ import {
   serializeAnnotation,
   parseLineAnnotation,
   upsertLineAnnotation,
+  stripDirective,
 } from "../sourceAnnotations";
+
+describe("stripDirective", () => {
+  test("removes a trailing //@ directive and its leading spaces", () => {
+    expect(stripDirective("int x = 5;  //@ @guide hi @layout open:v")).toBe("int x = 5;");
+  });
+  test("leaves a line without a directive unchanged", () => {
+    expect(stripDirective("int x = 5;")).toBe("int x = 5;");
+    expect(stripDirective("  return 0;")).toBe("  return 0;"); // indentation preserved
+  });
+  test("a directive-only line becomes empty", () => {
+    expect(stripDirective("//@ @tts hi")).toBe("");
+  });
+});
 
 describe("parseAnnotations", () => {
   test("extracts all three fields keyed by 1-based line number", () => {
