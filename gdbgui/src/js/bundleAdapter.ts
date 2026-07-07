@@ -38,13 +38,7 @@ export function normalizeBundle(raw: any): V2Bundle {
     });
     if (!directive) continue;
     const existing = lines[n - 1];
-    if (existing.indexOf("//") !== -1) {
-      console.warn(`[bundleAdapter] line ${key} already has a comment; inserting //@ before it`);
-      const ci = existing.indexOf("//");
-      lines[n - 1] = existing.slice(0, ci).replace(/\s+$/, "") + "  " + directive + " " + existing.slice(ci);
-    } else {
-      lines[n - 1] = existing.replace(/\s+$/, "") + "  " + directive;
-    }
+    lines[n - 1] = existing.replace(/\s+$/, "") + "  " + directive;
   }
   base.source_code = lines.join("\n");
   return base;

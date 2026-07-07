@@ -43,4 +43,23 @@ describe("normalizeBundle", () => {
     expect(v2.version).toBe("2.0");
     expect(v2.source_code).toBe("");
   });
+
+  test("string literal containing // is not corrupted by annotation append", () => {
+    const v1 = {
+      version: "1.0",
+      fullname_to_render: "uri.cpp",
+      source_code: ['std::string u = "http://x";', "int y = 2;"].join("\n"),
+      line_data: { "1": { guide: "URI", tts: "URL", layout: "" } },
+      breakpoints: [],
+      program_input: "",
+    };
+    const v2 = normalizeBundle(v1);
+    // The source line should contain the intact string literal and the directive at the end
+    expect(v2.source_code).toContain('"http://x"');
+    expect(v2.source_code).toContain("//@ @guide URI");
+    // round-trip: parsing recovers the annotation
+    const back = parseAnnotations(v2.source_code);
+    expect(back.guide).toEqual({ "1": "URI" });
+    expect(back.tts).toEqual({ "1": "URL" });
+  });
 });
