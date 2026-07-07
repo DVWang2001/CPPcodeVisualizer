@@ -1,4 +1,9 @@
-import { parseAnnotations } from "../sourceAnnotations";
+import {
+  parseAnnotations,
+  serializeAnnotation,
+  parseLineAnnotation,
+  upsertLineAnnotation,
+} from "../sourceAnnotations";
 
 describe("parseAnnotations", () => {
   test("extracts all three fields keyed by 1-based line number", () => {
@@ -36,5 +41,37 @@ describe("parseAnnotations", () => {
     const r = parseAnnotations(code);
     expect(r.guide).toEqual({ "1": "spaced" });
     expect(r.tts).toEqual({ "1": "y" });
+  });
+});
+
+describe("serialize / parseLine round-trip", () => {
+  test("serialize fixed order, only non-empty", () => {
+    expect(serializeAnnotation({ guide: "g", tts: "t", layout: "l" }))
+      .toBe("//@ @guide g @tts t @layout l");
+    expect(serializeAnnotation({ guide: "", tts: "t", layout: "" }))
+      .toBe("//@ @tts t");
+    expect(serializeAnnotation({ guide: "", tts: "", layout: "" })).toBe("");
+  });
+
+  test("serialize -> parseLine restores fields", () => {
+    const a = { guide: "宣告 x", tts: "值 {x} @5 大", layout: "open:vec" };
+    expect(parseLineAnnotation(serializeAnnotation(a))).toEqual(a);
+  });
+});
+
+describe("upsertLineAnnotation", () => {
+  test("appends when line has no directive", () => {
+    expect(upsertLineAnnotation("int x = 5;", { guide: "宣告", tts: "", layout: "" }))
+      .toBe("int x = 5;  //@ @guide 宣告");
+  });
+  test("replaces existing directive, keeps code prefix", () => {
+    const line = "int x = 5;  //@ @tts old";
+    expect(upsertLineAnnotation(line, { guide: "", tts: "new", layout: "" }))
+      .toBe("int x = 5;  //@ @tts new");
+  });
+  test("removes directive when all fields empty", () => {
+    const line = "int x = 5;  //@ @tts old";
+    expect(upsertLineAnnotation(line, { guide: "", tts: "", layout: "" }))
+      .toBe("int x = 5;");
   });
 });

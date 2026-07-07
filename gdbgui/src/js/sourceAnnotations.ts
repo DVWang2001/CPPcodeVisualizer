@@ -42,3 +42,24 @@ export function parseAnnotations(code: string) {
   }
   return { guide, tts, layout };
 }
+
+export function parseLineAnnotation(line: string): Annotation {
+  const body = directiveBody(line);
+  return body === null ? { guide: "", tts: "", layout: "" } : parseLineBody(body);
+}
+
+export function serializeAnnotation(a: Annotation): string {
+  const parts: string[] = [];
+  if (a.guide.trim()) parts.push(`@guide ${a.guide.trim()}`);
+  if (a.tts.trim()) parts.push(`@tts ${a.tts.trim()}`);
+  if (a.layout.trim()) parts.push(`@layout ${a.layout.trim()}`);
+  return parts.length ? `//@ ${parts.join(" ")}` : "";
+}
+
+export function upsertLineAnnotation(line: string, a: Annotation): string {
+  const idx = line.indexOf("//@");
+  const code = (idx === -1 ? line : line.slice(0, idx)).replace(/\s+$/, "");
+  const directive = serializeAnnotation(a);
+  if (!directive) return code;
+  return `${code}  ${directive}`;
+}
