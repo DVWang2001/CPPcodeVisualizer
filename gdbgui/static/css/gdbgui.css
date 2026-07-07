@@ -19,6 +19,7 @@
   --highlight-soft: #fef3c7; /* amber tint background */
   --visited: #94a3b8; /* already processed */
   --empty-bg: #f1f3f5; /* empty slots / unused capacity */
+  --directive-comment: #8b5cf6; /* violet — //@ teaching-directive comments in Monaco */
 
   --anim-base:     400ms;
   --anim-fast:     200ms;
@@ -536,6 +537,12 @@ button:focus {
 .monaco-compile-warning-line {
   background-color: rgba(245, 124, 0, 0.10) !important;
   border-left: 3px solid #f57c00;
+}
+
+/* //@ teaching-directive comments (guide/tts/layout) in Monaco editor */
+.gdbgui-directive-comment {
+  color: var(--directive-comment, #b36ae2) !important;
+  font-style: italic;
 }
 
 /* Compile error panel row hover */

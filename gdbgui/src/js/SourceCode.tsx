@@ -121,7 +121,26 @@ class SourceCode extends React.Component<{}, State> {
   editorInstance: any = null;
   monaco: any = null;
   decorations: any[] = [];
+  directiveDecorations: string[] = [];
   _autosaveTimer: any = null;
+
+  refreshDirectiveDecorations = () => {
+    if (!this.editorInstance || !this.monaco) return;
+    const model = this.editorInstance.getModel();
+    if (!model) return;
+    const decos: any[] = [];
+    const total = model.getLineCount();
+    for (let ln = 1; ln <= total; ln++) {
+      const text = model.getLineContent(ln);
+      const idx = text.indexOf("//@");
+      if (idx === -1) continue;
+      decos.push({
+        range: new this.monaco.Range(ln, idx + 1, ln, text.length + 1),
+        options: { inlineClassName: "gdbgui-directive-comment" },
+      });
+    }
+    this.directiveDecorations = this.editorInstance.deltaDecorations(this.directiveDecorations, decos);
+  };
 
   componentWillUnmount() {
     window.removeEventListener("beforeunload", this.saveAutosave);
@@ -201,6 +220,7 @@ class SourceCode extends React.Component<{}, State> {
     }
     this.refreshAnnotationGlobals();
     this.monaco = (window as any).monaco;
+    this.refreshDirectiveDecorations();
     // Expose editor content getter for GdbApi to use
     (window as any).gdbgui_get_editor_value = () => this.editorInstance.getValue();
     (window as any).gdbgui_get_editor_filename = () => this.state.fullname_to_render;
@@ -326,6 +346,7 @@ class SourceCode extends React.Component<{}, State> {
       shiftBreakpointsOnLineChange(e.changes);
       updateLineCount();
       this.refreshAnnotationGlobals();
+      this.refreshDirectiveDecorations();
       if (saveTimeout) clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => {
         if (this.editorInstance && this.state.fullname_to_render) {
