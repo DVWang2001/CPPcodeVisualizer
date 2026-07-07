@@ -16,6 +16,9 @@ import VisualizerHelper from "./VisualizerHelper";
 import GdbApi from "./GdbApi";
 import { parseAnnotations, parseLineAnnotation, upsertLineAnnotation } from "./sourceAnnotations";
 import { normalizeBundle } from "./bundleAdapter";
+import ReactDOM from "react-dom";
+import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
+import { lineIdentifiers } from "./lineIdentifiers";
 
 type State = any;
 
@@ -38,18 +41,11 @@ class SourceCode extends React.Component<{}, State> {
     this.state = {
       lineCount: 0,
       hoverLine: null as number | null, // gutter breakpoint-hover highlight (not panel-related)
-      lineEditorModal: null as null | {
+      linePanel: null as null | {
         lineNum: number;
-        activeTab: 'guide' | 'tts' | 'layout';
-        draftGuide: string;
-        draftTtsSpeed: string;
-        draftTtsContinue: boolean;
-        draftTtsText: string;
-        draftLayoutSidebar: string;
-        draftLayoutOpen: string;
-        draftLayoutClose: string;
-        draftLayoutMaze: string;
-        draftLayoutBst: string;
+        mode: "simple" | "advanced";
+        draft: LinePanelDraft;
+        candidates: string[];
       },
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
@@ -123,6 +119,8 @@ class SourceCode extends React.Component<{}, State> {
   decorations: any[] = [];
   directiveDecorations: string[] = [];
   _autosaveTimer: any = null;
+  panelZoneId: string | null = null;
+  panelDomNode: HTMLDivElement | null = null;
 
   refreshDirectiveDecorations = () => {
     if (!this.editorInstance || !this.monaco) return;
@@ -264,19 +262,6 @@ class SourceCode extends React.Component<{}, State> {
       }
     });
 
-    // Right-click / Ctrl+Shift+E on any line opens the line's //@ annotation editor
-    // (this is the sole remaining trigger now that the aligned side panel is gone).
-    editor.addAction({
-      id: "gdbgui-edit-line-annotation",
-      label: "Edit Line Annotation (Guide / TTS / Layout)",
-      keybindings: this.monaco ? [this.monaco.KeyMod.CtrlCmd | this.monaco.KeyMod.Shift | this.monaco.KeyCode.KeyE] : [],
-      contextMenuGroupId: "navigation",
-      run: (ed: any) => {
-        const pos = ed.getPosition();
-        if (pos) this.openLineEditor(pos.lineNumber);
-      },
-    });
-
     // Persist source text for Visualizer (survives code_body view switches)
     const syncSourceText = () => {
       try { (global_variable as any).__source_text = editor.getValue(); } catch (_) {}
@@ -360,6 +345,12 @@ class SourceCode extends React.Component<{}, State> {
 
     // In v3 we might need to listen to mouse events differently or it works the same on editor instance
     editor.onMouseDown((e: any) => {
+      const el = e.target?.element as HTMLElement | undefined;
+      if (el && el.classList && el.classList.contains("gdbgui-annot-edit-glyph")) {
+        const lineNum = e.target.position ? e.target.position.lineNumber : null;
+        if (lineNum) this.openLinePanel(lineNum);
+        return; // handled — do not fall through to breakpoint toggle
+      }
       if (this.monaco && e.target.position) {
         const t = e.target.type;
         const M = this.monaco.editor.MouseTargetType;
@@ -478,6 +469,15 @@ class SourceCode extends React.Component<{}, State> {
           },
         });
       }
+    }
+
+    // ✎ annotation-edit glyph — lives in the lines-decorations strip (not the glyph
+    // margin) so it coexists with breakpoint glyphs on the same line.
+    if (hoverLine !== null) {
+      newDecorations.push({
+        range: new this.monaco.Range(hoverLine, 1, hoverLine, 1),
+        options: { linesDecorationsClassName: "gdbgui-annot-edit-glyph" },
+      });
     }
 
     // Compile error/warning decorations and markers
@@ -599,7 +599,7 @@ class SourceCode extends React.Component<{}, State> {
     return lines.join("\n");
   }
 
-  // ── Line Editor Modal helpers ─────────────────────────────────────────────
+  // ── Line annotation (guide/tts/layout) parse/build helpers, shared by openLinePanel/saveLinePanel ──
 
   /** 將 TTS 字串拆解為 speed / continue / 本文 三個欄位 */
   _parseTts(tts: string) {
@@ -645,56 +645,70 @@ class SourceCode extends React.Component<{}, State> {
     return parts.join(' ');
   }
 
-  /** Open the modal for a line, pre-filled from that line's //@ annotation (if any). */
-  openLineEditor = (lineNum: number, tab: 'guide' | 'tts' | 'layout' = 'guide') => {
-    const model = this.editorInstance ? this.editorInstance.getModel() : null;
-    const lineText = model ? model.getLineContent(lineNum) : '';
-    const a = parseLineAnnotation(lineText);
-    const { speed, hasContinue, text: ttsText } = this._parseTts(a.tts);
-    const { sidebar, open, close, maze, bst }    = this._parseLayout(a.layout);
-    this.setState({
-      lineEditorModal: {
-        lineNum, activeTab: tab,
-        draftGuide: a.guide,
-        draftTtsSpeed: speed, draftTtsContinue: hasContinue, draftTtsText: ttsText,
-        draftLayoutSidebar: sidebar, draftLayoutOpen: open,
-        draftLayoutClose: close, draftLayoutMaze: maze, draftLayoutBst: bst,
-      }
+  /** Candidate variable names offered as insertable chips in the panel's advanced mode:
+   *  real frame locals when paused, else identifiers parsed off the line being edited. */
+  candidatesFor = (lineNum: number): string[] => {
+    const locals = (store.get("locals") as any[]) || [];
+    const names = locals.map(l => l && l.name).filter(Boolean);
+    if (names.length > 0) return names;                 // paused: real frame vars
+    const model = this.editorInstance?.getModel();
+    return model ? lineIdentifiers(model.getLineContent(lineNum)) : []; // editing: parse the line
+  };
+
+  /** Open the inline view-zone panel for a line, pre-filled from that line's //@ annotation. */
+  openLinePanel = (lineNum: number) => {
+    if (!this.editorInstance || !this.monaco) return;
+    this.closeLinePanel();
+    const model = this.editorInstance.getModel();
+    const a = parseLineAnnotation(model.getLineContent(lineNum));
+    const t = this._parseTts(a.tts);
+    const l = this._parseLayout(a.layout);
+    const draft: LinePanelDraft = {
+      guide: a.guide, ttsSpeed: t.speed, ttsContinue: t.hasContinue, ttsText: t.text,
+      layoutSidebar: l.sidebar, layoutOpen: l.open, layoutClose: l.close, layoutMaze: l.maze, layoutBst: l.bst,
+    };
+    const mode = (store.get("annot_panel_mode") === "advanced" ? "advanced" : "simple") as "simple" | "advanced";
+    const dom = document.createElement("div");
+    this.panelDomNode = dom;
+    this.editorInstance.changeViewZones((acc: any) => {
+      this.panelZoneId = acc.addZone({ afterLineNumber: lineNum, heightInPx: 120, domNode: dom });
     });
+    this.setState({ linePanel: { lineNum, mode, draft, candidates: this.candidatesFor(lineNum) } });
   };
 
-  /** Save the modal's drafts by upserting the line's //@ comment directly in Monaco.
-   *  onDidChangeModelContent then refreshes globals + autosave automatically. */
-  saveLineEditor = () => {
-    const m = this.state.lineEditorModal;
-    if (!m) return;
-    const { lineNum, draftGuide,
-            draftTtsSpeed, draftTtsContinue, draftTtsText,
-            draftLayoutSidebar, draftLayoutOpen, draftLayoutClose, draftLayoutMaze, draftLayoutBst } = m;
-    const ttsStr    = this._buildTts(draftTtsSpeed, draftTtsContinue, draftTtsText);
-    const layoutStr = this._buildLayout(draftLayoutSidebar, draftLayoutOpen, draftLayoutClose, draftLayoutMaze, draftLayoutBst);
-    const annotation = { guide: draftGuide || "", tts: ttsStr, layout: layoutStr };
-
-    const model = this.editorInstance ? this.editorInstance.getModel() : null;
-    if (model && this.monaco) {
-      const oldLine = model.getLineContent(lineNum);
-      const newLine = upsertLineAnnotation(oldLine, annotation);
-      // Use a model-level edit (not editor.executeEdits, which is a no-op when the
-      // editor is readOnly) so the modal's save works in play mode too, where the
-      // editor is mounted with readOnly: !edit_mode.
-      model.pushEditOperations(
-        [],
-        [{ range: new this.monaco.Range(lineNum, 1, lineNum, oldLine.length + 1), text: newLine }],
-        () => null
-      );
+  closeLinePanel = () => {
+    if (this.panelZoneId && this.editorInstance) {
+      const id = this.panelZoneId;
+      this.editorInstance.changeViewZones((acc: any) => acc.removeZone(id));
     }
-    this.setState({ lineEditorModal: null });
+    this.panelZoneId = null; this.panelDomNode = null;
+    if (this.state.linePanel) this.setState({ linePanel: null });
   };
 
-  updateModalField = (field: string, value: any) => {
-    this.setState((prev: any) => ({
-      lineEditorModal: prev.lineEditorModal ? { ...prev.lineEditorModal, [field]: value } : null
-    }));
+  setPanelHeight = (px: number) => {
+    if (!this.panelZoneId || !this.editorInstance) return;
+    const id = this.panelZoneId, dom = this.panelDomNode, ln = this.state.linePanel?.lineNum;
+    this.editorInstance.changeViewZones((acc: any) => { acc.removeZone(id); if (dom && ln) this.panelZoneId = acc.addZone({ afterLineNumber: ln, heightInPx: px + 8, domNode: dom }); });
+  };
+
+  /** Save the panel's draft by upserting the line's //@ comment directly in Monaco.
+   *  onDidChangeModelContent then refreshes globals + autosave automatically. */
+  saveLinePanel = () => {
+    const p = this.state.linePanel; if (!p || !this.editorInstance || !this.monaco) return;
+    const d = p.draft;
+    const annotation = {
+      guide: d.guide || "",
+      tts: this._buildTts(d.ttsSpeed, d.ttsContinue, d.ttsText),
+      layout: this._buildLayout(d.layoutSidebar, d.layoutOpen, d.layoutClose, d.layoutMaze, d.layoutBst),
+    };
+    const model = this.editorInstance.getModel();
+    const oldLine = model.getLineContent(p.lineNum);
+    const newLine = upsertLineAnnotation(oldLine, annotation);
+    // Use a model-level edit (not editor.executeEdits, which is a no-op when the
+    // editor is readOnly) so save works in play mode too, where the editor is
+    // mounted with readOnly: !edit_mode.
+    model.pushEditOperations([], [{ range: new this.monaco.Range(p.lineNum, 1, p.lineNum, oldLine.length + 1), text: newLine }], () => null);
+    this.closeLinePanel();
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -989,162 +1003,6 @@ class SourceCode extends React.Component<{}, State> {
       this.initialFullname = this.state.fullname_to_render;
     }
 
-    // ── Line Editor Modal ─────────────────────────────────────────────────────
-    const lm = this.state.lineEditorModal;
-    const lineEditorModal = lm ? (
-      <div
-        style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.45)', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-        }}
-        onMouseDown={(e) => { if (e.target === e.currentTarget) this.setState({ lineEditorModal: null }); }}
-      >
-        <div style={{
-          background: '#fff', borderRadius: '8px', boxShadow: '0 8px 32px rgba(0,0,0,0.28)',
-          width: '640px', maxWidth: '96vw', fontFamily: 'sans-serif', overflow: 'hidden',
-        }}>
-          {/* Header */}
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f5f5f5' }}>
-            <strong style={{ fontSize: '15px' }}>第 {lm.lineNum} 行 — 行編輯器</strong>
-            <button onClick={() => this.setState({ lineEditorModal: null })} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#666', lineHeight: 1 }}>✕</button>
-          </div>
-
-          {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #e0e0e0' }}>
-            {(['guide', 'tts', 'layout'] as const).map(tab => (
-              <button key={tab} onClick={() => this.updateModalField('activeTab', tab)} style={{
-                flex: 1, padding: '8px', border: 'none', borderBottom: lm.activeTab === tab ? '2px solid #4a9eff' : '2px solid transparent',
-                background: lm.activeTab === tab ? '#f0f7ff' : 'transparent', cursor: 'pointer', fontWeight: lm.activeTab === tab ? 600 : 400, fontSize: '13px',
-              }}>
-                {tab === 'guide' ? '📝 指導文字' : tab === 'tts' ? '🔊 語音 TTS' : '📐 版面 Layout'}
-              </button>
-            ))}
-          </div>
-
-          {/* Body */}
-          <div style={{ padding: '16px', minHeight: '220px' }}>
-            {lm.activeTab === 'guide' && (
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '6px' }}>指導文字（支援 GDB 指令佔位符，如 <code style={{background:'#f0f0f0',padding:'1px 4px',borderRadius:'3px'}}>{'{varName}'}</code>）</label>
-                <textarea
-                  autoFocus
-                  value={lm.draftGuide}
-                  onChange={(e) => this.updateModalField('draftGuide', e.target.value)}
-                  rows={6}
-                  style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', padding: '8px', resize: 'vertical' }}
-                  placeholder="輸入指導文字，支援換行與 {變數名} 佔位符"
-                />
-                <p style={{ fontSize: '11px', color: '#888', marginTop: '6px', marginBottom: 0 }}>
-                  換行符 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>\n</code> 會顯示為多行。佔位符 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>{'{varName}'}</code> 會被替換為目前變數值。
-                </p>
-              </div>
-            )}
-
-            {lm.activeTab === 'tts' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>語速倍率</label>
-                    <input type="number" min="0.5" max="4.0" step="0.1"
-                      value={lm.draftTtsSpeed}
-                      onChange={(e) => this.updateModalField('draftTtsSpeed', e.target.value)}
-                      placeholder="1.0"
-                      style={{ width: '90px', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
-                    />
-                    <span style={{ fontSize: '11px', color: '#aaa', marginLeft: '6px' }}>留空 = 預設 1.0</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '4px' }}>
-                    <input type="checkbox" id="le-continue" checked={lm.draftTtsContinue}
-                      onChange={(e) => this.updateModalField('draftTtsContinue', e.target.checked)}
-                    />
-                    <label htmlFor="le-continue" style={{ fontSize: '13px', cursor: 'pointer' }}>
-                      <code style={{background:'#f0f0f0',padding:'1px 4px',borderRadius:'3px'}}>[continue]</code>　播完後自動繼續執行
-                    </label>
-                  </div>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>語音朗讀文字</label>
-                  <textarea
-                    value={lm.draftTtsText}
-                    onChange={(e) => this.updateModalField('draftTtsText', e.target.value)}
-                    rows={5}
-                    style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', padding: '8px', resize: 'vertical' }}
-                    placeholder="輸入 TTS 朗讀文字（留空則此行不播語音）"
-                  />
-                </div>
-                <div style={{ background: '#f7f7f7', borderRadius: '4px', padding: '6px 10px', fontSize: '12px', color: '#666' }}>
-                  <strong>預覽：</strong> <code style={{ wordBreak: 'break-all' }}>{this._buildTts(lm.draftTtsSpeed, lm.draftTtsContinue, lm.draftTtsText) || '（空）'}</code>
-                </div>
-              </div>
-            )}
-
-            {lm.activeTab === 'layout' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>右側邊欄寬度 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>sidebar:N</code></label>
-                    <input type="number" min="0" max="100" step="1"
-                      value={lm.draftLayoutSidebar}
-                      onChange={(e) => this.updateModalField('draftLayoutSidebar', e.target.value)}
-                      placeholder="例：50"
-                      style={{ width: '100%', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>迷宮容器 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>maze:名稱</code></label>
-                    <input type="text"
-                      value={lm.draftLayoutMaze}
-                      onChange={(e) => this.updateModalField('draftLayoutMaze', e.target.value)}
-                      placeholder="例：maze"
-                      style={{ width: '100%', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>BST容器 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>bst:名稱</code></label>
-                    <input type="text"
-                      value={lm.draftLayoutBst}
-                      onChange={(e) => this.updateModalField('draftLayoutBst', e.target.value)}
-                      placeholder="例：s,m"
-                      style={{ width: '100%', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>展開面板 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>open:id1,id2</code></label>
-                    <input type="text"
-                      value={lm.draftLayoutOpen}
-                      onChange={(e) => this.updateModalField('draftLayoutOpen', e.target.value)}
-                      placeholder="例：container,locals"
-                      style={{ width: '100%', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>收合面板 <code style={{background:'#f0f0f0',padding:'1px 3px',borderRadius:'2px'}}>close:id1,id2</code></label>
-                    <input type="text"
-                      value={lm.draftLayoutClose}
-                      onChange={(e) => this.updateModalField('draftLayoutClose', e.target.value)}
-                      placeholder="例：memory,registers"
-                      style={{ width: '100%', padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}
-                    />
-                  </div>
-                </div>
-                <div style={{ background: '#f7f7f7', borderRadius: '4px', padding: '6px 10px', fontSize: '12px', color: '#666' }}>
-                  <strong>預覽：</strong> <code style={{ wordBreak: 'break-all' }}>{this._buildLayout(lm.draftLayoutSidebar, lm.draftLayoutOpen, lm.draftLayoutClose, lm.draftLayoutMaze, lm.draftLayoutBst) || '（空）'}</code>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div style={{ padding: '12px 16px', borderTop: '1px solid #e0e0e0', display: 'flex', justifyContent: 'flex-end', gap: '8px', background: '#f9f9f9' }}>
-            <button onClick={() => this.setState({ lineEditorModal: null })} style={{ padding: '6px 16px', border: '1px solid #ccc', borderRadius: '4px', background: '#fff', cursor: 'pointer', fontSize: '13px' }}>取消</button>
-            <button onClick={this.saveLineEditor} style={{ padding: '6px 16px', border: 'none', borderRadius: '4px', background: '#4a9eff', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>儲存</button>
-          </div>
-        </div>
-      </div>
-    ) : null;
-    // ─────────────────────────────────────────────────────────────────────────
-
     // Monaco always renders — code_body table view is eliminated.
     const obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
 
@@ -1225,6 +1083,7 @@ class SourceCode extends React.Component<{}, State> {
                   extraEditorClassName: this.state.edit_mode ? '' : 'gdbgui-readonly-editor',
                   glyphMargin: true,
                   lineNumbers: 'on',
+                  lineDecorationsWidth: 18,
                   scrollBeyondLastLine: false,
                   automaticLayout: true,
                   fontFamily: "monospace",
@@ -1235,7 +1094,20 @@ class SourceCode extends React.Component<{}, State> {
             </div>
           </div>
           {/* TTS 字幕已移至底部大字幕區顯示 */}
-          {lineEditorModal}
+          {this.state.linePanel && this.panelDomNode && ReactDOM.createPortal(
+            <LineAnnotationPanel
+              lineNum={this.state.linePanel.lineNum}
+              mode={this.state.linePanel.mode}
+              draft={this.state.linePanel.draft}
+              candidates={this.state.linePanel.candidates}
+              onDraftChange={(patch) => this.setState({ linePanel: { ...this.state.linePanel!, draft: { ...this.state.linePanel!.draft, ...patch } } })}
+              onToggleMode={() => { const m = this.state.linePanel!.mode === "simple" ? "advanced" : "simple"; store.set("annot_panel_mode", m); this.setState({ linePanel: { ...this.state.linePanel!, mode: m } }); }}
+              onSave={this.saveLinePanel}
+              onClose={this.closeLinePanel}
+              onHeight={this.setPanelHeight}
+            />,
+            this.panelDomNode
+          )}
         </div>
       );
   }

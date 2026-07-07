@@ -529,6 +529,19 @@ button:focus {
   cursor: pointer;
 }
 
+/* ✎ hover-reveal glyph in the lines-decorations strip, opens the inline line-annotation panel */
+.gdbgui-annot-edit-glyph { cursor: pointer; opacity: 0.75; }
+.gdbgui-annot-edit-glyph::before { content: "\270E"; color: var(--directive-comment, #8b5cf6); font-size: 12px; }
+.gdbgui-annot-edit-glyph:hover { opacity: 1; }
+
+/* The inline annotation panel lives inside a Monaco view zone (.view-zones). Both
+   .view-zones and .view-lines are position:absolute siblings with z-index:auto, so
+   without this rule .view-lines (later in DOM order) paints on top and silently
+   swallows every click on the panel's buttons/textarea, even though the panel is
+   visually on top. Raising .view-zones above it fixes hit-testing for the panel's
+   interactive controls without touching Monaco's own layering elsewhere. */
+.monaco-editor .view-zones { z-index: 10; }
+
 /* Compile error / warning line backgrounds in Monaco editor */
 .monaco-compile-error-line {
   background-color: rgba(211, 47, 47, 0.12) !important;

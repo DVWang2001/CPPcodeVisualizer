@@ -69,6 +69,9 @@ const initial_store_data = {
   call_graph_updated: 0,
   rbtree_updated: 0,
 
+  // inline line-annotation panel (gutter ✎): "simple" | "advanced", persists across opens for the session
+  annot_panel_mode: "simple",
+
 
   // source files
   source_file_paths: [], // all the paths gdb says were used to compile the target binary
