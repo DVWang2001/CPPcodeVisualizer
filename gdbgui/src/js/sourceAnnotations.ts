@@ -2,6 +2,17 @@ export type Annotation = { guide: string; tts: string; layout: string };
 
 const FIELD_RE = /@(guide|tts|layout)\b/g;
 
+// A `//@` directive lives on ONE source line, but guide/tts values may contain
+// real newlines (multi-line narration). Escape them (and backslashes) so the
+// directive stays single-line, and reverse it on parse so the consumer gets the
+// original text back. Values without these characters are unchanged.
+function escapeValue(v: string): string {
+  return v.replace(/\\/g, "\\\\").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+}
+function unescapeValue(v: string): string {
+  return v.replace(/\\(.)/g, (_, c) => (c === "n" ? "\n" : c === "r" ? "\r" : c));
+}
+
 /** Parse the content after `//@` on one line into up to three fields. */
 export function parseLineBody(body: string): Annotation {
   const out: Annotation = { guide: "", tts: "", layout: "" };
@@ -14,7 +25,7 @@ export function parseLineBody(body: string): Annotation {
   for (let i = 0; i < marks.length; i++) {
     const valStart = marks[i].end;
     const valEnd = i + 1 < marks.length ? marks[i + 1].start : body.length;
-    out[marks[i].key] = body.slice(valStart, valEnd).trim();
+    out[marks[i].key] = unescapeValue(body.slice(valStart, valEnd).trim());
   }
   return out;
 }
@@ -56,9 +67,9 @@ export function parseLineAnnotation(line: string): Annotation {
 
 export function serializeAnnotation(a: Annotation): string {
   const parts: string[] = [];
-  if (a.guide.trim()) parts.push(`@guide ${a.guide.trim()}`);
-  if (a.tts.trim()) parts.push(`@tts ${a.tts.trim()}`);
-  if (a.layout.trim()) parts.push(`@layout ${a.layout.trim()}`);
+  if (a.guide.trim()) parts.push(`@guide ${escapeValue(a.guide.trim())}`);
+  if (a.tts.trim()) parts.push(`@tts ${escapeValue(a.tts.trim())}`);
+  if (a.layout.trim()) parts.push(`@layout ${escapeValue(a.layout.trim())}`);
   return parts.length ? `//@ ${parts.join(" ")}` : "";
 }
 
