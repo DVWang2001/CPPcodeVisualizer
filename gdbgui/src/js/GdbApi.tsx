@@ -618,7 +618,7 @@ const GdbApi = {
   },
   run_initial_commands: function () {
     Object.keys(global_variable).forEach(key => {
-      if (key !== "__line" && key !== "__tts") {
+      if (key !== "__line" && key !== "__tts" && key !== "__layout") {
         delete (global_variable as any)[key];
       }
     });

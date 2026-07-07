@@ -609,7 +609,7 @@ class SourceCode extends React.Component<{}, State> {
     const speedM = /\[speed:([\d.]+)\]/.exec(text);
     if (speedM) { speed = speedM[1]; text = text.replace(speedM[0], ''); }
     if (text.includes('[continue]')) { hasContinue = true; text = text.replace('[continue]', ''); }
-    return { speed, hasContinue, text: text.trimStart() };
+    return { speed, hasContinue, text: text.replace(/^\s+/, "") };
   }
 
   /** 將三個欄位重新組合成 TTS 字串 */
@@ -924,7 +924,9 @@ class SourceCode extends React.Component<{}, State> {
         // Monaco processes the setValue() above; call it directly too so
         // global_variable.__line/__tts/__layout are correct even if Monaco isn't
         // mounted yet (it re-parses on mount in that case).
-        this.refreshAnnotationGlobals();
+        if (this.editorInstance) {
+          this.refreshAnnotationGlobals();
+        }
 
         if (projectData.program_input !== undefined) {
           localStorage.setItem("gdbgui_program_input", projectData.program_input);
