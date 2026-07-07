@@ -32,5 +32,6 @@ generate_pptx.py
 e2e/test-results/
 e2e/playwright-report/
 docs/superpowers/
+.superpowers/
 test_http.py
 test_pty.py
