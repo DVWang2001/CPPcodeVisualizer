@@ -143,6 +143,7 @@ class SourceCode extends React.Component<{}, State> {
   componentWillUnmount() {
     window.removeEventListener("beforeunload", this.saveAutosave);
     if (this._autosaveTimer) clearTimeout(this._autosaveTimer);
+    this.closeLinePanel();
   }
 
   saveAutosave = () => {

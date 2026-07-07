@@ -51,7 +51,8 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
     const { mode, draft, candidates } = this.props;
     const box: React.CSSProperties = { width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 13, border: "1px solid #ccc", borderRadius: 4, padding: "6px" };
     return (
-      <div ref={this.root} data-testid="line-annot-panel" style={{ border: "1px solid #8b5cf6", borderRadius: 6, background: "var(--paper,#1e1e1e)", padding: 8, margin: "2px 8px" }}>
+      <div ref={this.root} data-testid="line-annot-panel" style={{ border: "1px solid #8b5cf6", borderRadius: 6, background: "var(--paper,#1e1e1e)", padding: 8, margin: "2px 8px" }}
+        onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); this.props.onClose(); } }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
           <strong style={{ fontSize: 12, color: "#8b5cf6" }}>第 {this.props.lineNum} 行</strong>
           <div>
