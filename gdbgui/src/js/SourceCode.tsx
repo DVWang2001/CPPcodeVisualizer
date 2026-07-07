@@ -14,7 +14,7 @@ import Actions from "./Actions";
 import { global_variable } from "./global_variable";
 import VisualizerHelper from "./VisualizerHelper";
 import GdbApi from "./GdbApi";
-import { parseAnnotations } from "./sourceAnnotations";
+import { parseAnnotations, parseLineAnnotation, upsertLineAnnotation } from "./sourceAnnotations";
 import { normalizeBundle } from "./bundleAdapter";
 
 type State = any;
@@ -34,22 +34,10 @@ class SourceCode extends React.Component<{}, State> {
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
-    let savedInputValues = {};
-    let savedTtsValues = {};
-    // Previously loaded globally, now loaded dynamically in componentDidUpdate per file 
 
     this.state = {
-      inputValues: savedInputValues,
-      ttsValues: savedTtsValues,
-      layoutValues: {} as any,
-      splitPos: -1, // -1 means uninitialized/auto
-      isDragging: false,
       lineCount: 0,
-      hoverLine: null as number | null,
-      dragLines: [] as number[],        // 正在拖曳的行（已排序）
-      dragOverLine: null as number | null,
-      selectedLines: [] as number[],    // Ctrl/Shift 選中的行
-      lastClickedLine: null as number | null, // Shift 選取的錨點
+      hoverLine: null as number | null, // gutter breakpoint-hover highlight (not panel-related)
       lineEditorModal: null as null | {
         lineNum: number;
         activeTab: 'guide' | 'tts' | 'layout';
@@ -96,9 +84,6 @@ class SourceCode extends React.Component<{}, State> {
     this._get_assm_row = this._get_assm_row.bind(this);
     this.click_gutter = this.click_gutter.bind(this);
     this.is_gdb_paused_on_this_line = this.is_gdb_paused_on_this_line.bind(this);
-    this.handleInputChange = this.handleInputChange.bind(this);
-    this.handleTtsChange = this.handleTtsChange.bind(this);
-    this.handleLayoutChange = this.handleLayoutChange.bind(this);
   }
 
   refreshAnnotationGlobals = () => {
@@ -126,48 +111,16 @@ class SourceCode extends React.Component<{}, State> {
       }
     } catch (_) {}
 
-    // Fallback：沒有 autosave 時，從分散的 localStorage key 讀取
-    const fn = this.state.fullname_to_render
-      || localStorage.getItem("gdbgui_last_edited_filename")
-      || "";
-
-    if (fn && fn !== "__pending__") {
-      let newInputs = {};
-      let newTts = {};
-      let newLayout = {};
-
-      let sourceFn = fn;
-      const hasCurrentCode = !!localStorage.getItem("gdbgui_editor_code_" + fn);
-      if (!hasCurrentCode) {
-        const lastFn = localStorage.getItem("gdbgui_last_edited_filename");
-        if (lastFn && lastFn !== "__pending__" && lastFn !== fn && localStorage.getItem("gdbgui_editor_code_" + lastFn)) {
-          sourceFn = lastFn;
-        }
-      }
-
-      try {
-        const storedInputs = localStorage.getItem("gdbgui_guide_inputs_" + sourceFn);
-        if (storedInputs) newInputs = JSON.parse(storedInputs);
-        const storedTts = localStorage.getItem("gdbgui_tts_inputs_" + sourceFn);
-        if (storedTts) newTts = JSON.parse(storedTts);
-        const storedLayout = localStorage.getItem("gdbgui_layout_inputs_" + sourceFn);
-        if (storedLayout) newLayout = JSON.parse(storedLayout);
-      } catch (e) {
-        console.error("Failed to load initial project state", e);
-      }
-      this.setState({ inputValues: newInputs, ttsValues: newTts, layoutValues: newLayout });
-      (global_variable as any).__line = { ...newInputs };
-      (global_variable as any).__tts = { ...newTts };
-      (global_variable as any).__layout = { ...newLayout };
-    }
-
+    // No autosave found: guide/tts/layout now live inside the source text itself
+    // (as trailing //@ comments), so there is nothing separate to restore here.
+    // refreshAnnotationGlobals() (called on editor mount) will parse whatever
+    // source text loads and populate the globals from it.
     window.addEventListener("beforeunload", this.saveAutosave);
   }
 
   editorInstance: any = null;
   monaco: any = null;
   decorations: any[] = [];
-  _programmaticEdit: boolean = false;
   _autosaveTimer: any = null;
 
   componentWillUnmount() {
@@ -213,10 +166,6 @@ class SourceCode extends React.Component<{}, State> {
     if (this._autosaveTimer) clearTimeout(this._autosaveTimer);
     this._autosaveTimer = setTimeout(this.saveAutosave, 800);
   };
-  inputContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
-  layoutContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
-  dragHandleContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
-  containerRef: React.RefObject<HTMLDivElement> = React.createRef();
   fileInputRef: React.RefObject<HTMLInputElement> = React.createRef();
 
   ttsWidget: any = null;
@@ -289,19 +238,23 @@ class SourceCode extends React.Component<{}, State> {
 
     // Sync scroll
     editor.onDidScrollChange((e: any) => {
-      if (this.inputContainerRef.current) {
-        this.inputContainerRef.current.scrollTop = e.scrollTop;
-      }
-      if (this.layoutContainerRef.current) {
-        this.layoutContainerRef.current.scrollTop = e.scrollTop;
-      }
-      if (this.dragHandleContainerRef.current) {
-        this.dragHandleContainerRef.current.scrollTop = e.scrollTop;
-      }
       // Sync right-sidebar Visualizer scroll so line numbers align with Monaco
       if (typeof (window as any).gdbgui_set_visualizer_scroll === "function") {
         (window as any).gdbgui_set_visualizer_scroll(e.scrollTop);
       }
+    });
+
+    // Right-click / Ctrl+Shift+E on any line opens the line's //@ annotation editor
+    // (this is the sole remaining trigger now that the aligned side panel is gone).
+    editor.addAction({
+      id: "gdbgui-edit-line-annotation",
+      label: "Edit Line Annotation (Guide / TTS / Layout)",
+      keybindings: this.monaco ? [this.monaco.KeyMod.CtrlCmd | this.monaco.KeyMod.Shift | this.monaco.KeyCode.KeyE] : [],
+      contextMenuGroupId: "navigation",
+      run: (ed: any) => {
+        const pos = ed.getPosition();
+        if (pos) this.openLineEditor(pos.lineNumber);
+      },
     });
 
     // Persist source text for Visualizer (survives code_body view switches)
@@ -324,79 +277,18 @@ class SourceCode extends React.Component<{}, State> {
     // Initial set
     updateLineCount();
 
-    // 當程式碼行數增減時，自動 shift guide/TTS/layout 輸入框，保持對齊
-    const shiftGuideOnLineChange = (changes: any[]) => {
-      // 若是 moveMultipleLines 觸發的程式化編輯，跳過（避免雙重處理）
-      if (this._programmaticEdit) {
-        this._programmaticEdit = false;
-        return;
-      }
+    // 當程式碼行數增減時，shift 既有斷點的行號（guide/tts/layout 已內嵌於原始碼中，
+    // 會隨程式碼本身一起移動，不需要額外對齊機制）
+    const shiftBreakpointsOnLineChange = (changes: any[]) => {
       // Monaco changes 是由上到下排列，需倒序處理避免偏移累積
       const sortedChanges = [...changes].sort(
         (a, b) => b.range.startLineNumber - a.range.startLineNumber
       );
-      let newInputValues = { ...this.state.inputValues };
-      let newTtsValues   = { ...this.state.ttsValues };
-      let newLayoutValues = { ...this.state.layoutValues };
-      let anyChange = false;
-
-      for (const change of sortedChanges) {
-        const startLine = change.range.startLineNumber;
+      const anyChange = sortedChanges.some((change) => {
         const removedLines = change.range.endLineNumber - change.range.startLineNumber;
         const addedLines = (change.text.match(/\n/g) || []).length;
-        const delta = addedLines - removedLines;
-        if (delta === 0) continue;
-        anyChange = true;
-
-        console.log(`[shift] startLine=${startLine} delta=${delta} removedLines=${removedLines} addedLines=${addedLines}`);
-        console.log(`[shift] inputValues BEFORE:`, JSON.stringify(newInputValues));
-        if (delta > 0) {
-          // 插入行：從最後一行往下，把 >= startLine+1 的內容往後移 delta 格
-          const maxLine = Math.max(...[
-            ...Object.keys(newInputValues),
-            ...Object.keys(newTtsValues),
-            ...Object.keys(newLayoutValues),
-          ].map(Number).filter(n => !isNaN(n)), startLine);
-
-          for (let line = maxLine; line >= startLine + 1; line--) {
-            const g = newInputValues[line];
-            const t = newTtsValues[line];
-            const l = newLayoutValues[line];
-            if (g !== undefined) { newInputValues[line + delta] = g; delete newInputValues[line]; }
-            if (t !== undefined) { newTtsValues[line + delta]   = t; delete newTtsValues[line]; }
-            if (l !== undefined) { newLayoutValues[line + delta] = l; delete newLayoutValues[line]; }
-          }
-          // 新插入的行明確設為空字串
-          for (let newLine = startLine + 1; newLine <= startLine + delta; newLine++) {
-            newInputValues[newLine] = "";
-            newTtsValues[newLine]   = "";
-            newLayoutValues[newLine] = "";
-          }
-          console.log(`[shift] inputValues AFTER:`, JSON.stringify(newInputValues));
-        } else {
-          // 刪除行：移除 [startLine+1, startLine-delta] 範圍內的內容，再把後面的往前移
-          const deleteEnd = startLine - delta; // delta < 0，所以 -delta > 0
-          for (let line = startLine + 1; line <= deleteEnd; line++) {
-            delete newInputValues[line];
-            delete newTtsValues[line];
-            delete newLayoutValues[line];
-          }
-          const maxLine = Math.max(...[
-            ...Object.keys(newInputValues),
-            ...Object.keys(newTtsValues),
-            ...Object.keys(newLayoutValues),
-          ].map(Number).filter(n => !isNaN(n)), deleteEnd);
-          for (let line = deleteEnd + 1; line <= maxLine; line++) {
-            const g = newInputValues[line];
-            const t = newTtsValues[line];
-            const l = newLayoutValues[line];
-            if (g !== undefined) { newInputValues[line + delta] = g; delete newInputValues[line]; }
-            if (t !== undefined) { newTtsValues[line + delta]   = t; delete newTtsValues[line]; }
-            if (l !== undefined) { newLayoutValues[line + delta] = l; delete newLayoutValues[line]; }
-          }
-        }
-      }
-
+        return addedLines - removedLines !== 0;
+      });
       if (!anyChange) return;
 
       // 斷點行號 shift（只更新 store 的前端表示，不重新呼叫 GDB）
@@ -426,26 +318,12 @@ class SourceCode extends React.Component<{}, State> {
         });
         if (bkptsChanged) store.set("breakpoints", newBkpts);
       }
-
-      // 更新 state、localStorage、global_variable
-      this.setState({ inputValues: newInputValues, ttsValues: newTtsValues, layoutValues: newLayoutValues });
-      const fn = this.state.fullname_to_render || "default";
-      localStorage.setItem("gdbgui_guide_inputs_" + fn, JSON.stringify(newInputValues));
-      localStorage.setItem("gdbgui_tts_inputs_"   + fn, JSON.stringify(newTtsValues));
-      localStorage.setItem("gdbgui_layout_inputs_" + fn, JSON.stringify(newLayoutValues));
-
-      if (!('__line' in global_variable)) (global_variable as any).__line = {};
-      if (!('__tts'  in global_variable)) (global_variable as any).__tts  = {};
-      if (!('__layout' in global_variable)) (global_variable as any).__layout = {};
-      (global_variable as any).__line   = { ...newInputValues };
-      (global_variable as any).__tts    = { ...newTtsValues };
-      (global_variable as any).__layout = { ...newLayoutValues };
     };
 
     // Listen for changes
     let saveTimeout: any;
     editor.onDidChangeModelContent((e: any) => {
-      shiftGuideOnLineChange(e.changes);
+      shiftBreakpointsOnLineChange(e.changes);
       updateLineCount();
       this.refreshAnnotationGlobals();
       if (saveTimeout) clearTimeout(saveTimeout);
@@ -458,15 +336,6 @@ class SourceCode extends React.Component<{}, State> {
         }
       }, 500);
     });
-
-    // Auto-size split position to 50%
-    setTimeout(() => {
-      if (this.containerRef.current) {
-        // Default to 50% of container width
-        const halfWidth = this.containerRef.current.clientWidth / 2;
-        this.setState({ splitPos: halfWidth });
-      }
-    }, 100);
 
     // In v3 we might need to listen to mouse events differently or it works the same on editor instance
     editor.onMouseDown((e: any) => {
@@ -503,36 +372,6 @@ class SourceCode extends React.Component<{}, State> {
         this.setState({ hoverLine: null });
       }
     });
-  };
-
-  startDrag = (e: React.MouseEvent) => {
-    e.preventDefault();
-    this.setState({ isDragging: true });
-    document.addEventListener('mousemove', this.doDrag);
-    document.addEventListener('mouseup', this.stopDrag);
-
-    // Overlay iframe protection if needed? No iframes here.
-  };
-
-  doDrag = (e: MouseEvent) => {
-    if (this.containerRef.current) {
-      const rect = this.containerRef.current.getBoundingClientRect();
-      let newSplit = e.clientX - rect.left;
-
-      // Min/Max constraints
-      if (newSplit < 100) newSplit = 100;
-      if (newSplit > rect.width - 50) newSplit = rect.width - 50;
-
-      this.setState({ splitPos: newSplit });
-      // Layout monaco
-      if (this.editorInstance) this.editorInstance.layout();
-    }
-  };
-
-  stopDrag = () => {
-    this.setState({ isDragging: false });
-    document.removeEventListener('mousemove', this.doDrag);
-    document.removeEventListener('mouseup', this.stopDrag);
   };
 
   updateDecorations = () => {
@@ -739,71 +578,6 @@ class SourceCode extends React.Component<{}, State> {
     return lines.join("\n");
   }
 
-  handleInputChange(index: number, value: string) {
-    const newInputValues = {
-      ...this.state.inputValues,
-      [index]: value,
-    };
-
-    // Save to state and persistent storage
-    this.setState({
-      inputValues: newInputValues,
-    });
-    const fn = this.state.fullname_to_render || "default";
-    localStorage.setItem("gdbgui_guide_inputs_" + fn, JSON.stringify(newInputValues));
-
-    // 用global_variable儲存每個line的資訊。
-    if (!('__line' in global_variable)) {
-      (global_variable as any).__line = {};
-    }
-    // console.log(`第${index}行儲存的指導為${value}`);
-    (global_variable as any).__line[index] = value;
-    
-    // 即時解析指導 (抽出 [標籤#顏色] 等資訊)，並打亂 store 讓 CallGraph 重新刷新。
-    // 只在程式執行/暫停時解析：否則 graphics_instruction 會重新寫入 __latest_containers，
-    // ContainerVisualizer 的 1 秒輪詢便會 diff 出變化並重播動畫，導致沒跑程式時調整 guide
-    // 記憶體欄突然動起來。
-    const prog = store.get("inferior_program");
-    if (prog === constants.inferior_states.running || prog === constants.inferior_states.paused) {
-      VisualizerHelper.processing_guide(index, null);
-      store.set("call_graph_updated", Math.random());
-    }
-  }
-
-  handleTtsChange(index: number, value: string) {
-    const newTtsValues = {
-      ...this.state.ttsValues,
-      [index]: value,
-    };
-
-    this.setState({
-      ttsValues: newTtsValues,
-    });
-    const fn = this.state.fullname_to_render || "default";
-    localStorage.setItem("gdbgui_tts_inputs_" + fn, JSON.stringify(newTtsValues));
-
-    if (!('__tts' in global_variable)) {
-      (global_variable as any).__tts = {};
-    }
-    (global_variable as any).__tts[index] = value;
-  }
-
-  handleLayoutChange(index: number, value: string) {
-    const newLayoutValues = {
-      ...this.state.layoutValues,
-      [index]: value,
-    };
-
-    this.setState({ layoutValues: newLayoutValues });
-    const fn = this.state.fullname_to_render || "default";
-    localStorage.setItem("gdbgui_layout_inputs_" + fn, JSON.stringify(newLayoutValues));
-
-    if (!('__layout' in global_variable)) {
-      (global_variable as any).__layout = {};
-    }
-    (global_variable as any).__layout[index] = value;
-  }
-
   // ── Line Editor Modal helpers ─────────────────────────────────────────────
 
   /** 將 TTS 字串拆解為 speed / continue / 本文 三個欄位 */
@@ -850,16 +624,17 @@ class SourceCode extends React.Component<{}, State> {
     return parts.join(' ');
   }
 
+  /** Open the modal for a line, pre-filled from that line's //@ annotation (if any). */
   openLineEditor = (lineNum: number, tab: 'guide' | 'tts' | 'layout' = 'guide') => {
-    const guide  = this.state.inputValues[lineNum]  || '';
-    const tts    = this.state.ttsValues[lineNum]    || '';
-    const layout = this.state.layoutValues[lineNum] || '';
-    const { speed, hasContinue, text: ttsText } = this._parseTts(tts);
-    const { sidebar, open, close, maze, bst }    = this._parseLayout(layout);
+    const model = this.editorInstance ? this.editorInstance.getModel() : null;
+    const lineText = model ? model.getLineContent(lineNum) : '';
+    const a = parseLineAnnotation(lineText);
+    const { speed, hasContinue, text: ttsText } = this._parseTts(a.tts);
+    const { sidebar, open, close, maze, bst }    = this._parseLayout(a.layout);
     this.setState({
       lineEditorModal: {
         lineNum, activeTab: tab,
-        draftGuide: guide,
+        draftGuide: a.guide,
         draftTtsSpeed: speed, draftTtsContinue: hasContinue, draftTtsText: ttsText,
         draftLayoutSidebar: sidebar, draftLayoutOpen: open,
         draftLayoutClose: close, draftLayoutMaze: maze, draftLayoutBst: bst,
@@ -867,6 +642,8 @@ class SourceCode extends React.Component<{}, State> {
     });
   };
 
+  /** Save the modal's drafts by upserting the line's //@ comment directly in Monaco.
+   *  onDidChangeModelContent then refreshes globals + autosave automatically. */
   saveLineEditor = () => {
     const m = this.state.lineEditorModal;
     if (!m) return;
@@ -875,9 +652,17 @@ class SourceCode extends React.Component<{}, State> {
             draftLayoutSidebar, draftLayoutOpen, draftLayoutClose, draftLayoutMaze, draftLayoutBst } = m;
     const ttsStr    = this._buildTts(draftTtsSpeed, draftTtsContinue, draftTtsText);
     const layoutStr = this._buildLayout(draftLayoutSidebar, draftLayoutOpen, draftLayoutClose, draftLayoutMaze, draftLayoutBst);
-    this.handleInputChange(lineNum, draftGuide);
-    this.handleTtsChange(lineNum, ttsStr);
-    this.handleLayoutChange(lineNum, layoutStr);
+    const annotation = { guide: draftGuide || "", tts: ttsStr, layout: layoutStr };
+
+    const model = this.editorInstance ? this.editorInstance.getModel() : null;
+    if (model && this.monaco) {
+      const oldLine = model.getLineContent(lineNum);
+      const newLine = upsertLineAnnotation(oldLine, annotation);
+      this.editorInstance.executeEdits("annotation-modal", [{
+        range: new this.monaco.Range(lineNum, 1, lineNum, oldLine.length + 1),
+        text: newLine,
+      }]);
+    }
     this.setState({ lineEditorModal: null });
   };
 
@@ -889,113 +674,8 @@ class SourceCode extends React.Component<{}, State> {
 
   // ─────────────────────────────────────────────────────────────────────────
 
-  // 多行移動的 guide/TTS/layout 重新映射
-  // sortedSources：要移動的行（已排序），insertAfterLine：插入到此行之後
-  _shiftMapForMultiMove(obj: any, sortedSources: number[], insertAfterLine: number): any {
-    const sourcesSet = new Set(sortedSources);
-    const allKeys = Object.keys(obj).map(Number).filter(n => !isNaN(n));
-    const maxKey = Math.max(...allKeys, insertAfterLine, ...sortedSources, 0);
-
-    // 非 source 行，保持原本順序
-    const remaining: number[] = [];
-    for (let i = 1; i <= maxKey; i++) {
-      if (!sourcesSet.has(i)) remaining.push(i);
-    }
-
-    // 找到 insertAfterLine 在 remaining 中的位置
-    const insertIdx = remaining.indexOf(insertAfterLine);
-    if (insertIdx === -1) return obj; // insertAfterLine 是 source 行，放棄
-
-    // 最終行順序（以原始行號表示）
-    const finalOrder: number[] = [
-      ...remaining.slice(0, insertIdx + 1),
-      ...sortedSources,
-      ...remaining.slice(insertIdx + 1),
-    ];
-
-    const result: any = {};
-    finalOrder.forEach((oldLine, newIdx) => {
-      const newLine = newIdx + 1;
-      if (obj[oldLine] !== undefined) result[newLine] = obj[oldLine];
-    });
-    return result;
-  }
-
-  moveMultipleLines(sources: number[], insertAfterLine: number) {
-    if (!this.editorInstance || sources.length === 0) return;
-    const model = this.editorInstance.getModel();
-    if (!model) return;
-
-    const totalLines = model.getLineCount();
-    const sortedSources = [...new Set(sources)].sort((a, b) => a - b);
-    const sourcesSet = new Set(sortedSources);
-
-    if (sourcesSet.has(insertAfterLine)) return; // drop 在 source 行上無效
-
-    // 取得所有行內容
-    const allLines: string[] = [];
-    for (let i = 1; i <= totalLines; i++) allLines.push(model.getLineContent(i));
-
-    // 分離 source 與 remaining（保留原始行號資訊）
-    const movedContent = sortedSources.map(s => allLines[s - 1]);
-    const remaining: { orig: number; content: string }[] = [];
-    for (let i = 1; i <= totalLines; i++) {
-      if (!sourcesSet.has(i)) remaining.push({ orig: i, content: allLines[i - 1] });
-    }
-
-    const insertIdx = remaining.findIndex(r => r.orig === insertAfterLine);
-    if (insertIdx === -1) return;
-
-    const finalLines: string[] = [
-      ...remaining.slice(0, insertIdx + 1).map(r => r.content),
-      ...movedContent,
-      ...remaining.slice(insertIdx + 1).map(r => r.content),
-    ];
-
-    // Monaco 全文替換（標記為程式化編輯，避免 shiftGuideOnLineChange 雙重處理）
-    this._programmaticEdit = true;
-    model.applyEdits([{
-      range: new this.monaco.Range(1, 1, totalLines, model.getLineMaxColumn(totalLines)),
-      text: finalLines.join('\n'),
-      forceMoveMarkers: true,
-    }]);
-
-    // Guide / TTS / Layout
-    const newInput  = this._shiftMapForMultiMove({ ...this.state.inputValues  }, sortedSources, insertAfterLine);
-    const newTts    = this._shiftMapForMultiMove({ ...this.state.ttsValues    }, sortedSources, insertAfterLine);
-    const newLayout = this._shiftMapForMultiMove({ ...this.state.layoutValues }, sortedSources, insertAfterLine);
-
-    this.setState({ inputValues: newInput, ttsValues: newTts, layoutValues: newLayout, selectedLines: [], dragLines: [] });
-    const fn = this.state.fullname_to_render || "default";
-    localStorage.setItem("gdbgui_guide_inputs_"  + fn, JSON.stringify(newInput));
-    localStorage.setItem("gdbgui_tts_inputs_"    + fn, JSON.stringify(newTts));
-    localStorage.setItem("gdbgui_layout_inputs_" + fn, JSON.stringify(newLayout));
-    (global_variable as any).__line   = { ...newInput  };
-    (global_variable as any).__tts    = { ...newTts    };
-    (global_variable as any).__layout = { ...newLayout };
-
-    // 斷點：建立 oldLine → newLine 映射
-    const finalOrderOrig: number[] = [
-      ...remaining.slice(0, insertIdx + 1).map(r => r.orig),
-      ...sortedSources,
-      ...remaining.slice(insertIdx + 1).map(r => r.orig),
-    ];
-    const lineMap = new Map<number, number>();
-    finalOrderOrig.forEach((oldLine, newIdx) => lineMap.set(oldLine, newIdx + 1));
-
-    const bkpts: any[] = store.get("breakpoints");
-    const newBkpts = bkpts.map((b: any) => {
-      const bLine = parseInt(b.line);
-      if (isNaN(bLine)) return b;
-      const newLine = lineMap.get(bLine);
-      if (newLine === undefined || newLine === bLine) return b;
-      return { ...b, line: String(newLine) };
-    });
-    store.set("breakpoints", newBkpts);
-  }
-
   applyLayout = (lineNum: string | number) => {
-    const layoutMap = (global_variable as any).__layout || (this.state as any).layoutValues;
+    const layoutMap = (global_variable as any).__layout || {};
     if (!layoutMap) return;
     const layoutStr: string = layoutMap[String(lineNum)];
     if (!layoutStr) return;
@@ -1099,20 +779,20 @@ class SourceCode extends React.Component<{}, State> {
   exportProject = () => {
     const source_code = this.editorInstance ? this.editorInstance.getValue() : "";
     const line_data: any = {};
-    const inputValues = this.state.inputValues || {};
-    const ttsValues = this.state.ttsValues || {};
-    const layoutValues = (global_variable as any).__layout || {};
+    // guide/tts/layout now live inside the source as //@ comments; parse them
+    // back out here to keep the exported JSON's line_data format unchanged.
+    const { guide, tts, layout } = parseAnnotations(source_code);
 
     const allLines = new Set([
-      ...Object.keys(inputValues),
-      ...Object.keys(ttsValues),
-      ...Object.keys(layoutValues),
+      ...Object.keys(guide),
+      ...Object.keys(tts),
+      ...Object.keys(layout),
     ]);
     allLines.forEach(line => {
       line_data[line] = {
-        guide: inputValues[line] || "",
-        tts: ttsValues[line] || "",
-        ...(layoutValues[line] ? { layout: layoutValues[line] } : {}),
+        guide: guide[line] || "",
+        tts: tts[line] || "",
+        ...(layout[line] ? { layout: layout[line] } : {}),
       };
     });
 
@@ -1189,15 +869,22 @@ class SourceCode extends React.Component<{}, State> {
         const content = e.target?.result as string;
         const projectData = JSON.parse(content);
 
-        if (projectData.source_code) {
+        // Legacy (v1) projects carry guide/tts/layout separately in line_data;
+        // normalizeBundle merges that into //@ comments on the matching source lines
+        // so the imported source text becomes the single source of truth. Projects
+        // already exported in the new format (no line_data) pass through unchanged.
+        const v2 = normalizeBundle(projectData);
+        const mergedSource: string = v2.source_code || projectData.source_code || "";
+
+        if (mergedSource) {
           if (this.editorInstance) {
-            this.editorInstance.setValue(projectData.source_code);
+            this.editorInstance.setValue(mergedSource);
             // 強制下次 Start 一定重新編譯（不論程式碼內容是否與上次相同）
             (window as any).last_compiled_code = null;
           } else {
             // Monaco 尚未掛載（FILE_MISSING / NONE_AVAILABLE 狀態）
             // 將 source_code 直接注入 FileOps cache，讓 Monaco 立刻顯示
-            const lines = projectData.source_code.split("\n");
+            const lines = mergedSource.split("\n");
             const source_code_obj: any = {};
             lines.forEach((line: string, idx: number) => {
               source_code_obj[idx + 1] = escapeHtml(line);
@@ -1210,7 +897,7 @@ class SourceCode extends React.Component<{}, State> {
             store.set("source_code_state", constants.source_code_states.SOURCE_CACHED);
             store.set("source_code_selection_state", constants.source_code_selection_states.USER_SELECTION);
             // 存入 localStorage，讓 click_run_button 的 fallback 也能找到
-            localStorage.setItem("gdbgui_editor_code_" + syntheticFullname, projectData.source_code);
+            localStorage.setItem("gdbgui_editor_code_" + syntheticFullname, mergedSource);
             // 清除 last_compiled_code，避免 Run 誤判「程式碼未變」而跳過重新 compile
             (window as any).last_compiled_code = null;
           }
@@ -1218,38 +905,16 @@ class SourceCode extends React.Component<{}, State> {
           // get_monaco_value 在 Monaco 重新 mount 時會先查 gdbgui_last_edited_filename，
           // 若不存此處，Monaco 重 mount 後會撈回舊檔案，導致 Run 時跑舊程式碼。
           const _importKey = "__imported__";
-          localStorage.setItem("gdbgui_editor_code_" + _importKey, projectData.source_code);
+          localStorage.setItem("gdbgui_editor_code_" + _importKey, mergedSource);
           localStorage.setItem("gdbgui_editor_filename_" + _importKey, _importKey);
           localStorage.setItem("gdbgui_last_edited_filename", _importKey);
         }
 
-        const newInputValues: any = {};
-        const newTtsValues: any = {};
-        const newLayoutValues: any = {};
-        if (projectData.line_data) {
-          for (const line in projectData.line_data) {
-            newInputValues[line] = projectData.line_data[line].guide || "";
-            newTtsValues[line] = projectData.line_data[line].tts || "";
-            if (projectData.line_data[line].layout) {
-              newLayoutValues[line] = projectData.line_data[line].layout;
-            }
-          }
-        }
-
-        this.setState({
-          inputValues: newInputValues,
-          ttsValues: newTtsValues,
-          layoutValues: newLayoutValues,
-        });
-
-        const fn = this.state.fullname_to_render || "default";
-        localStorage.setItem("gdbgui_guide_inputs_" + fn, JSON.stringify(newInputValues));
-        localStorage.setItem("gdbgui_tts_inputs_" + fn, JSON.stringify(newTtsValues));
-        localStorage.setItem("gdbgui_layout_inputs_" + fn, JSON.stringify(newLayoutValues));
-
-        (global_variable as any).__line = { ...newInputValues };
-        (global_variable as any).__tts = { ...newTtsValues };
-        (global_variable as any).__layout = { ...newLayoutValues };
+        // refreshAnnotationGlobals() will also run via onDidChangeModelContent once
+        // Monaco processes the setValue() above; call it directly too so
+        // global_variable.__line/__tts/__layout are correct even if Monaco isn't
+        // mounted yet (it re-parses on mount in that case).
+        this.refreshAnnotationGlobals();
 
         if (projectData.program_input !== undefined) {
           localStorage.setItem("gdbgui_program_input", projectData.program_input);
@@ -1499,179 +1164,6 @@ class SourceCode extends React.Component<{}, State> {
       const theme = this.state.current_theme === 'dark' ? 'vs-dark' : 'light';
       const monacoFontSize: number = (this.state as any).monaco_font_size || 14;
       const LINE_HEIGHT = Math.round(monacoFontSize * 1.5);
-      // Use dynamic line count if available, otherwise fallback to static
-      const numLines = this.state.lineCount > 0 ? this.state.lineCount : (obj?.num_lines_in_file ?? 0);
-
-      // Generate Guide/TTS inputs (edit_mode panel)
-      const inputColStyle = (borderLeft?: boolean): React.CSSProperties => ({
-        height: "100%",
-        border: "none",
-        borderLeft: borderLeft ? "1px solid #ccc" : undefined,
-        background: "transparent",
-        fontFamily: "monospace",
-        fontSize: "inherit",
-        paddingLeft: "4px",
-      });
-      const guideTtsInputs: React.ReactNode[] = [];
-      // Generate Layout inputs (always-visible right panel)
-      const layoutInputs: React.ReactNode[] = [];
-      const dragLines   = this.state.dragLines as number[];
-      const dragOver    = this.state.dragOverLine;
-      const selectedLines = this.state.selectedLines as number[];
-      const selectedSet = new Set(selectedLines);
-      const dragSet     = new Set(dragLines);
-      const dragHandles: React.ReactNode[] = [];
-
-      // drop 共用邏輯
-      const handleDrop = (e: React.DragEvent, targetLine: number) => {
-        e.preventDefault();
-        const lines = this.state.dragLines as number[];
-        this.setState({ dragLines: [], dragOverLine: null });
-        if (lines.length === 0) return;
-        const minSrc = Math.min(...lines);
-        if (targetLine < minSrc) {
-          // 插入到 targetLine 之後
-          this.moveMultipleLines(lines, targetLine);
-        } else {
-          // 插入到 targetLine 之後
-          this.moveMultipleLines(lines, targetLine);
-        }
-      };
-
-      for (let i = 1; i <= numLines; i++) {
-        const isSource   = dragSet.has(i);
-        const isSelected = selectedSet.has(i);
-        // 指示線顯示在目標行的「底部」，代表插入到該行之後
-        const isTarget   = dragOver === i && dragLines.length > 0 && !dragSet.has(i);
-
-        guideTtsInputs.push(
-          <div
-            key={i}
-            style={{
-              height: `${LINE_HEIGHT}px`,
-              borderBottom: isTarget ? "2px solid #4a9eff" : "1px solid #eee",
-              boxSizing: "border-box",
-              display: "flex",
-              opacity: isSource ? 0.4 : 1,
-              background: isSelected ? "rgba(74,158,255,0.12)" : undefined,
-            }}
-            onDragOver={(e) => { e.preventDefault(); if (this.state.dragOverLine !== i) this.setState({ dragOverLine: i }); }}
-            onDrop={(e) => handleDrop(e, i)}
-          >
-            <input
-              className="panel-input"
-              style={{ flex: 1, minWidth: 0, ...inputColStyle() }}
-              data-line={i}
-              value={this.state.inputValues[i] || ''}
-              placeholder={`Guide L${i}`}
-              onChange={(e) => { this.handleInputChange(i, e.target.value); }}
-              title="Guide"
-            />
-            <input
-              className="panel-input"
-              style={{ flex: 1, minWidth: 0, ...inputColStyle(true) }}
-              data-line={i}
-              value={this.state.ttsValues[i] || ''}
-              placeholder={`TTS L${i}`}
-              onChange={(e) => { this.handleTtsChange(i, e.target.value); }}
-              title="TTS Script"
-            />
-            {/* 展開編輯按鈕 */}
-            <button
-              title="展開行編輯器"
-              onClick={(e) => { e.stopPropagation(); this.openLineEditor(i); }}
-              style={{
-                flexShrink: 0, width: '18px', height: '100%',
-                border: 'none', background: 'transparent',
-                cursor: 'pointer', color: '#888', fontSize: '11px', padding: 0,
-                borderLeft: '1px solid #eee',
-              }}
-            >✎</button>
-          </div>
-        );
-        // 拖曳 handle overlay（對齊 Monaco glyph margin）
-        dragHandles.push(
-          <div
-            key={i}
-            draggable
-            onClick={(e) => {
-              // Ctrl+Click：toggle 此行選取
-              // Shift+Click：從上次點擊行到此行都選取
-              if (e.shiftKey && this.state.lastClickedLine !== null) {
-                const anchor = this.state.lastClickedLine as number;
-                const min = Math.min(anchor, i), max = Math.max(anchor, i);
-                const range: number[] = [];
-                for (let r = min; r <= max; r++) range.push(r);
-                this.setState({ selectedLines: range });
-              } else if (e.ctrlKey || e.metaKey) {
-                const sel = this.state.selectedLines as number[];
-                const next = sel.includes(i) ? sel.filter(l => l !== i) : [...sel, i];
-                this.setState({ selectedLines: next, lastClickedLine: i });
-              } else {
-                // 單擊：只選此行（或取消選取）
-                const sel = this.state.selectedLines as number[];
-                this.setState({
-                  selectedLines: sel.length === 1 && sel[0] === i ? [] : [i],
-                  lastClickedLine: i,
-                });
-              }
-            }}
-            onDragStart={(e) => {
-              e.dataTransfer.effectAllowed = 'move';
-              // 若此行在 selectedLines 中，拖整組；否則只拖此行
-              const sel = this.state.selectedLines as number[];
-              const lines = sel.includes(i) ? [...sel].sort((a,b)=>a-b) : [i];
-              this.setState({ dragLines: lines, dragOverLine: null });
-            }}
-            onDragEnd={() => this.setState({ dragLines: [], dragOverLine: null })}
-            onDragOver={(e) => { e.preventDefault(); if (this.state.dragOverLine !== i) this.setState({ dragOverLine: i }); }}
-            onDrop={(e) => handleDrop(e, i)}
-            style={{
-              height: `${LINE_HEIGHT}px`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'grab',
-              color: isSource ? '#4a9eff' : isSelected ? '#4a9eff' : '#aaa',
-              userSelect: 'none',
-              fontSize: '13px',
-              boxSizing: 'border-box',
-              borderBottom: isTarget ? "2px solid #4a9eff" : "1px solid transparent",
-              background: isSelected ? "rgba(74,158,255,0.15)" : undefined,
-            }}
-            title="點擊選取 / Ctrl+點擊多選 / Shift+點擊範圍選 / 拖曳移動"
-          >⠿</div>
-        );
-        layoutInputs.push(
-          <div key={i} style={{ height: `${LINE_HEIGHT}px`, borderBottom: "1px solid #eee", boxSizing: "border-box", display: 'flex' }}>
-            <input
-              className="panel-input"
-              style={{ flex: 1, minWidth: 0, height: "100%", border: "none", background: "transparent", fontFamily: "monospace", fontSize: "inherit", paddingLeft: "4px", boxSizing: "border-box" }}
-              data-line={i}
-              value={this.state.layoutValues[i] || ''}
-              placeholder={`sidebar:50 open:container`}
-              onChange={(e) => { this.handleLayoutChange(i, e.target.value); }}
-              title="Layout (e.g. sidebar:50 open:container close:locals)"
-            />
-            <button
-              title="展開行編輯器 (Layout)"
-              onClick={(e) => { e.stopPropagation(); this.openLineEditor(i, 'layout'); }}
-              style={{
-                flexShrink: 0, width: '18px', height: '100%',
-                border: 'none', background: 'transparent',
-                cursor: 'pointer', color: '#888', fontSize: '11px', padding: 0,
-                borderLeft: '1px solid #eee',
-              }}
-            >✎</button>
-          </div>
-        );
-      }
-
-      // Calculate Styles
-      const splitPos = this.state.splitPos;
-      const leftStyle: React.CSSProperties = splitPos !== -1
-        ? { width: `${splitPos}px`, height: "100%", flexShrink: 0 }
-        : { flex: "0 0 50%", height: "100%" }; // Default 50% until mounted
 
       return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
@@ -1706,28 +1198,8 @@ class SourceCode extends React.Component<{}, State> {
               </button>
             </div>
           </div>
-          <div ref={this.containerRef} className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", overflow: 'hidden' }}>
-            <div style={{ ...(this.state.edit_mode ? leftStyle : { flex: 1, height: "100%" }), position: 'relative' }}>
-              {/* 拖曳 handle overlay：貼合 Monaco glyph margin，僅在 edit mode 顯示 */}
-              {this.state.edit_mode && (
-                <div
-                  ref={this.dragHandleContainerRef}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: '26px',           // 跳過 glyph margin（斷點區），貼在行號上
-                    width: '22px',
-                    height: '100%',
-                    overflow: 'hidden',
-                    zIndex: 5,
-                    pointerEvents: 'none',  // 預設不攔截，handle 自己開啟
-                  }}
-                >
-                  <div style={{ pointerEvents: 'all' }}>
-                    {dragHandles}
-                  </div>
-                </div>
-              )}
+          <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", overflow: 'hidden' }}>
+            <div style={{ flex: 1, height: "100%", position: 'relative' }}>
               <MonacoEditor
                 height="100%"
                 language="cpp"
@@ -1749,52 +1221,6 @@ class SourceCode extends React.Component<{}, State> {
                 }}
               />
             </div>
-
-            {/* Drag Handle — 僅在編輯模式顯示 */}
-            {this.state.edit_mode && (
-              <div
-                onMouseDown={this.startDrag}
-                style={{
-                  width: "5px",
-                  height: "100%",
-                  cursor: "col-resize",
-                  backgroundColor: "#e0e0e0",
-                  zIndex: 10,
-                  flexShrink: 0
-                }}
-                title="Drag to resize"
-              />
-            )}
-
-            {/* Guide / TTS 輸入欄 — 僅在編輯模式顯示 */}
-            {this.state.edit_mode && (
-              <div style={{ flex: "1", height: "100%", borderLeft: "1px solid #ccc", backgroundColor: "#fdfdfd", minWidth: 0 }}>
-                <div
-                  ref={this.inputContainerRef}
-                  style={{ height: "100%", overflow: "hidden", fontFamily: "monospace", fontSize: "14px" }}
-                  onDragLeave={(e) => {
-                    // 只在真正離開整個面板時清除（不是移到子元素）
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      this.setState({ dragOverLine: null });
-                    }
-                  }}
-                >
-                  {guideTtsInputs}
-                </div>
-              </div>
-            )}
-
-            {/* Layout 輸入欄 — 僅在編輯模式顯示 */}
-            {this.state.edit_mode && (
-              <div style={{ width: "220px", flexShrink: 0, borderLeft: "1px solid #ccc", backgroundColor: "#fdfdfd" }}>
-                <div
-                  ref={this.layoutContainerRef}
-                  style={{ height: "100%", overflow: "hidden", fontFamily: "monospace", fontSize: "14px" }}
-                >
-                  {layoutInputs}
-                </div>
-              </div>
-            )}
           </div>
           {/* TTS 字幕已移至底部大字幕區顯示 */}
           {lineEditorModal}
@@ -1805,13 +1231,10 @@ class SourceCode extends React.Component<{}, State> {
   componentDidUpdate(prevProps: any, prevState: any) {
     this.updateDecorations();
 
-    // Autosave whenever breakpoints, guide, TTS, or layout change
-    if (
-      prevState.breakpoints !== this.state.breakpoints ||
-      prevState.inputValues !== this.state.inputValues ||
-      prevState.ttsValues !== this.state.ttsValues ||
-      prevState.layoutValues !== this.state.layoutValues
-    ) {
+    // Autosave whenever breakpoints change. (Guide/TTS/layout edits go through
+    // Monaco model edits, not React state, and beforeunload/saveAutosave already
+    // captures the live source text — including any //@ comments — separately.)
+    if (prevState.breakpoints !== this.state.breakpoints) {
       this._debouncedSaveAutosave();
     }
 
@@ -1865,46 +1288,10 @@ class SourceCode extends React.Component<{}, State> {
       }
     }
 
-    // Check if filename changed to load appropriate project state for the new file
-    if (prevState.fullname_to_render !== this.state.fullname_to_render && this.state.fullname_to_render) {
-      const fn = this.state.fullname_to_render;
-      let newInputs: any = null;
-      let newTts: any = null;
-      try {
-        const storedInputs = localStorage.getItem("gdbgui_guide_inputs_" + fn);
-        if (storedInputs) newInputs = JSON.parse(storedInputs);
-        const storedTts = localStorage.getItem("gdbgui_tts_inputs_" + fn);
-        if (storedTts) newTts = JSON.parse(storedTts);
-      } catch (e) {
-        console.error("Failed to load project state", e);
-      }
-      // 若新 filename 在 localStorage 沒有資料，保留記憶體中現有的 guide 資料
-      // （常見情境：import JSON → 按 Run → fullname 變成實際編譯路徑，但 guide 應繼續存在）
-      if (newInputs === null) {
-        newInputs = this.state.inputValues || {};
-        localStorage.setItem("gdbgui_guide_inputs_" + fn, JSON.stringify(newInputs));
-      }
-      if (newTts === null) {
-        newTts = this.state.ttsValues || {};
-        localStorage.setItem("gdbgui_tts_inputs_" + fn, JSON.stringify(newTts));
-      }
-      // 恢復 layout 資料；若新 filename 無資料則保留記憶體中的
-      let newLayout: any = null;
-      try {
-        const storedLayout = localStorage.getItem("gdbgui_layout_inputs_" + fn);
-        if (storedLayout) newLayout = JSON.parse(storedLayout);
-      } catch (e) { /* ignore */ }
-      if (newLayout === null) {
-        newLayout = (global_variable as any).__layout || {};
-        localStorage.setItem("gdbgui_layout_inputs_" + fn, JSON.stringify(newLayout));
-      }
-      (global_variable as any).__layout = { ...newLayout };
-
-      this.setState({ inputValues: newInputs, ttsValues: newTts, layoutValues: newLayout });
-      (global_variable as any).__line = { ...newInputs };
-      (global_variable as any).__tts = { ...newTts };
-      store.set("call_graph_updated", Math.random());
-    }
+    // Note: guide/tts/layout no longer need a per-file restore step on filename
+    // change — they live inside the source text itself and refreshAnnotationGlobals()
+    // (triggered by onDidChangeModelContent whenever Monaco's content changes, which
+    // it does when switching files) keeps global_variable.__line/__tts/__layout in sync.
 
     // 當 GDB 暫停行號改變時，套用對應的 layout
     const prevLine = prevState.paused_on_frame ? prevState.paused_on_frame.line : null;
@@ -1961,10 +1348,6 @@ class SourceCode extends React.Component<{}, State> {
       }
     }
 
-    // 清空 inputValues 當 gdb_pid 改變時 (例如 run 時)
-    if (prevState && prevState.gdb_pid !== this.state.gdb_pid) {
-      // 不清空以保留指導與 TTS: this.setState({ inputValues: {} });
-    }
   }
 
   get_body() {
@@ -2411,140 +1794,6 @@ class SourceCode extends React.Component<{}, State> {
     );
   }
 
-  get_input_source_rows(
-    fullname: any,
-    source_code_obj: any,
-    start_linenum: any,
-    end_linenum: any,
-    num_lines_in_file: any
-  ) {
-    let body = [];
-
-    const {
-      start_linenum_to_render,
-      end_linenum_to_render
-    } = this.get_line_nums_to_render(
-      source_code_obj,
-      start_linenum,
-      this.state.line_of_source_to_flash,
-      end_linenum
-    );
-
-    let line_num_being_rendered;
-    for (line_num_being_rendered = start_linenum_to_render; line_num_being_rendered <= end_linenum_to_render; line_num_being_rendered++) {
-      // console.log(`Rendering input for line ${line_num_being_rendered}`);
-      body.push(
-        <tr key={line_num_being_rendered} className="srccode">
-          <td style={{ display: "flex" }}>
-            <input
-              style={{ flex: "0 0 38%", fontFamily: "monospace", fontSize: "inherit" }}
-              data-line={line_num_being_rendered}
-              defaultValue={this.state.inputValues[line_num_being_rendered] || ''}
-              placeholder={`Guide L${line_num_being_rendered}`}
-              onChange={(e) => {
-                const idx = parseInt((e.target as HTMLInputElement).dataset.line!);
-                this.handleInputChange(idx, e.target.value);
-              }}
-              title="Guide"
-            />
-            <input
-              style={{ flex: "0 0 38%", fontFamily: "monospace", fontSize: "inherit", borderLeft: "1px solid #ccc" }}
-              data-line={line_num_being_rendered}
-              defaultValue={this.state.ttsValues[line_num_being_rendered] || ''}
-              placeholder={`TTS L${line_num_being_rendered}`}
-              onChange={(e) => {
-                const idx = parseInt((e.target as HTMLInputElement).dataset.line!);
-                this.handleTtsChange(idx, e.target.value);
-              }}
-              title="TTS Script"
-            />
-            <input
-              style={{ flex: "0 0 24%", fontFamily: "monospace", fontSize: "inherit", borderLeft: "1px solid #ccc" }}
-              data-line={line_num_being_rendered}
-              defaultValue={this.state.layoutValues[line_num_being_rendered] || ''}
-              placeholder="sidebar:50 open:container"
-              onChange={(e) => {
-                const idx = parseInt((e.target as HTMLInputElement).dataset.line!);
-                this.handleLayoutChange(idx, e.target.value);
-              }}
-              title="Layout (e.g. sidebar:50 open:container close:locals)"
-            />
-          </td>
-        </tr>
-      );
-    }
-
-    // add "view more" buttons if necessary, but for inputs, make empty
-    if (start_linenum_to_render > start_linenum) {
-      body.unshift(
-        <tr key={start_linenum_to_render - 1} className="srccode">
-          <td />
-        </tr>
-      );
-    } else if (start_linenum !== 1) {
-      body.unshift(
-        <tr key={start_linenum - 1} className="srccode">
-          <td />
-        </tr>
-      );
-    }
-
-    if (end_linenum_to_render < end_linenum) {
-      body.push(
-        <tr key={end_linenum_to_render + 1} className="srccode">
-          <td />
-        </tr>
-      );
-    } else if (end_linenum < num_lines_in_file) {
-      body.push(
-        <tr key={line_num_being_rendered} className="srccode">
-          <td />
-        </tr>
-      );
-    }
-
-    if (end_linenum_to_render === num_lines_in_file) {
-      body.push(
-        <tr key={num_lines_in_file + 1}>
-          <td />
-        </tr>
-      );
-    }
-    return body;
-  }
-
-  get_input_empty() {
-    return (
-      <tr>
-        <td></td>
-      </tr>
-    );
-  }
-
-  get_input_rows() {
-    const states = constants.source_code_states;
-    switch (this.state.source_code_state) {
-      case states.ASSM_AND_SOURCE_CACHED: // fallthrough
-      case states.SOURCE_CACHED: {
-        let obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
-        if (!obj) {
-          return this.get_input_empty();
-        }
-        let start_linenum = store.get("source_linenum_to_display_start"),
-          end_linenum = store.get("source_linenum_to_display_end");
-        return this.get_input_source_rows(
-          obj.fullname,
-          obj.source_code_obj,
-          start_linenum,
-          end_linenum,
-          obj.num_lines_in_file
-        );
-      }
-      default: {
-        return this.get_input_empty();
-      }
-    }
-  }
   static make_current_line_visible() {
     return SourceCode._make_jq_selector_visible($("#scroll_to_line"));
   }
