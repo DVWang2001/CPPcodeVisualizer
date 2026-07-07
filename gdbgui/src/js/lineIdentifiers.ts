@@ -26,6 +26,12 @@ export function insertAtCursor(text: string, pos: number, insert: string): { tex
   return { text: text.slice(0, p) + insert + text.slice(p), pos: p + insert.length };
 }
 
+export function replaceRange(text: string, from: number, to: number, insert: string): { text: string; pos: number } {
+  const a = Math.max(0, Math.min(from, text.length));
+  const b = Math.max(a, Math.min(to, text.length));
+  return { text: text.slice(0, a) + insert + text.slice(b), pos: a + insert.length };
+}
+
 export function filterCandidates(prefix: string, candidates: string[]): string[] {
   const lp = prefix.toLowerCase();
   const out: string[] = [];

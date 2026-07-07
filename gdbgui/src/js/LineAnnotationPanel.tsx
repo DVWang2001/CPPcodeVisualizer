@@ -1,6 +1,6 @@
 // gdbgui/src/js/LineAnnotationPanel.tsx
 import React from "react";
-import { insertAtCursor, filterCandidates } from "./lineIdentifiers";
+import { insertAtCursor, filterCandidates, replaceRange } from "./lineIdentifiers";
 
 export type LinePanelDraft = {
   guide: string; ttsSpeed: string; ttsContinue: boolean; ttsText: string;
@@ -12,21 +12,23 @@ type Props = {
   onToggleMode: () => void; onSave: () => void; onClose: () => void; onHeight: (px: number) => void;
 };
 
-export default class LineAnnotationPanel extends React.Component<Props, { sugg: string[] }> {
+export default class LineAnnotationPanel extends React.Component<Props, { sugg: string[]; triggerStart: number | null }> {
   root = React.createRef<HTMLDivElement>();
   guideRef = React.createRef<HTMLTextAreaElement>();
-  state = { sugg: [] as string[] };
+  state = { sugg: [] as string[], triggerStart: null as number | null };
 
   componentDidMount() { this.report(); this.guideRef.current?.focus(); }
   componentDidUpdate(prev: Props) { if (prev.mode !== this.props.mode) this.report(); }
   report = () => { const h = this.root.current?.offsetHeight || 0; if (h) this.props.onHeight(h); };
 
-  insertVar = (name: string) => {
+  insertVariable = (name: string) => {
     const ta = this.guideRef.current;
-    const pos = ta ? ta.selectionStart : this.props.draft.guide.length;
-    const r = insertAtCursor(this.props.draft.guide, pos, `{${name}}`);
+    const pos = ta ? ta.selectionEnd ?? this.props.draft.guide.length : this.props.draft.guide.length;
+    const r = this.state.triggerStart !== null
+      ? replaceRange(this.props.draft.guide, this.state.triggerStart, pos, `{${name}}`)
+      : insertAtCursor(this.props.draft.guide, pos, `{${name}}`);
     this.props.onDraftChange({ guide: r.text });
-    this.setState({ sugg: [] });
+    this.setState({ sugg: [], triggerStart: null });
     requestAnimationFrame(() => { if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = r.pos; } });
   };
 
@@ -36,7 +38,11 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
     // `{`-triggered suggestions: find the token being typed after the last unmatched `{`
     const upto = text.slice(0, e.target.selectionStart);
     const m = upto.match(/\{([A-Za-z0-9_]*)$/);
-    this.setState({ sugg: m && this.props.mode === "advanced" ? filterCandidates(m[1], this.props.candidates).slice(0, 8) : [] });
+    if (m && this.props.mode === "advanced") {
+      this.setState({ sugg: filterCandidates(m[1], this.props.candidates).slice(0, 8), triggerStart: m.index ?? null });
+    } else {
+      this.setState({ sugg: [], triggerStart: null });
+    }
   };
 
   render() {
@@ -58,7 +64,7 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
           <div style={{ marginBottom: 4 }}>
             <span style={{ fontSize: 11, color: "#8b5cf6" }}>插入變數：</span>
             {candidates.map(c => (
-              <button key={c} data-testid={`annot-chip-${c}`} onClick={() => this.insertVar(c)}
+              <button key={c} data-testid={`annot-chip-${c}`} onClick={() => this.insertVariable(c)}
                 style={{ margin: "0 3px", padding: "1px 8px", borderRadius: 999, border: "1px solid #8b5cf6", background: "transparent", color: "#8b5cf6", cursor: "pointer", fontSize: 12 }}>
                 {c}
               </button>
@@ -72,7 +78,7 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
           {this.state.sugg.length > 0 && (
             <div style={{ position: "absolute", zIndex: 5, background: "#222", border: "1px solid #8b5cf6", borderRadius: 4 }}>
               {this.state.sugg.map(s => (
-                <div key={s} data-testid={`annot-sugg-${s}`} onMouseDown={(e) => { e.preventDefault(); this.insertVar(s); }}
+                <div key={s} data-testid={`annot-sugg-${s}`} onMouseDown={(e) => { e.preventDefault(); this.insertVariable(s); }}
                   style={{ padding: "2px 10px", cursor: "pointer", color: "#cbd0d8", fontSize: 12 }}>{s}</div>
               ))}
             </div>

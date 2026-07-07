@@ -1,4 +1,4 @@
-import { lineIdentifiers, insertAtCursor, filterCandidates } from "../lineIdentifiers";
+import { lineIdentifiers, insertAtCursor, filterCandidates, replaceRange } from "../lineIdentifiers";
 
 describe("lineIdentifiers", () => {
   test("extracts variable-like identifiers, drops keywords/types", () => {
@@ -20,6 +20,18 @@ describe("insertAtCursor", () => {
   });
   test("insert at end", () => {
     expect(insertAtCursor("hi", 2, "{n}")).toEqual({ text: "hi{n}", pos: 5 });
+  });
+});
+
+describe("replaceRange", () => {
+  test("replaces a partial `{na` token with the completed variable", () => {
+    expect(replaceRange("Look at {na", 8, 11, "{name}")).toEqual({ text: "Look at {name}", pos: 14 });
+  });
+  test("empty range behaves like an insert", () => {
+    expect(replaceRange("ab", 1, 1, "X")).toEqual({ text: "aXb", pos: 2 });
+  });
+  test("out-of-order/oob range clamps safely", () => {
+    expect(replaceRange("hi", 5, 1, "Z")).toEqual({ text: "hiZ", pos: 3 });
   });
 });
 
