@@ -32,6 +32,12 @@ export function replaceRange(text: string, from: number, to: number, insert: str
   return { text: text.slice(0, a) + insert + text.slice(b), pos: a + insert.length };
 }
 
+/** If an in-progress `{ident` token ends exactly at the caret, return the index of its `{`; else null. */
+export function activeTokenStart(textBeforeCaret: string): number | null {
+  const m = textBeforeCaret.match(/\{([A-Za-z0-9_]*)$/);
+  return m ? m.index! : null;
+}
+
 export function filterCandidates(prefix: string, candidates: string[]): string[] {
   const lp = prefix.toLowerCase();
   const out: string[] = [];

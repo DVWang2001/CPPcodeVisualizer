@@ -1,4 +1,4 @@
-import { lineIdentifiers, insertAtCursor, filterCandidates, replaceRange } from "../lineIdentifiers";
+import { lineIdentifiers, insertAtCursor, filterCandidates, replaceRange, activeTokenStart } from "../lineIdentifiers";
 
 describe("lineIdentifiers", () => {
   test("extracts variable-like identifiers, drops keywords/types", () => {
@@ -32,6 +32,21 @@ describe("replaceRange", () => {
   });
   test("out-of-order/oob range clamps safely", () => {
     expect(replaceRange("hi", 5, 1, "Z")).toEqual({ text: "hiZ", pos: 3 });
+  });
+});
+
+describe("activeTokenStart", () => {
+  test("in-progress token ending at caret returns its `{` index", () => {
+    expect(activeTokenStart("Look at {na")).toBe(8);
+  });
+  test("closed token (caret not inside it) returns null", () => {
+    expect(activeTokenStart("Look at {name} done")).toBeNull();
+  });
+  test("no brace at all returns null", () => {
+    expect(activeTokenStart("no brace here")).toBeNull();
+  });
+  test("bare `{` at end of text returns its index", () => {
+    expect(activeTokenStart("x {")).toBe(2);
   });
 });
 

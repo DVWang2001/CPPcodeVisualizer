@@ -1,6 +1,6 @@
 // gdbgui/src/js/LineAnnotationPanel.tsx
 import React from "react";
-import { insertAtCursor, filterCandidates, replaceRange } from "./lineIdentifiers";
+import { insertAtCursor, filterCandidates, replaceRange, activeTokenStart } from "./lineIdentifiers";
 
 export type LinePanelDraft = {
   guide: string; ttsSpeed: string; ttsContinue: boolean; ttsText: string;
@@ -12,10 +12,10 @@ type Props = {
   onToggleMode: () => void; onSave: () => void; onClose: () => void; onHeight: (px: number) => void;
 };
 
-export default class LineAnnotationPanel extends React.Component<Props, { sugg: string[]; triggerStart: number | null }> {
+export default class LineAnnotationPanel extends React.Component<Props, { sugg: string[] }> {
   root = React.createRef<HTMLDivElement>();
   guideRef = React.createRef<HTMLTextAreaElement>();
-  state = { sugg: [] as string[], triggerStart: null as number | null };
+  state = { sugg: [] as string[] };
 
   componentDidMount() { this.report(); this.guideRef.current?.focus(); }
   componentDidUpdate(prev: Props) { if (prev.mode !== this.props.mode) this.report(); }
@@ -23,12 +23,14 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
 
   insertVariable = (name: string) => {
     const ta = this.guideRef.current;
-    const pos = ta ? ta.selectionEnd ?? this.props.draft.guide.length : this.props.draft.guide.length;
-    const r = this.state.triggerStart !== null
-      ? replaceRange(this.props.draft.guide, this.state.triggerStart, pos, `{${name}}`)
-      : insertAtCursor(this.props.draft.guide, pos, `{${name}}`);
+    const pos = ta ? ta.selectionEnd : this.props.draft.guide.length;
+    const start = activeTokenStart(this.props.draft.guide.slice(0, pos));
+    const token = `{${name}}`;
+    const r = start !== null
+      ? replaceRange(this.props.draft.guide, start, pos, token)
+      : insertAtCursor(this.props.draft.guide, pos, token);
     this.props.onDraftChange({ guide: r.text });
-    this.setState({ sugg: [], triggerStart: null });
+    this.setState({ sugg: [] });
     requestAnimationFrame(() => { if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = r.pos; } });
   };
 
@@ -39,9 +41,9 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
     const upto = text.slice(0, e.target.selectionStart);
     const m = upto.match(/\{([A-Za-z0-9_]*)$/);
     if (m && this.props.mode === "advanced") {
-      this.setState({ sugg: filterCandidates(m[1], this.props.candidates).slice(0, 8), triggerStart: m.index ?? null });
+      this.setState({ sugg: filterCandidates(m[1], this.props.candidates).slice(0, 8) });
     } else {
-      this.setState({ sugg: [], triggerStart: null });
+      this.setState({ sugg: [] });
     }
   };
 
