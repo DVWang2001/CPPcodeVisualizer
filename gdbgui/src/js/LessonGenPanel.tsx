@@ -1,5 +1,5 @@
 import React from "react";
-import { LessonCfg, PRESETS, applyPreset, loadCfg, saveCfg, buildRequestBody } from "./lessonGen";
+import { LessonCfg, applyPreset, loadCfg, saveCfg, buildRequestBody } from "./lessonGen";
 
 type Props = { getSource: () => string; onApply: (code: string) => void; onClose: () => void };
 type State = {
@@ -17,6 +17,15 @@ const box: React.CSSProperties = {
 
 export default class LessonGenPanel extends React.Component<Props, State> {
   state: State = { cfg: loadCfg(), instruction: "", loading: false, error: "", preview: null };
+  _mounted = false;
+
+  componentDidMount() {
+    this._mounted = true;
+  }
+
+  componentWillUnmount() {
+    this._mounted = false;
+  }
 
   setCfg = (patch: Partial<LessonCfg>) => {
     const cfg = { ...this.state.cfg, ...patch };
@@ -44,11 +53,14 @@ export default class LessonGenPanel extends React.Component<Props, State> {
         body: JSON.stringify(buildRequestBody(this.state.cfg, source, this.state.instruction)),
       });
       const data = await resp.json();
+      if (!this._mounted) return;
       if (!resp.ok || data.message) throw new Error(data.message || `HTTP ${resp.status}`);
       this.setState({ preview: data.code });
     } catch (e: any) {
+      if (!this._mounted) return;
       this.setState({ error: e.message || String(e) });
     } finally {
+      if (!this._mounted) return;
       this.setState({ loading: false });
     }
   };

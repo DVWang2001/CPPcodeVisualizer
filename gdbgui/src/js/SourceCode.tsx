@@ -412,7 +412,6 @@ class SourceCode extends React.Component<{}, State> {
       dom.style.pointerEvents = "auto";
       dom.style.zIndex = "40";
       dom.onmousedown = (ev) => {
-        console.log("[annot] ✎ mousedown line=", this.annotWidgetLine);
         ev.preventDefault(); ev.stopPropagation();
         if (this.annotWidgetLine) this.openLinePanel(this.annotWidgetLine);
       };
@@ -690,7 +689,6 @@ class SourceCode extends React.Component<{}, State> {
 
   /** Open the inline view-zone panel for a line, pre-filled from that line's //@ annotation. */
   openLinePanel = (lineNum: number) => {
-    console.log("[annot] openLinePanel line=", lineNum);
     if (!this.editorInstance || !this.monaco) return;
     this.closeLinePanel();
     const model = this.editorInstance.getModel();
