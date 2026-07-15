@@ -41,6 +41,7 @@ from .http_util import (
     csrf_protect,
 )
 from .share_function import require_uploaded_binary
+from . import lesson_gen
 import uuid
 
 logger = logging.getLogger(__file__)
@@ -699,6 +700,20 @@ def help_route():
     return redirect("https://github.com/cs01/gdbgui/blob/master/HELP.md")
 
 
+@blueprint.route("/docs/authoring-guide")
+def authoring_guide():
+    # 給 AI agent / 老師取用的教案撰寫指南；不需登入，回傳原始 markdown
+    # root_path 是 gdbgui/server（app 建立於 gdbgui.server），repo root 在上兩層
+    p = Path(current_app.root_path).parents[1] / "AUTHORING_GUIDE.md"
+    if not p.exists():
+        return "AUTHORING_GUIDE.md not found", 404
+    return (
+        p.read_text(encoding="utf-8"),
+        200,
+        {"Content-Type": "text/markdown; charset=utf-8"},
+    )
+
+
 @blueprint.route("/dashboard", methods=["GET"])
 @authenticate
 def dashboard():
@@ -966,3 +981,84 @@ def explain_error():
         return jsonify({"error": f"解析 API 回應失敗：{e}"}), 502
 
     return jsonify({"explanation": explanation})
+
+
+# ── AI 生成教案 ──────────────────────────────────────────────────────────────
+
+def _as_str(value) -> str:
+    """把 JSON body 欄位安全轉成 str。
+
+    request.get_json() 的欄位型別完全由呼叫端決定（例如攻擊者可送
+    {"base_url": 123} 或 {"model": ["x"]}），而 lesson_gen 的函式
+    （validate_base_url / resolve_api_key / build_messages 的 instruction 參數）
+    內部呼叫 .strip()，只假設輸入是 str 或 None。若直接把非 str 值傳進去，
+    "truthy 非 str" 的值（如整數 123、非空 list）會在 .strip() 上丟出
+    AttributeError，變成未預期的 500 而非乾淨的 400。
+    這裡 fail-closed：非 str 一律視為空字串 ""，交由下游各自的空值分支處理
+    （validate_base_url("") → 預設 URL；resolve_api_key 空字串 → 略過該來源；
+    build_messages 空 instruction → 不附加額外指示）。
+    """
+    return value if isinstance(value, str) else ""
+
+
+@blueprint.route("/api/generate_lesson", methods=["POST"])
+@authenticate
+def generate_lesson():
+    """把 .cpp 原始碼與教案指南送給 OpenAI 相容模型，回傳帶 //@ 註解的版本。"""
+    if _requests is None:
+        return jsonify({"message": "伺服器缺少 requests 套件，請執行 pip install requests"}), 500
+
+    body = request.get_json(silent=True) or {}
+    source = body.get("source", "")
+    if not isinstance(source, str) or not source.strip():
+        return jsonify({"message": "source 不可為空"}), 400
+    if len(source.encode("utf-8")) > lesson_gen.MAX_SOURCE_BYTES:
+        return jsonify({"message": "原始碼超過 100 KB 上限"}), 400
+
+    base_url = lesson_gen.validate_base_url(_as_str(body.get("base_url", "")))
+    if base_url is None:
+        return jsonify({"message": "base_url 僅允許 https://"}), 400
+    model = _as_str(body.get("model")).strip() or lesson_gen.DEFAULT_MODEL
+    api_key = lesson_gen.resolve_api_key(_as_str(body.get("api_key", "")), os.environ)
+    if not api_key:
+        return jsonify(
+            {"message": "未提供 API key：請在面板填入，或於伺服器設定 LESSON_AI_API_KEY / NVIDIA_API_KEY"}
+        ), 400
+
+    guide_path = Path(current_app.root_path).parents[1] / "AUTHORING_GUIDE.md"
+    if not guide_path.exists():
+        return jsonify({"message": "伺服器找不到 AUTHORING_GUIDE.md"}), 500
+    guide_md = guide_path.read_text(encoding="utf-8")
+
+    try:
+        resp = _requests.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": lesson_gen.build_messages(
+                    guide_md, source, _as_str(body.get("instruction", ""))
+                ),
+                "max_tokens": 4096,
+                "temperature": 0.3,
+            },
+            timeout=120,
+        )
+    except Exception as e:
+        return jsonify({"message": f"呼叫模型 API 失敗：{e}"}), 502
+
+    if resp.status_code != 200:
+        return jsonify({"message": f"模型 API 回傳 {resp.status_code}：{resp.text[:300]}"}), 502
+
+    try:
+        raw = resp.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, ValueError) as e:
+        return jsonify({"message": f"解析模型回應失敗：{e}"}), 502
+
+    code = lesson_gen.strip_code_fences(raw)
+    if not code.strip():
+        return jsonify({"message": "模型未輸出程式碼"}), 502
+    return jsonify({"code": code})
