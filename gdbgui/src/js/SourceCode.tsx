@@ -909,9 +909,9 @@ class SourceCode extends React.Component<{}, State> {
     const model = this.editorInstance?.getModel?.();
     if (!model || !this.editorInstance) return;
     this.editorInstance.pushUndoStop();
-    this.editorInstance.executeEdits("ai-lesson-gen", [
-      { range: model.getFullModelRange(), text: code },
-    ]);
+    // Model-level edit (not editor.executeEdits, which is a no-op when the
+    // editor is readOnly) so apply works in play mode too, like saveLinePanel.
+    model.pushEditOperations([], [{ range: model.getFullModelRange(), text: code }], () => null);
     this.editorInstance.pushUndoStop();
   };
 

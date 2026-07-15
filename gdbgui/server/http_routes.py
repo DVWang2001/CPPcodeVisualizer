@@ -1019,7 +1019,17 @@ def generate_lesson():
     if base_url is None:
         return jsonify({"message": "base_url 僅允許 https://"}), 400
     model = _as_str(body.get("model")).strip() or lesson_gen.DEFAULT_MODEL
-    api_key = lesson_gen.resolve_api_key(_as_str(body.get("api_key", "")), os.environ)
+    request_api_key = _as_str(body.get("api_key", "")).strip()
+    if request_api_key:
+        api_key = request_api_key
+    elif lesson_gen.env_key_allowed(base_url):
+        api_key = lesson_gen.resolve_api_key("", os.environ)
+    else:
+        # 自訂（非預設）base_url 一律不得退回伺服器環境變數 key，
+        # 否則攻擊者可把伺服器金鑰以 Bearer 送到任意主機（金鑰外洩）。
+        return jsonify({
+            "message": "自訂 base_url 需在面板填入自己的 API key（伺服器金鑰僅限預設服務使用）"
+        }), 400
     if not api_key:
         return jsonify(
             {"message": "未提供 API key：請在面板填入，或於伺服器設定 LESSON_AI_API_KEY / NVIDIA_API_KEY"}

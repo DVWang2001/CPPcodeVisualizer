@@ -44,6 +44,17 @@ def validate_base_url(url):
     return u
 
 
+# 允許使用伺服器環境變數 key 的主機（防止自訂 base_url 竊取伺服器 key）
+ENV_KEY_BASE_URLS = frozenset({
+    DEFAULT_BASE_URL,
+    "https://api.mistral.ai/v1",
+})
+
+
+def env_key_allowed(base_url):
+    return base_url in ENV_KEY_BASE_URLS
+
+
 def resolve_api_key(request_key, environ):
     for candidate in (
         request_key,

@@ -47,3 +47,15 @@ def test_build_messages_shape():
 def test_build_messages_without_instruction():
     msgs = lesson_gen.build_messages("G", "code")
     assert "額外指示" not in msgs[1]["content"]
+
+
+def test_env_key_allowed_default_base_url():
+    assert lesson_gen.env_key_allowed(lesson_gen.DEFAULT_BASE_URL) is True
+
+
+def test_env_key_allowed_mistral_base_url():
+    assert lesson_gen.env_key_allowed("https://api.mistral.ai/v1") is True
+
+
+def test_env_key_allowed_rejects_arbitrary_host():
+    assert lesson_gen.env_key_allowed("https://evil.example.com/v1") is False
