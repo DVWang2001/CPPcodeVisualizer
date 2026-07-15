@@ -19,6 +19,7 @@ import { normalizeBundle } from "./bundleAdapter";
 import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
 import { lineIdentifiers } from "./lineIdentifiers";
+import LessonGenPanel from "./LessonGenPanel";
 
 type State = any;
 
@@ -47,6 +48,7 @@ class SourceCode extends React.Component<{}, State> {
         draft: LinePanelDraft;
         candidates: string[];
       },
+      showLessonGen: false,
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
@@ -121,6 +123,19 @@ class SourceCode extends React.Component<{}, State> {
   _autosaveTimer: any = null;
   panelZoneId: string | null = null;
   panelDomNode: HTMLDivElement | null = null;
+  annotWidget: any = null;
+  annotWidgetLine: number | null = null;
+
+  // Column the ✎ widget anchors to on a line: at the `//@` start if present,
+  // else just past the end of the code (where a new //@ would be added).
+  _annotWidgetColumn = (line: number): number => {
+    const model = this.editorInstance?.getModel();
+    if (!model) return 1;
+    const text = model.getLineContent(line);
+    const idx = text.indexOf("//@");
+    if (idx !== -1) return idx + 1;
+    return text.replace(/\s+$/, "").length + 2;
+  };
 
   refreshDirectiveDecorations = () => {
     if (!this.editorInstance || !this.monaco) return;
@@ -344,14 +359,10 @@ class SourceCode extends React.Component<{}, State> {
       }, 500);
     });
 
-    // In v3 we might need to listen to mouse events differently or it works the same on editor instance
+    // The ✎ annotation-edit affordance is a content widget (created below) that
+    // follows the hovered line; it handles its own click, so onMouseDown only
+    // needs the breakpoint gutter behaviour.
     editor.onMouseDown((e: any) => {
-      const el = e.target?.element as HTMLElement | undefined;
-      if (el && el.classList && el.classList.contains("gdbgui-annot-edit-glyph")) {
-        const lineNum = e.target.position ? e.target.position.lineNumber : null;
-        if (lineNum) this.openLinePanel(lineNum);
-        return; // handled — do not fall through to breakpoint toggle
-      }
       if (this.monaco && e.target.position) {
         const t = e.target.type;
         const M = this.monaco.editor.MouseTargetType;
@@ -364,27 +375,57 @@ class SourceCode extends React.Component<{}, State> {
     });
 
     editor.onMouseMove((e: any) => {
-      if (this.monaco && e.target.position) {
+      const pos = e.target && e.target.position;
+      // ✎ widget: reveal on ANY part of a line the mouse is over (content or gutter).
+      // When the mouse is over the widget itself, target.position is null, so the
+      // widget stays put on its line (and remains clickable).
+      if (pos && this.annotWidget && this.annotWidgetLine !== pos.lineNumber) {
+        this.annotWidgetLine = pos.lineNumber;
+        this.editorInstance.layoutContentWidget(this.annotWidget);
+      }
+      // breakpoint hover glyph: gutter only (unchanged)
+      if (this.monaco && pos) {
         const t = e.target.type;
         const M = this.monaco.editor.MouseTargetType;
         if (t === M.GUTTER_GLYPH_MARGIN || t === M.GUTTER_LINE_NUMBERS || t === M.GUTTER_LINE_DECORATIONS) {
-          const lineNum = e.target.position.lineNumber;
-          if (this.state.hoverLine !== lineNum) {
-            this.setState({ hoverLine: lineNum });
-          }
+          if (this.state.hoverLine !== pos.lineNumber) this.setState({ hoverLine: pos.lineNumber });
           return;
         }
       }
-      if (this.state.hoverLine !== null) {
-        this.setState({ hoverLine: null });
-      }
+      if (this.state.hoverLine !== null) this.setState({ hoverLine: null });
     });
 
     editor.onMouseLeave(() => {
-      if (this.state.hoverLine !== null) {
-        this.setState({ hoverLine: null });
+      if (this.annotWidgetLine !== null && this.annotWidget) {
+        this.annotWidgetLine = null;
+        this.editorInstance.layoutContentWidget(this.annotWidget);
       }
+      if (this.state.hoverLine !== null) this.setState({ hoverLine: null });
     });
+
+    // ✎ content widget — sits at the //@ start (or just past end of code) of the
+    // hovered line; clicking it opens that line's annotation panel.
+    {
+      const dom = document.createElement("span");
+      dom.className = "gdbgui-annot-edit-glyph";
+      dom.title = "編輯此行註釋 (guide / TTS / layout)";
+      dom.style.pointerEvents = "auto";
+      dom.style.zIndex = "40";
+      dom.onmousedown = (ev) => {
+        console.log("[annot] ✎ mousedown line=", this.annotWidgetLine);
+        ev.preventDefault(); ev.stopPropagation();
+        if (this.annotWidgetLine) this.openLinePanel(this.annotWidgetLine);
+      };
+      this.annotWidget = {
+        getId: () => "gdbgui.annot.edit.widget",
+        getDomNode: () => dom,
+        getPosition: () => (this.annotWidgetLine == null || !this.monaco) ? null : {
+          position: { lineNumber: this.annotWidgetLine, column: this._annotWidgetColumn(this.annotWidgetLine) },
+          preference: [this.monaco.editor.ContentWidgetPositionPreference.EXACT],
+        },
+      };
+      editor.addContentWidget(this.annotWidget);
+    }
   };
 
   updateDecorations = () => {
@@ -470,15 +511,6 @@ class SourceCode extends React.Component<{}, State> {
           },
         });
       }
-    }
-
-    // ✎ annotation-edit glyph — lives in the lines-decorations strip (not the glyph
-    // margin) so it coexists with breakpoint glyphs on the same line.
-    if (hoverLine !== null) {
-      newDecorations.push({
-        range: new this.monaco.Range(hoverLine, 1, hoverLine, 1),
-        options: { linesDecorationsClassName: "gdbgui-annot-edit-glyph" },
-      });
     }
 
     // Compile error/warning decorations and markers
@@ -658,6 +690,7 @@ class SourceCode extends React.Component<{}, State> {
 
   /** Open the inline view-zone panel for a line, pre-filled from that line's //@ annotation. */
   openLinePanel = (lineNum: number) => {
+    console.log("[annot] openLinePanel line=", lineNum);
     if (!this.editorInstance || !this.monaco) return;
     this.closeLinePanel();
     const model = this.editorInstance.getModel();
@@ -874,6 +907,16 @@ class SourceCode extends React.Component<{}, State> {
     }
   };
 
+  applyGeneratedCode = (code: string) => {
+    const model = this.editorInstance?.getModel?.();
+    if (!model || !this.editorInstance) return;
+    this.editorInstance.pushUndoStop();
+    this.editorInstance.executeEdits("ai-lesson-gen", [
+      { range: model.getFullModelRange(), text: code },
+    ]);
+    this.editorInstance.pushUndoStop();
+  };
+
   handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1037,10 +1080,17 @@ class SourceCode extends React.Component<{}, State> {
       const LINE_HEIGHT = Math.round(monacoFontSize * 1.5);
 
       return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", position: "relative" }}>
           <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <strong>{(this.state.fullname_to_render || "").split(/[\\/]/).pop() || this.state.fullname_to_render}</strong>
             <div>
+              <button
+                onClick={() => this.setState({ showLessonGen: !(this.state as any).showLessonGen } as any)}
+                className="btn btn-default btn-sm"
+                title="用 AI 模型為目前程式碼生成 //@ 教案註解"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                🤖 AI 生成教案
+              </button>
               <button
                 onClick={this.triggerImport}
                 className="btn btn-default btn-sm"
@@ -1069,6 +1119,16 @@ class SourceCode extends React.Component<{}, State> {
               </button>
             </div>
           </div>
+          {(this.state as any).showLessonGen && (
+            <LessonGenPanel
+              getSource={() => this.editorInstance?.getValue?.() || ""}
+              onApply={(code) => {
+                this.applyGeneratedCode(code);
+                this.setState({ showLessonGen: false } as any);
+              }}
+              onClose={() => this.setState({ showLessonGen: false } as any)}
+            />
+          )}
           <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", overflow: 'hidden' }}>
             <div style={{ flex: 1, height: "100%", position: 'relative' }}>
               <MonacoEditor
@@ -1084,7 +1144,6 @@ class SourceCode extends React.Component<{}, State> {
                   extraEditorClassName: this.state.edit_mode ? '' : 'gdbgui-readonly-editor',
                   glyphMargin: true,
                   lineNumbers: 'on',
-                  lineDecorationsWidth: 18,
                   scrollBeyondLastLine: false,
                   automaticLayout: true,
                   fontFamily: "monospace",
