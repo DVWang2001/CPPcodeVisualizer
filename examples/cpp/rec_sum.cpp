@@ -13,7 +13,7 @@ int sum(int n) {                       //@ @guide 進入 sum(n={n}) @tts [next] 
     return result;                     //@ @guide 得到 {result} @tts [next] 得到 {result}，把它交回給上一層
 }                                      //@ @tts [next] 這一層結束，沿著呼叫樹往上歸
 int main() {
-    int total = sum(4);                //@ @guide 從 main 呼叫 sum(4) @tts [next] 遞迴全部結束，回到 main @layout sidebar:45 open:callgraph
+    int total = sum(4);                //@ @guide 從 main 呼叫 sum(4) @tts [next] 從 main 出發，呼叫 sum(4) | @2 [next] 遞迴全部結束，回到 main @layout sidebar:45 open:callgraph
     std::cout << total << std::endl;   //@ @guide 最終答案 {total} @tts [next] 印出最終答案 {total}
     return 0;                          //@ @tts [continue] 教案播放完畢
 }

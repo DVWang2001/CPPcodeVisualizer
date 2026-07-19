@@ -12,7 +12,7 @@ int sumTail(int n, int acc) {          //@ @guide 進入 sumTail(n={n}, acc={acc
     return result;                     //@ @tts [next] 這一層不做任何計算，直接轉交 {result}
 }                                      //@ @tts [next] 沿呼叫樹往上，每一層都是同一個綠色數字
 int main() {
-    int total = sumTail(4, 0);         //@ @guide 對照教案 #1：這次答案在下坡路上算 @tts [next] 回到 main @layout sidebar:45 open:callgraph
+    int total = sumTail(4, 0);         //@ @guide 對照教案 #1：這次答案在下坡路上算 @tts [next] 從 main 出發，呼叫 sumTail(4, 0) | @2 [next] 遞迴全部結束，回到 main @layout sidebar:45 open:callgraph
     std::cout << total << std::endl;   //@ @guide 最終答案 {total} @tts [next] 印出最終答案 {total}
     return 0;                          //@ @tts [continue] 教案播放完畢
 }
