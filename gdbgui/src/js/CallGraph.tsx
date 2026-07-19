@@ -175,6 +175,35 @@ class CallGraph extends React.Component<{}, CallGraphState> {
             ? ((gv.__active_path as number[]) || []).filter(id => posById.get(id)?.func === activeNode.func).length
             : 0;
 
+        // Call-site labels: L<line>, with ①② ordinals when siblings share a line.
+        const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥"];
+        const siteLabels = new Map<string, string>();
+        {
+            const kidsByParent = new Map<number, Placed[]>();
+            placed.forEach(p => {
+                if (p.parentInvId == null) return;
+                if (!kidsByParent.has(p.parentInvId)) kidsByParent.set(p.parentInvId, []);
+                kidsByParent.get(p.parentInvId)!.push(p);
+            });
+            kidsByParent.forEach(children => {
+                const byLine = new Map<string, Placed[]>();
+                children.forEach(c => {
+                    if (c.callSiteLine == null || c.callSiteLine === "") return;
+                    const L = String(c.callSiteLine);
+                    if (!byLine.has(L)) byLine.set(L, []);
+                    byLine.get(L)!.push(c);
+                });
+                byLine.forEach((sibs, L) => {
+                    sibs.sort((a, b) =>
+                        parseInt(String(a.callSiteAddr ?? "0"), 16) - parseInt(String(b.callSiteAddr ?? "0"), 16));
+                    sibs.forEach((c, i) => {
+                        siteLabels.set(`${c.parentInvId}->${c.invId}`,
+                            sibs.length > 1 ? `L${L}${CIRCLED[i] ?? i + 1}` : `L${L}`);
+                    });
+                });
+            });
+        }
+
         return (
             <div style={{ width: "100%", padding: "6px" }}>
                 <div
@@ -203,12 +232,24 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                 const x1 = a.x + NODE_W / 2, y1 = a.y + NODE_H;
                                 const x2 = b.x + NODE_W / 2, y2 = b.y;
                                 return (
-                                    <line
-                                        key={e.id} x1={x1} y1={y1} x2={x2} y2={y2 - 7}
-                                        stroke={onPath ? "var(--accent)" : "var(--struct-border)"}
-                                        strokeWidth={onPath ? 2 : 1}
-                                        markerEnd={`url(#${onPath ? "cg-arrow-active" : "cg-arrow"})`}
-                                    />
+                                    <g key={e.id}>
+                                        <line
+                                            x1={x1} y1={y1} x2={x2} y2={y2 - 7}
+                                            stroke={onPath ? "var(--accent)" : "var(--struct-border)"}
+                                            strokeWidth={onPath ? 2 : 1}
+                                            markerEnd={`url(#${onPath ? "cg-arrow-active" : "cg-arrow"})`}
+                                        />
+                                        {siteLabels.get(e.id) && (
+                                            <text
+                                                x={x1 + (x2 - x1) * 0.35 + 5}
+                                                y={y1 + (y2 - y1) * 0.35}
+                                                fill="var(--ink-faint)" fontSize={10}
+                                                fontFamily="var(--font-mono)"
+                                            >
+                                                {siteLabels.get(e.id)}
+                                            </text>
+                                        )}
+                                    </g>
                                 );
                             })}
                             {((gv.__just_returned as number[]) || []).map(id => {
