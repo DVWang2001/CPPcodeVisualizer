@@ -18,11 +18,17 @@ const CUSTOM_COLORS: Record<string, string> = {
     blue: "#4F46E5",
 };
 
+// Same function + same argument values = the same subproblem.
+function argKey(node: CallNode): string {
+    return `${node.func}(${(node.args || []).map(a => String(a.value)).join(",")})`;
+}
+
 type CallGraphState = {
     call_graph_updated: number;
     locals: any[];
     paused_on_frame: any;
     expressions: any[];
+    hoverKey: string | null;
 };
 
 type Placed = CallNode & { x: number; y: number };
@@ -33,7 +39,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
 
     constructor(props: any) {
         super(props);
-        this.state = { call_graph_updated: 0, locals: [], paused_on_frame: null, expressions: [] };
+        this.state = { call_graph_updated: 0, locals: [], paused_on_frame: null, expressions: [], hoverKey: null };
         // @ts-expect-error statorgfc augmentation
         store.connectComponentState(this, ["call_graph_updated", "locals", "paused_on_frame", "expressions"]);
     }
@@ -161,6 +167,14 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                 .map((l: any) => ({ name: l.name, value: this.expand(activeNode.func, l.name, l.value) }));
         }
 
+        // Repeated-subproblem index and recursion depth — recomputed per render (≤30 nodes).
+        const keyCounts = new Map<string, number>();
+        placed.forEach(p => keyCounts.set(argKey(p), (keyCounts.get(argKey(p)) || 0) + 1));
+        const currentKey = activeNode ? argKey(activeNode) : null;
+        const recDepth = activeNode
+            ? ((gv.__active_path as number[]) || []).filter(id => posById.get(id)?.func === activeNode.func).length
+            : 0;
+
         return (
             <div style={{ width: "100%", padding: "6px" }}>
                 <div
@@ -217,6 +231,10 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                             const isCurrent = node.invId === activeNodeId;
                             const onPath = activeSet.has(node.invId) && !isCurrent;
                             const { lines, color, ret } = this.resolveLabel(node, isCurrent);
+                            const k = argKey(node);
+                            const twins = (keyCounts.get(k) || 0) > 1;
+                            const isTwin = this.state.hoverKey === k && twins;
+                            const isRepeatHit = twins && !isCurrent && node.returned && currentKey === k;
 
                             let style: React.CSSProperties;
                             if (color) {
@@ -237,6 +255,9 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                     data-invid={node.invId}
                                     data-state={isCurrent ? "current" : onPath ? "active" : node.returned ? "returned" : "live"}
                                     data-ret={node.retValue}
+                                    data-argkey={k}
+                                    onMouseEnter={() => this.setState({ hoverKey: k })}
+                                    onMouseLeave={() => this.setState({ hoverKey: null })}
                                     onClick={() => {
                                         const line = Number(node.line);
                                         const nav = (window as any).gdbgui_navigate_to_error;
@@ -251,6 +272,8 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                         overflow: "hidden", transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
                                         cursor: "pointer",
                                         ...style,
+                                        ...(isTwin ? { outline: "2px dashed var(--highlight)", outlineOffset: 2 } : {}),
+                                        ...(isRepeatHit ? { outline: "2px solid #DC5B5B", outlineOffset: 2, boxShadow: "0 0 6px rgba(220,91,91,0.5)" } : {}),
                                     }}
                                 >
                                     {lines.map((l, i) => (
@@ -263,6 +286,20 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                     {ret && (
                                         <span style={{ color: "#3AA76D", fontWeight: 700, fontSize: "0.9em", whiteSpace: "nowrap" }}>
                                             {ret}
+                                        </span>
+                                    )}
+                                    {twins && (
+                                        <span style={{
+                                            position: "absolute", top: 1, right: 3, background: "#DC5B5B",
+                                            color: "#fff", fontSize: 10, fontWeight: 700,
+                                            borderRadius: 8, padding: "0 5px", lineHeight: "15px",
+                                        }}>
+                                            ×{keyCounts.get(k)}
+                                        </span>
+                                    )}
+                                    {isCurrent && recDepth > 1 && (
+                                        <span style={{ fontSize: "0.78em", color: "var(--ink-soft)" }}>
+                                            第 {recDepth} 層
                                         </span>
                                     )}
                                 </div>
