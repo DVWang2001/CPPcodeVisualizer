@@ -825,6 +825,15 @@ const GdbApi = {
       // TODO run -thread-list-ids to store list of thread id's and know
       // which thread is the current thread
       constants.IGNORE_ERRORS_TOKEN_STR + "-thread-info",
+      // List the frames currently on the stack.
+      // MUST come before -stack-list-variables: MI responses arrive FIFO, and
+      // Threads.update_stack (driven by this response) advances gv.__active_path
+      // and freezes returning nodes' retValue from their still-clean lastResult.
+      // If -stack-list-variables' response were ingested first, Locals.save_locals
+      // would attribute the new (parent) frame's locals to the stale __active_path
+      // from the previous pause, clobbering a child node's lastResult right before
+      // it gets frozen as retValue (see callTree.ts ingestStack/recordResultLocal).
+      constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-frames",
       // print the name, type and value for simple data types,
       // and the name and type for arrays, structures and unions.
       constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-variables --simple-values",
@@ -843,9 +852,6 @@ const GdbApi = {
     // refresh breakpoints
     cmds.push(GdbApi.get_break_list_cmd());
 
-    // List the frames currently on the stack.
-    // avoid the "no registers" error
-    cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-frames");
     return cmds;
   },
   refresh_breakpoints: function () {

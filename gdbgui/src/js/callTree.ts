@@ -160,6 +160,12 @@ export function recordResultLocal(
     if (!local) return;
     for (const node of tree.bySig.values()) {
         if (node.invId === invId) {
+            // A frozen (returned) invocation must never be overwritten by locals
+            // from a later pause — those belong to whatever frame is now active
+            // at this call site, not the invocation that already returned. If the
+            // same call site is re-entered (a loop), ingestStack flips `returned`
+            // back to false first, so this guard does not block legitimate updates.
+            if (node.returned) return;
             node.lastResult = String(local.value);
             return;
         }

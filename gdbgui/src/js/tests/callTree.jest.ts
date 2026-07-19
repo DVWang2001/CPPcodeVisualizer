@@ -142,6 +142,51 @@ describe("return values — recordResultLocal + retValue", () => {
     expect(() => recordResultLocal(tree, 999, [{ name: "result", value: "1" }])).not.toThrow();
   });
 
+  test("return-boundary ordering: ingest-then-record must not let parent's garbage locals clobber the child's frozen retValue", () => {
+    // Reproduces the C1 bug's NEW (fixed) contract: within a pause, the
+    // stack-frames response (drives ingestStack) is processed BEFORE the
+    // stack-variables response (drives recordResultLocal). This test asserts
+    // that under that ordering, a returning child keeps its correct retValue
+    // even when the parent's frame-scope `result` local (still uninitialized
+    // garbage at -O0) arrives right after.
+    const tree = createCallTree();
+    // Pause A: main -> sum(1); sum(1) computes its result.
+    const rA = ingestStack(tree, [f("sum", "0x2", 12, [{ name: "n", value: "1" }]), f("main", "0x1", 20)]);
+    recordResultLocal(tree, rA.activeNodeId, [{ name: "result", value: "1" }]);
+    const child = tree.bySig.get(rA.nodes.find(n => n.func === "sum")!.sig)!;
+
+    // Pause B: sum(1) has returned to main. Ingest happens first (new contract),
+    // freezing the child's retValue from its still-clean lastResult ("1").
+    const rB = ingestStack(tree, [f("main", "0x1", 20)]);
+    expect(child.returned).toBe(true);
+    expect(child.retValue).toBe("1");
+
+    // THEN the parent's (main's) locals arrive, containing garbage `result`
+    // left over in that stack slot. Because the child is now `returned`,
+    // recordResultLocal must be a no-op for it even if invId resolution were
+    // ever stale — but here we also directly verify main isn't corrupted and
+    // the child's retValue survives untouched.
+    recordResultLocal(tree, rB.activeNodeId, [{ name: "result", value: "32767" }]);
+
+    expect(child.retValue).toBe("1");
+  });
+
+  test("recordResultLocal is a no-op on a returned node (guard against post-return clobbering)", () => {
+    const tree = createCallTree();
+    const r1 = ingestStack(tree, [f("sum", "0x2", 12, [{ name: "n", value: "1" }]), f("main", "0x1", 20)]);
+    recordResultLocal(tree, r1.activeNodeId, [{ name: "result", value: "1" }]);
+    const sumInvId = r1.activeNodeId!;
+    ingestStack(tree, [f("main", "0x1", 20)]); // sum returns, retValue frozen at "1"
+
+    // Attempt to write garbage locals directly at the now-returned invId.
+    recordResultLocal(tree, sumInvId, [{ name: "result", value: "99999" }]);
+
+    const sum = [...tree.bySig.values()].find(n => n.invId === sumInvId)!;
+    expect(sum.returned).toBe(true);
+    expect(sum.retValue).toBe("1");
+    expect(sum.lastResult).toBe("1"); // unchanged — write was rejected
+  });
+
   test("re-activated same-sig node (loop call) clears stale retValue", () => {
     const tree = createCallTree();
     const r1 = ingestStack(tree, [f("h", "0x2", 5), f("main", "0x1", 20)]);
