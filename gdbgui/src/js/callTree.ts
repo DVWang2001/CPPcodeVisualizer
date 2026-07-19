@@ -35,6 +35,8 @@ export type CallNode = {
     returned: boolean;
     lastResult?: string;   // result 變數的最新緩存（活著時持續覆寫）
     retValue?: string;     // 返回瞬間定格的回傳值
+    callSiteLine?: string | number;  // 父 frame 建立當下停駐的行 = 呼叫行
+    callSiteAddr?: string;           // 呼叫指令的返回位址（同行多呼叫的排序鍵）
 };
 
 export type CallEdge = { id: string; from: number; to: number };
@@ -97,6 +99,8 @@ export function ingestStack(tree: CallTree, stack: Frame[]): IngestResult {
                 line: frame.line ?? "",
                 parentInvId,
                 returned: false,
+                callSiteLine: i < L - 1 ? stack[i + 1].line : undefined,
+                callSiteAddr: i < L - 1 ? stack[i + 1].addr : undefined,
             };
             tree.bySig.set(sig, node);
         } else {

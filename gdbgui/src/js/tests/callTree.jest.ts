@@ -211,3 +211,38 @@ describe("resolveSelectedInvId", () => {
     expect(resolveSelectedInvId([1], 5)).toBeNull();
   });
 });
+
+describe("call-site fields", () => {
+    const f = (func: string, addr: string, line: number, args: Frame["args"] = []): Frame =>
+        ({ func, addr, line, args });
+
+    test("child node captures parent's line/addr at creation; root has none", () => {
+        const tree = createCallTree();
+        const r = ingestStack(tree, [f("fib", "0x30", 5), f("main", "0x10", 16)]);
+        const root = r.nodes.find(n => n.func === "main")!;
+        const child = r.nodes.find(n => n.func === "fib")!;
+        expect(root.callSiteLine).toBeUndefined();
+        expect(root.callSiteAddr).toBeUndefined();
+        expect(child.callSiteLine).toBe(16);
+        expect(child.callSiteAddr).toBe("0x10");
+    });
+
+    test("same-line siblings share callSiteLine but differ in callSiteAddr", () => {
+        const tree = createCallTree();
+        // fib(3) at line 11 calls fib(2) [ret addr 0xa1]
+        ingestStack(tree, [f("fib", "0x30", 5, [{ name: "n", value: "2" }]), f("fib", "0xa1", 11), f("main", "0x10", 16)]);
+        ingestStack(tree, [f("fib", "0xa1", 11), f("main", "0x10", 16)]);
+        // same source line 11, second call instruction [ret addr 0xa2]
+        const r = ingestStack(tree, [f("fib", "0x30", 5, [{ name: "n", value: "1" }]), f("fib", "0xa2", 11), f("main", "0x10", 16)]);
+        const sibs = r.nodes.filter(n => n.callSiteLine === 11 && n.func === "fib" && n.parentInvId != null && n.callSiteAddr !== "0x10");
+        expect(sibs.length).toBe(2);
+        expect(new Set(sibs.map(s => s.callSiteAddr))).toEqual(new Set(["0xa1", "0xa2"]));
+    });
+
+    test("call-site fields do not change on later snapshots of the same invocation", () => {
+        const tree = createCallTree();
+        ingestStack(tree, [f("g", "0x30", 5), f("main", "0x10", 16)]);
+        const r = ingestStack(tree, [f("g", "0x30", 6), f("main", "0x10", 16)]);
+        expect(r.nodes.find(n => n.func === "g")!.callSiteLine).toBe(16);
+    });
+});
