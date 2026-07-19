@@ -256,6 +256,7 @@ class Threads extends React.Component<{}, ThreadsState> {
       global_variable.__call_graph_edges = result.edges;
       global_variable.__active_node_id = result.activeNodeId;
       global_variable.__active_path = result.activePath;
+      global_variable.__just_returned = result.justReturned;
 
       // Trigger a re-render signal for CallGraph
       store.set("call_graph_updated", Date.now());

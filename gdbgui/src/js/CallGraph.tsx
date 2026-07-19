@@ -59,7 +59,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
     }
 
     // Resolve the text + optional color override for one node.
-    private resolveLabel(node: CallNode, isActive: boolean): { lines: string[]; color: string | null } {
+    private resolveLabel(node: CallNode, isActive: boolean): { lines: string[]; color: string | null; ret: string | null } {
         const gv = (window as any).gdbgui_global_variable || {};
         const argsStr = (node.args || [])
             .map((a: any) => `${a.name}=${this.expand(node.func, a.name, a.value)}`)
@@ -87,7 +87,8 @@ class CallGraph extends React.Component<{}, CallGraphState> {
             lines = [`[${labelName}]`, ...extra];
             if (data.color) color = CUSTOM_COLORS[String(data.color).toLowerCase()] || data.color;
         }
-        return { lines, color };
+        const ret = node.returned && node.retValue !== undefined ? `⇒ ${node.retValue}` : null;
+        return { lines, color, ret };
     }
 
     private layout(nodes: CallNode[]): { placed: Placed[]; width: number; height: number } {
@@ -196,12 +197,26 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                     />
                                 );
                             })}
+                            {((gv.__just_returned as number[]) || []).map(id => {
+                                const n = posById.get(id);
+                                if (!n || n.parentInvId == null || n.retValue === undefined) return null;
+                                const p = posById.get(n.parentInvId);
+                                if (!p) return null;
+                                const mx = (n.x + p.x) / 2 + NODE_W / 2 + 6;
+                                const my = (n.y + p.y + NODE_H) / 2 + 4;
+                                return (
+                                    <text key={`ret-${id}`} x={mx} y={my} fill="#3AA76D"
+                                        fontWeight={700} fontSize={12} fontFamily="var(--font-mono)">
+                                        {`↑${n.retValue}`}
+                                    </text>
+                                );
+                            })}
                         </svg>
 
                         {placed.map(node => {
                             const isCurrent = node.invId === activeNodeId;
                             const onPath = activeSet.has(node.invId) && !isCurrent;
-                            const { lines, color } = this.resolveLabel(node, isCurrent);
+                            const { lines, color, ret } = this.resolveLabel(node, isCurrent);
 
                             let style: React.CSSProperties;
                             if (color) {
@@ -219,6 +234,9 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                     key={node.invId}
                                     ref={isCurrent ? this.activeRef : undefined}
                                     title={lines.join("\n")}
+                                    data-invid={node.invId}
+                                    data-state={isCurrent ? "current" : onPath ? "active" : node.returned ? "returned" : "live"}
+                                    data-ret={node.retValue}
                                     style={{
                                         position: "absolute", left: `${node.x}px`, top: `${node.y}px`,
                                         width: `${NODE_W}px`, minHeight: `${NODE_H}px`, boxSizing: "border-box",
@@ -236,6 +254,11 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                             opacity: i === 0 ? 1 : 0.8,
                                         }}>{l}</span>
                                     ))}
+                                    {ret && (
+                                        <span style={{ color: "#3AA76D", fontWeight: 700, fontSize: "0.9em", whiteSpace: "nowrap" }}>
+                                            {ret}
+                                        </span>
+                                    )}
                                 </div>
                             );
                         })}
