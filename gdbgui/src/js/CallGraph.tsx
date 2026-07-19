@@ -237,6 +237,11 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                     data-invid={node.invId}
                                     data-state={isCurrent ? "current" : onPath ? "active" : node.returned ? "returned" : "live"}
                                     data-ret={node.retValue}
+                                    onClick={() => {
+                                        const line = Number(node.line);
+                                        const nav = (window as any).gdbgui_navigate_to_error;
+                                        if (line > 0 && typeof nav === "function") nav(line, 1);
+                                    }}
                                     style={{
                                         position: "absolute", left: `${node.x}px`, top: `${node.y}px`,
                                         width: `${NODE_W}px`, minHeight: `${NODE_H}px`, boxSizing: "border-box",
@@ -244,6 +249,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                         fontSize: "0.78em", lineHeight: 1.35, textAlign: "center",
                                         display: "flex", flexDirection: "column", justifyContent: "center",
                                         overflow: "hidden", transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
+                                        cursor: "pointer",
                                         ...style,
                                     }}
                                 >
