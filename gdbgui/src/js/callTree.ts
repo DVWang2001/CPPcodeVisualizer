@@ -33,6 +33,8 @@ export type CallNode = {
     line: string | number;
     parentInvId: number | null;
     returned: boolean;
+    lastResult?: string;   // result 變數的最新緩存（活著時持續覆寫）
+    retValue?: string;     // 返回瞬間定格的回傳值
 };
 
 export type CallEdge = { id: string; from: number; to: number };
@@ -47,6 +49,7 @@ export type IngestResult = {
     edges: CallEdge[];
     activeNodeId: number | null;
     activePath: number[];       // live stack, root → top
+    justReturned: number[];     // invIds that flipped to returned in this snapshot
 };
 
 export function createCallTree(): CallTree {
@@ -60,7 +63,7 @@ export function createCallTree(): CallTree {
 export function ingestStack(tree: CallTree, stack: Frame[]): IngestResult {
     const L = stack.length;
     if (L === 0) {
-        return { nodes: [...tree.bySig.values()], edges: buildEdges(tree), activeNodeId: null, activePath: [] };
+        return { nodes: [...tree.bySig.values()], edges: buildEdges(tree), activeNodeId: null, activePath: [], justReturned: [] };
     }
 
     // Signatures, computed bottom-up so each frame can reference its parent's.
@@ -97,6 +100,11 @@ export function ingestStack(tree: CallTree, stack: Frame[]): IngestResult {
             };
             tree.bySig.set(sig, node);
         } else {
+            if (node.returned) {
+                // Same call site invoked again (loop) — stale value must not leak.
+                node.retValue = undefined;
+                node.lastResult = undefined;
+            }
             node.line = frame.line ?? node.line;
             if (frame.args && frame.args.length > 0) node.args = frame.args;
         }
@@ -105,8 +113,14 @@ export function ingestStack(tree: CallTree, stack: Frame[]): IngestResult {
     }
 
     // Any node not on the current stack has returned; live ones have not.
+    const justReturned: number[] = [];
     for (const node of tree.bySig.values()) {
-        node.returned = !liveInvIds.has(node.invId);
+        const nowReturned = !liveInvIds.has(node.invId);
+        if (nowReturned && !node.returned) {
+            node.retValue = node.lastResult;
+            justReturned.push(node.invId);
+        }
+        node.returned = nowReturned;
     }
 
     const activePath: number[] = [];
@@ -117,6 +131,7 @@ export function ingestStack(tree: CallTree, stack: Frame[]): IngestResult {
         edges: buildEdges(tree),
         activeNodeId: pathBottomUp[0],
         activePath,
+        justReturned,
     };
 }
 
@@ -128,4 +143,35 @@ function buildEdges(tree: CallTree): CallEdge[] {
         }
     }
     return edges;
+}
+
+/**
+ * Cache the teaching-convention `result` local onto one invocation. Called
+ * whenever fresh locals arrive; the value is frozen into `retValue` at the
+ * moment the invocation returns (see ingestStack).
+ */
+export function recordResultLocal(
+    tree: CallTree,
+    invId: number | null,
+    locals: Array<{ name: string; value: any }>
+): void {
+    if (invId == null || !locals) return;
+    const local = locals.find(l => l.name === "result");
+    if (!local) return;
+    for (const node of tree.bySig.values()) {
+        if (node.invId === invId) {
+            node.lastResult = String(local.value);
+            return;
+        }
+    }
+}
+
+/** Map gdbgui's selected_frame_num (0 = top) onto the activePath (root → top). */
+export function resolveSelectedInvId(
+    activePath: number[],
+    selectedFrameNum: number
+): number | null {
+    if (!activePath || activePath.length === 0) return null;
+    const idx = activePath.length - 1 - (selectedFrameNum || 0);
+    return idx >= 0 && idx < activePath.length ? activePath[idx] : null;
 }

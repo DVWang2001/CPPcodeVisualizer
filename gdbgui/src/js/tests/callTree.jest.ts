@@ -1,4 +1,4 @@
-import { createCallTree, ingestStack, Frame } from "../callTree";
+import { createCallTree, ingestStack, Frame, recordResultLocal, resolveSelectedInvId } from "../callTree";
 
 // Stacks are top-first: stack[0] = innermost frame, last = main.
 const f = (func: string, addr: string, line: number, args: any[] = []): Frame => ({ func, addr, line, args });
@@ -99,4 +99,70 @@ describe("ingestStack — edges", () => {
         expect(r.edges[0].from).toBe(r.nodes.find(n => n.func === "main")!.invId);
         expect(r.edges[0].to).toBe(r.nodes.find(n => n.func === "a")!.invId);
     });
+});
+
+describe("return values — recordResultLocal + retValue", () => {
+  const f = (func: string, addr: string, line: number, args: Frame["args"] = []): Frame =>
+    ({ func, addr, line, args });
+
+  test("cached result is stamped as retValue when the node returns", () => {
+    const tree = createCallTree();
+    ingestStack(tree, [f("sum", "0x2", 12, [{ name: "n", value: "2" }]), f("main", "0x1", 20)]);
+    const r1 = ingestStack(tree, [f("sum", "0x2", 13, [{ name: "n", value: "2" }]), f("main", "0x1", 20)]);
+    recordResultLocal(tree, r1.activeNodeId, [{ name: "result", value: "3" }]);
+    const r2 = ingestStack(tree, [f("main", "0x1", 20)]);
+    const sum = r2.nodes.find(n => n.func === "sum")!;
+    expect(sum.returned).toBe(true);
+    expect(sum.retValue).toBe("3");
+    expect(r2.justReturned).toEqual([sum.invId]);
+  });
+
+  test("no `result` local → retValue stays undefined, node just dims", () => {
+    const tree = createCallTree();
+    const r1 = ingestStack(tree, [f("g", "0x2", 5), f("main", "0x1", 20)]);
+    recordResultLocal(tree, r1.activeNodeId, [{ name: "x", value: "9" }]);
+    const r2 = ingestStack(tree, [f("main", "0x1", 20)]);
+    const g = r2.nodes.find(n => n.func === "g")!;
+    expect(g.returned).toBe(true);
+    expect(g.retValue).toBeUndefined();
+  });
+
+  test("justReturned lists only nodes flipped in this snapshot", () => {
+    const tree = createCallTree();
+    ingestStack(tree, [f("a", "0x2", 5), f("main", "0x1", 20)]);
+    const r2 = ingestStack(tree, [f("main", "0x1", 20)]); // a returns
+    expect(r2.justReturned.length).toBe(1);
+    const r3 = ingestStack(tree, [f("main", "0x1", 21)]); // nothing new returns
+    expect(r3.justReturned).toEqual([]);
+  });
+
+  test("recordResultLocal tolerates null/unknown invId", () => {
+    const tree = createCallTree();
+    expect(() => recordResultLocal(tree, null, [{ name: "result", value: "1" }])).not.toThrow();
+    expect(() => recordResultLocal(tree, 999, [{ name: "result", value: "1" }])).not.toThrow();
+  });
+
+  test("re-activated same-sig node (loop call) clears stale retValue", () => {
+    const tree = createCallTree();
+    const r1 = ingestStack(tree, [f("h", "0x2", 5), f("main", "0x1", 20)]);
+    recordResultLocal(tree, r1.activeNodeId, [{ name: "result", value: "7" }]);
+    ingestStack(tree, [f("main", "0x1", 20)]);           // h returns, retValue=7
+    const r3 = ingestStack(tree, [f("h", "0x2", 5), f("main", "0x1", 20)]); // same call site again
+    const h = r3.nodes.find(n => n.func === "h")!;
+    expect(h.returned).toBe(false);
+    expect(h.retValue).toBeUndefined();
+  });
+});
+
+describe("resolveSelectedInvId", () => {
+  test("frame 0 (top) maps to last element of activePath", () => {
+    expect(resolveSelectedInvId([1, 2, 3], 0)).toBe(3);
+  });
+  test("deeper selected frame walks toward the root", () => {
+    expect(resolveSelectedInvId([1, 2, 3], 2)).toBe(1);
+  });
+  test("empty path or out-of-range returns null", () => {
+    expect(resolveSelectedInvId([], 0)).toBeNull();
+    expect(resolveSelectedInvId([1], 5)).toBeNull();
+  });
 });
