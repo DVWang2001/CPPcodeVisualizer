@@ -6,6 +6,7 @@
 import React from "react";
 import { store } from "statorgfc";
 import GdbVariable from "./GdbVariable";
+import { recordResultLocal, resolveSelectedInvId } from "./callTree";
 
 class Locals extends React.Component {
   constructor() {
@@ -83,6 +84,16 @@ class Locals extends React.Component {
       return local;
     });
     store.set("locals", locals_with_meta);
+    // Teaching convention (spec F1): a local named `result` is this frame's
+    // eventual return value — cache it on the matching call-tree invocation.
+    const gv = (window as any).gdbgui_global_variable;
+    if (gv && gv.__call_tree) {
+      const invId = resolveSelectedInvId(
+        gv.__active_path || [],
+        parseInt(store.get("selected_frame_num")) || 0
+      );
+      recordResultLocal(gv.__call_tree, invId, locals_with_meta);
+    }
   }
   static can_local_be_expanded(local: any) {
     // gdb returns list of locals. We may want to turn that local into a GdbVariable
