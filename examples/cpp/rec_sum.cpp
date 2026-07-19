@@ -9,8 +9,8 @@ int sum(int n) {                       //@ @guide 進入 sum(n={n}) @tts [next] 
         return result;                 //@ @tts [next] 把 1 交回給上一層，注意看呼叫樹出現的綠色數字
     }
     int rest = sum(n - 1);             //@ @guide 先算 sum({n}-1)，這一層等它 @tts [step-in] 這一層先暫停，往下呼叫 sum {n} 減 1 | @4 [next] 下一層的答案回來了，繼續往下走
-    result = n + rest;                 //@ @guide result = {n} + {rest} = {result} @tts [next] 下層算出 {rest}，加上自己的 {n} 得到 {result}
-    return result;                     //@ @tts [next] 把 {result} 交回給上一層
+    result = n + rest;                 //@ @guide result = {n} + {rest} @tts [next] 下層算出 {rest}，把自己的 {n} 加上去
+    return result;                     //@ @guide 得到 {result} @tts [next] 得到 {result}，把它交回給上一層
 }                                      //@ @tts [next] 這一層結束，沿著呼叫樹往上歸
 int main() {
     int total = sum(4);                //@ @guide 從 main 呼叫 sum(4) @tts [next] 遞迴全部結束，回到 main @layout sidebar:45 open:callgraph
