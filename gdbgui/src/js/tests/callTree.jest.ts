@@ -212,6 +212,19 @@ describe("resolveSelectedInvId", () => {
   });
 });
 
+describe("normalizeAddr in sig", () => {
+    const f = (func: string, addr: string, line: number): Frame => ({ func, addr, line, args: [] });
+    test("MI-padded and python-hex addrs produce the same invocation identity", () => {
+        const t1 = createCallTree();
+        ingestStack(t1, [f("fib", "0x0000555555550a10", 5), f("main", "0x0000555555550b20", 16)]);
+        const t2 = createCallTree();
+        ingestStack(t2, [f("fib", "0x555555550a10", 5), f("main", "0x555555550b20", 16)]);
+        const sig1 = [...t1.bySig.keys()].sort();
+        const sig2 = [...t2.bySig.keys()].sort();
+        expect(sig1).toEqual(sig2);
+    });
+});
+
 describe("call-site fields", () => {
     const f = (func: string, addr: string, line: number, args: Frame["args"] = []): Frame =>
         ({ func, addr, line, args });

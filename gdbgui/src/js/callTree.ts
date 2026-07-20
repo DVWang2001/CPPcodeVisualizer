@@ -39,6 +39,13 @@ export type CallNode = {
     callSiteAddr?: string;           // 呼叫指令的返回位址（同行多呼叫的排序鍵）
 };
 
+/** MI 給零填充位址、gdb Python 給短 hex — 身分計算前先正規化。 */
+export function normalizeAddr(addr?: string): string | undefined {
+    if (!addr) return undefined;
+    const a = String(addr).toLowerCase();
+    return a.startsWith("0x") ? "0x" + (a.slice(2).replace(/^0+/, "") || "0") : a;
+}
+
 export type CallEdge = { id: string; from: number; to: number };
 
 export type CallTree = {
@@ -75,7 +82,7 @@ export function ingestStack(tree: CallTree, stack: Frame[]): IngestResult {
             sigByIndex[i] = String(stack[i].func);
         } else {
             const parent = stack[i + 1];
-            const callSite = parent.addr ?? parent.line ?? "";
+            const callSite = normalizeAddr(parent.addr) ?? parent.line ?? "";
             sigByIndex[i] = `${sigByIndex[i + 1]}|${callSite}:${stack[i].func}`;
         }
     }
