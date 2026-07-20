@@ -143,6 +143,27 @@ naive 教案的重複 base case 被誤標）。啟用後，一個 invocation 若
   入口；呼叫行一律 `[step-in]`（入口斷點攔下降、回程時等同 next）；呼叫行訊息
   寫方向中性（去程回程交錯無法用門檻區分）。
 
+## F7 — 幽靈預跑（Ghost Pre-run，2026-07-20 新增）
+
+**問題**：呼叫樹增量成長 + 置中佈局 → 新分支出現時祖先鏈平移跳動；置中佈局
+需要「事先知道分支數」，執行中不可知。
+
+**解**：教案是決定性的全自動程式 — Run 時後端先用 `gdb --batch` + Python 腳本
+隱形快跑一次（rbreak 使用者原始檔的所有函式、每停一次記錄完整堆疊快照），
+回傳快照序列；前端用**同一套** `ingestStack` 重建完整「幽靈樹」，以最終樹形
+一次算好佈局。正式播放時每個 live 節點按 sig 對號入座 — **位置從頭到尾不變**，
+未實現的節點以極淡虛線空框預告（不顯示內容，不爆雷值）。
+
+要點：
+- **Sig 對齊**：容器內 gdb 預設關 ASLR → 兩次執行位址一致；sig 中的位址先
+  正規化（去 0x 後前導零）以消除 MI 與 gdb Python 的格式差。
+- **安全**：endpoint 只讀 session（`uploaded_binary`/`real_src_path`/
+  `exec_wrapper`/`uploaded_input`），完全不接受 client 參數；沿用 exec-wrapper
+  jail（ulimit）；subprocess timeout + 快照數/輸出大小上限。
+- **優雅降級**：預跑失敗／超時／教案吃 stdin 但無輸入 → 前端收不到幽靈樹，
+  回退現行 live 佈局；live sig 與幽靈 sig 匹配率過低（發散）→ 忽略幽靈樹。
+- 佈局函式從 CallGraph 抽出為純函式，live 與 ghost 共用。
+
 ## 風險
 
 - **result 約定被教案違反** → 該節點退回變淡，不壞畫面；lesson-gen prompt
