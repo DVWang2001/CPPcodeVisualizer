@@ -33,7 +33,7 @@ from pygments.lexers import get_lexer_for_filename  # type: ignore
 
 from gdbgui import htmllistformatter, __version__
 
-from .constants import TEMPLATE_DIR, USING_WINDOWS, SIGNAL_NAME_TO_OBJ
+from .constants import DEFAULT_GDB_EXECUTABLE, TEMPLATE_DIR, USING_WINDOWS, SIGNAL_NAME_TO_OBJ
 from .http_util import (
     add_csrf_token_to_session,
     authenticate,
@@ -42,6 +42,7 @@ from .http_util import (
 )
 from .share_function import require_uploaded_binary
 from . import lesson_gen
+from .prerun import build_gdb_script, parse_prerun_output
 import uuid
 
 logger = logging.getLogger(__file__)
@@ -1072,3 +1073,96 @@ def generate_lesson():
     if not code.strip():
         return jsonify({"message": "模型未輸出程式碼"}), 502
     return jsonify({"code": code})
+
+
+# ── Ghost pre-run：批次 gdb 呼叫樹快照 ────────────────────────────────────────
+
+PRERUN_TIMEOUT_SECONDS = 15
+PRERUN_MAX_STDOUT_BYTES = 2_000_000
+
+
+@blueprint.route("/api/prerun_calltree", methods=["POST"])
+@authenticate
+def prerun_calltree():
+    """在 `gdb --batch` 下重跑本 session 已編譯的 binary 一次，蒐集完整呼叫樹快照。
+
+    安全設計（威脅模型見 task-1-report.md）：
+      - 完全不讀取 request body / query string 任何欄位；所有輸入只來自
+        server-side session 狀態（uploaded_binary / real_src_path /
+        exec_wrapper / uploaded_input / uploaded_prefix），避免攻擊者透過
+        任意參數指定要執行的 binary 或注入 gdb 腳本內容。
+      - binary 必須存在、realpath 必須落在 upload_folder 內、檔名必須以
+        本 session 的 uploaded_prefix + "_" 開頭 -- 防止透過 session 竄改或
+        路徑穿越去執行別的 session / 系統上任意的可執行檔。
+      - 沿用既有的 exec-wrapper jail（_setup_jail，見本檔案上方），透過
+        `set exec-wrapper` 讓被除錯的程式繼續套用資源限制。
+      - subprocess 逾時 15 秒即視為失敗（Popen.timeout 逾時會自動 kill 該行程）。
+      - stdout 在解析前裁切到 2MB，避免失控輸出撐爆記憶體。
+      - 任何失敗一律回傳 {"ok": false, "reason": <分類字串>}，never 內含檔案路徑。
+    """
+    binary = session.get("uploaded_binary")
+    src = session.get("real_src_path")
+    prefix = session.get("uploaded_prefix", "")
+    upload_dir = current_app.config.get("upload_folder") or os.path.join(
+        current_app.root_path, "uploads"
+    )
+
+    if (
+        not binary
+        or not src
+        or not prefix
+        or not os.path.isfile(binary)
+        or not os.path.realpath(binary).startswith(os.path.realpath(upload_dir) + os.sep)
+        or not os.path.basename(binary).startswith(prefix + "_")
+    ):
+        return jsonify({"ok": False, "reason": "no_binary"}), 200
+
+    input_path = session.get("uploaded_input")
+    if not input_path or not os.path.isfile(input_path):
+        input_path = None
+
+    script = build_gdb_script(
+        os.path.basename(src),
+        session.get("exec_wrapper"),
+        input_path,
+    )
+
+    gdb_exe = current_app.config.get("gdb_path") or DEFAULT_GDB_EXECUTABLE
+
+    script_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False
+        ) as tf:
+            tf.write(script)
+            script_path = tf.name
+
+        proc = subprocess.run(
+            [gdb_exe, "--batch", "-nx", "-x", script_path, binary],
+            capture_output=True,
+            text=True,
+            timeout=PRERUN_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("[prerun] gdb batch pre-run timed out")
+        return jsonify({"ok": False, "reason": "prerun_timeout"}), 200
+    except Exception:
+        logger.exception("[prerun] failed to invoke gdb for batch pre-run")
+        return jsonify({"ok": False, "reason": "prerun_failed"}), 200
+    finally:
+        if script_path:
+            try:
+                os.unlink(script_path)
+            except OSError:
+                pass
+
+    if proc.returncode != 0:
+        logger.warning("[prerun] gdb batch pre-run exited with code %s", proc.returncode)
+        return jsonify({"ok": False, "reason": "prerun_failed"}), 200
+
+    stdout = (proc.stdout or "")[:PRERUN_MAX_STDOUT_BYTES]
+    snaps = parse_prerun_output(stdout)
+    if snaps is None:
+        return jsonify({"ok": False, "reason": "parse_failed"}), 200
+
+    return jsonify({"ok": True, "snapshots": snaps})
