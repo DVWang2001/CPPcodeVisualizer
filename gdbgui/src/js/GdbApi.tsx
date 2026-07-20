@@ -12,6 +12,7 @@ import process_gdb_response from "./process_gdb_response";
 import React from "react";
 import io from "socket.io-client";
 import { global_variable } from "./global_variable";
+import { buildGhostFromSnapshots } from "./ghostTree";
 
 /** Parse GCC/Clang stderr into structured error objects. */
 function _parseCompileErrors(stderr: string): any[] {
@@ -566,6 +567,22 @@ const GdbApi = {
                 (global_variable as any).__visited_lines = new Set<number>();
                 (global_variable as any).__line_visit_count = {};
               }
+
+              // Ghost pre-run: fetch the complete call tree so layout never shifts (spec F7).
+              const gv0 = (window as any).gdbgui_global_variable;
+              if (gv0) gv0.__ghost = null;
+              fetch("/api/prerun_calltree", { method: "POST", credentials: "same-origin" })
+                .then(r => (r.ok ? r.json() : null))
+                .then(data => {
+                  const gv = (window as any).gdbgui_global_variable;
+                  if (!gv || !data || !data.ok) return;
+                  const ghost = buildGhostFromSnapshots(data.snapshots);
+                  if (ghost) {
+                    gv.__ghost = ghost;
+                    store.set("call_graph_updated", Date.now());
+                  }
+                })
+                .catch(() => { /* graceful fallback: live layout */ });
 
               GdbApi.run_gdb_command(cmds);
 

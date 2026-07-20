@@ -103,6 +103,24 @@ class CallGraph extends React.Component<{}, CallGraphState> {
         }
 
         const { placed, width, height } = layoutTree(nodes);
+
+        // Ghost layout override: pin live nodes to their final positions (spec F7).
+        const ghost = gv.__ghost as (import("./ghostTree").Ghost | null);
+        let liveW = width, liveH = height, usingGhost = false;
+        if (ghost) {
+            const matched = placed.filter(p => ghost.posBySig.has(p.sig)).length;
+            if (matched / placed.length >= 0.6) {
+                usingGhost = true;
+                placed.forEach(p => {
+                    const pos = ghost.posBySig.get(p.sig);
+                    if (pos) { p.x = pos.x; p.y = pos.y; }
+                });
+                liveW = Math.max(width, ghost.width);
+                liveH = Math.max(height, ghost.height);
+            }
+        }
+        const placedSigSet = new Set(placed.map(p => p.sig));
+
         const posById = new Map<number, Placed>(placed.map(p => [p.invId, p]));
 
         // Active node's locals (excluding params) for the detail strip below.
@@ -163,8 +181,8 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                         background: "var(--paper)", position: "relative",
                     }}
                 >
-                    <div style={{ position: "relative", width: `${width}px`, height: `${height}px` }}>
-                        <svg width={width} height={height} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                    <div style={{ position: "relative", width: `${liveW}px`, height: `${liveH}px` }}>
+                        <svg width={liveW} height={liveH} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
                             <defs>
                                 <marker id="cg-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
                                     <path d="M0,0 L6,3 L0,6 Z" fill="var(--struct-border)" />
@@ -173,6 +191,22 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                     <path d="M0,0 L6,3 L0,6 Z" fill="var(--accent)" />
                                 </marker>
                             </defs>
+                            {usingGhost && ghost!.edges.map(e => {
+                                const gn = ghost!.nodes;
+                                const a = gn.find(n => n.invId === e.from);
+                                const b = gn.find(n => n.invId === e.to);
+                                if (!a || !b) return null;
+                                const liveHasBoth = placedSigSet.has(a.sig) && placedSigSet.has(b.sig);
+                                if (liveHasBoth) return null;
+                                const pa = ghost!.posBySig.get(a.sig)!, pb = ghost!.posBySig.get(b.sig)!;
+                                return (
+                                    <line key={`ghost-${e.id}`}
+                                        x1={pa.x + NODE_W / 2} y1={pa.y + NODE_H}
+                                        x2={pb.x + NODE_W / 2} y2={pb.y}
+                                        stroke="var(--struct-border)" strokeWidth={1}
+                                        strokeDasharray="4 4" opacity={0.35} />
+                                );
+                            })}
                             {edges.map(e => {
                                 const a = posById.get(e.from);
                                 const b = posById.get(e.to);
@@ -216,6 +250,19 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                 );
                             })}
                         </svg>
+
+                        {usingGhost && ghost!.nodes.filter(n => !placedSigSet.has(n.sig)).map(n => {
+                            const pos = ghost!.posBySig.get(n.sig)!;
+                            return (
+                                <div key={`ghost-${n.sig}`} data-ghost="1"
+                                    style={{
+                                        position: "absolute", left: `${pos.x}px`, top: `${pos.y}px`,
+                                        width: `${NODE_W}px`, minHeight: `${NODE_H}px`, boxSizing: "border-box",
+                                        borderRadius: "8px", border: "1.5px dashed var(--struct-border)",
+                                        opacity: 0.4, background: "transparent", pointerEvents: "none",
+                                    }} />
+                            );
+                        })}
 
                         {placed.map(node => {
                             const isCurrent = node.invId === activeNodeId;
