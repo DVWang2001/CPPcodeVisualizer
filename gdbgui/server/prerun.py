@@ -30,23 +30,59 @@ server-derived (``secure_filename`` output, server-generated jail paths,
 a session-prefixed upload path) -- but this module treats them as
 untrusted input regardless, because they ultimately trace back to
 attacker-influenced data (an uploaded filename) validated by *other*
-code that could change independently of this one. Every such value is
-embedded into the generated script text via ``json.dumps``, which
-produces a properly quote/backslash/control-character-escaped Python
-string literal. Without this, a value containing an unescaped ``"``
-could terminate the string literal early and inject arbitrary Python
-into a script that GDB executes with ptrace privileges over the
-debuggee -- i.e. a script-injection-to-RCE escalation. Numeric values
-(``max_snapshots``) are coerced with ``int()`` and never interpolated
-as strings, so they cannot carry a similar payload either.
+code that could change independently of this one. Two independent
+layers defend against script/command injection here:
+
+  1. An allowlist/denylist character check (see ``_validate_src_basename``
+     and ``_validate_path_like`` below) rejects anything containing
+     whitespace, newlines, or shell metacharacters (``; < > & |``) --
+     and, for ``src_basename`` specifically, anything outside
+     ``[A-Za-z0-9._-]`` -- before a script is ever built. This is
+     "self-defending": ``build_gdb_script`` raises ``ValueError`` rather
+     than silently emitting a script built from garbage session state.
+  2. Every such value is additionally embedded into the generated script
+     text via ``json.dumps``, which produces a properly
+     quote/backslash/control-character-escaped Python string literal.
+     This remains necessary defense-in-depth even after layer 1, because
+     the denylist for ``exec_wrapper``/``input_path`` does not forbid
+     quote characters (paths may legitimately need to be embedded
+     as-is) -- without escaping, a value containing an unescaped ``"``
+     could terminate the string literal early and inject arbitrary
+     Python into a script that GDB executes with ptrace privileges over
+     the debuggee, i.e. a script-injection-to-RCE escalation.
+
+Numeric values (``max_snapshots``) are coerced with ``int()`` and never
+interpolated as strings, so they cannot carry a similar payload either.
 """
 
 import json
+import re
 
 PRERUN_JSON_BEGIN = "PRERUN_JSON_BEGIN"
 PRERUN_JSON_END = "PRERUN_JSON_END"
 
 DEFAULT_MAX_SNAPSHOTS = 300
+
+_SRC_BASENAME_RE = re.compile(r"[A-Za-z0-9._-]+")
+_SHELL_METACHARACTERS = frozenset(";<>&|")
+
+
+def _validate_src_basename(value: str) -> None:
+    if not isinstance(value, str) or not _SRC_BASENAME_RE.fullmatch(value):
+        raise ValueError("invalid src_basename")
+
+
+def _validate_path_like(value: str, label: str) -> None:
+    """Reject exec_wrapper / input_path values containing whitespace,
+    newlines, or shell metacharacters. Paths may still contain slashes,
+    dots, quotes etc. -- those are handled by json.dumps escaping at the
+    point of embedding, not by this allowlist."""
+    if not isinstance(value, str):
+        raise ValueError(f"invalid {label}")
+    if any(ch.isspace() for ch in value) or any(
+        ch in _SHELL_METACHARACTERS for ch in value
+    ):
+        raise ValueError(f"invalid {label}")
 
 
 def build_gdb_script(
@@ -55,6 +91,17 @@ def build_gdb_script(
     input_path: "str | None",
     max_snapshots: int = DEFAULT_MAX_SNAPSHOTS,
 ) -> str:
+    """Raises ValueError if src_basename / exec_wrapper / input_path fail
+    the character validation described in the module docstring. Callers
+    (the Flask route) must treat ValueError as a rejected/invalid session
+    state, not a 500 -- these values come from session state that this
+    function does not trust to have been validated correctly upstream."""
+    _validate_src_basename(src_basename)
+    if exec_wrapper:
+        _validate_path_like(exec_wrapper, "exec_wrapper")
+    if input_path:
+        _validate_path_like(input_path, "input_path")
+
     max_snapshots = int(max_snapshots)
 
     lines = [

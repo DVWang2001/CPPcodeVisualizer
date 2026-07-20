@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from werkzeug.utils import secure_filename
 
@@ -1079,6 +1080,48 @@ def generate_lesson():
 
 PRERUN_TIMEOUT_SECONDS = 15
 PRERUN_MAX_STDOUT_BYTES = 2_000_000
+PRERUN_MAX_CONCURRENT = 2
+
+# 併發防護（DoS 緩解）：
+#   1. per-session lock -- 同一 session 不能同時打兩個 prerun 請求（避免同一使用者
+#      用多分頁/重複點擊疊加出多個 gdb 行程）。
+#   2. 全域 BoundedSemaphore -- 不論多少個不同 session，同時最多只有
+#      PRERUN_MAX_CONCURRENT 個 gdb batch 行程在跑（避免多 session 聯手把伺服器
+#      的 CPU/記憶體耗盡）。
+# 兩者皆用 acquire(blocking=False)：拿不到就立刻回 busy，絕不讓 request 排隊等待
+# （排隊本身就是另一種資源耗盡面）。
+_prerun_session_locks: "dict[str, threading.Lock]" = {}
+_prerun_session_locks_guard = threading.Lock()
+_prerun_global_semaphore = threading.BoundedSemaphore(PRERUN_MAX_CONCURRENT)
+
+
+def _acquire_prerun_slot(prefix: str) -> bool:
+    """Non-blocking acquire of the per-session lock + global concurrency
+    semaphore. Returns True if both were acquired (caller MUST call
+    _release_prerun_slot(prefix) in a finally block), False if either is
+    busy (in which case nothing was acquired -- no cleanup needed)."""
+    with _prerun_session_locks_guard:
+        session_lock = _prerun_session_locks.get(prefix)
+        if session_lock is None:
+            session_lock = threading.Lock()
+            _prerun_session_locks[prefix] = session_lock
+
+    if not session_lock.acquire(blocking=False):
+        return False
+
+    if not _prerun_global_semaphore.acquire(blocking=False):
+        session_lock.release()
+        return False
+
+    return True
+
+
+def _release_prerun_slot(prefix: str) -> None:
+    _prerun_global_semaphore.release()
+    with _prerun_session_locks_guard:
+        session_lock = _prerun_session_locks.pop(prefix, None)
+    if session_lock is not None:
+        session_lock.release()
 
 
 @blueprint.route("/api/prerun_calltree", methods=["POST"])
@@ -1096,8 +1139,13 @@ def prerun_calltree():
         路徑穿越去執行別的 session / 系統上任意的可執行檔。
       - 沿用既有的 exec-wrapper jail（_setup_jail，見本檔案上方），透過
         `set exec-wrapper` 讓被除錯的程式繼續套用資源限制。
-      - subprocess 逾時 15 秒即視為失敗（Popen.timeout 逾時會自動 kill 該行程）。
-      - stdout 在解析前裁切到 2MB，避免失控輸出撐爆記憶體。
+      - build_gdb_script 對 session 狀態做字元 allowlist/denylist 驗證，壞值
+        直接 ValueError -> invalid_session_state，絕不把未驗證字串餵給 gdb。
+      - subprocess 逾時 15 秒即視為失敗（timeout 逾時 Python 會自動 kill 該行程）。
+      - gdb stdout 直接導向暫存檔（stderr 導向 DEVNULL），行程結束後只從檔案讀取
+        前 2MB 才解析 -- 從不把整條 pipe/檔案讀進記憶體，避免一直不撞到使用者
+        函式中斷點的失控子行程把記憶體撐爆。
+      - per-session lock + 全域 BoundedSemaphore(2) 限制併發 gdb 行程數量。
       - 任何失敗一律回傳 {"ok": false, "reason": <分類字串>}，never 內含檔案路徑。
     """
     binary = session.get("uploaded_binary")
@@ -1121,15 +1169,26 @@ def prerun_calltree():
     if not input_path or not os.path.isfile(input_path):
         input_path = None
 
-    script = build_gdb_script(
-        os.path.basename(src),
-        session.get("exec_wrapper"),
-        input_path,
-    )
+    try:
+        script = build_gdb_script(
+            os.path.basename(src),
+            session.get("exec_wrapper"),
+            input_path,
+        )
+    except ValueError:
+        logger.warning("[prerun] rejected invalid session state building gdb script")
+        return jsonify({"ok": False, "reason": "invalid_session_state"}), 200
+
+    if not _acquire_prerun_slot(prefix):
+        return jsonify({"ok": False, "reason": "busy"}), 200
 
     gdb_exe = current_app.config.get("gdb_path") or DEFAULT_GDB_EXECUTABLE
 
     script_path = None
+    stdout_path = None
+    error_reason = None
+    raw_stdout = b""
+
     try:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False
@@ -1137,30 +1196,49 @@ def prerun_calltree():
             tf.write(script)
             script_path = tf.name
 
-        proc = subprocess.run(
-            [gdb_exe, "--batch", "-nx", "-x", script_path, binary],
-            capture_output=True,
-            text=True,
-            timeout=PRERUN_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("[prerun] gdb batch pre-run timed out")
-        return jsonify({"ok": False, "reason": "prerun_timeout"}), 200
-    except Exception:
-        logger.exception("[prerun] failed to invoke gdb for batch pre-run")
-        return jsonify({"ok": False, "reason": "prerun_failed"}), 200
-    finally:
-        if script_path:
+        # gdb's stdout is written directly to this file by the OS (subprocess
+        # dup2's the fd into the child) -- Python never buffers the full
+        # output in memory, no matter how much the inferior prints before
+        # ever hitting a user-function breakpoint. stderr is discarded.
+        with tempfile.NamedTemporaryFile(suffix=".stdout", delete=False) as stdout_f:
+            stdout_path = stdout_f.name
             try:
-                os.unlink(script_path)
-            except OSError:
-                pass
+                proc = subprocess.run(
+                    [gdb_exe, "--batch", "-nx", "-x", script_path, binary],
+                    stdout=stdout_f,
+                    stderr=subprocess.DEVNULL,
+                    timeout=PRERUN_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning("[prerun] gdb batch pre-run timed out")
+                error_reason = "prerun_timeout"
+            except Exception:
+                logger.exception("[prerun] failed to invoke gdb for batch pre-run")
+                error_reason = "prerun_failed"
 
-    if proc.returncode != 0:
-        logger.warning("[prerun] gdb batch pre-run exited with code %s", proc.returncode)
-        return jsonify({"ok": False, "reason": "prerun_failed"}), 200
+        if error_reason is None:
+            if proc.returncode != 0:
+                logger.warning(
+                    "[prerun] gdb batch pre-run exited with code %s", proc.returncode
+                )
+                error_reason = "prerun_failed"
+            else:
+                # Bounded read from disk -- never the full file/pipe.
+                with open(stdout_path, "rb") as f:
+                    raw_stdout = f.read(PRERUN_MAX_STDOUT_BYTES)
+    finally:
+        for path in (script_path, stdout_path):
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+        _release_prerun_slot(prefix)
 
-    stdout = (proc.stdout or "")[:PRERUN_MAX_STDOUT_BYTES]
+    if error_reason is not None:
+        return jsonify({"ok": False, "reason": error_reason}), 200
+
+    stdout = raw_stdout.decode("utf-8", errors="replace")
     snaps = parse_prerun_output(stdout)
     if snaps is None:
         return jsonify({"ok": False, "reason": "parse_failed"}), 200

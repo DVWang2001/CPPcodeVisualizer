@@ -1,3 +1,5 @@
+import pytest
+
 from gdbgui.server.prerun import build_gdb_script, parse_prerun_output
 
 
@@ -30,36 +32,77 @@ def test_script_respects_max_snapshots():
 
 def test_script_is_syntactically_valid_python():
     # The generated text is executed by gdb as a Python script (gdb --batch -x file.py).
-    # Must always compile regardless of input.
+    # Must always compile for legitimate inputs.
     s = build_gdb_script("lesson.cpp", "/jails/x/run.sh", "/uploads/p_input.in")
     compile(s, "<prerun_script>", "exec")
 
 
-def test_script_escapes_quote_injection_in_basename():
-    # src_basename / exec_wrapper / input_path are server-derived (secure_filename,
-    # server-generated jail paths) but must never be trusted to be free of quotes or
-    # newlines -- a crafted value must not be able to break out of the embedded
-    # string literal and inject arbitrary Python into a script gdb runs with ptrace
-    # privileges. json.dumps-style escaping must keep this syntactically inert.
-    hostile = 'a.cpp"); import os; os.system("touch pwned'
-    s = build_gdb_script(hostile, None, None)
-    # The real assertion is that this compiles cleanly (no injected top-level
-    # statement) -- if the value weren't escaped, the embedded `"` would close
-    # the string literal early and `import os; os.system(...)` would become a
-    # second statement, which would still often compile. So additionally check
-    # that no unescaped `import os` appears as its own statement outside a string.
-    compile(s, "<prerun_script>", "exec")
-    assert "\nimport os" not in s
+# ── F3: character-allowlist / denylist hardening ─────────────────────────────
+# build_gdb_script is "self-defending": it must refuse to build a script at all
+# from session state containing whitespace, newlines, or shell metacharacters,
+# rather than relying solely on json.dumps escaping (defense-in-depth, not a
+# replacement for it -- see the two-layer note in prerun.py's module docstring).
+
+@pytest.mark.parametrize("hostile_basename", ["a b.cpp", "x\ny.cpp", "a;b.cpp"])
+def test_build_script_rejects_hostile_basenames(hostile_basename):
+    with pytest.raises(ValueError):
+        build_gdb_script(hostile_basename, None, None)
+
+
+def test_build_script_rejects_basename_with_quote():
+    with pytest.raises(ValueError):
+        build_gdb_script('a.cpp"); import os#', None, None)
+
+
+@pytest.mark.parametrize(
+    "hostile_path",
+    [
+        "/jails/x/run.sh; rm -rf /",
+        "/jails/x/run sh",
+        "/jails/x/run.sh\nrm -rf /",
+        "/jails/x/run.sh|cat /etc/passwd",
+        "/jails/x/run.sh&whoami",
+        "/jails/x/run.sh<in>out",
+    ],
+)
+def test_build_script_rejects_hostile_exec_wrapper(hostile_path):
+    with pytest.raises(ValueError):
+        build_gdb_script("a.cpp", hostile_path, None)
+
+
+@pytest.mark.parametrize(
+    "hostile_path",
+    [
+        "/uploads/p input.in",
+        "/uploads/p;input.in",
+        "/uploads/p\ninput.in",
+        "/uploads/p|input.in",
+    ],
+)
+def test_build_script_rejects_hostile_input_path(hostile_path):
+    with pytest.raises(ValueError):
+        build_gdb_script("a.cpp", None, hostile_path)
+
+
+def test_build_script_accepts_legitimate_paths_with_slashes_and_dots():
+    # Sanity check that the denylist doesn't over-reject ordinary paths.
+    s = build_gdb_script("lesson.cpp", "/jails/x-1/run.sh", "/uploads/p_input.in")
+    assert "rbreak lesson.cpp:." in s
+    assert "set exec-wrapper /jails/x-1/run.sh" in s
+    assert "run < /uploads/p_input.in" in s
 
 
 def test_script_escapes_quote_injection_in_exec_wrapper():
-    hostile = '/jails/x/run.sh"); import os; os.system("touch pwned'
+    # This value has no whitespace/newline/shell-metacharacters, so it passes
+    # the F3 allowlist check -- it still must not be able to break out of the
+    # generated Python string literal (defense-in-depth via json.dumps).
+    hostile = '/jails/x/run.sh"+__import__("os").system("touch/pwned")+"'
     s = build_gdb_script("a.cpp", hostile, None)
     compile(s, "<prerun_script>", "exec")
 
 
 def test_script_escapes_quote_injection_in_input_path():
-    hostile = '/uploads/p_input.in"); import os; os.system("touch pwned'
+    hostile = '/uploads/p"+__import__("os").system("touch/pwned")+"'
     s = build_gdb_script("a.cpp", None, hostile)
     compile(s, "<prerun_script>", "exec")
 
