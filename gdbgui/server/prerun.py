@@ -109,6 +109,10 @@ def build_gdb_script(
         "",
         'gdb.execute("set pagination off")',
         'gdb.execute("set confirm off")',
+        # Ghost sigs only match live sigs if both runs share absolute addresses.
+        # This is GDB's default, but assert it explicitly — it's the load-bearing
+        # assumption of the whole pre-run feature (spec F7).
+        'gdb.execute("set disable-randomization on")',
     ]
 
     if exec_wrapper:

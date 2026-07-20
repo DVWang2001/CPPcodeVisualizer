@@ -8,6 +8,7 @@ def test_script_contains_rbreak_and_sentinels():
     assert "rbreak lesson.cpp:." in s
     assert "PRERUN_JSON_BEGIN" in s and "PRERUN_JSON_END" in s
     assert "set exec-wrapper /jails/x/run.sh" in s
+    assert "set disable-randomization on" in s  # load-bearing: ghost/live sigs must share addresses
 
 
 def test_script_feeds_input_when_present():
