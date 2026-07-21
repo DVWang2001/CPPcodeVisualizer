@@ -255,6 +255,14 @@ class CallGraph extends React.Component<{}, CallGraphState> {
             : undefined;
         const opChanged = opLine !== this.lastOpLine;
         this.lastOpLine = opLine;
+        // Frame-accurate {var} values for the active node's operation area: its
+        // own args + that frame's locals, NOT the shared expressions store (whose
+        // `knap::i`-style names collide across recursion frames — see guideText).
+        const opOverrides: Record<string, string> = {};
+        if (activeNode) {
+            (activeNode.args || []).forEach((a: any) => { opOverrides[a.name] = String(a.value); });
+            activeLocals.forEach(l => { opOverrides[l.name] = l.value; });
+        }
 
         // Repeated-subproblem index and recursion depth — recomputed per render (≤30 nodes).
         const keyCounts = new Map<string, number>();
@@ -511,7 +519,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                                 fontSize: "0.85em", lineHeight: 1.4, textAlign: "left", whiteSpace: "normal",
                                             }}
                                         >
-                                            {resolveGuideSegments(opRaw).map((seg, i) => (
+                                            {resolveGuideSegments(opRaw, undefined, opOverrides).map((seg, i) => (
                                                 <span key={i} style={seg.isValue ? { color: "#3AA76D", fontWeight: 700 } : undefined}>
                                                     {seg.text}
                                                 </span>

@@ -7,6 +7,23 @@ const expressions = [
   { expression: "out_of_scope", value: "9", in_scope: "false" },
 ];
 
+describe("frame-accurate overrides (recursion fix)", () => {
+  // In recursion the store can hold a `knap::i` bound to the WRONG frame
+  // (stale/colliding). Overrides carry the active node's own args/locals and
+  // must win, so the operation area shows THIS invocation's numbers.
+  test("override wins over a wrong-frame expressions value", () => {
+    const stale = [{ expression: "knap::i", value: "0", in_scope: "true" }];
+    expect(resolveGuideText("knap({i})", stale, { i: "2" })).toBe("knap(2)");
+    const segs = resolveGuideSegments("knap({i})", stale, { i: "2" });
+    expect(segs.find(s => s.isValue)!.text).toBe("2");
+  });
+
+  test("falls back to expressions when no override for that name", () => {
+    const exprs = [{ expression: "knap::w", value: "5", in_scope: "true" }];
+    expect(resolveGuideText("{w}", exprs, { i: "2" })).toBe("5");
+  });
+});
+
 describe("resolveGuideText", () => {
   test("replaces {var} with the live value", () => {
     expect(resolveGuideText("skip = {skip}", expressions)).toBe("skip = 3");
