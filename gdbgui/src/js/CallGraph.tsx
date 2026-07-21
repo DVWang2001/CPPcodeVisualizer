@@ -16,6 +16,13 @@ function argKey(node: CallNode): string {
     return `${node.func}(${(node.args || []).map(a => String(a.value)).join(",")})`;
 }
 
+// A rising "⇒value" token animating from a returned child node up to its
+// parent (mockup's flyValue()). `phase: "start"` is the just-spawned frame
+// (positioned at the child, opacity 1); the next tick flips it to "end"
+// (positioned at the parent, opacity 0) so the CSS transition animates the
+// move + fade. Removed from state once the transition finishes.
+type RisingToken = { id: number; childX: number; childY: number; parentX: number; parentY: number; value: any; phase: "start" | "end" };
+
 type CallGraphState = {
     call_graph_updated: number;
     locals: any[];
@@ -24,42 +31,112 @@ type CallGraphState = {
     hoverKey: string | null;
     viewMode: ViewMode;
     stageSize: { w: number; h: number };
+    hasMeasured: boolean;
+    risingTokens: RisingToken[];
 };
+
+const RISE_DURATION_MS = 700;
 
 class CallGraph extends React.Component<{}, CallGraphState> {
     stageRef = React.createRef<HTMLDivElement>();
+    private _mounted = false;
+    private riseTimers = new Map<number, { raf: number; timeout: any }>();
+    // Positions from the most recent render (post-ghost-override), cached so
+    // spawnRisingTokens (called from componentDidUpdate, after render) can
+    // place tokens exactly where the nodes were actually drawn.
+    private lastPosById: Map<number, Placed> | null = null;
 
     constructor(props: any) {
         super(props);
+        // stageSize.w is unknown until mount (fix 1): rather than animating
+        // the transform from an sc=0 guess to the real measured scale (a
+        // visible zoom-from-nothing pop), `hasMeasured` gates the CSS
+        // transition off until the first real measurement lands, so the
+        // very first paint jumps straight to the correct transform.
         this.state = {
             call_graph_updated: 0, locals: [], paused_on_frame: null, expressions: [], hoverKey: null,
             viewMode: "global", stageSize: { w: 0, h: 360 },
+            hasMeasured: false, risingTokens: [],
         };
         // @ts-expect-error statorgfc augmentation
         store.connectComponentState(this, ["call_graph_updated", "locals", "paused_on_frame", "expressions"]);
     }
 
     componentDidMount() {
+        this._mounted = true;
         this.measureStage();
         window.addEventListener("resize", this.measureStage);
     }
 
     componentWillUnmount() {
+        this._mounted = false;
         window.removeEventListener("resize", this.measureStage);
+        this.riseTimers.forEach(t => { cancelAnimationFrame(t.raf); clearTimeout(t.timeout); });
+        this.riseTimers.clear();
     }
 
     componentDidUpdate() {
         this.measureStage();
+        this.spawnRisingTokens();
+    }
+
+    // Ids for which a rising token has already been spawned (invId is a
+    // one-time-per-invocation id, so this only needs to grow, never reset).
+    private spawnedRiseIds = new Set<number>();
+
+    // Spawn a rising "⇒value" token (mockup's flyValue()) for any node that
+    // just newly appeared in gv.__just_returned. Purely additive on top of
+    // the existing static ↑value rendering -- reads the same data, computes
+    // nothing new.
+    private spawnRisingTokens() {
+        if (!this._mounted) return;
+        const gv = (window as any).gdbgui_global_variable || {};
+        const justReturned: number[] = gv.__just_returned || [];
+        const posById = this.lastPosById;
+        if (!posById) return;
+
+        const toSpawn: RisingToken[] = [];
+        justReturned.forEach(id => {
+            if (this.spawnedRiseIds.has(id)) return;
+            const n = posById.get(id);
+            if (!n || n.parentInvId == null || n.retValue === undefined) return;
+            const p = posById.get(n.parentInvId);
+            if (!p) return;
+            this.spawnedRiseIds.add(id);
+            toSpawn.push({
+                id,
+                childX: n.x + NODE_W / 2, childY: n.y,
+                parentX: p.x + NODE_W / 2, parentY: p.y + NODE_H,
+                value: n.retValue, phase: "start",
+            });
+        });
+        if (toSpawn.length === 0) return;
+
+        this.setState(s => ({ risingTokens: [...s.risingTokens, ...toSpawn] }));
+        toSpawn.forEach(tok => {
+            const raf = requestAnimationFrame(() => {
+                if (!this._mounted) return;
+                this.setState(s => ({
+                    risingTokens: s.risingTokens.map(t => t.id === tok.id ? { ...t, phase: "end" } : t),
+                }));
+            });
+            const timeout = setTimeout(() => {
+                this.riseTimers.delete(tok.id);
+                if (!this._mounted) return;
+                this.setState(s => ({ risingTokens: s.risingTokens.filter(t => t.id !== tok.id) }));
+            }, RISE_DURATION_MS + 150);
+            this.riseTimers.set(tok.id, { raf, timeout });
+        });
     }
 
     // The camera math needs the stage's actual pixel size (it's laid out at
     // width:100% by the surrounding panel, so it isn't known until mounted).
     measureStage = () => {
         const el = this.stageRef.current;
-        if (!el) return;
+        if (!el || !this._mounted) return;
         const w = el.clientWidth, h = el.clientHeight;
-        if (w !== this.state.stageSize.w || h !== this.state.stageSize.h) {
-            this.setState({ stageSize: { w, h } });
+        if (w !== this.state.stageSize.w || h !== this.state.stageSize.h || !this.state.hasMeasured) {
+            this.setState({ stageSize: { w, h }, hasMeasured: true });
         }
     };
 
@@ -144,6 +221,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
         const placedSigSet = new Set(placed.map(p => p.sig));
 
         const posById = new Map<number, Placed>(placed.map(p => [p.invId, p]));
+        this.lastPosById = posById;
 
         // Active node's locals (excluding params) for the detail strip below.
         const activeNode = activeNodeId != null ? posById.get(activeNodeId) : undefined;
@@ -228,7 +306,12 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                         position: "absolute", top: 0, left: 0, width: `${liveW}px`, height: `${liveH}px`,
                         transformOrigin: "top left",
                         transform: `translate(${camera.tx}px, ${camera.ty}px) scale(${camera.sc})`,
-                        transition: "transform 0.6s cubic-bezier(0.33,0,0.2,1)",
+                        // Suppress the transition on the very first render (fix 1): before
+                        // measureStage() runs, stageSize is only a fallback guess, and
+                        // animating from that guess to the real measurement would look
+                        // like an unwanted pop/zoom. Only animate once a real measurement
+                        // has landed.
+                        transition: this.state.hasMeasured ? "transform 0.6s cubic-bezier(0.33,0,0.2,1)" : "none",
                     }}>
                         <svg width={liveW} height={liveH} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
                             <defs>
@@ -395,6 +478,27 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                             第 {recDepth} 層
                                         </span>
                                     )}
+                                </div>
+                            );
+                        })}
+
+                        {this.state.risingTokens.map(tok => {
+                            const atEnd = tok.phase === "end";
+                            return (
+                                <div key={`rise-${tok.id}`}
+                                    style={{
+                                        position: "absolute",
+                                        left: `${atEnd ? tok.parentX : tok.childX}px`,
+                                        top: `${atEnd ? tok.parentY : tok.childY}px`,
+                                        transform: "translate(-50%, -100%)",
+                                        opacity: atEnd ? 0 : 1,
+                                        color: "#3AA76D", fontWeight: 700, fontSize: "12px",
+                                        fontFamily: "var(--font-mono)", whiteSpace: "nowrap",
+                                        pointerEvents: "none", zIndex: 5,
+                                        transition: "top 0.7s ease-out, left 0.7s ease-out, opacity 0.7s ease-out",
+                                    }}
+                                >
+                                    {`⇒${tok.value}`}
                                 </div>
                             );
                         })}
