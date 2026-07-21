@@ -571,7 +571,15 @@ const GdbApi = {
               // Ghost pre-run: fetch the complete call tree so layout never shifts (spec F7).
               const gv0 = (window as any).gdbgui_global_variable;
               if (gv0) gv0.__ghost = null;
-              fetch("/api/prerun_calltree", { method: "POST", credentials: "same-origin" })
+              // Every POST is CSRF-checked in a global before_request; the token
+              // must ride in the x-csrftoken header (same as create_and_upload,
+              // FileOps, Actions). Without it the request 415s on request.json
+              // and the ghost silently never loads.
+              fetch("/api/prerun_calltree", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "x-csrftoken": (window as any).initial_data.csrf_token },
+              })
                 .then(r => (r.ok ? r.json() : null))
                 .then(data => {
                   const gv = (window as any).gdbgui_global_variable;
