@@ -37,6 +37,12 @@ type CallGraphState = {
 
 const RISE_DURATION_MS = 700;
 
+function prefersReducedMotion(): boolean {
+    return typeof window !== "undefined" && typeof window.matchMedia === "function"
+        ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        : false;
+}
+
 class CallGraph extends React.Component<{}, CallGraphState> {
     stageRef = React.createRef<HTMLDivElement>();
     private _mounted = false;
@@ -80,29 +86,31 @@ class CallGraph extends React.Component<{}, CallGraphState> {
         this.spawnRisingTokens();
     }
 
-    // Ids for which a rising token has already been spawned (invId is a
-    // one-time-per-invocation id, so this only needs to grow, never reset).
-    private spawnedRiseIds = new Set<number>();
+    // Dedup rising tokens per SNAPSHOT (via the call_graph_updated timestamp),
+    // not per invId. invIds reset to 1 on program restart (createCallTree), so a
+    // per-invId Set would wrongly suppress tokens after the first run; each
+    // snapshot instead carries a fresh timestamp, making this restart-safe.
+    private lastRiseUpdate = -1;
 
-    // Spawn a rising "⇒value" token (mockup's flyValue()) for any node that
-    // just newly appeared in gv.__just_returned. Purely additive on top of
-    // the existing static ↑value rendering -- reads the same data, computes
-    // nothing new.
+    // Spawn a rising "⇒value" token (mockup's flyValue()) for the nodes that
+    // returned in the current snapshot. Reduced-motion users get the static
+    // ↑value instead (see render), so skip the animation for them.
     private spawnRisingTokens() {
-        if (!this._mounted) return;
-        const gv = (window as any).gdbgui_global_variable || {};
-        const justReturned: number[] = gv.__just_returned || [];
+        if (!this._mounted || prefersReducedMotion()) return;
+        const upd = this.state.call_graph_updated;
+        if (upd === this.lastRiseUpdate) return;   // already handled this snapshot
         const posById = this.lastPosById;
         if (!posById) return;
+        this.lastRiseUpdate = upd;
+        const gv = (window as any).gdbgui_global_variable || {};
+        const justReturned: number[] = gv.__just_returned || [];
 
         const toSpawn: RisingToken[] = [];
         justReturned.forEach(id => {
-            if (this.spawnedRiseIds.has(id)) return;
             const n = posById.get(id);
             if (!n || n.parentInvId == null || n.retValue === undefined) return;
             const p = posById.get(n.parentInvId);
             if (!p) return;
-            this.spawnedRiseIds.add(id);
             toSpawn.push({
                 id,
                 childX: n.x + NODE_W / 2, childY: n.y,
@@ -370,7 +378,9 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                     </g>
                                 );
                             })}
-                            {((gv.__just_returned as number[]) || []).map(id => {
+                            {/* Reduced-motion fallback: a static ↑value on the edge instead of
+                                the animated rising token (see spawnRisingTokens). */}
+                            {prefersReducedMotion() && ((gv.__just_returned as number[]) || []).map(id => {
                                 const n = posById.get(id);
                                 if (!n || n.parentInvId == null || n.retValue === undefined) return null;
                                 const p = posById.get(n.parentInvId);
