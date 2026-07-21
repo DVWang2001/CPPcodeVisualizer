@@ -36,11 +36,11 @@ export function layoutTree(nodes: CallNode[]): { placed: Placed[]; width: number
             xSlot.set(id, nextLeaf++);
         } else {
             kids.forEach(k => walk(k, d + 1));
-            // Left-anchored: parent sits directly above its FIRST (first-called)
-            // child, so the tree grows leftward-first and later siblings fan out
-            // to the right. Since execution order == DFS order, new nodes always
-            // take fresh right-hand slots and no existing node ever shifts.
-            xSlot.set(id, xSlot.get(kids[0])!);
+            // Centered (textbook) layout: parent sits above the midpoint of its
+            // children — the balanced, symmetric look. This shifts as later
+            // siblings appear; stability comes from the ghost pre-run (F7), which
+            // computes these final positions from the complete tree up front.
+            xSlot.set(id, (xSlot.get(kids[0])! + xSlot.get(kids[kids.length - 1])!) / 2);
         }
     };
     roots.forEach(r => walk(r, 0));
