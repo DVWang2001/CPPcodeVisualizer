@@ -3,6 +3,7 @@ import { store } from "statorgfc";
 import type { CallNode, CallEdge } from "./callTree";
 import { layoutTree, Placed, NODE_W, NODE_H } from "./callGraphLayout";
 import { cameraTransform, ViewMode } from "./cameraTransform";
+import { resolveGuideSegments } from "./guideText";
 
 // Desaturated custom-label colors, harmonized with the design tokens.
 const CUSTOM_COLORS: Record<string, string> = {
@@ -51,6 +52,9 @@ class CallGraph extends React.Component<{}, CallGraphState> {
     // spawnRisingTokens (called from componentDidUpdate, after render) can
     // place tokens exactly where the nodes were actually drawn.
     private lastPosById: Map<number, Placed> | null = null;
+    // Current line of the active node's operation area, from the previous
+    // render — compared to detect a line change so the area can flash once.
+    private lastOpLine: string | number | null = null;
 
     constructor(props: any) {
         super(props);
@@ -241,6 +245,16 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                 .filter((l: any) => !paramNames.includes(l.name))
                 .map((l: any) => ({ name: l.name, value: this.expand(activeNode.func, l.name, l.value) }));
         }
+
+        // Active node's current-line @guide, focused in an "operation" area
+        // below its header (local view only — spec P... node-operation-focus).
+        const opLine: string | number | null = activeNode ? activeNode.line : null;
+        const lineGuide = (gv.__line || {}) as Record<string | number, string>;
+        const opRaw: string | undefined = opLine != null
+            ? (lineGuide[opLine] ?? lineGuide[String(opLine)])
+            : undefined;
+        const opChanged = opLine !== this.lastOpLine;
+        this.lastOpLine = opLine;
 
         // Repeated-subproblem index and recursion depth — recomputed per render (≤30 nodes).
         const keyCounts = new Map<string, number>();
@@ -487,6 +501,22 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                         <span style={{ fontSize: "0.78em", color: "var(--ink-soft)" }}>
                                             第 {recDepth} 層
                                         </span>
+                                    )}
+                                    {isCurrent && viewMode === "local" && opRaw && (
+                                        <div
+                                            key={`op-${opLine}`}
+                                            className={opChanged && !prefersReducedMotion() ? "cg-op-flash" : undefined}
+                                            style={{
+                                                borderTop: "1px dashed var(--line)", marginTop: "4px", paddingTop: "4px",
+                                                fontSize: "0.85em", lineHeight: 1.4, textAlign: "left", whiteSpace: "normal",
+                                            }}
+                                        >
+                                            {resolveGuideSegments(opRaw).map((seg, i) => (
+                                                <span key={i} style={seg.isValue ? { color: "#3AA76D", fontWeight: 700 } : undefined}>
+                                                    {seg.text}
+                                                </span>
+                                            ))}
+                                        </div>
                                     )}
                                 </div>
                             );

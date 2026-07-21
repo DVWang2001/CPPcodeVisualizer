@@ -7,6 +7,7 @@ import { global_variable } from "./global_variable";
 import { store } from "statorgfc";
 import constants from "./constants";
 import { stripDirective } from "./sourceAnnotations";
+import { resolveGuideText } from "./guideText";
 
 type State = any;
 
@@ -29,16 +30,7 @@ class Visualizer extends React.Component<{}, State> {
   }
 
   resolveGuideText(raw: string): string {
-    if (!raw || !raw.includes("{")) return raw;
-    const expressions: any[] = store.get("expressions") || [];
-    return raw.replace(/\{([^{}]+)\}/g, (_match, varName) => {
-      const name = varName.trim();
-      const found = expressions.find(
-        (obj: any) => obj.in_scope === "true" && obj.value !== undefined &&
-          (obj.expression === name || obj.expression.endsWith("::" + name))
-      );
-      return found ? found.value : `{${name}}`;
-    });
+    return resolveGuideText(raw);
   }
 
   static clear() {

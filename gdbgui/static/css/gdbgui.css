@@ -270,6 +270,20 @@ td.line_num {
 .paused_on_line td {
   background-color: var(--highlight-soft) !important;
 }
+/* CallGraph active-node operation area: flashes amber when the current
+   line's @guide changes (spec: docs/superpowers/specs/2026-07-21-node-operation-focus-design.md). */
+@keyframes cg-op-flash {
+  0% { background-color: var(--highlight-soft); }
+  100% { background-color: transparent; }
+}
+.cg-op-flash {
+  animation: cg-op-flash 0.5s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cg-op-flash {
+    animation: none;
+  }
+}
 .dropdown-btn {
   vertical-align: top;
   height: 30px;
@@ -529,9 +543,15 @@ button:focus {
   cursor: pointer;
 }
 
-/* ✎ hover-reveal glyph in the lines-decorations strip, opens the inline line-annotation panel */
-.gdbgui-annot-edit-glyph { cursor: pointer; opacity: 0.75; }
-.gdbgui-annot-edit-glyph::before { content: "\270E"; color: var(--directive-comment, #8b5cf6); font-size: 12px; }
+/* ✎ hover-reveal content widget, anchored at the //@ start (or end of code);
+   opens the inline line-annotation panel. Sits just LEFT of its anchor column. */
+.gdbgui-annot-edit-glyph {
+  cursor: pointer; opacity: 0.8; font-size: 12px; line-height: 1;
+  padding: 0 3px; user-select: none; white-space: nowrap;
+  transform: translateX(-100%);
+  color: var(--directive-comment, #8b5cf6);
+}
+.gdbgui-annot-edit-glyph::before { content: "\270E"; }
 .gdbgui-annot-edit-glyph:hover { opacity: 1; }
 
 /* The inline annotation panel lives inside a Monaco view zone (.view-zones). Both
