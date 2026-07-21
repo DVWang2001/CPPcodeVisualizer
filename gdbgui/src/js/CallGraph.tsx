@@ -2,6 +2,7 @@ import React from "react";
 import { store } from "statorgfc";
 import type { CallNode, CallEdge } from "./callTree";
 import { layoutTree, Placed, NODE_W, NODE_H } from "./callGraphLayout";
+import { cameraTransform, ViewMode } from "./cameraTransform";
 
 // Desaturated custom-label colors, harmonized with the design tokens.
 const CUSTOM_COLORS: Record<string, string> = {
@@ -21,25 +22,46 @@ type CallGraphState = {
     paused_on_frame: any;
     expressions: any[];
     hoverKey: string | null;
+    viewMode: ViewMode;
+    stageSize: { w: number; h: number };
 };
 
 class CallGraph extends React.Component<{}, CallGraphState> {
-    scrollRef = React.createRef<HTMLDivElement>();
-    activeRef = React.createRef<HTMLDivElement>();
+    stageRef = React.createRef<HTMLDivElement>();
 
     constructor(props: any) {
         super(props);
-        this.state = { call_graph_updated: 0, locals: [], paused_on_frame: null, expressions: [], hoverKey: null };
+        this.state = {
+            call_graph_updated: 0, locals: [], paused_on_frame: null, expressions: [], hoverKey: null,
+            viewMode: "global", stageSize: { w: 0, h: 360 },
+        };
         // @ts-expect-error statorgfc augmentation
         store.connectComponentState(this, ["call_graph_updated", "locals", "paused_on_frame", "expressions"]);
     }
 
-    componentDidUpdate() {
-        // Keep the current frame in view without yanking the whole tree around.
-        if (this.activeRef.current) {
-            this.activeRef.current.scrollIntoView({ block: "nearest", inline: "nearest" });
-        }
+    componentDidMount() {
+        this.measureStage();
+        window.addEventListener("resize", this.measureStage);
     }
+
+    componentWillUnmount() {
+        window.removeEventListener("resize", this.measureStage);
+    }
+
+    componentDidUpdate() {
+        this.measureStage();
+    }
+
+    // The camera math needs the stage's actual pixel size (it's laid out at
+    // width:100% by the surrounding panel, so it isn't known until mounted).
+    measureStage = () => {
+        const el = this.stageRef.current;
+        if (!el) return;
+        const w = el.clientWidth, h = el.clientHeight;
+        if (w !== this.state.stageSize.w || h !== this.state.stageSize.h) {
+            this.setState({ stageSize: { w, h } });
+        }
+    };
 
     // Expand an array/vector arg or local into [v0, v1, …] when expressions has
     // child values for it; otherwise return the raw value.
@@ -171,17 +193,43 @@ class CallGraph extends React.Component<{}, CallGraphState> {
             });
         }
 
+        const { viewMode, stageSize } = this.state;
+        const showGhost = usingGhost && viewMode === "global";
+        const camera = cameraTransform(
+            viewMode, liveW, liveH, stageSize.w, stageSize.h,
+            activeNode ? { x: activeNode.x, y: activeNode.y, w: NODE_W, h: NODE_H } : null
+        );
+
         return (
             <div style={{ width: "100%", padding: "6px" }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "4px" }}>
+                    <div className="btn-group" role="group">
+                        <button
+                            type="button"
+                            className={`btn btn-default btn-sm${viewMode === "global" ? " active" : ""}`}
+                            onClick={() => this.setState({ viewMode: "global" })}
+                        >全局</button>
+                        <button
+                            type="button"
+                            className={`btn btn-default btn-sm${viewMode === "local" ? " active" : ""}`}
+                            onClick={() => this.setState({ viewMode: "local" })}
+                        >局部</button>
+                    </div>
+                </div>
                 <div
-                    ref={this.scrollRef}
+                    ref={this.stageRef}
                     style={{
-                        width: "100%", height: "360px", overflow: "auto",
+                        width: "100%", height: "360px", overflow: "hidden",
                         border: "1px solid var(--line)", borderRadius: "10px",
                         background: "var(--paper)", position: "relative",
                     }}
                 >
-                    <div style={{ position: "relative", width: `${liveW}px`, height: `${liveH}px` }}>
+                    <div style={{
+                        position: "absolute", top: 0, left: 0, width: `${liveW}px`, height: `${liveH}px`,
+                        transformOrigin: "top left",
+                        transform: `translate(${camera.tx}px, ${camera.ty}px) scale(${camera.sc})`,
+                        transition: "transform 0.6s cubic-bezier(0.33,0,0.2,1)",
+                    }}>
                         <svg width={liveW} height={liveH} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
                             <defs>
                                 <marker id="cg-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
@@ -191,7 +239,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                     <path d="M0,0 L6,3 L0,6 Z" fill="var(--accent)" />
                                 </marker>
                             </defs>
-                            {usingGhost && ghost!.edges.map(e => {
+                            {showGhost && ghost!.edges.map(e => {
                                 const gn = ghost!.nodes;
                                 const a = gn.find(n => n.invId === e.from);
                                 const b = gn.find(n => n.invId === e.to);
@@ -211,7 +259,11 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                 const a = posById.get(e.from);
                                 const b = posById.get(e.to);
                                 if (!a || !b) return null;
-                                const onPath = activeSet.has(e.from) && activeSet.has(e.to);
+                                // Global mode lights up the whole active ancestor path; local mode
+                                // only lights the edge from the current node to its direct children.
+                                const onPath = viewMode === "local"
+                                    ? e.from === activeNodeId
+                                    : activeSet.has(e.from) && activeSet.has(e.to);
                                 const x1 = a.x + NODE_W / 2, y1 = a.y + NODE_H;
                                 const x2 = b.x + NODE_W / 2, y2 = b.y;
                                 return (
@@ -251,7 +303,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                             })}
                         </svg>
 
-                        {usingGhost && ghost!.nodes.filter(n => !placedSigSet.has(n.sig)).map(n => {
+                        {showGhost && ghost!.nodes.filter(n => !placedSigSet.has(n.sig)).map(n => {
                             const pos = ghost!.posBySig.get(n.sig)!;
                             return (
                                 <div key={`ghost-${n.sig}`} data-ghost="1"
@@ -266,7 +318,12 @@ class CallGraph extends React.Component<{}, CallGraphState> {
 
                         {placed.map(node => {
                             const isCurrent = node.invId === activeNodeId;
-                            const onPath = activeSet.has(node.invId) && !isCurrent;
+                            // Global mode: highlight the whole active ancestor path (indigo).
+                            // Local mode: highlight only the current node's direct children —
+                            // everything else (including ancestors) dims (design spec P4).
+                            const onPath = viewMode === "local"
+                                ? node.parentInvId === activeNodeId && !isCurrent
+                                : activeSet.has(node.invId) && !isCurrent;
                             const { lines, color, ret } = this.resolveLabel(node, isCurrent);
                             const k = argKey(node);
                             const twins = (keyCounts.get(k) || 0) > 1;
@@ -287,7 +344,6 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                             return (
                                 <div
                                     key={node.invId}
-                                    ref={isCurrent ? this.activeRef : undefined}
                                     title={lines.join("\n")}
                                     data-invid={node.invId}
                                     data-state={isCurrent ? "current" : onPath ? "active" : node.returned ? "returned" : "live"}
