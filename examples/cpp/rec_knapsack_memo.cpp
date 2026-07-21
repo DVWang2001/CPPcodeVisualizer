@@ -14,11 +14,11 @@ int knap(int i, int w, int v) {        //@ @layout sidebar:45 open:callgraph
     int result;
     if (i == N) {                      //@ @guide 子問題 knap({i},{w},{v}) @tts [next] 子問題 knap 第 {i} 件、剩重量 {w} 體積 {v}；物品看完了嗎（i={i}）
         result = 0;                    //@ @guide [base case] 沒物品，價值 0 @tts [next] 到底了，價值是 0
-        return result;                 //@ @tts [next] 把 0 交回上一層
+        return result;                 //@ @guide 回傳 0 ← 沒物品可拿 @tts [next] 把 0 交回上一層
     }
     if (memo[i][w][v] >= 0) {          //@ @tts [next] 先查記憶表：knap({i},{w},{v}) 這個狀態算過了嗎？
         result = memo[i][w][v];        //@ @guide [記憶化命中] 這個狀態算過了，直接查表 @tts [next] 命中！直接拿現成答案，不再往下展開整棵子樹
-        return result;                 //@ @tts [next] 把查到的答案 {result} 交回上一層
+        return result;                 //@ @guide 回傳 {result} ← 直接查記憶表 @tts [next] 把查到的答案 {result} 交回上一層
     }
     int skip = knap(i + 1, w, v);      //@ @guide 分支一：不拿第 {i} 件 @tts [step-in] 處理「不拿第 {i} 件」這條分支
     int take = 0;                      //@ @tts [next] 先假設拿不了，take 記 0
@@ -26,7 +26,7 @@ int knap(int i, int w, int v) {        //@ @layout sidebar:45 open:callgraph
         take = val[i] + knap(i + 1, w - wt[i], v - vol[i]);  //@ @guide 分支二：拿第 {i} 件 @tts [step-in] 拿得下，處理「拿第 {i} 件」這條分支
     result = (skip > take) ? skip : take;  //@ @guide 比較：不拿得 {skip}、拿得 {take} @tts [next] 兩條分支比大小：不拿是 {skip}、拿是 {take}
     memo[i][w][v] = result;            //@ @guide 存入記憶表 knap({i},{w},{v})={result} @tts [next] 把答案 {result} 記進記憶表，下次同狀態就不用再算
-    return result;                     //@ @guide 這一層最大價值 {result} @tts [next] 這一層答案是 {result}，交回上一層
+    return result;                     //@ @guide 回傳 {result} ← max(不拿 {skip}, 拿 {take}) @tts [next] 這一層答案 {result}，由 max(不拿 {skip}、拿 {take}) 得來，交回上一層
 }                                      //@ @tts [next] 這一層結束，沿呼叫樹返回
 int main() {
     memset(memo, -1, sizeof(memo));    //@ @tts [next] 先把記憶表全設成「未算」（-1） @layout sidebar:45 open:callgraph
