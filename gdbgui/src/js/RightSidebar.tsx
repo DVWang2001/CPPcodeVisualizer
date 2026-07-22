@@ -18,6 +18,7 @@ import ToolTipTourguide from "./ToolTipTourguide";
 import "../../static/css/reserch.css";
 import Visualizer from "./Visualizer";
 import ContainerVisualizer from "./ContainerVisualizer";
+import UMLVisualizer from "./UMLVisualizer";
 import CallGraph from "./CallGraph";
 import WatchTable from "./WatchTable";
 import MemoryWatch from "./MemoryWatch";
@@ -271,6 +272,9 @@ class RightSidebar extends React.Component<any, any> {
         <Collapser id="visualizer" primary title="程式追蹤表" play_mode={play_mode} content={<Visualizer />} />
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
         <Collapser id="container" primary title="資料結構視覺化" play_mode={play_mode} content={<ContainerVisualizer />} />
+
+        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+        <Collapser id="uml_visualizer" title="UML 物件圖" collapsed={false} play_mode={play_mode} content={<UMLVisualizer />} />
 
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
         <Collapser id="locals" title="區域變數" collapsed={true} play_mode={play_mode} content={<Locals />} />
