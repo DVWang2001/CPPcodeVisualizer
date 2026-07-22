@@ -5,6 +5,7 @@ import GdbApi from "./GdbApi";
 import { animScheduler } from "./AnimScheduler";
 import { getPlugin } from "./ContainerPlugin";
 import { resolveChildValues } from "./containerParsers/index";
+import { buildUmlPayload } from "./umlPayload";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
@@ -21,6 +22,7 @@ let _tts_subtitle_text = "";    // 去除所有標記後的純淨字幕文字
 // ── graphics_instruction 取消 token（模組級）──────────────────────────
 let _graphics_task_id = 0;      // 每次 graphics_instruction 遞增，舊任務自動放棄
 let _bst_op_task_id = 0;        // 每次 detect_container_op 遞增，舊任務自動放棄
+let _uml_task_id = 0;           // 每次 processUml 遞增，舊任務自動放棄
 
 // ── 容器解析結果快取（同一 GDB stop 內重複解析同容器時直接返回）──────────
 let _gi_cache_version = -1;
@@ -214,16 +216,25 @@ class VisualizerHelper {
     // 移除 [speed:N] token，後續不顯示在 guide 面板
     const guideContentNoSpeed = guideContent.replace(speedRegex, '').trim();
 
+    // --- 攔截 uml:名稱 語法，建立 varobj 並產生 UML payload ---
+    // 支援 `uml:name`（掃描全部出現次數），不進入 graphics_instruction / guide 面板顯示
+    const umlRegex = /(?:^|\s)uml:([A-Za-z_][A-Za-z0-9_]*)/g;
+    let umlMatch;
+    while ((umlMatch = umlRegex.exec(guideContentNoSpeed)) !== null) {
+      VisualizerHelper.processUml(umlMatch[1], funcName);
+    }
+    const guideNoUml = guideContentNoSpeed.replace(/(?:^|\s)uml:[A-Za-z_][A-Za-z0-9_]*/g, "").trim();
+
     // --- 攔截 [自訂標籤#顏色] 語法給 Call Graph 使用 ---
     // 支援 `[標籤名稱#顏色] {變數}` 或是 `[標籤名稱] {變數}`
     const labelRegex = /^\[([^\]#]+)(?:#([^\]]+))?\]([\s\S]*)/;
-    const labelMatch = guideContentNoSpeed.match(labelRegex);
-    
+    const labelMatch = guideNoUml.match(labelRegex);
+
     if (!global_variable.__call_graph_custom_labels) {
       global_variable.__call_graph_custom_labels = {};
     }
 
-    let graphicsContent = guideContentNoSpeed;
+    let graphicsContent = guideNoUml;
     if (labelMatch) {
       const labelName = labelMatch[1].trim();
       const color = labelMatch[2] ? labelMatch[2].trim() : null; // 可選的顏色
@@ -461,6 +472,55 @@ class VisualizerHelper {
 
     // 啟動播放
     _tts_play_next(myTaskId);
+  }
+
+  /**
+   * 解析 `uml:name` 指令：建立 varobj、等待其欄位(children)載入完成後，
+   * 組出 UmlPayload 寫入 global_variable.__latest_uml，供 UML 物件圖渲染使用。
+   */
+  static processUml(name, funcName) {
+    const displayKey = (funcName && name.indexOf("::") === -1) ? `${funcName}::${name}` : name;
+    const myUmlTaskId = ++_uml_task_id; // 新任務 ID，舊任務自動放棄（避免快速切行時的競爭寫入）
+
+    const expressions = store.get("expressions");
+    const existing = expressions.find(o => o.expression === displayKey && o.in_scope === "true");
+    if (existing) GdbVariable.delete_gdb_variable(existing.name);
+    GdbVariable.create_variable(name, "expr", displayKey);
+
+    // 非同步輪詢：等 varobj 出現，且其 children 已載入完成（比照 graphics_instruction 的 checkStore 模式）。
+    // create_variable 內部會自動觸發第一層 children 抓取（GdbVariable.fetch_and_show_children_for_var），
+    // 因此這裡只需等待 numchild===0（無子欄位）或 children.length>0（子欄位已抓回）即可視為就緒；
+    // 只保留一次補發抓取的安全網（避免自動抓取因故未觸發時卡死輪詢）。
+    let checkTicks = 0;
+    let didTriggerChildFetch = false;
+    const checkStore = () => {
+      if (_uml_task_id !== myUmlTaskId) return; // 已有更新的 uml: 指令，放棄本次任務
+      checkTicks++;
+      if (checkTicks > 150) {
+        console.warn(`[VisualizerHelper] processUml TIMEOUT for "${name}" (displayKey=${displayKey})`);
+        return;
+      }
+      const exprs = store.get("expressions");
+      const varObj = exprs.find(o => o.expression === displayKey && o.in_scope === "true");
+      if (!varObj) {
+        setTimeout(checkStore, 50);
+        return;
+      }
+      const childrenReady = !varObj.numchild || (varObj.children && varObj.children.length > 0);
+      if (!childrenReady) {
+        if (!didTriggerChildFetch) {
+          didTriggerChildFetch = true;
+          GdbVariable.fetch_and_show_children_for_var(varObj.name);
+        }
+        setTimeout(checkStore, 50);
+        return;
+      }
+
+      if (!global_variable.__latest_uml) global_variable.__latest_uml = new Map();
+      global_variable.__latest_uml.set(name, buildUmlPayload(name, varObj.type || "?", varObj.children || []));
+      if (typeof window.gdbgui_request_render === "function") window.gdbgui_request_render();
+    };
+    checkStore();
   }
 
   static async graphics_instruction(instruction, frame_line, funcName) {
