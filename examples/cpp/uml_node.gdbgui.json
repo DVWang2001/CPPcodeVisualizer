@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "// 教案：UML 物件圖 P1 — 顯示一個自訂 class 物件的欄位即時值\n// 在行尾寫 //@ @guide uml:p，右側「UML 物件圖」面板就把物件 p 畫成 UML 框。\n#include <iostream>\n#include <string>\n\nclass Point {\npublic:\n    int x;\n    int y;\n    std::string label;\n};\n\nint main() {\n    Point p;                //@ @tts [next] 宣告一個 Point 物件 p\n    p.x = 3;                //@ @guide uml:p @tts [next] 設定 p.x = 3，看 UML 圖裡 x 變成 3\n    p.y = 7;                //@ @guide uml:p @tts [next] 設定 p.y = 7\n    p.label = \"origin\";     //@ @guide uml:p @tts [next] 設定 p.label\n    std::cout << p.x + p.y << std::endl;  //@ @guide uml:p @tts [continue] 教案播放完畢\n    return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "13",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}
