@@ -39,6 +39,39 @@ test("skips <anonymous...> children (exp starts with '<')", () => {
     expect(p.fields).toEqual([{ name: "x", value: "1" }]);
 });
 
+test("flattens gdb access pseudo-nodes (public/private/protected) to reach real fields", () => {
+    // real gdb shape for a class with `public:` members — fields live one level under `public`
+    const p = buildUmlPayload("p", "Point", [
+        {
+            exp: "public",
+            name: "uvar.public",
+            value: "",
+            children: [
+                { exp: "x", name: "uvar.public.x", value: "3" },
+                { exp: "y", name: "uvar.public.y", value: "7" },
+                { exp: "label", name: "uvar.public.label", value: "\"origin\"" },
+            ],
+        },
+    ]);
+    expect(p.fields).toEqual([
+        { name: "x", value: "3" },
+        { name: "y", value: "7" },
+        { name: "label", value: "\"origin\"" },
+    ]);
+});
+
+test("flattens multiple access sections and skips base subobject", () => {
+    const p = buildUmlPayload("d", "Dog", [
+        { exp: "<Animal>", name: "d.<Animal>", value: "..." },
+        { exp: "private", name: "d.private", children: [{ exp: "age", name: "d.private.age", value: "4" }] },
+        { exp: "public", name: "d.public", children: [{ exp: "breed", name: "d.public.breed", value: "\"Corgi\"" }] },
+    ]);
+    expect(p.fields).toEqual([
+        { name: "age", value: "4" },
+        { name: "breed", value: "\"Corgi\"" },
+    ]);
+});
+
 test("undefined value becomes '?'", () => {
     const p = buildUmlPayload("n", "Node", [{ exp: "x", name: "var1.x" }]);
     expect(p.fields[0].value).toBe("?");

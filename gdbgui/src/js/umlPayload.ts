@@ -14,16 +14,27 @@ function fieldName(child: { exp?: string; expression?: string; name?: string }):
     return (child.name ?? "?").trim();
 }
 
-export function buildUmlPayload(
-    varName: string,
-    varType: string,
-    children: Array<{ exp?: string; expression?: string; name?: string; value?: any }>,
-): UmlPayload {
-    const fields: UmlField[] = [];
+// gdb groups a C++ class's members under synthetic "public"/"private"/"protected"
+// child varobjs (see GdbVariable.tsx:409 — "arent actually field names"); the real
+// fields are one level deeper. Flatten through them so P1 shows x/y/label, not "public".
+const ACCESS_NODES = new Set(["public", "private", "protected"]);
+
+type GdbChild = { exp?: string; expression?: string; name?: string; value?: any; children?: GdbChild[] };
+
+function collectFields(children: GdbChild[] | undefined, out: UmlField[]): void {
     for (const c of children || []) {
-        const displayName = c.exp ?? c.name ?? "";
+        const displayName = (c.exp ?? c.name ?? "").trim();
         if (displayName.startsWith("<")) continue; // gdb base-class subobject / <anonymous...> → P2
-        fields.push({ name: fieldName(c), value: String(c.value ?? "?") });
+        if (ACCESS_NODES.has(displayName)) {
+            collectFields(c.children, out); // descend through access pseudo-node, don't emit it
+            continue;
+        }
+        out.push({ name: fieldName(c), value: String(c.value ?? "?") });
     }
+}
+
+export function buildUmlPayload(varName: string, varType: string, children: GdbChild[]): UmlPayload {
+    const fields: UmlField[] = [];
+    collectFields(children, fields);
     return { name: varName, className: varType, fields };
 }
