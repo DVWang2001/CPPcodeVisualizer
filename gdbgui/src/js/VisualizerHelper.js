@@ -22,7 +22,7 @@ let _tts_subtitle_text = "";    // 去除所有標記後的純淨字幕文字
 // ── graphics_instruction 取消 token（模組級）──────────────────────────
 let _graphics_task_id = 0;      // 每次 graphics_instruction 遞增，舊任務自動放棄
 let _bst_op_task_id = 0;        // 每次 detect_container_op 遞增，舊任務自動放棄
-let _uml_task_id = 0;           // 每次 processUml 遞增，舊任務自動放棄
+const _uml_task_ids = {};       // 每個變數名各自的任務 ID 計數器（key=name），避免同一行多個 uml: 互相取消
 
 // ── 容器解析結果快取（同一 GDB stop 內重複解析同容器時直接返回）──────────
 let _gi_cache_version = -1;
@@ -480,7 +480,11 @@ class VisualizerHelper {
    */
   static processUml(name, funcName) {
     const displayKey = (funcName && name.indexOf("::") === -1) ? `${funcName}::${name}` : name;
-    const myUmlTaskId = ++_uml_task_id; // 新任務 ID，舊任務自動放棄（避免快速切行時的競爭寫入）
+    // 任務 ID 以「變數名」為單位（非單一共用計數器），
+    // 這樣同一行內 `uml:a uml:b` 兩個不同名稱的任務彼此不會互相取消對方的輪詢，
+    // 只有重複解析「同一個」名稱時，較新的呼叫才會讓舊的輪詢自動放棄。
+    _uml_task_ids[name] = (_uml_task_ids[name] || 0) + 1;
+    const myUmlTaskId = _uml_task_ids[name];
 
     const expressions = store.get("expressions");
     const existing = expressions.find(o => o.expression === displayKey && o.in_scope === "true");
@@ -494,7 +498,7 @@ class VisualizerHelper {
     let checkTicks = 0;
     let didTriggerChildFetch = false;
     const checkStore = () => {
-      if (_uml_task_id !== myUmlTaskId) return; // 已有更新的 uml: 指令，放棄本次任務
+      if (_uml_task_ids[name] !== myUmlTaskId) return; // 同名的更新呼叫已進來，放棄本次任務
       checkTicks++;
       if (checkTicks > 150) {
         console.warn(`[VisualizerHelper] processUml TIMEOUT for "${name}" (displayKey=${displayKey})`);
