@@ -23,7 +23,42 @@ let _tts_subtitle_text = "";    // 去除所有標記後的純淨字幕文字
 let _graphics_task_id = 0;      // 每次 graphics_instruction 遞增，舊任務自動放棄
 let _bst_op_task_id = 0;        // 每次 detect_container_op 遞增，舊任務自動放棄
 const _uml_task_ids = {};       // 每個變數名各自的任務 ID 計數器（key=name），避免同一行多個 uml: 互相取消
-const _uml_fetched_nodes = new Set(); // 已補抓 children 的存取分區節點 varobj 名稱，避免重複送 -var-list-children
+const _uml_fetched_nodes = new Set(); // 已補抓 children 的節點 varobj 名稱，避免重複送 -var-list-children
+// ── UML 遞迴展開參數（須與 umlPayload.ts 的 MAX_DEPTH/MAX_FANOUT 一致）──
+const _UML_MAX_DEPTH = 4;
+const _UML_MAX_FANOUT = 16;
+function _uml_transparent(exp) {
+  const n = (exp || "").trim();
+  if (n === "public" || n === "private" || n === "protected") return true; // 存取分區
+  if (n.startsWith("<")) return true; // <Animal> / <anonymous...>
+  if (/[<:\s]/.test(n)) return true; // 模板/限定名的基底子物件 std::vector<Point,...>
+  return false;
+}
+function _uml_intnc(node) {
+  const n = typeof node.numchild === "string" ? parseInt(node.numchild) : node.numchild;
+  return Number.isFinite(n) ? n : 0;
+}
+function _uml_is_pointer(node) {
+  return !!node.type && String(node.type).trim().endsWith("*");
+}
+function _uml_needs_fetch(node) {
+  return _uml_intnc(node) > 0 && (!node.children || node.children.length === 0) && !_uml_fetched_nodes.has(node.name);
+}
+// 走訪已載入的 varobj 子樹，收集「還需補抓 children 才能完整展開」的節點（規則對齊 umlPayload.collect）
+function _uml_gather_pending(children, depth, pending) {
+  for (const c of children || []) {
+    if (_uml_transparent(c.exp)) {
+      if (_uml_needs_fetch(c)) { pending.push(c); continue; }
+      _uml_gather_pending(c.children, depth, pending); // 透明節點：同深度穿透
+      continue;
+    }
+    const nc = _uml_intnc(c);
+    const expandable = nc > 0 && !_uml_is_pointer(c) && depth < _UML_MAX_DEPTH && nc <= _UML_MAX_FANOUT;
+    if (!expandable) continue; // 葉節點 / 指標 / 超過上限：不展開，不補抓
+    if (_uml_needs_fetch(c)) { pending.push(c); continue; }
+    _uml_gather_pending(c.children, depth + 1, pending);
+  }
+}
 
 // ── 容器解析結果快取（同一 GDB stop 內重複解析同容器時直接返回）──────────
 let _gi_cache_version = -1;
@@ -521,19 +556,14 @@ class VisualizerHelper {
         return;
       }
 
-      // C++ 類別的欄位被 gdb 包在合成的 public/private/protected 子節點底下（見 GdbVariable.tsx:409），
-      // 真正欄位在再下一層。這裡補抓這些存取分區節點的子節點，等它們載入後才組 payload。
-      const accessPending = (varObj.children || []).filter(c => {
-        const d = (c.exp || "").trim();
-        return (d === "public" || d === "private" || d === "protected") &&
-               c.numchild > 0 && (!c.children || c.children.length === 0);
-      });
-      if (accessPending.length > 0) {
-        accessPending.forEach(c => {
-          if (!_uml_fetched_nodes.has(c.name)) {
-            _uml_fetched_nodes.add(c.name);
-            GdbVariable.fetch_and_show_children_for_var(c.name);
-          }
+      // 遞迴補抓整棵子樹：C++ 欄位藏在 public/private/protected 底下、巢狀值物件與 vector 元素
+      // 也各在更深層（見 GdbVariable.tsx:409）。逐層把還沒載入 children 的可展開節點補抓完，才組 payload。
+      const _umlPending = [];
+      _uml_gather_pending(varObj.children || [], 0, _umlPending);
+      if (_umlPending.length > 0) {
+        _umlPending.forEach(c => {
+          _uml_fetched_nodes.add(c.name);
+          GdbVariable.fetch_and_show_children_for_var(c.name);
         });
         setTimeout(checkStore, 50);
         return;

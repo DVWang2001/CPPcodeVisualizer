@@ -76,3 +76,105 @@ test("undefined value becomes '?'", () => {
     const p = buildUmlPayload("n", "Node", [{ exp: "x", name: "var1.x" }]);
     expect(p.fields[0].value).toBe("?");
 });
+
+test("recurses into embedded value-object fields with a qualified path (Rectangle{Point a,b})", () => {
+    const point = (x: string, y: string) => [
+        { exp: "public", children: [{ exp: "m_x", value: x, numchild: 0 }, { exp: "m_y", value: y, numchild: 0 }] },
+    ];
+    const p = buildUmlPayload("rec", "Rectangle", [
+        {
+            exp: "public",
+            children: [
+                { exp: "a", type: "Point", numchild: 2, value: "{...}", children: point("38", "25") },
+                { exp: "b", type: "Point", numchild: 2, value: "{...}", children: point("80", "95") },
+            ],
+        },
+    ]);
+    expect(p.fields).toEqual([
+        { name: "a.m_x", value: "38" },
+        { name: "a.m_y", value: "25" },
+        { name: "b.m_x", value: "80" },
+        { name: "b.m_y", value: "95" },
+    ]);
+});
+
+test("expands a vector member into element[i] paths (has-a PVec{vector<Point> m_pts})", () => {
+    const point = (x: string, y: string) => [
+        { exp: "public", children: [{ exp: "m_x", value: x, numchild: 0 }, { exp: "m_y", value: y, numchild: 0 }] },
+    ];
+    const p = buildUmlPayload("pts", "PVec", [
+        {
+            exp: "private",
+            children: [
+                {
+                    exp: "m_pts",
+                    type: "std::vector<Point, std::allocator<Point> >",
+                    numchild: 2,
+                    value: "{...}",
+                    children: [
+                        { exp: "[0]", type: "Point", numchild: 2, children: point("98", "17") },
+                        { exp: "[1]", type: "Point", numchild: 2, children: point("51", "46") },
+                    ],
+                },
+            ],
+        },
+    ]);
+    expect(p.fields).toEqual([
+        { name: "m_pts[0].m_x", value: "98" },
+        { name: "m_pts[0].m_y", value: "17" },
+        { name: "m_pts[1].m_x", value: "51" },
+        { name: "m_pts[1].m_y", value: "46" },
+    ]);
+});
+
+test("is-a container: base vector<> subobject is transparent, elements expand without its type in the path", () => {
+    const point = (x: string, y: string) => [
+        { exp: "public", children: [{ exp: "m_x", value: x, numchild: 0 }, { exp: "m_y", value: y, numchild: 0 }] },
+    ];
+    const p = buildUmlPayload("pts", "PVec", [
+        {
+            exp: "std::vector<Point, std::allocator<Point> >",
+            type: "std::vector<Point, std::allocator<Point> >",
+            numchild: 1,
+            value: "{...}",
+            children: [{ exp: "[0]", type: "Point", numchild: 2, children: point("49", "84") }],
+        },
+    ]);
+    expect(p.fields).toEqual([
+        { name: "[0].m_x", value: "49" },
+        { name: "[0].m_y", value: "84" },
+    ]);
+});
+
+test("does not follow pointer fields (shows the address as a leaf) — that is P3", () => {
+    const p = buildUmlPayload("a", "matrix", [
+        {
+            exp: "private",
+            children: [
+                {
+                    exp: "data",
+                    type: "int *",
+                    numchild: 1,
+                    value: "0x55555556c2c0",
+                    children: [{ exp: "*data", value: "108", numchild: 0 }], // pointee present but must NOT be expanded
+                },
+                { exp: "mn", type: "int", value: "6", numchild: 0 },
+            ],
+        },
+    ]);
+    expect(p.fields).toEqual([
+        { name: "data", value: "0x55555556c2c0" },
+        { name: "mn", value: "6" },
+    ]);
+});
+
+test("stops at MAX_DEPTH, emitting the deep aggregate as a {...} leaf", () => {
+    // non-transparent nesting b>c>d>e expands (depths 1..4); f sits at parent-depth 4 and is NOT expanded.
+    const f = { exp: "f", numchild: 1, value: "{...}", children: [{ exp: "z", value: "9", numchild: 0 }] };
+    const e = { exp: "e", numchild: 1, value: "{...}", children: [f] };
+    const d = { exp: "d", numchild: 1, value: "{...}", children: [e] };
+    const c = { exp: "c", numchild: 1, value: "{...}", children: [d] };
+    const b = { exp: "b", numchild: 1, value: "{...}", children: [c] };
+    const p = buildUmlPayload("a", "Deep", [{ exp: "public", children: [b] }]);
+    expect(p.fields).toEqual([{ name: "b.c.d.e.f", value: "{...}" }]);
+});
