@@ -36,6 +36,13 @@ function _uml_transparent(exp) {
 }
 function _uml_intnc(node) {
   const n = typeof node.numchild === "string" ? parseInt(node.numchild) : node.numchild;
+  if (!Number.isFinite(n) || n === 0) {
+    // 動態 pretty-printer 容器（std::vector 等）的 numchild 可能是 NaN/0，
+    // 但 value 會寫「of length N」——比照容器視覺化 InnerContainerParser 的做法用它補上，
+    // 否則 vector 成員不會被判定為可展開、就不會補抓元素。
+    const m = /of length (\d+)/.exec(node.value || "");
+    if (m) return parseInt(m[1]);
+  }
   return Number.isFinite(n) ? n : 0;
 }
 function _uml_is_pointer(node) {
