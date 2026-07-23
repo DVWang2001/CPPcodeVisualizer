@@ -48,21 +48,23 @@ function _uml_intnc(node) {
 function _uml_is_pointer(node) {
   return !!node.type && String(node.type).trim().endsWith("*");
 }
-function _uml_needs_fetch(node) {
-  return _uml_intnc(node) > 0 && (!node.children || node.children.length === 0) && !_uml_fetched_nodes.has(node.name);
+// 「可展開但 children 尚未載入」——不看是否已送出過抓取。這樣即使某節點的抓取還在飛行中，
+// 輪詢也會持續（pending 仍非空），不會在抓取回來的前一個 tick 就提早組 payload（race 修正）。
+function _uml_not_loaded(node) {
+  return _uml_intnc(node) > 0 && (!node.children || node.children.length === 0);
 }
-// 走訪已載入的 varobj 子樹，收集「還需補抓 children 才能完整展開」的節點（規則對齊 umlPayload.collect）
+// 走訪已載入的 varobj 子樹，收集「還沒完整展開（children 未載入）」的可展開節點（規則對齊 umlPayload.collect）
 function _uml_gather_pending(children, depth, pending) {
   for (const c of children || []) {
     if (_uml_transparent(c.exp)) {
-      if (_uml_needs_fetch(c)) { pending.push(c); continue; }
+      if (_uml_not_loaded(c)) { pending.push(c); continue; }
       _uml_gather_pending(c.children, depth, pending); // 透明節點：同深度穿透
       continue;
     }
     const nc = _uml_intnc(c);
     const expandable = nc > 0 && !_uml_is_pointer(c) && depth < _UML_MAX_DEPTH && nc <= _UML_MAX_FANOUT;
     if (!expandable) continue; // 葉節點 / 指標 / 超過上限：不展開，不補抓
-    if (_uml_needs_fetch(c)) { pending.push(c); continue; }
+    if (_uml_not_loaded(c)) { pending.push(c); continue; }
     _uml_gather_pending(c.children, depth + 1, pending);
   }
 }
@@ -544,7 +546,14 @@ class VisualizerHelper {
       if (_uml_task_ids[name] !== myUmlTaskId) return; // 同名的更新呼叫已進來，放棄本次任務
       checkTicks++;
       if (checkTicks > 150) {
-        console.warn(`[VisualizerHelper] processUml TIMEOUT for "${name}" (displayKey=${displayKey})`);
+        // 放棄等待深層抓取，用目前已載入的子樹盡力渲染（避免整格空白）
+        console.warn(`[VisualizerHelper] processUml TIMEOUT for "${name}" (displayKey=${displayKey}) — 渲染部分結果`);
+        const vo = store.get("expressions").find(o => o.expression === displayKey && o.in_scope === "true");
+        if (vo) {
+          if (!global_variable.__latest_uml) global_variable.__latest_uml = new Map();
+          global_variable.__latest_uml.set(name, buildUmlPayload(name, vo.type || "?", vo.children || []));
+          if (typeof window.gdbgui_request_render === "function") window.gdbgui_request_render();
+        }
         return;
       }
       const exprs = store.get("expressions");
@@ -569,8 +578,10 @@ class VisualizerHelper {
       _uml_gather_pending(varObj.children || [], 0, _umlPending);
       if (_umlPending.length > 0) {
         _umlPending.forEach(c => {
-          _uml_fetched_nodes.add(c.name);
-          GdbVariable.fetch_and_show_children_for_var(c.name);
+          if (!_uml_fetched_nodes.has(c.name)) { // 每個節點只送一次抓取；仍未載入者持續輪詢
+            _uml_fetched_nodes.add(c.name);
+            GdbVariable.fetch_and_show_children_for_var(c.name);
+          }
         });
         setTimeout(checkStore, 50);
         return;
