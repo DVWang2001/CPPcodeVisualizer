@@ -69,6 +69,18 @@ function _uml_gather_pending(children, depth, pending) {
   }
 }
 
+// 程式重跑（inferior 重新開始）時清空 UML 狀態，否則面板會殘留上一次執行的物件框。
+// 透過 window 橋接呼叫（避免 Actions ↔ VisualizerHelper 循環 import），比照 gdbgui_reset_var_queue。
+// 清 _uml_task_ids 會讓在途輪詢（checkStore）下一個 tick 比對到 task id 不符而中止，
+// 避免它在重跑後把舊 payload 又寫回新的 __latest_uml。
+if (typeof window !== "undefined") {
+  window.gdbgui_reset_uml_state = () => {
+    for (const k in _uml_task_ids) delete _uml_task_ids[k];
+    _uml_fetched_nodes.clear();
+    global_variable.__latest_uml = new Map();
+  };
+}
+
 // ── 容器解析結果快取（同一 GDB stop 內重複解析同容器時直接返回）──────────
 let _gi_cache_version = -1;
 const _gi_result_cache = new Map();

@@ -49,6 +49,8 @@ const Actions = {
     // 導致 VarCreator._is_fetching 永遠為 true，卡死所有後續變數建立。
     // 透過 window 橋接（避免 Actions↔GdbVariable 循環 import）在此 reset。
     (window as any).gdbgui_reset_var_queue?.();
+    // 清空 UML 物件圖狀態，否則重跑時面板會殘留上一次的物件框（中止在途輪詢 + 清 __latest_uml）
+    (window as any).gdbgui_reset_uml_state?.();
     // 程式重新開始，重置每行的進入計數
     (global_variable as any).__line_visit_count = {};
     // 重置呼叫樹，避免上一次執行的節點殘留
