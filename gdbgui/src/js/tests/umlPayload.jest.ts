@@ -8,19 +8,19 @@ test("maps children to name=value fields, using the real gdb `.exp` member name"
     expect(p.name).toBe("head");
     expect(p.className).toBe("Node *");
     expect(p.fields).toEqual([
-        { name: "data", value: "5" },
-        { name: "next", value: "0x61f0" },
+        { name: "data", value: "5", vis: "+" },
+        { name: "next", value: "0x61f0", vis: "+" },
     ]);
 });
 
 test("falls back to child.expression (split on '.'/'->') when there is no .exp", () => {
     const p = buildUmlPayload("head", "Node *", [{ expression: "head->data", value: "5" }]);
-    expect(p.fields).toEqual([{ name: "data", value: "5" }]);
+    expect(p.fields).toEqual([{ name: "data", value: "5", vis: "+" }]);
 });
 
 test("falls back to child.name when there is no .exp or .expression", () => {
     const p = buildUmlPayload("n", "Node", [{ name: "x", value: "3" }]);
-    expect(p.fields).toEqual([{ name: "x", value: "3" }]);
+    expect(p.fields).toEqual([{ name: "x", value: "3", vis: "+" }]);
 });
 
 test("skips gdb base-class subobject children (exp starts with '<')", () => {
@@ -28,7 +28,7 @@ test("skips gdb base-class subobject children (exp starts with '<')", () => {
         { exp: "<Animal>", name: "var1.<Animal>", value: "..." },
         { exp: "breed", name: "var1.breed", value: "\"Corgi\"" },
     ]);
-    expect(p.fields).toEqual([{ name: "breed", value: "\"Corgi\"" }]);
+    expect(p.fields).toEqual([{ name: "breed", value: "\"Corgi\"", vis: "+" }]);
 });
 
 test("skips <anonymous...> children (exp starts with '<')", () => {
@@ -36,7 +36,7 @@ test("skips <anonymous...> children (exp starts with '<')", () => {
         { exp: "<anonymous union>", name: "var1.<anonymous union>", value: "..." },
         { exp: "x", name: "var1.x", value: "1" },
     ]);
-    expect(p.fields).toEqual([{ name: "x", value: "1" }]);
+    expect(p.fields).toEqual([{ name: "x", value: "1", vis: "+" }]);
 });
 
 test("flattens gdb access pseudo-nodes (public/private/protected) to reach real fields", () => {
@@ -54,9 +54,22 @@ test("flattens gdb access pseudo-nodes (public/private/protected) to reach real 
         },
     ]);
     expect(p.fields).toEqual([
-        { name: "x", value: "3" },
-        { name: "y", value: "7" },
-        { name: "label", value: "\"origin\"" },
+        { name: "x", value: "3", vis: "+" },
+        { name: "y", value: "7", vis: "+" },
+        { name: "label", value: "\"origin\"", vis: "+" },
+    ]);
+});
+
+test("tags each field with the visibility of its enclosing access section (+ / - / #)", () => {
+    const p = buildUmlPayload("w", "Widget", [
+        { exp: "public", children: [{ exp: "id", value: "1", numchild: 0 }] },
+        { exp: "protected", children: [{ exp: "tag", value: "2", numchild: 0 }] },
+        { exp: "private", children: [{ exp: "secret", value: "3", numchild: 0 }] },
+    ]);
+    expect(p.fields).toEqual([
+        { name: "id", value: "1", vis: "+" },
+        { name: "tag", value: "2", vis: "#" },
+        { name: "secret", value: "3", vis: "-" },
     ]);
 });
 
@@ -67,8 +80,8 @@ test("flattens multiple access sections and skips base subobject", () => {
         { exp: "public", name: "d.public", children: [{ exp: "breed", name: "d.public.breed", value: "\"Corgi\"" }] },
     ]);
     expect(p.fields).toEqual([
-        { name: "age", value: "4" },
-        { name: "breed", value: "\"Corgi\"" },
+        { name: "age", value: "4", vis: "-" },
+        { name: "breed", value: "\"Corgi\"", vis: "+" },
     ]);
 });
 
@@ -91,10 +104,10 @@ test("recurses into embedded value-object fields with a qualified path (Rectangl
         },
     ]);
     expect(p.fields).toEqual([
-        { name: "a.m_x", value: "38" },
-        { name: "a.m_y", value: "25" },
-        { name: "b.m_x", value: "80" },
-        { name: "b.m_y", value: "95" },
+        { name: "a.m_x", value: "38", vis: "+" },
+        { name: "a.m_y", value: "25", vis: "+" },
+        { name: "b.m_x", value: "80", vis: "+" },
+        { name: "b.m_y", value: "95", vis: "+" },
     ]);
 });
 
@@ -120,10 +133,10 @@ test("expands a vector member into element[i] paths (has-a PVec{vector<Point> m_
         },
     ]);
     expect(p.fields).toEqual([
-        { name: "m_pts[0].m_x", value: "98" },
-        { name: "m_pts[0].m_y", value: "17" },
-        { name: "m_pts[1].m_x", value: "51" },
-        { name: "m_pts[1].m_y", value: "46" },
+        { name: "m_pts[0].m_x", value: "98", vis: "+" },
+        { name: "m_pts[0].m_y", value: "17", vis: "+" },
+        { name: "m_pts[1].m_x", value: "51", vis: "+" },
+        { name: "m_pts[1].m_y", value: "46", vis: "+" },
     ]);
 });
 
@@ -141,8 +154,8 @@ test("is-a container: base vector<> subobject is transparent, elements expand wi
         },
     ]);
     expect(p.fields).toEqual([
-        { name: "[0].m_x", value: "49" },
-        { name: "[0].m_y", value: "84" },
+        { name: "[0].m_x", value: "49", vis: "+" },
+        { name: "[0].m_y", value: "84", vis: "+" },
     ]);
 });
 
@@ -163,8 +176,8 @@ test("does not follow pointer fields (shows the address as a leaf) — that is P
         },
     ]);
     expect(p.fields).toEqual([
-        { name: "data", value: "0x55555556c2c0" },
-        { name: "mn", value: "6" },
+        { name: "data", value: "0x55555556c2c0", vis: "-" },
+        { name: "mn", value: "6", vis: "-" },
     ]);
 });
 
@@ -176,5 +189,5 @@ test("stops at MAX_DEPTH, emitting the deep aggregate as a {...} leaf", () => {
     const c = { exp: "c", numchild: 1, value: "{...}", children: [d] };
     const b = { exp: "b", numchild: 1, value: "{...}", children: [c] };
     const p = buildUmlPayload("a", "Deep", [{ exp: "public", children: [b] }]);
-    expect(p.fields).toEqual([{ name: "b.c.d.e.f", value: "{...}" }]);
+    expect(p.fields).toEqual([{ name: "b.c.d.e.f", value: "{...}", vis: "+" }]);
 });

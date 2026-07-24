@@ -1,7 +1,12 @@
 import React from "react";
 import { store } from "statorgfc";
 import { global_variable } from "./global_variable";
-import type { UmlPayload } from "./umlPayload";
+import type { UmlPayload, Visibility } from "./umlPayload";
+
+// UML visibility markers: + public (green), − private (red), # protected (amber).
+// Mid-tone hues chosen to stay legible on both light and dark panel backgrounds.
+const VIS_COLOR: { [k in Visibility]: string } = { "+": "#3ba55d", "-": "#e05252", "#": "#e0a52e" };
+const VIS_TITLE: { [k in Visibility]: string } = { "+": "public", "-": "private", "#": "protected" };
 
 class UMLVisualizer extends React.Component<{}, {}> {
     private timer: any;
@@ -36,7 +41,10 @@ class UMLVisualizer extends React.Component<{}, {}> {
                         <div style={{ padding: "5px 10px", display: "flex", flexDirection: "column", gap: "2px" }}>
                             {p.fields.map((f, i) => (
                                 <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "10px", fontSize: "12px" }}>
-                                    <span style={{ color: "var(--ink-soft)" }}>{f.name}</span>
+                                    <span style={{ color: "var(--ink-soft)" }}>
+                                        <span title={VIS_TITLE[f.vis]} style={{ fontWeight: 700, marginRight: "5px", color: VIS_COLOR[f.vis] }}>{f.vis}</span>
+                                        {f.name}
+                                    </span>
                                     <span style={{ fontWeight: 700, color: "var(--ink)" }}>{f.value}</span>
                                 </div>
                             ))}

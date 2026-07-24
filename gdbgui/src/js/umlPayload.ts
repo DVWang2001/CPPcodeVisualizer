@@ -1,4 +1,5 @@
-export type UmlField = { name: string; value: string };
+export type Visibility = "+" | "-" | "#"; // public / private / protected (UML markers)
+export type UmlField = { name: string; value: string; vis: Visibility };
 export type UmlPayload = { name: string; className: string; fields: UmlField[] };
 
 type GdbChild = {
@@ -17,6 +18,9 @@ type GdbChild = {
 // "std::vector<Point, ...>"). Both are "transparent": we recurse through them without
 // emitting a field or adding a path segment.
 const ACCESS_NODES = new Set(["public", "private", "protected"]);
+// gdb's access pseudo-node name → UML visibility marker. A field's visibility is the
+// nearest enclosing access section (public members default when none is seen, as for a struct).
+const VIS_OF: { [k: string]: Visibility } = { public: "+", private: "-", protected: "#" };
 const MAX_DEPTH = 4; // how deep to expand embedded value objects
 const MAX_LEAVES = 48; // safety cap on total rendered rows
 const MAX_FANOUT = 16; // don't auto-expand an aggregate with more children than this (e.g. a big vector)
@@ -43,12 +47,13 @@ function isPointer(c: GdbChild): boolean {
     return !!c.type && c.type.trim().endsWith("*");
 }
 
-function collect(children: GdbChild[] | undefined, prefix: string, depth: number, out: UmlField[]): void {
+function collect(children: GdbChild[] | undefined, prefix: string, depth: number, vis: Visibility, out: UmlField[]): void {
     for (const c of children || []) {
         if (out.length >= MAX_LEAVES) return;
         const name = memberName(c);
         if (isTransparent(name)) {
-            collect(c.children, prefix, depth, out); // pass-through: never emit, never extend the path
+            // access node updates visibility for its subtree; a base subobject keeps the current one
+            collect(c.children, prefix, depth, VIS_OF[name] ?? vis, out);
             continue;
         }
         const path = name.startsWith("[") ? prefix + name : prefix ? prefix + "." + name : name;
@@ -57,16 +62,16 @@ function collect(children: GdbChild[] | undefined, prefix: string, depth: number
         const kids = c.children || [];
         const expandable = kids.length > 0 && !isPointer(c) && depth < MAX_DEPTH && kids.length <= MAX_FANOUT;
         if (expandable) {
-            collect(kids, path, depth + 1, out);
+            collect(kids, path, depth + 1, vis, out);
         } else {
-            out.push({ name: path, value: String(c.value ?? "?") });
+            out.push({ name: path, value: String(c.value ?? "?"), vis });
         }
     }
 }
 
 export function buildUmlPayload(varName: string, varType: string, children: GdbChild[]): UmlPayload {
     const fields: UmlField[] = [];
-    collect(children, "", 0, fields);
-    if (fields.length >= MAX_LEAVES) fields.push({ name: "…", value: "(truncated)" });
+    collect(children, "", 0, "+", fields); // top level defaults to public (struct)
+    if (fields.length >= MAX_LEAVES) fields.push({ name: "…", value: "(truncated)", vis: "+" });
     return { name: varName, className: varType, fields };
 }
