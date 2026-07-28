@@ -1,8 +1,10 @@
 import datetime
 import logging
 import os
+import shlex
 import signal
 import stat
+import time
 import traceback
 from collections import defaultdict
 from pathlib import Path
@@ -11,11 +13,33 @@ from typing import Dict, List, Optional, Set
 from pygdbmi.IoManager import IoManager
 
 from .ptylib import Pty
+from .sandbox import jail_manager
 
 # sandbox wrapper.sh 路徑（同 package 下的 sandbox/ 子目錄）
 _SANDBOX_WRAPPER = Path(__file__).parent / "sandbox" / "wrapper.sh"
 
 logger = logging.getLogger(__name__)
+
+
+def _reap(pid: int, attempts: int = 20, interval: float = 0.05) -> None:
+    """收掉 pty.fork() 出來的子行程，避免留下 zombie。
+
+    這個行程是 GDB 的直接父行程，不 waitpid 的話每個結束的 debug session 都會
+    留一個 <defunct>，永久佔用一個 PID。配上 compose 的 pids_limit 與 200 個帳號，
+    累積下來就是可用性問題；而且 zombie 還會讓 jail 的清理「看起來」失敗
+    （帳號與目錄都刪了，ps 裡卻還看得到那個 uid 的行程）。
+    """
+    for _ in range(attempts):
+        try:
+            reaped, _status = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            return  # 已經被收走了
+        except OSError:
+            return
+        if reaped == pid:
+            return
+        time.sleep(interval)
+    logger.warning("[sandbox] pid %s did not exit; it may linger as a zombie", pid)
 
 
 class DebugSession:
@@ -29,8 +53,11 @@ class DebugSession:
         command: str,
         mi_version: str,
         pid: int,
+        session_key: Optional[str] = None,
     ):
         self.command = command
+        # 這個 debug session 綁到哪個隔離 session（jail）。session 結束時要一起清掉。
+        self.session_key = session_key
         self.pygdbmi_controller = pygdbmi_controller
         self.pty_for_gdbgui = pty_for_gdbgui
         self.pty_for_gdb = pty_for_gdb
@@ -50,8 +77,20 @@ class DebugSession:
                 os.kill(self.pid, signal.SIGKILL)
             except Exception as e:
                 logger.error(f"Failed to kill pid {self.pid}: {str(e)}")
+            _reap(self.pid)
 
         self.pygdbmi_controller = None
+
+        # SIGKILL 不給 GDB 收尾的機會，被除錯的 inferior 可能變成孤兒。
+        # release() 會 pkill 該 session uid 的所有行程，再刪帳號與 scratch 目錄，
+        # 所以清理不依賴 GDB 自己乖乖結束。
+        if self.session_key:
+            try:
+                jail_manager.release(self.session_key)
+            except Exception:
+                logger.exception(
+                    "[jail] failed to release jail for session %s", self.session_key[:8]
+                )
 
     def to_dict(self):
         return {
@@ -95,6 +134,7 @@ class SessionManager(object):
     def add_new_debug_session(
         self, *, gdb_command: str, mi_version: str, client_id: str,
         exec_wrapper: Optional[str] = None,
+        session_key: Optional[str] = None,
     ) -> DebugSession:
         pty_for_debugged_program = Pty(echo=False)
         pty_for_gdbgui = Pty(echo=False)
@@ -104,26 +144,55 @@ class SessionManager(object):
             "set pagination off",
         ]
 
-        # 優先使用 per-session chroot jail 的 run.sh（由 _setup_jail 產生）；
-        # 若無則 fallback 到全域 sandbox/wrapper.sh（ulimit only）。
+        # exec-wrapper 現在只負責 ulimit（見 sandbox/wrapper.sh）。
+        # 降權與 namespace 隔離發生在更外層 —— GDB 自己就跑在裡面，
+        # 因為跨 uid / 跨 user namespace 的 ptrace 就算給 CAP_SYS_PTRACE 也不會動。
         try:
             wp = Path(exec_wrapper) if exec_wrapper else _SANDBOX_WRAPPER
             if wp.exists():
                 current_mode = wp.stat().st_mode
-                if not (current_mode & stat.S_IXUSR):
-                    wp.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP)
+                wanted = current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                if current_mode != wanted:
+                    # session 帳號要能執行它，o+x 是必要的
+                    wp.chmod(wanted)
                 gdbgui_startup_cmds.append(f"set exec-wrapper {wp}")
                 logger.info(f"[sandbox] exec-wrapper: {wp}")
         except Exception as e:
             logger.warning(f"[sandbox] Could not set exec-wrapper: {e}")
+
+        # 被除錯程式的 pty 由 root 建立，但 GDB 以 session 帳號執行，
+        # 必須讓它開得起來才寫得出程式輸出。
+        jail = jail_manager.get(session_key) if session_key else None
+
+        # Fail closed。沒有 jail 就代表 GDB 與使用者程式會以 root、在沒有 network
+        # namespace 的情況下執行——那正是這整個子專案要消滅的狀態，絕不能默默發生。
+        if jail is None and jail_manager.REQUIRE_ISOLATION:
+            raise RuntimeError(
+                "refusing to start gdb without per-session isolation "
+                f"(session_key={'set' if session_key else 'missing'})"
+            )
+
+        if jail is not None:
+            for pty in (pty_for_debugged_program, pty_for_gdbgui):
+                try:
+                    os.chown(pty.name, jail.uid, jail.gid)
+                    os.chmod(pty.name, 0o600)
+                except OSError:
+                    logger.exception("[jail] could not hand pty %s to session", pty.name)
+
         # instead of writing to the pty after it starts, add startup
         # commands to gdb. This allows gdb to be run as sudo and prompt for a
         # password, for example.
-        gdbgui_startup_cmds_str = " ".join([f"-iex='{c}'" for c in gdbgui_startup_cmds])
-        pty_for_gdb = Pty(cmd=f"{gdb_command} {gdbgui_startup_cmds_str}")
+        gdb_argv = shlex.split(gdb_command)
+        for cmd in gdbgui_startup_cmds:
+            gdb_argv += ["-iex", cmd]
+
+        full_argv = jail_manager.confine(jail, gdb_argv)
+        pty_for_gdb = Pty(cmd=shlex.join(full_argv))
 
         pid = pty_for_gdb.pid
         debug_session = DebugSession(
+            session_key=session_key if jail is not None else None,
             pygdbmi_controller=IoManager(
                 os.fdopen(pty_for_gdbgui.stdin, mode="wb", buffering=0),  # type: ignore
                 os.fdopen(pty_for_gdbgui.stdout, mode="rb", buffering=0),  # type: ignore

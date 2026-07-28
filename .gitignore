@@ -18,6 +18,10 @@ __pycache__
 .coverage*
 *.json
 !e2e/package-lock.json
+# seccomp profile 必須隨 repo 版控：它是容器的安全設定，少了它 docker compose
+# 起不來，而且審查者要能 diff 它與上游預設 profile 的差異。
+!seccomp/*.json
+!seccomp/.upstream-default.json
 *.cpp
 *.in
 *.a

@@ -9,13 +9,31 @@ RUN NODE_ENV=production node --openssl-legacy-provider node_modules/.bin/webpack
 # ── Stage 2: Python runtime ────────────────────────────────────────────────
 FROM python:3.13-slim
 
+# util-linux -> setpriv/unshare ; passwd -> useradd/userdel ; procps -> pkill.
+# These are the per-session execution isolation primitives (sandbox/jail_manager.py).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential g++ gdb ffmpeg libstdc++-12-dev \
+    util-linux passwd procps \
     && rm -rf /var/lib/apt/lists/*
+
 # Load libstdc++ Python pretty-printers.
 # python:3.13-slim installs stdlib at /usr/local/lib/python3.13 but GDB's embedded
 # Python looks at /usr/lib/python3.13 — fix the path before importing.
-RUN printf 'set auto-load safe-path /\nset breakpoint pending on\npython\nimport sys\nfor p in ["/usr/local/lib/python3.13","/usr/local/lib/python3.13/lib-dynload","/usr/share/gcc/python"]:\n    if p not in sys.path: sys.path.insert(0, p)\nfrom libstdcxx.v6.printers import register_libstdcxx_printers\nregister_libstdcxx_printers(None)\nend\n' > /root/.gdbinit
+#
+# This MUST live at the system gdbinit path, not /root/.gdbinit: GDB now runs as a
+# per-session unprivileged account with HOME pointed at that session's scratch dir,
+# so ~/.gdbinit would never be read and every STL pretty-printer would silently
+# disappear (measured: "$1 = {<std::_Vector_base…" instead of "std::vector of length 3").
+# /etc/gdb/gdbinit is read regardless of HOME and is world-readable.
+RUN mkdir -p /etc/gdb && \
+    printf 'set auto-load safe-path /\nset breakpoint pending on\npython\nimport sys\nfor p in ["/usr/local/lib/python3.13","/usr/local/lib/python3.13/lib-dynload","/usr/share/gcc/python"]:\n    if p not in sys.path: sys.path.insert(0, p)\nfrom libstdcxx.v6.printers import register_libstdcxx_printers\nregister_libstdcxx_printers(None)\nend\n' > /etc/gdb/gdbinit && \
+    chmod 0644 /etc/gdb/gdbinit && \
+    cp /etc/gdb/gdbinit /root/.gdbinit
+
+# Container-local scratch root. Deliberately NOT a mounted volume: user-namespace
+# uid mapping makes file ownership inconsistent inside vs outside the namespace.
+# Nothing durable may live here — it is wiped per session and at startup.
+RUN mkdir -p /srv/gdbgui-scratch && chmod 0755 /srv/gdbgui-scratch
 
 WORKDIR /app
 

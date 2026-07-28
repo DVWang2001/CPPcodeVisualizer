@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 from werkzeug.utils import secure_filename
 
-from .sandbox.jail_manager import create_jail, destroy_jail
+from .sandbox import jail_manager
 
 try:
     import requests as _requests
@@ -55,59 +55,69 @@ _STUB_C    = _SANDBOX_DIR / "stub.c"
 _STUB_O    = _SANDBOX_DIR / "stub.o"
 _WRAPPER   = _SANDBOX_DIR / "wrapper.sh"
 
-def _setup_jail(exec_path: str, jail_dir: str) -> "str | None":
+def _upload_root() -> str:
+    """所有 session scratch 目錄的根。實際隔離環境下是 jail_manager.SCRATCH_ROOT
+    （container-local，刻意不是共用 volume）。"""
+    return current_app.config.get("upload_folder") or os.path.join(
+        current_app.root_path, "uploads"
+    )
+
+
+def _session_scratch(create: bool = True):
+    """回傳 (prefix, jail, directory)。
+
+    directory 是**這個 session 專屬**的 scratch 目錄：0700、屬於該 session 的
+    臨時 OS 帳號。在此之前所有 session 的檔案都平放在同一個 uploads/ 目錄裡，
+    只靠亂數檔名分隔——那不是權限，任何使用者程式都能 open() 別人的原始碼與
+    binary。目錄權限才是真正的分隔。
+
+    呼叫端要處理 jail_manager.TooManySessions（併發上限）。
     """
-    為已編譯的 binary 建立 per-session jail 目錄，並產生 GDB exec-wrapper 腳本。
-    回傳 wrapper 腳本的絕對路徑；失敗回傳 None。
+    if "uploaded_prefix" not in session:
+        session["uploaded_prefix"] = uuid.uuid4().hex
+    prefix = session["uploaded_prefix"]
 
-    Jail 目錄（jail_manager.create_jail 建立）存放 binary 與函式庫副本，
-    但 exec-wrapper 不呼叫 chroot（chroot 會破壞 GDB 的 /proc/PID/exe 比對）。
+    jail = jail_manager.acquire(prefix) if create else jail_manager.get(prefix)
+    if jail is not None:
+        return prefix, jail, str(jail.dir)
 
-    wrapper 腳本負責：
-      1. ulimit 資源限制（防 fork bomb、CPU/記憶體/磁碟耗盡）
-      2. setpriv 降權至 nobody(65534)（防使用者程式覆寫應用程式檔案）
+    # 隔離不可用（本機非 Docker 開發）：退回單純的 per-session 子目錄。
+    # 這不是安全邊界，只是保持路徑結構一致。部署時 GDBGUI_REQUIRE_ISOLATION=1
+    # 會讓 acquire() 直接拋例外，走不到這裡。
+    directory = os.path.join(_upload_root(), prefix)
+    os.makedirs(directory, exist_ok=True)
+    return prefix, jail, directory
+
+
+def _too_many_sessions_response():
+    return client_error(
+        {
+            "message": "伺服器同時執行的除錯 session 已達上限，請稍後再試。",
+            "stderr": "Server is at its concurrent debug-session limit. Try again shortly.",
+        }
+    )
+
+
+def _run_confined(jail, argv, **kwargs):
+    """以 session 帳號、在 user+net namespace 內執行 argv。
+
+    編譯器也要進去：g++ 處理的是不可信的原始碼，`#include "/etc/…"` 之類的
+    把戲會把檔案內容寫進錯誤訊息裡回傳給使用者。以 session 帳號編譯，讀得到的
+    就只有系統上本來就人人可讀的東西，讀不到其他 session 的 scratch。
     """
-    # 清除同 session 的舊 jail
-    if os.path.exists(jail_dir):
-        try:
-            destroy_jail(jail_dir)
-        except Exception:
-            pass
-
-    if not create_jail(exec_path, jail_dir):
-        return None
-
-    wrapper_path = os.path.join(jail_dir, "run.sh")
-    # exec-wrapper 負責兩件事：
-    #   1. ulimit 資源限制（防 fork bomb、CPU 耗盡、磁碟寫爆）
-    #   2. setpriv 降權至 nobody(65534)，防止使用者程式以 root 身分覆寫應用程式檔案
-    # 不做 chroot：chroot 會改變 /proc/PID/exe 路徑，GDB 無法比對符號表，
-    # 導致 "Cannot access memory" 錯誤；檔案系統隔離由外層 Docker 提供。
-    # GDB 以 root 執行，保有 CAP_SYS_PTRACE，仍可 ptrace nobody 的子行程。
-    script = """#!/bin/bash
-# GDB exec-wrapper: resource limits + privilege drop to nobody
-# GDB calls: run.sh <host_binary_path> [args...]
-HOST_BIN="$1"; shift
-
-ulimit -c 0       2>/dev/null  # no core dumps
-ulimit -u 64      2>/dev/null  # max 64 child processes (fork bomb protection)
-ulimit -t 30      2>/dev/null  # 30 s CPU time limit
-ulimit -v 524288  2>/dev/null  # 512 MB virtual memory limit
-ulimit -f 1024    2>/dev/null  # 512 KB max file write
-
-# Skipping privilege drop since it clears dumpable flag and breaks GDB ptrace
-exec "$HOST_BIN" "$@"
-"""
-    try:
-        with open(wrapper_path, "w") as f:
-            f.write(script)
-        os.chmod(wrapper_path, 0o755)
-        return wrapper_path
-    except Exception:
-        return None
+    return subprocess.run(jail_manager.confine(jail, list(argv)), **kwargs)
 
 
-# --wrap flags（LD 連結層完全封鎖，stub.c 有對應實作）
+# ── Layer 2：連結期 --wrap 攔截（stub.c 有對應實作）─────────────────────────
+#
+# **這不是安全邊界。** 直接下 syscall（inline asm、syscall()、自己組 PLT）就繞過了。
+# 保留它的理由是教學：常見的誤用會在連結期就被擋下，並得到一句看得懂的錯誤訊息，
+# 而不是執行到一半莫名其妙失敗。
+#
+# 真正的邊界是 sandbox/jail_manager.py：per-session OS 帳號 + 0700 scratch +
+# user/network namespace + seccomp profile + ulimit。安全性的判斷請看那裡，
+# 不要因為某個函式出現在這份清單裡就假設它「不可能被呼叫」。
+#
 # 原則：只 wrap 幾乎不會被 C runtime 自身使用的函式，
 # 避免把 printf 用到的 write() 也攔截掉。
 _WRAP_FLAGS = [
@@ -151,10 +161,17 @@ _WRAP_FLAGS = [
     "-Wl,--wrap=dlopen",
 ]
 
-# ── 靜態分析規則 ──────────────────────────────────────────────────────────────
+# ── Layer 1：原始碼 regex 靜態分析 ───────────────────────────────────────────
+#
+# **這也不是安全邊界。** 巨集拼接、函式指標、inline asm、字串組合都能繞過，
+# 而且 regex 本來就看不懂 C++ 語法。它的價值一樣是教學回饋：把常見誤用擋在
+# 編譯前，給出中文說明，而不是讓學生對著執行期的怪錯誤發呆。
+#
+# 邊界是 sandbox/jail_manager.py（見上方 _WRAP_FLAGS 的說明）。
+#
 # 每個 tuple：(compiled_regex, 說明文字, severity)
-# severity = "block" → 連結層也會封鎖（有 --wrap）
-# severity = "warn"  → 只警告，無法從連結層攔截（如 ofstream、fopen write mode）
+# severity = "block" → 連結期 --wrap 也有對應 stub
+# severity = "warn"  → 只警告，連結層攔不到（如 ofstream、fopen write mode）
 
 _DANGEROUS_PATTERNS = [
     # ── Shell 執行（連結層封鎖）────────────────────────────────────────────
@@ -243,6 +260,8 @@ def _ensure_stub_compiled() -> bool:
         if res.returncode != 0:
             logger.warning(f"[sandbox] stub compilation failed:\n{res.stderr}")
             return False
+        # 編譯是以 session 帳號執行的，stub.o 必須人人可讀才連結得起來
+        os.chmod(_STUB_O, 0o644)
         logger.info("[sandbox] stub.o compiled successfully")
         return True
     except Exception as e:
@@ -338,20 +357,32 @@ def upload():
 
         filename = secure_filename(uploaded.filename)
 
-        # ensure a per-session prefix exists and use it to avoid filename collisions
-        if "uploaded_prefix" not in session:
-            session["uploaded_prefix"] = uuid.uuid4().hex
-        prefix = session["uploaded_prefix"]
+        # 本 session 專屬 scratch 目錄（0700，屬於本 session 的臨時 OS 帳號）
+        try:
+            prefix, jail, upload_dir = _session_scratch()
+        except jail_manager.TooManySessions:
+            return _too_many_sessions_response()
+        except jail_manager.JailError:
+            logger.exception("[jail] could not establish execution isolation")
+            return client_error({"message": "無法建立執行隔離環境，已拒絕上傳。"})
 
-        upload_dir = current_app.config.get("upload_folder") or os.path.join(
-            current_app.root_path, "uploads"
-        )
-        os.makedirs(upload_dir, exist_ok=True)
-
-        # store file with session prefix
+        # store file with session prefix.
+        # 用 O_NOFOLLOW 開檔而不是 uploaded.save(path)：檔名有一部分來自使用者，
+        # 而 scratch 目錄是那個不可信 session 使用者可寫的 —— 他可以先在這個路徑
+        # 放一條 symlink，讓 root 的寫入跑到 /etc 底下去。
         stored_filename = f"{prefix}_{filename}"
         dest_path = os.path.join(upload_dir, stored_filename)
-        uploaded.save(dest_path)
+        try:
+            fd = os.open(
+                dest_path,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                0o600,
+            )
+            with os.fdopen(fd, "wb") as f:
+                uploaded.save(f)
+        except OSError as e:
+            return client_error({"message": "Failed to store upload", "detail": str(e)})
+        jail_manager.chown_to_session(dest_path, jail, 0o600)
 
         name, ext = os.path.splitext(stored_filename)
         ext = ext.lower()
@@ -363,10 +394,12 @@ def upload():
             # choose compiler: prefer g++ for .cpp, gcc for .c (can be overridden via config)
             compiler = current_app.config.get("c_compiler") or ("g++" if ext != ".c" else "gcc")
             try:
-                res = subprocess.run(
+                res = _run_confined(
+                    jail,
                     [compiler, "-g", "-O0", "-no-pie", dest_path, "-o", exec_path],
                     capture_output=True,
                     text=True,
+                    timeout=30,
                 )
                 if res.returncode != 0:
                     return client_error(
@@ -374,7 +407,7 @@ def upload():
                     )
                 # ensure executable permission
                 try:
-                    os.chmod(exec_path, 0o755)
+                    os.chmod(exec_path, 0o700)
                 except Exception:
                     # non-fatal; proceed even if chmod fails
                     pass
@@ -421,46 +454,44 @@ def create_and_upload():
     if not code:
         return client_error({"message": "No code submitted"})
 
-    # ensure a per-session prefix exists and use it to avoid filename collisions
-    if "uploaded_prefix" not in session:
-        session["uploaded_prefix"] = uuid.uuid4().hex
-    prefix = session["uploaded_prefix"]
+    # 本 session 專屬的 scratch 目錄（0700，屬於本 session 的臨時 OS 帳號）
+    try:
+        prefix, jail, upload_dir = _session_scratch()
+    except jail_manager.TooManySessions:
+        return _too_many_sessions_response()
+    except jail_manager.JailError:
+        logger.exception("[jail] could not establish execution isolation")
+        return client_error({"message": "無法建立執行隔離環境，已拒絕編譯。"})
 
-    # Determine where to save the code
-    _upload_dir_default = current_app.config.get("upload_folder") or os.path.join(
-        current_app.root_path, "uploads"
-    )
-    _upload_dir_abs = os.path.realpath(_upload_dir_default)
+    _session_dir_abs = os.path.realpath(upload_dir)
 
-    # 安全性檢查：只允許覆寫 uploads 目錄內的既有檔案，
-    # 防止 client 傳入系統路徑（如 /usr/include/.../stl_bvector.h）導致任意檔案覆寫
+    # 安全性檢查：只允許覆寫**本 session 自己** scratch 目錄內的既有檔案。
+    # 以前這裡只檢查「在 uploads 根目錄底下」，所以帶著別人的路徑就能覆寫
+    # 其他 session 的原始碼；現在比對的是本 session 的目錄。
     _filepath_safe = False
     if filepath:
         _filepath_abs = os.path.realpath(filepath)
-        if _filepath_abs.startswith(_upload_dir_abs + os.sep) and os.path.exists(filepath):
+        if _filepath_abs.startswith(_session_dir_abs + os.sep) and os.path.exists(
+            _filepath_abs
+        ):
             _filepath_safe = True
 
     if _filepath_safe:
-        src_path = filepath
+        src_path = _filepath_abs
         ext = os.path.splitext(src_path)[1]
         stored_filename = os.path.basename(src_path)
-        upload_dir = os.path.dirname(src_path)
     else:
         # Fallback to auto-generate a unique filename for the pasted source
         filename = f"pasted_{uuid.uuid4().hex}.cpp"
         ext = ".cpp"
-
-        upload_dir = current_app.config.get("upload_folder") or os.path.join(
-            current_app.root_path, "uploads"
-        )
-        os.makedirs(upload_dir, exist_ok=True)
-
         stored_filename = f"{prefix}_{filename}"
         src_path = os.path.join(upload_dir, stored_filename)
 
     try:
-        with open(src_path, "w") as f:
-            f.write(code)
+        # 檔案由伺服器（root）寫入，但編譯器與 GDB 以 session 帳號執行，
+        # 交出所有權它們才讀得到。write_session_file 用 O_NOFOLLOW —— scratch
+        # 目錄是那個不可信使用者可寫的，普通 open() 會被 symlink 導去別的地方。
+        jail_manager.write_session_file(src_path, code, jail, 0o600)
     except Exception as e:
         return client_error({"message": "Failed to write source file", "detail": str(e)})
 
@@ -510,27 +541,27 @@ def create_and_upload():
             compile_cmd += [str(_STUB_O)] + _WRAP_FLAGS
 
         try:
-            res = subprocess.run(
-                compile_cmd,
+            res = _run_confined(
+                jail, compile_cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
             if res.returncode != 0:
-                # 若加入 stub 導致失敗（少數情況），降級重試（不含 sandbox）
+                # 若加入 stub 導致失敗（少數情況），降級重試（不含 stub 連結層）
                 if stub_available:
-                    logger.warning("[sandbox] compile with stub failed, retrying without sandbox")
-                    res2 = subprocess.run(
-                        [compiler, "-g", "-O0", "-no-pie", src_path, "-o", exec_path],
+                    logger.warning("[sandbox] compile with stub failed, retrying without link-time stubs")
+                    res2 = _run_confined(
+                        jail, [compiler, "-g", "-O0", "-no-pie", src_path, "-o", exec_path],
                         capture_output=True, text=True, timeout=30,
                     )
                     if res2.returncode != 0:
                         return client_error({"message": "Compilation failed", "stderr": res2.stderr.replace(src_path, virtual_src_path)})
-                    sandbox_warnings.append("[sandbox] 沙箱連結失敗，以無沙箱模式編譯（請告知管理員）")
+                    sandbox_warnings.append("[sandbox] 連結層攔截失敗，已改以一般模式編譯（請告知管理員）")
                 else:
                     return client_error({"message": "Compilation failed", "stderr": res.stderr.replace(src_path, virtual_src_path)})
             try:
-                os.chmod(exec_path, 0o755)
+                os.chmod(exec_path, 0o700)
             except Exception:
                 pass
         except FileNotFoundError:
@@ -544,15 +575,10 @@ def create_and_upload():
         binary_path_result = exec_path
         current_app.config["initial_binary_and_args"] = [exec_path]
 
-        # ── Chroot jail：為每次編譯建立隔離沙盒 ──────────────────────────────
-        jail_dir = os.path.join(upload_dir, "jails", prefix)
-        exec_wrapper_result = _setup_jail(exec_path, jail_dir)
-        if exec_wrapper_result:
-            session["exec_wrapper"] = exec_wrapper_result
-            logger.info(f"[jail] created jail at {jail_dir}, wrapper: {exec_wrapper_result}")
-        else:
-            session.pop("exec_wrapper", None)
-            logger.warning(f"[jail] jail creation failed for {exec_path}, running without chroot")
+        # exec-wrapper 只做 ulimit（sandbox/wrapper.sh）。降權與 namespace 隔離
+        # 由 jail_manager 在更外層完成——GDB 自己就在裡面跑，因為跨 uid /
+        # 跨 user namespace 的 ptrace 加了 CAP_SYS_PTRACE 也不會動。
+        session["exec_wrapper"] = str(_WRAPPER)
 
     else:
         # non-C source: just register the source file as uploaded_binary
@@ -564,8 +590,8 @@ def create_and_upload():
     input_filename = f"{prefix}_input.in"
     input_path = os.path.join(upload_dir, input_filename)
     try:
-        with open(input_path, "w") as f:
-            f.write(program_input)
+        # 被除錯的程式（session 帳號）要能讀這個 stdin 檔
+        jail_manager.write_session_file(input_path, program_input, jail, 0o600)
     except Exception as e:
         logger.warning(f"Failed to write input file: {e}")
 
@@ -740,6 +766,19 @@ def dashboard():
 @blueprint.route("/", methods=["GET"])
 @authenticate
 def gdbgui():
+    # 無條件先確保本 session 有 scratch 目錄與 OS 帳號。
+    #
+    # 時序很重要：頁面載入後前端會立刻開 websocket，而 websocket 那端是用
+    # session["uploaded_prefix"] 去找這個 session 的 jail 來啟動 GDB。若等到
+    # 使用者按下編譯才建立，GDB 早就以 root、在沒有 namespace 的情況下起來了。
+    try:
+        _session_scratch()
+    except jail_manager.TooManySessions:
+        return _too_many_sessions_response()
+    except jail_manager.JailError:
+        logger.exception("[jail] could not establish execution isolation")
+        return client_error({"message": "無法建立執行隔離環境。"})
+
     # check if user didn't upload file
     # check if user didn't upload file, OR if the uploaded file is missing from disk
     resp = require_uploaded_binary()
@@ -775,28 +814,31 @@ def gdbgui():
                          should_create_default = True
 
     if should_create_default:
-        # Create a default hello world cpp
-        upload_dir = current_app.config.get("upload_folder") or os.path.join(
-            current_app.root_path, "uploads"
-        )
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        filename = f"default_hello_{uuid.uuid4().hex}.cpp"
+        # Create a default hello world cpp in this session's own scratch dir
+        try:
+            prefix, jail, upload_dir = _session_scratch()
+        except jail_manager.TooManySessions:
+            return _too_many_sessions_response()
+        except jail_manager.JailError:
+            logger.exception("[jail] could not establish execution isolation")
+            return client_error({"message": "無法建立執行隔離環境。"})
+
+        filename = f"{prefix}_default_hello_{uuid.uuid4().hex}.cpp"
         src_path = os.path.join(upload_dir, filename)
-        
+
         default_code = '#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}\n'
-        
-        with open(src_path, "w") as f:
-            f.write(default_code)
-            
+
+        jail_manager.write_session_file(src_path, default_code, jail, 0o600)
+
         # Compile it
         name_only, _ = os.path.splitext(filename)
         exec_filename = name_only + ".a"
         exec_path = os.path.join(upload_dir, exec_filename)
         compiler = current_app.config.get("c_compiler") or "g++"
-        
+
         try:
-            res = subprocess.run(
+            res = _run_confined(
+                jail,
                 [compiler, "-g", "-O0", "-no-pie", src_path, "-o", exec_path],
                 capture_output=True,
                 text=True,
@@ -804,10 +846,10 @@ def gdbgui():
             )
             if res.returncode == 0:
                 try:
-                    os.chmod(exec_path, 0o755)
+                    os.chmod(exec_path, 0o700)
                 except Exception:
                     pass
-                
+
                 # Set session variables
                 session["uploaded_binary"] = exec_path
                 current_app.config["initial_binary_and_args"] = [exec_path]
@@ -1134,11 +1176,11 @@ def prerun_calltree():
         server-side session 狀態（uploaded_binary / real_src_path /
         exec_wrapper / uploaded_input / uploaded_prefix），避免攻擊者透過
         任意參數指定要執行的 binary 或注入 gdb 腳本內容。
-      - binary 必須存在、realpath 必須落在 upload_folder 內、檔名必須以
-        本 session 的 uploaded_prefix + "_" 開頭 -- 防止透過 session 竄改或
-        路徑穿越去執行別的 session / 系統上任意的可執行檔。
-      - 沿用既有的 exec-wrapper jail（_setup_jail，見本檔案上方），透過
-        `set exec-wrapper` 讓被除錯的程式繼續套用資源限制。
+      - binary 必須存在、realpath 必須落在**本 session 自己的 scratch 目錄**內、
+        檔名必須以本 session 的 uploaded_prefix + "_" 開頭 -- 防止透過 session
+        竄改或路徑穿越去執行別的 session / 系統上任意的可執行檔。
+      - gdb 以本 session 的臨時 OS 帳號、在 user+net namespace 內執行
+        （_run_confined）；exec-wrapper 額外套用 ulimit 資源限制。
       - build_gdb_script 對 session 狀態做字元 allowlist/denylist 驗證，壞值
         直接 ValueError -> invalid_session_state，絕不把未驗證字串餵給 gdb。
       - subprocess 逾時 15 秒即視為失敗（timeout 逾時 Python 會自動 kill 該行程）。
@@ -1151,16 +1193,20 @@ def prerun_calltree():
     binary = session.get("uploaded_binary")
     src = session.get("real_src_path")
     prefix = session.get("uploaded_prefix", "")
-    upload_dir = current_app.config.get("upload_folder") or os.path.join(
-        current_app.root_path, "uploads"
-    )
+
+    # 只認本 session 自己的 scratch 目錄（不建立新的：沒有就是沒有）
+    jail = jail_manager.get(prefix) if prefix else None
+    if jail is not None:
+        session_dir = str(jail.dir)
+    else:
+        session_dir = os.path.join(_upload_root(), prefix) if prefix else ""
 
     if (
         not binary
         or not src
         or not prefix
         or not os.path.isfile(binary)
-        or not os.path.realpath(binary).startswith(os.path.realpath(upload_dir) + os.sep)
+        or not os.path.realpath(binary).startswith(os.path.realpath(session_dir) + os.sep)
         or not os.path.basename(binary).startswith(prefix + "_")
     ):
         return jsonify({"ok": False, "reason": "no_binary"}), 200
@@ -1190,11 +1236,14 @@ def prerun_calltree():
     raw_stdout = b""
 
     try:
+        # 腳本要放在本 session 的 scratch 目錄並交給 session 帳號 —— GDB 以該
+        # 帳號執行，讀不到 root 在 /tmp 建的 0600 檔案。
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
+            mode="w", suffix=".py", delete=False, dir=session_dir or None
         ) as tf:
             tf.write(script)
             script_path = tf.name
+        jail_manager.chown_to_session(script_path, jail, 0o600)
 
         # gdb's stdout is written directly to this file by the OS (subprocess
         # dup2's the fd into the child) -- Python never buffers the full
@@ -1203,7 +1252,10 @@ def prerun_calltree():
         with tempfile.NamedTemporaryFile(suffix=".stdout", delete=False) as stdout_f:
             stdout_path = stdout_f.name
             try:
-                proc = subprocess.run(
+                # GDB 一樣進 session 帳號 + user/net namespace。
+                # stdout 走的是繼承的 fd，所以檔案本身的權限不影響寫入。
+                proc = _run_confined(
+                    jail,
                     [gdb_exe, "--batch", "-nx", "-x", script_path, binary],
                     stdout=stdout_f,
                     stderr=subprocess.DEVNULL,

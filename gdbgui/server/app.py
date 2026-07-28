@@ -43,6 +43,7 @@ from flask_socketio import SocketIO, emit  # type: ignore
 from .constants import DEFAULT_GDB_EXECUTABLE, STATIC_DIR, TEMPLATE_DIR
 from .http_routes import blueprint
 from .http_util import is_cross_origin
+from .sandbox import jail_manager
 from .sessionmanager import SessionManager, DebugSession
 
 logger = logging.getLogger(__file__)
@@ -58,6 +59,14 @@ app.config["gdb_command"] = None
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["project_home"] = None
 app.config["remap_sources"] = {}
+# 每個 session 的 scratch 目錄放在這底下。有隔離時是 container-local 的
+# SCRATCH_ROOT（刻意不掛共用 volume：user namespace 的 uid 對映會讓
+# namespace 內外的檔案所有權不一致）；沒有隔離的本機開發才退回 uploads/。
+app.config["upload_folder"] = (
+    str(jail_manager.SCRATCH_ROOT)
+    if jail_manager.isolation_available()
+    else os.path.join(app.root_path, "uploads")
+)
 manager = SessionManager()
 app.config["_manager"] = manager
 app.secret_key = binascii.hexlify(os.urandom(24)).decode("utf-8")
@@ -133,14 +142,48 @@ def client_connected():
                 },
             )
         else:
-            # start new debug session
-            gdb_command = request.args.get("gdb_command", app.config["gdb_command"])
+            # start new debug session.
+            #
+            # gdb_command 一律取伺服器端設定，**不接受** request.args。
+            # 它會被 shlex.split 後直接 execvp，以前等於讓任何連上 websocket 的人
+            # 指定要執行哪個程式；前端本來就只是把伺服器發下去的值原封送回來。
+            gdb_command = app.config["gdb_command"]
             mi_version = request.args.get("mi_version", "mi2")
+
+            session_key = session.get("uploaded_prefix")
+            try:
+                if session_key:
+                    jail_manager.acquire(session_key)
+            except jail_manager.TooManySessions as e:
+                logger.warning("[jail] refusing new debug session: %s", e)
+                emit(
+                    "debug_session_connection_event",
+                    {
+                        "ok": False,
+                        "message": (
+                            "伺服器同時執行的除錯 session 已達上限，請稍後再試。"
+                            " (server is at its concurrent debug-session limit)"
+                        ),
+                    },
+                )
+                return
+            except jail_manager.JailError:
+                logger.exception("[jail] could not establish execution isolation")
+                emit(
+                    "debug_session_connection_event",
+                    {
+                        "ok": False,
+                        "message": "無法建立執行隔離環境，已拒絕啟動除錯 session。",
+                    },
+                )
+                return
+
             debug_session = manager.add_new_debug_session(
                 gdb_command=gdb_command,
                 mi_version=mi_version,
                 client_id=request.sid,
                 exec_wrapper=session.get("exec_wrapper"),
+                session_key=session_key,
             )
             emit(
                 "debug_session_connection_event",

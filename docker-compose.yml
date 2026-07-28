@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   gdbgui:
     build:
@@ -6,15 +5,43 @@ services:
       dockerfile: Dockerfile.gdbgui
     ports:
       - "5000:5000"
-    volumes:
-      - ./gdbgui/server/uploads:/app/gdbgui/server/uploads
+    # tini 當 PID 1 負責回收孤兒行程。使用者程式是 GDB 的子行程，GDB 被殺掉後它
+    # 會被 reparent 給 PID 1；若 PID 1 是不會 waitpid 的 Python 伺服器，每個結束的
+    # session 都會留下 <defunct>，永久佔用 PID（配上 pids_limit 就是可用性問題）。
+    init: true
+    # 刻意沒有 uploads volume。使用者的原始碼與 binary 現在放在容器內的
+    # /srv/gdbgui-scratch，每個 session 一個 0700 目錄。不掛共用 volume 的原因：
+    # user namespace 的 uid 對映會讓 namespace 內外的檔案所有權不一致。持久資料
+    # 屬於資料庫（子專案 A），scratch 裡不該有任何需要保留的東西。
+    tmpfs:
+      # exec 是必要的：使用者編譯出來的程式就在這裡執行，Docker tmpfs 預設 noexec。
+      - /srv/gdbgui-scratch:exec,mode=0755,size=512m
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+      # 隔離建立不起來就拒絕啟動／拒絕編譯，絕不默默降級成「所有人共用 root」。
+      - GDBGUI_REQUIRE_ISOLATION=1
+      # 全域併發上限（架構 ⑤）：200 個帳號的尖峰若無上限，一堂課就能耗盡主機資源。
+      - GDBGUI_MAX_SESSIONS=24
+      - GDBGUI_SESSION_IDLE_SECONDS=3600
       # AI 功能（explain_error / generate_lesson）的伺服器端金鑰：從宿主機環境變數帶入
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
       - LESSON_AI_API_KEY=${LESSON_AI_API_KEY:-}
-    cap_add:
-      - SYS_PTRACE
     security_opt:
-      - seccomp:unconfined
+      - no-new-privileges:true
+      # Docker 預設 seccomp profile + 唯一一條放寬規則（unshare 的 CLONE_NEWUSER /
+      # CLONE_NEWNET）。**不是** seccomp:unconfined，也不是手寫 allowlist。
+      # 完整說明與 upstream 出處見 seccomp/gdbgui.json 檔頭的 _comment。
+      - seccomp=./seccomp/gdbgui.json
+    # 沒有 cap_add：Docker 預設 capability set 就夠。
+    #   * seccomp:unconfined 與 cap_add: SYS_PTRACE 已移除——實測 GDB 在預設
+    #     seccomp profile 下、不加 SYS_PTRACE 仍可正常下中斷點/單步/繼續。
+    #   * unshare --user --net 同樣不需要任何額外 capability（進了 user
+    #     namespace 之後在該 namespace 內就有 CAP_SYS_ADMIN）。
+    # 也刻意沒有 cap_drop: ALL —— setpriv 降權需要預設集合裡的 CAP_SETUID/
+    # CAP_SETGID，useradd/chown 需要 CAP_CHOWN，清理殘留行程需要 CAP_KILL。
+    # 資源上限（架構 ⑤）。單一 session 的 CPU/記憶體/檔案上限另由
+    # sandbox/wrapper.sh 的 ulimit 負責。
+    mem_limit: 3g
+    pids_limit: 512
+    cpus: 2.0

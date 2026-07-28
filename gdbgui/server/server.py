@@ -1,8 +1,13 @@
+import logging
 import os
 import socket
+import threading
 import webbrowser
 
 from .constants import DEFAULT_HOST, DEFAULT_PORT, colorize
+from .sandbox import jail_manager
+
+logger = logging.getLogger(__name__)
 
 try:
     from gdbgui.SSLify import SSLify, get_ssl_context  # noqa
@@ -32,6 +37,44 @@ def get_extra_files():
     return extra_files
 
 
+_REAPER_INTERVAL_SECONDS = 300
+
+
+def _start_execution_isolation():
+    """啟動時清掉上次執行殘留的 session 帳號／目錄，並開一條回收執行緒。
+
+    scratch 依設計不含持久資料，所以無條件清除是安全的；不清的話殘留帳號
+    會一直佔用併發額度（架構 ⑤），重啟幾次之後就再也開不了新 session。
+    """
+    if not jail_manager.isolation_available():
+        if jail_manager.REQUIRE_ISOLATION:
+            raise SystemExit(
+                "GDBGUI_REQUIRE_ISOLATION=1 but per-session execution isolation is "
+                "unavailable on this host. Refusing to start: user programs would "
+                "otherwise all run as the same OS user."
+            )
+        logger.warning(
+            "Per-session execution isolation is NOT active. This is only safe for a "
+            "single trusted local user."
+        )
+        return
+
+    jail_manager.ensure_scratch_root()
+    reaped = jail_manager.reap_orphans()
+    if reaped:
+        logger.info("[jail] reaped %d orphaned session account(s) at startup", reaped)
+
+    def _reaper():
+        while True:
+            try:
+                jail_manager.reap_idle()
+            except Exception:
+                logger.exception("[jail] idle reaper failed")
+            threading.Event().wait(_REAPER_INTERVAL_SECONDS)
+
+    threading.Thread(target=_reaper, name="jail-reaper", daemon=True).start()
+
+
 def run_server(
     *,
     app=None,
@@ -46,6 +89,8 @@ def run_server(
     certificate=None,
 ):
     """Run the server of the gdb gui"""
+
+    _start_execution_isolation()
 
     kwargs = {}
     ssl_context = get_ssl_context(private_key, certificate)
