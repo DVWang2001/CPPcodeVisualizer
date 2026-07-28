@@ -161,9 +161,12 @@ describe('AnimScheduler', () => {
             expect(scheduler.isBarrierActive()).toBe(true);
         });
 
-        it('reserveBarrier returns false when barrier is already active (queue)', () => {
+        // Contract change: a queue-held barrier used to be refused, which meant the
+        // find / lower_bound animation was silently dropped whenever the 1s
+        // container poll grabbed the barrier just before a pause. It is now joined.
+        it('reserveBarrier returns true when the barrier is held by a queue drain', () => {
             scheduler.pushOps('c', [op('a')], jest.fn().mockResolvedValue(undefined));
-            expect(scheduler.reserveBarrier()).toBe(false);
+            expect(scheduler.reserveBarrier()).toBe(true);
         });
 
         it('reserveBarrier returns false when already reserved prospectively', () => {
@@ -176,6 +179,41 @@ describe('AnimScheduler', () => {
             expect(scheduler.isBarrierActive()).toBe(true);
             scheduler.releaseBarrier();
             expect(scheduler.isBarrierActive()).toBe(false);
+        });
+
+        it('reserveBarrier JOINS a queue-held barrier instead of refusing', async () => {
+            const s = new AnimScheduler();
+            s.pushOps('c', [op('insert')], () => new Promise(r => setTimeout(r, 100)));
+            expect((window as any).gdbgui_bst_anim_done).not.toBeNull();
+            // The container poll got there first; the prospective op must still run.
+            expect(s.reserveBarrier()).toBe(true);
+        });
+
+        it('a joined barrier is not resolved when the queue drains', async () => {
+            const s = new AnimScheduler();
+            s.pushOps('c', [op('insert')], () => new Promise(r => setTimeout(r, 10)));
+            s.reserveBarrier();
+            await flushAll();
+            // Queue is done, but the prospective animation has not released yet.
+            expect((window as any).gdbgui_bst_anim_done).not.toBeNull();
+            s.releaseBarrier();
+            expect((window as any).gdbgui_bst_anim_done).toBeNull();
+        });
+
+        it('releaseBarrier leaves a still-draining queue to finish the barrier', async () => {
+            const s = new AnimScheduler();
+            s.pushOps('c', [op('insert')], () => new Promise(r => setTimeout(r, 50)));
+            s.reserveBarrier();
+            s.releaseBarrier();            // prospective aborted early
+            expect((window as any).gdbgui_bst_anim_done).not.toBeNull();
+            await flushAll();
+            expect((window as any).gdbgui_bst_anim_done).toBeNull();
+        });
+
+        it('a second prospective op is still refused while one owns the barrier', () => {
+            const s = new AnimScheduler();
+            expect(s.reserveBarrier()).toBe(true);
+            expect(s.reserveBarrier()).toBe(false);
         });
 
         it('releaseBarrier has no effect on a queue-driven barrier', async () => {

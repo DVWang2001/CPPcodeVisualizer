@@ -47,9 +47,25 @@ export class AnimScheduler {
     // ── Prospective barrier (find / count / dup-insert) ───────────────────────
     // Must be called synchronously in inferior_program_paused (before TTS fires).
 
-    /** Reserve the barrier for a prospective animation. Returns false if barrier already active. */
+    /**
+     * Reserve the barrier for a prospective animation.
+     * Returns false only if another prospective op already owns it.
+     *
+     * A barrier held by a queue drain is JOINED rather than refused. The
+     * container poll runs on its own 1s timer, so it can push insert/erase ops
+     * and take the barrier moments before the next pause runs
+     * detect_container_op. Refusing there meant the find / lower_bound
+     * animation was silently skipped whenever those two happened to collide.
+     * Joining marks the existing barrier prospective, which stops _drain from
+     * resolving it when the queue empties, so the prospective animation still
+     * gets its turn.
+     */
     reserveBarrier(): boolean {
-        if ((window as any).gdbgui_bst_anim_done) return false;
+        if ((window as any).gdbgui_bst_anim_done) {
+            if (this.prospectiveBarrier) return false; // another prospective op owns it
+            this.prospectiveBarrier = true;
+            return true;
+        }
         this._ensureBarrier(true);
         return true;
     }
@@ -57,7 +73,13 @@ export class AnimScheduler {
     /** Release the prospective barrier after animation completes or is aborted. */
     releaseBarrier(): void {
         if (this.prospectiveBarrier) {
-            this._resolveBarrier();
+            this.prospectiveBarrier = false;
+            // A queue drain may still be in flight (we joined its barrier, or it
+            // started while we ran). Leave the barrier to its completion,
+            // otherwise TTS could advance mid-animation.
+            if (this.running.size === 0) {
+                this._resolveBarrier();
+            }
         }
     }
 

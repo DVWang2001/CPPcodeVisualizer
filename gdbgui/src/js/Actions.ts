@@ -74,6 +74,13 @@ const Actions = {
   },
   inferior_program_starting: function () {
     Actions.stop_tts();
+    // 執行代數：只有真正重新執行才遞增。ContainerVisualizer 的輪詢用它判斷
+    // 「該把 plugin 狀態清掉了」，而不能用 inferior_program === "running"
+    // ——後者在每一次單步時都會短暫成立，輪詢只要剛好落在那個窗就會把已經
+    // 累積好的 BST 插入順序清光，接著被 render 的 lazy-init 用排序值捏造回來
+    // （樹會變成一條退化鏈）。
+    (global_variable as any).__run_generation =
+      ((global_variable as any).__run_generation || 0) + 1;
     // 舊 GDB process 被 kill 時，in-flight 的 -var-create 不會有回應，
     // 導致 VarCreator._is_fetching 永遠為 true，卡死所有後續變數建立。
     // 透過 window 橋接（避免 Actions↔GdbVariable 循環 import）在此 reset。

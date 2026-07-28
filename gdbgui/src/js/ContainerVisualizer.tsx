@@ -91,11 +91,21 @@ class ContainerVisualizer extends React.Component<{}, State> {
         };
     }
 
+    /** Last run generation we cleared plugin state for. -1 = never. */
+    private _lastResetRunGen = -1;
+
     _pollContainers() {
         const latestContainers = (global_variable as any).__latest_containers as Map<string, any>;
         if (!latestContainers) { this.forceUpdate(); return; }
 
-        if (store.get("inferior_program") === "running") {
+        // 只有真正重新執行才清 plugin 狀態。先前這裡看的是
+        // inferior_program === "running"，但單步時程式也會短暫進入 running，
+        // 而這是個輪詢——只要有一次剛好落在那個窗，就會把累積好的 BST 插入
+        // 順序整個清掉，然後 render 的 lazy-init 會用 GDB 給的「已排序」值
+        // 重建，把樹變成一條退化鏈。改用只在 Run 時遞增的執行代數。
+        const runGen: number = (global_variable as any).__run_generation || 0;
+        if (runGen !== this._lastResetRunGen) {
+            this._lastResetRunGen = runGen;
             allPlugins().forEach(p => p.resetAll());
             mazePlugin.resetAll();
             animScheduler.resetAll();
