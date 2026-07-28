@@ -112,6 +112,11 @@ const menu = (
             Session Information
           </a>
         </li>
+        <li>
+          <a href="/docs/authoring-guide" target="_blank" className="pointer">
+            教案撰寫指南 (AI)
+          </a>
+        </li>
 
         <li role="separator" className="divider" />
         <li>

@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<cmath>\n#include<vector>\nusing namespace std;\nclass Complex{\n   double x,y;\n   public:\n   Complex(double a=0,double b=0):x(a),y(b){}\n   Complex operator+(Complex p){return Complex(x+p.x,y+p.y);}\n   Complex operator*(Complex p){return Complex(x*p.x-y*p.y,y*p.x+x*p.y);}\n   Complex operator /(double b){return Complex(x/b,y/b);}\n   friend istream &operator>>(istream &is,Complex &c);\n   friend ostream& operator<<(ostream& os,const Complex& c);\n};\nistream &operator>>(istream &is,Complex &c){\n                 char c1,c2;\n                 is>>c.x>>c1>>c.y>>c2;\n                 if(c1=='-')c.y*=-1;\n        return is;\n}\nostream& operator<<(ostream& os,const Complex& c){\n        if(c.y==0)os<<c.x;\n        else if(c.x==0)os<<c.y<<\"i\";\n        else if(c.y<0) os<<c.x<<c.y<<\"i\";\n        else os<<c.x<<\"+\"<<c.y<<\"i\";\n   return os;\n}\nclass CVec{\n   vector<Complex>cv;\n   public:\n        Complex tol()const{\n                Complex ans=cv[0];\n                for(int i=1;i<cv.size();i++){\n                        ans=ans+cv[i];\n                }\n                return ans;\n        }\n        Complex cross()const{\n                Complex ans=cv[0];\n                for(int i=1;i<cv.size();i++){\n                        ans=ans*cv[i];\n                }\n                return ans;\n        }\n        Complex avg()const{\n                return tol()/cv.size();\n        }\n                friend istream& operator>>(istream &is,CVec &a);\n                friend ostream& operator<<(ostream &os,const CVec&a);\n};\nistream& operator>>(istream &is,CVec &a){\n        Complex c;\n        is>>c;\n        a.cv.push_back(c);\n   return is;\n}\nostream& operator<<(ostream &os,const CVec&a){\n                 os<<\"sum:\"<<a.tol()<<endl;\n        os<<\"Cross product:\"<<a.cross()<<endl;\n        os<<\"avg:\"<<a.avg()<<endl;\n        return os;\n}\nint main(){\n   int n;cin>>n;\n   CVec c;\n   while(n--){\n      cin>>c;\n   }\n   cout<<c<<endl;  //@ @guide uml:c\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "69",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 3  92  +  97  i  75  +  26  i  22  -  17  i "
+}

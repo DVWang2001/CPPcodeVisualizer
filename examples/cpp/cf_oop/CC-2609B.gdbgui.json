@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\nusing namespace std;\nclass matrix{\n\tint *data;\n\tint mn;\n\tpublic:\n\tmatrix(int n){\n\t\tmn=n;\n\t\tdata=new int[n*n];\n\t}\n\tfriend istream &operator>>(istream &is,matrix &c);\n    friend ostream& operator<<(ostream& os,const matrix& c);\n\n\tmatrix operator +(matrix m){\n\t\tmatrix result(mn);\n\t\tfor(int i=0;i<mn*mn;i++)result.data[i]=data[i]+m.data[i];\n\t\treturn result;\n\t}\n\tmatrix operator -(matrix m){\n\t\tmatrix result(mn);\n\t\tfor(int i=0;i<mn*mn;i++)result.data[i]=data[i]-m.data[i];\n\t\treturn result;\n\t}\n\tmatrix operator *(matrix m){\n\t\tmatrix result(mn);\n\t\tfor(int i=0;i<mn;i++){\n\t\t\tfor(int j=0;j<mn;j++){\n\t\t\t\tint sum=0;\n\t\t\t\tfor(int k=0;k<mn;k++)sum+=data[i*mn+k]*m.data[k*mn+j];\n\t\t\t\tresult.data[i*mn+j]=sum;\n\t\t\t}\n\t\t}\n\t\treturn result;\n\t}\n};\nistream &operator>>(istream &is,matrix &c){\n\tfor(int i=0;i<c.mn*c.mn;i++)is>>c.data[i];\n\treturn is;\n}\nostream& operator<<(ostream& os,const matrix& c){\n  \tfor(int i=0;i<c.mn*c.mn;i++){\n  \t\tif(i!=0 &&i%c.mn==0)os<<endl;\n  \t\tos<<c.data[i]<<\" \";\n  \t}\n  \tos<<endl;\n\treturn os;\n}\nint main(){\n\tint n;\n\tcin>>n;\n\tmatrix a(n);\n\tmatrix b(n);\n\tcin>>a>>b;\n\tcout<<a+b<<endl;  //@ @guide uml:a\n\tcout<<a-b<<endl;\n\tcout<<a*b<<endl;\n\n}\n",
+  "breakpoints": [
+    {
+      "line": "54",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 6  78 88 28 60 76 47 51 18 79 74 81 29 17 7 77 69 72 6 74 30 35 83 40 47 31 7 1 2 70 30 79 8 16 77 99 83 30 15 86 19 60 43 38 66 59 55 90 39 93 72 33 34 22 29 15 7 6 93 9 75 37 96 44 1 44 93 97 7 49 81 45 1 "
+}

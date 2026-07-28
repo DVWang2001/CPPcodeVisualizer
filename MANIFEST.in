@@ -1,6 +1,7 @@
 include README.md
 include LICENSE
 include requirements.txt
+include AUTHORING_GUIDE.md
 
 graft gdbgui
 # these files are built and must be included in distribution

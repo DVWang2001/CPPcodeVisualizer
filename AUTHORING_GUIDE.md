@@ -1,7 +1,10 @@
 # CPPcodeVisualizer 教案撰寫指南
 
-本文件說明如何利用「指導（Guide）」、「TTS」、「Layout」三欄位為每一行程式碼撰寫互動式教案。
-教案儲存在 JSON 檔中，可透過前端 **Export JSON / Import JSON** 按鈕匯出或匯入。
+本文件說明如何利用「指導（Guide）」、「TTS」、「Layout」三個欄位，為每一行程式碼撰寫互動式教案。
+三個欄位直接寫在 C++ 原始碼**行尾的 `//@` 註解**裡（語法見第一章），原始碼本身即是完整教案。
+
+> **給 AI 的重點**：生成教案 = 輸出一份行尾帶 `//@` 註解的 .cpp 程式碼。
+> 前端另提供 **Export JSON / Import JSON** 按鈕，可把教案連同斷點、程式輸入打包成 JSON bundle（格式見第五章）。
 
 ---
 
@@ -13,7 +16,37 @@
 2. **TTS** — 朗讀指定文字（可嵌入即時變數值）
 3. **Layout** — 自動調整右側欄位的開合與比例
 
-三個欄位的設定都以「行號」為 key 寫在 JSON 的對應欄位中。
+### 1.1 `//@` 行尾註解語法
+
+三個欄位寫在該行程式碼**行尾的 `//@` 註解**中，以 `@guide` / `@tts` / `@layout` 關鍵字分欄：
+
+```cpp
+int x = 5;  //@ @guide 宣告變數 x @tts 目前 x 的值是 {x} @layout sidebar:50 open:container
+```
+
+語法規則：
+
+- 哨兵是 `//@`：只有以 `//@` 開頭的行尾註解會被解析；一般 `//` 註解不受影響。`//@` 對編譯器而言就是普通 C++ 註解，完全不影響程式執行。
+- `@guide`、`@tts`、`@layout` 三個關鍵字**皆可省略、順序任意**；每個關鍵字之後到下一個關鍵字（或行尾）之間的文字即為該欄內容，前後空白自動去除。
+- 一行只能有一個 `//@`，三欄都寫在同一個註解內。
+- 欄位值裡的其他標記照常寫在內容中：`{變數}`、`[speed:N]`、`[next]`、TTS 的 `@3` 門檻、`sidebar:50` 等。TTS 的 `@數字` 門檻不會被誤認為欄位關鍵字。
+- 欄位值需要**換行**時寫 `\n`（反斜線本身寫 `\\`），整個 `//@` 註解必須維持單行。
+- 保留字：欄位值中不可出現字面字串 `@guide`、`@tts`、`@layout`。
+
+完整範例（AI 生成教案時輸出這種形式的 .cpp 即可）：
+
+```cpp
+#include <iostream>
+#include <vector>
+using namespace std;
+int main() {
+  int n = 5;         //@ @guide [初始化] n={n} @tts [next] 我們宣告 n，初值是 {n} @layout sidebar:40 open:callgraph
+  vector<int> v;     //@ @guide 目前向量內容：{v} @layout sidebar:55 open:container close:locals
+  for (int i = 0; i < n; i++) {  //@ @tts 第一次進入迴圈，i={i} | @3 繼續，i={i} | @5 [next] {i}
+    v.push_back(i);  //@ @guide {v[i]} @tts 把 {i} 放進向量尾端
+  }
+}
+```
 
 ---
 
@@ -26,13 +59,81 @@
     return result;      // 呼叫樹返回時顯示 ⇒ 值
 
 直接 `return n + rest;` 不會壞，只是該節點返回時沒有 `⇒ 值`（僅變淡）。
+此外 **`result` 必須在函式最外層宣告一次，各分支只賦值、不得在內層區塊重複宣告**：
+
+    int result;            // 函式最外層宣告一次
+    if (n <= 1) {
+        result = 1;        // base case 只賦值
+        return result;
+    }
+
+原因：frame 的最後一個停駐點是函式右大括號 `}`，區塊內宣告的 `result` 在那裡已
+出 scope，呼叫樹會凍結到外層未初始化的垃圾值（實測症狀：第一次 return 顯示 `↑0`）。
+
 AI 生成遞迴教案時一律採用此寫法。
+
+### 1.3 全自動播放（硬性標準）
+
+教案必須能**全自動播放**：使用者 Import 教案、按下 Run 之後，不需要任何手動步進，
+教案要自己一路播放到程式結束。
+
+- GDB 可能停駐的**每一行**（含函式的右大括號行、main 的收尾行）都必須有 `@tts`，
+  且以自動播放指令開頭（`[next]`／`[step-in]`／`[continue]`，見 3.4 節）。
+- 同一行多次停駐時，每個 `@N` 門檻段落也**各自**要以指令開頭，
+  不得留下沒有指令的段落（例如遞迴呼叫行：第一次 `[step-in]` 往下、
+  回程時用 `@N [next]` 繼續）。
+- 最後一個停駐點以 `[continue]` 收尾，讓程式跑到結束。
+- **Run 一定先停在 main 的第一個可執行行**（系統自動 `-break-insert main`）：
+  main 裡的呼叫行會停**兩次**（起跑出發、遞迴結束返回），訊息必須用 `@2` 門檻
+  區分，例如 `[next] 從 main 出發，呼叫 sum(4) | @2 [next] 遞迴全部結束，回到 main`。
+- 驗收方式：Import 後按 Run，全程不碰鍵盤滑鼠，教案應自動播放完畢。
+
+AI 生成教案時此為**硬性標準**：任何一個停駐點缺少自動播放指令即為不合格。
+
+### 1.4 多分支（樹狀）遞迴
+
+- **每個遞迴呼叫獨立成行**，存入具名變數：`int a = fib(n - 1);`、`int b = fib(n - 2);`。
+  不要寫 `return fib(n-1) + fib(n-2);` — 單行雙呼叫無法逐呼叫註解與自動播放。
+- **斷點設在遞迴函式入口行**。自動播放的「下降」靠它：呼叫行不論寫 `[next]` 或
+  `[step-in]`，入口斷點都會攔住進入下一層。
+- 呼叫行一律用 `[step-in]`（回程再次停駐該行時，呼叫已完成，step 等同 next，安全）。
+- **呼叫行的訊息必須方向中性**：樹狀遞迴的呼叫行「去程／回程」交錯出現、無法用
+  `@N` 門檻區分，訊息要寫成兩種情境都通（例：「處理左邊的子問題」），
+  不要寫「往下呼叫」或「回來了」這種單向敘述。
+
+### 1.5 回傳行的 @guide 要顯示「回傳值 ← 由來」
+
+`return result;` 那一行的 `@guide` 不要只寫回傳值，要一併寫出它**怎麼算出來的**，
+讓學生在 return 那一刻於節點上同時看到值和它的由來（回答「為什麼回傳這個值」）：
+
+    return result;   //@ @guide 回傳 {result} ← max(不拿 {skip}, 拿 {take})
+
+慣用格式：`回傳 {result} ← <由來>`。由來依函式而定：
+
+- 線性／分治：`← {n} + {rest}`、`← {a} + {b}`、`← max(不拿 {skip}, 拿 {take})`
+- base case：`← base case (n≤1)`、`← 沒物品可拿`
+- 記憶化命中：`← 直接查記憶表`
+- 尾遞迴轉交：`← 下層原封傳回`
+
+`return` 行上 `{result}` 與由來用到的變數（`{skip}`、`{n}` 等）此時都已賦值、在 scope 內，可安全引用。
+
+### 1.6 遞迴呼叫的回傳值要存成獨立變數，別和其他運算混在一行
+
+`take = val[i] + knap(...)` 把「子問題的回傳值」和「額外運算（+val[i]）」塞進同一個變數，
+節點上只看得到最後的 take，看不出子問題其實回傳多少 —— 學生會困惑「子問題明明回傳 0，
+怎麼變 2」。把子問題的答案先存成獨立變數：
+
+    int sub = knap(i + 1, w - wt[i], v - vol[i]);   //@ 子問題的答案（看得到它回傳 0）
+    take = val[i] + sub;                            //@ 拿 = 這件的價值 + 子問題 {sub}
+
+這樣 `sub` 明確顯示子問題回傳的值，`take = val[i] + sub` 顯示組成，回傳的由來一目了然。
+通則：**一行最多一個遞迴呼叫，且其回傳值先落在自己的具名變數上**，再參與後續運算。
 
 ---
 
 ## 二、指導欄（Guide）
 
-> 填入右側 **Guide** 欄。觸發時機：GDB 暫停在該行。
+> 寫在該行 `//@` 註解的 **`@guide`** 欄位。觸發時機：GDB 暫停在該行。
 
 ### 2.1 顯示純文字
 
@@ -51,6 +152,11 @@ AI 生成遞迴教案時一律採用此寫法。
 ```
 
 > 可在同一行混合文字與多個變數：`n = {n}，sum = {sum}`
+
+> **重要：`{變數}` 讀到的是「該行執行前」的值。** GDB 停在某行時該行尚未執行，
+> 所以**該行才要賦值的變數不可在同一行的註解引用**（會讀到未初始化的垃圾值），
+> 請放到下一行的註解。例如 `result = n + rest;` 的註解只能用 `{n}`、`{rest}`，
+> `{result}` 要寫在下一行 `return result;` 的註解上。
 
 ### 2.3 顯示容器視覺化 `{容器名}`
 
@@ -86,7 +192,7 @@ AI 生成遞迴教案時一律採用此寫法。
 {grid[i][j]}  ← 高亮第 i 列第 j 行的格子
 ```
 
-勾選容器標題旁的「迷宮模式」可切換為迷宮配色（見 4.5 節）。
+勾選容器標題旁的「迷宮模式」可切換為迷宮配色（見 4.6 節）。
 
 ### 2.4 高亮特定索引 `{容器名[索引]}` 與多色高亮
 
@@ -153,17 +259,15 @@ bhN 標籤   = 黑色高度（各路徑相等表示符合 RB-tree 不變式）
 
 #### 搭配教案使用
 
-在 Guide 欄顯示容器、在 Layout 欄同時開啟 container 面板即可。  
-紅黑樹切換是前端互動狀態，不需要特殊的 Layout 指令。
+在 Guide 欄顯示容器、在 Layout 欄開啟 container 面板，並可用 `bst:容器名`（見 4.7 節）自動切換紅黑樹視圖：
 
-```
-Guide 第 N 行：目前集合內容：{s}
-Layout 第 N 行：sidebar:55 open:container
+```cpp
+s.insert(x);  //@ @guide 目前集合內容：{s} @layout sidebar:55 open:container bst:s
 ```
 
 ### 2.6 多行說明 `\n`
 
-在指導文字中寫入 `\n` 可換行，後面的文字會對應到下面的程式碼行。
+在指導文字中寫入 `\n` 可換行，Guide 面板會分行顯示（`//@` 註解本身仍維持單行）。
 
 ```
 第一行說明\n第二行說明\n第三行說明
@@ -203,7 +307,7 @@ N 的有效範圍為 **0.1 – 4.0**，預設為 1.0。
 
 ## 三、TTS 欄（Text-to-Speech）
 
-> 填入右側 **TTS** 欄。觸發時機：GDB 暫停在該行。語言：`zh-TW`（繁體中文）。
+> 寫在該行 `//@` 註解的 **`@tts`** 欄位。觸發時機：GDB 暫停在該行。語言：`zh-TW`（繁體中文）。
 
 ### 3.1 基本文字
 
@@ -232,7 +336,8 @@ N 的有效範圍為 **0.1 – 4.0**，預設為 1.0。
 枚[枚]舉所有組合
 ```
 
-> 規則：`字[音]` → 系統唸「音」而非原字。
+> 規則：`[音]` 會**取代它前面的那一個字**送給語音引擎（例：`白[柏]` 唸成「柏」）。
+> 把正確讀音緊接在要修正的字後面即可；只影響朗讀，字幕仍顯示原字。
 
 ### 3.4 自動播放指令前綴 `[指令]`
 
@@ -286,11 +391,22 @@ N 的有效範圍為 **0.1 – 4.0**，預設為 1.0。
 
 **不加 `@N` 時等同於 `@1`、`@2`、`@3`…（向下相容）**
 
+### 3.7 停頓 `[wait:N]` / `[pause:N]`
+
+在 TTS 文字中插入 `[wait:秒數]` 或 `[pause:秒數]`（兩者等價），朗讀到該處會靜默指定秒數後再繼續，適合留時間讓學生觀察畫面：
+
+```
+先看這一行 [pause:1.5] 注意 i 的值變成 {i}
+現在插入節點 [wait:2] 觀察樹的旋轉
+```
+
+> 停頓標記不會顯示在字幕中。
+
 ---
 
 ## 四、Layout 欄
 
-> 填入右側 **Layout** 欄。觸發時機：GDB 暫停在該行。
+> 寫在該行 `//@` 註解的 **`@layout`** 欄位。觸發時機：GDB 暫停在該行。
 > 每個 token 以空格分隔，格式均為 `key:value`。
 
 ### 4.1 調整右側欄寬度 `sidebar:N`
@@ -361,46 +477,63 @@ maze:grid,board
 
 > 等同於在容器視覺化面板手動勾選「迷宮模式」。
 
-### 4.7 組合範例
+### 4.7 紅黑樹視圖 `bst:容器名稱`
+
+自動為指定的 `set` / `map` 類容器勾選「紅黑樹」視圖（等同於在 Container 面板手動勾選，見 2.5 節）：
+
+```
+bst:s
+bst:s,m
+```
+
+### 4.8 容器字體大小 `font:N`
+
+設定 Container 面板的字體大小，單位為 em（例如元素較多時縮小字體）：
+
+```
+font:1.5
+font:0.8
+```
+
+### 4.9 組合範例
 
 ```
 sidebar:50 open:container close:locals
 sidebar:40 open:callgraph,container close:visualizer
 sidebar:0 close:container,callgraph
 sidebar:55 open:container maze:maze
+sidebar:60 open:container bst:s font:1.2
 ```
 
 ---
 
-## 五、JSON 格式範例
+## 五、JSON bundle 格式（v2）
 
-以下為一份完整的 JSON 教案片段，程式碼為 coin change 找零問題：
+Export JSON 產生的 `.gdbgui.json` bundle 只有五個欄位——**Guide/TTS/Layout 沒有獨立欄位**，它們以 `//@` 註解直接內嵌在 `source_code` 裡：
+
+| 欄位 | 說明 |
+|------|------|
+| `version` | 固定為 `"2.0"` |
+| `fullname_to_render` | 目前渲染的檔案路徑（可為空字串） |
+| `source_code` | 完整原始碼字串，行尾 `//@` 註解即教案內容 |
+| `breakpoints` | 斷點清單 |
+| `program_input` | 程式的標準輸入內容 |
+
+以下為完整範例，程式碼為 coin change 找零問題（`\n` 為 JSON 字串內的換行）：
 
 ```json
 {
-  "source_code": "#include <iostream>\nusing namespace std;\nint coin[] = {1,5,10,50};\nint number[] = {0,0,0,0};\nvoid recursive(int i, int n) {\n  if (i == 4) return;\n  for (number[i] = 0; number[i]*coin[i] <= n; number[i]++) {\n    recursive(i+1, n-coin[i]*number[i]);\n  }\n}\nint main() {\n  int n; cin >> n;\n  recursive(0,n);\n}",
-  "guide": {
-    "5": "[遞迴入口#blue] i={i} n={n}",
-    "6": "[終止條件#red] i={i}",
-    "7": "[枚舉硬幣#yellow] {number}",
-    "8": "[遞迴呼叫#blue] {number[i]}"
-  },
-  "tts": {
-    "5": "[next] 進入遞迴函式，目前 i 是 {i}，剩餘金額 n 是 {n} | @3 再次進入，i={i}，n={n} | @6 [step-in] 第六次以後步進觀察",
-    "6": "[next] i 等於 4 嗎？目前 i 是 {i} | @2 [continue] 條件判斷，i={i}，已熟悉，跳過",
-    "7": "枚[枚]舉硬幣，coin[i] 是 {coin[i]}",
-    "8": "[step-in] 遞迴呼叫，number[i]={number[i]}"
-  },
-  "layout": {
-    "5": "sidebar:50 open:container,callgraph close:locals",
-    "6": "sidebar:40 open:callgraph",
-    "8": "sidebar:55 open:container"
-  },
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include <iostream>\nusing namespace std;\nint coin[] = {1,5,10,50};\nint number[] = {0,0,0,0};\nvoid recursive(int i, int n) {  //@ @guide [遞迴入口#blue] i={i} n={n} @tts [next] 進入遞迴函式，目前 i 是 {i}，剩餘金額 n 是 {n} | @3 再次進入，i={i}，n={n} | @6 [step-in] 第六次以後步進觀察 @layout sidebar:50 open:container,callgraph close:locals\n  if (i == 4) return;  //@ @guide [終止條件#red] i={i} @tts [next] i 等於 4 嗎？目前 i 是 {i} | @2 [continue] 條件判斷，i={i}，已熟悉，跳過 @layout sidebar:40 open:callgraph\n  for (number[i] = 0; number[i]*coin[i] <= n; number[i]++) {  //@ @guide [枚舉硬幣#yellow] {number} @tts 枚[枚]舉硬幣，coin[i] 是 {coin[i]}\n    recursive(i+1, n-coin[i]*number[i]);  //@ @guide [遞迴呼叫#blue] {number[i]} @tts [step-in] 遞迴呼叫，number[i]={number[i]} @layout sidebar:55 open:container\n  }\n}\nint main() {\n  int n; cin >> n;\n  recursive(0,n);\n}",
   "breakpoints": [
     { "line": "5", "is_normal_breakpoint": true }
-  ]
+  ],
+  "program_input": "63"
 }
 ```
+
+> **舊格式相容**：v1 bundle（含 `line_data` 欄位）匯入時會自動轉換為 v2——各行資料被組成 `//@` 註解附加到對應行尾。匯出一律是 v2。
 
 ---
 
@@ -412,57 +545,30 @@ sidebar:55 open:container maze:maze
 
 | 按鈕 | 功能 |
 |------|------|
-| **Import JSON** | 從本機匯入 `.gdbgui.json` 教案檔（程式碼、Guide/TTS/Layout、斷點一次匯入） |
+| **Import JSON** | 從本機匯入 `.gdbgui.json` 教案檔（含 `//@` 註解的程式碼、斷點、程式輸入一次匯入；v1 舊格式自動轉換） |
 | **Export JSON** | 將目前教案儲存為 `.gdbgui.json`（Chrome/Edge 支援「另存新檔」直接覆蓋本機檔案；其他瀏覽器自動下載） |
 
 > **建議工作流**：在 Chrome/Edge 中使用，Export 時可直接瀏覽到專案資料夾並覆蓋同名 JSON，省去手動移檔的步驟。
 
-### 6.2 行編輯器 Modal（✎ 按鈕）
+### 6.2 行內註釋編輯面板（✎）
 
-在「Edit Mode」下，每一行的 Guide/TTS/Layout 欄右側都有一個 **✎** 按鈕。
-點擊後會彈出放大版的行編輯器，分為三個 Tab：
+滑鼠移到編輯器中任一行上，該行行尾（既有 `//@` 的起點處，或程式碼結尾）會出現 **✎** 圖示。
+點擊即在該行下方展開行內編輯面板（按 `Esc` 或 ✕ 關閉，不儲存）：
 
-#### 📝 指導文字 Tab
-- 多行 `textarea`，可輸入長篇指導說明
-- 支援 `{varName}` 佔位符
-- 適合需要換行或篇幅較長的說明
+**簡單模式**（預設）：只有「指導文字」多行輸入框，支援 `{變數}` 佔位符。
 
-#### 🔊 語音 TTS Tab
+**進階模式**（點「進階 ▸」切換）：
 
-| 欄位 | 說明 |
+| 區塊 | 說明 |
 |------|------|
-| **語速倍率** | 數字輸入框，等同於 `[speed:N]` 標籤，留空代表使用預設速度 |
-| **[continue] 勾選** | 勾選後 TTS 唸完自動繼續到下個斷點 |
-| **語音朗讀文字** | TTS 實際唸出的內容，留空則此行不播語音 |
-| **預覽** | 即時顯示組合後的原始 TTS 字串，可確認格式是否正確 |
+| **插入變數** | 點擊變數 chip 插入 `{變數}`；在指導欄輸入 `{` 也會即時彈出變數建議清單 |
+| **🔊 TTS** | 語速倍率（等同 `[speed:N]`，留空用預設）、`[continue]` 勾選、語音朗讀文字 |
+| **Layout** | `sidebar 寬` / `open:id1,id2` / `close:id1,id2` / `maze` / `bst` 五個欄位 |
 
-> 儲存時自動將三個欄位組合為 `[speed:N][continue]文字` 格式。
+點擊 **儲存** 後，面板自動把各欄位組成該行行尾的 `//@` 註解（新增或取代既有註解；全部清空則移除該註解）。
+面板只是產生 `//@` 註解的 GUI 工具——直接在編輯器手打 `//@` 註解效果完全相同。
 
-#### 📐 版面 Layout Tab
-
-| 欄位 | 說明 |
-|------|------|
-| **右側欄寬度** | 數字輸入，等同於 `sidebar:N` |
-| **迷宮容器** | 容器名稱，等同於 `maze:名稱` |
-| **展開面板** | 逗號分隔的面板 ID，等同於 `open:id1,id2` |
-| **收合面板** | 逗號分隔的面板 ID，等同於 `close:id1,id2` |
-| **預覽** | 即時顯示組合後的原始 Layout 字串 |
-
-點擊 **儲存** 套用所有欄位；點擊 **取消** 或點擊遮罩關閉不儲存。
-
-### 6.3 行拖曳排序
-
-在 Edit Mode 下，程式碼左側（行號區右邊）每行都有一個 **⠿ 拖曳 handle**。
-拖曳 handle 可以搬移整行（包含其 Guide、TTS、Layout、斷點設定）：
-
-| 操作 | 效果 |
-|------|------|
-| **拖曳單行** | 將該行移到目標行之後（目標行底部顯示藍色指示線） |
-| **Ctrl + 點擊 handle** | 加入 / 取消該行的多選（累積選取不連續的行） |
-| **Shift + 點擊 handle** | 從上次點擊行到此行的連續範圍全選 |
-| **拖曳已選中的行** | 一次移動所有選中的行，插入位置取決於最上面的 source 行 |
-
-> 拖曳完成後 Guide/TTS/Layout 的行號對應自動更新，不需要手動修正。
+> 註：行尾註解跟著程式碼行一起移動，增刪行不需要任何行號對齊操作。
 
 ---
 
@@ -557,7 +663,7 @@ wrapper 呼叫 `setpriv --reuid=65534 --regid=65534 --clear-groups` 將使用者
 - **遞迴/函式呼叫行**：`sidebar:50 open:callgraph,container`
 - **不重要的行**（僅宣告、空行）：不填或 `sidebar:30 close:container`
 - **程式結束**：`sidebar:60 open:watch_table`
-- **set/map 紅黑樹教學**：`sidebar:60 open:container`（讓學生在 container 面板手動切換紅黑樹模式）
+- **set/map 紅黑樹教學**：`sidebar:60 open:container bst:容器名`（自動切換紅黑樹視圖）
 
 ### 8.4 紅黑樹（RB-tree）教案設計提示
 
@@ -579,6 +685,12 @@ TTS 第 5 行（遞迴入口）：
 ---
 
 ## 九、快速語法速查表
+
+### `//@` 行尾註解
+| 語法 | 功能 |
+|------|------|
+| `code;  //@ @guide … @tts … @layout …` | 三欄寫在同一個行尾註解；關鍵字皆可省略、順序任意 |
+| `\n` / `\\` | 欄位值內的換行 / 反斜線（註解本身維持單行） |
 
 ### Guide 欄
 | 語法 | 功能 |
@@ -603,6 +715,8 @@ TTS 第 5 行（遞迴入口）：
 | `[step-in] 文字` | 唸完後步入函式 |
 | `[step-out] 文字` | 唸完後步出函式 |
 | `[continue] 文字` | 唸完後繼續到下個斷點 |
+| `[speed:N]` | 設定 TTS 播放速度（0.1–4.0 倍速） |
+| `[wait:N]` / `[pause:N]` | 朗讀中途靜默 N 秒 |
 | `文字A \| 文字B \| 文字C` | 第1/2/3次進入分別唸 |
 | `文字A \| @3 文字B \| @7 文字C` | 第1次/第3次起/第7次起 |
 
@@ -614,6 +728,8 @@ TTS 第 5 行（遞迴入口）：
 | `open:ID1,ID2` | 同時展開多個面板 |
 | `close:ID` | 收合面板 |
 | `maze:容器名` | 啟用指定容器的迷宮視覺化模式 |
+| `bst:容器名` | 啟用指定 set/map 容器的紅黑樹視圖 |
+| `font:N` | Container 面板字體大小（em） |
 | `sidebar:50 open:container close:locals` | 組合使用（空格分隔） |
 
 ### 可用面板 ID
@@ -622,9 +738,6 @@ TTS 第 5 行（遞迴入口）：
 ### 編輯器操作
 | 操作 | 功能 |
 |------|------|
-| **✎ 按鈕** | 展開該行的放大版行編輯器（Edit Mode 下可見） |
-| **⠿ 拖曳 handle** | 搬移整行至目標位置（行底部藍線為插入點） |
-| **Ctrl + 點擊 ⠿** | 多選（切換） |
-| **Shift + 點擊 ⠿** | 連續範圍選取 |
+| **✎ 圖示** | 滑鼠移到任一行時出現於行尾；點擊展開行內註釋編輯面板（見 6.2） |
 | **Export JSON** | 另存新檔至本機（Chrome/Edge）或下載 |
 | **Import JSON** | 從本機匯入教案 |

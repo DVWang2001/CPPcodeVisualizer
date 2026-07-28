@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<vector>\n#include<algorithm>\n#include<cstdlib>\nusing namespace std;\nclass Frac{public:\n  __int64 m_n,m_d;\n  Frac(int n=0,int d=1):m_n(n),m_d(d){\n    __int64 g = std::__gcd((m_n<0?-m_n:m_n),(m_d<0?-m_d:m_d));\n    if(g!=0){ m_n/=g; m_d/=g; }\n  }\n\tFrac operator+(const Frac& b)const{\n\t\treturn Frac((int)(m_n*b.m_d+m_d*b.m_n),(int)(m_d*b.m_d));\n\t}\n\tFrac operator*(const Frac& b)const{\n\t\treturn Frac((int)(m_n*b.m_n),(int)(m_d*b.m_d));\n\t}\n\tFrac operator/(int b)const{\n\t\treturn Frac((int)m_n,(int)(m_d*b));\n\t}\n};\nistream& operator>>(istream &is,Frac &a){\n  char c;\n  return is>>a.m_n>>c>>a.m_d;\n}\nostream& operator<<(ostream &os,const Frac &a){return os<<a.m_n<<\"/\"<<a.m_d;}\nclass FVec{public:\n  vector<Frac> m_vs;\n\tFrac sum()const{\n\t\tFrac s=m_vs[0];\n\t\tfor(size_t i=1;i<m_vs.size();i++) s=s+m_vs[i];\n\t\treturn s;\n\t}\n\tFrac pro()const{\n\t\tFrac p=m_vs[0];\n\t\tfor(size_t i=1;i<m_vs.size();i++) p=p*m_vs[i];\n\t\treturn p;\n\t}\n\tFrac avg()const{\n\t\treturn sum()/(int)m_vs.size();\n\t}\n};\nistream& operator>>(istream &is,FVec &vs){\n\tint n;is>>n;\n\tfor(int i=0;i<n;i++){Frac f;is>>f;vs.m_vs.push_back(f);}\n\treturn is;\n}\nint main(){\n  FVec a;cin>>a;\n  cout<<a.sum()<<endl<<a.pro()<<endl<<a.avg()<<endl;  //@ @guide uml:a\n  return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "50",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 3  12  /  22  43  /  6  97  /  1 "
+}

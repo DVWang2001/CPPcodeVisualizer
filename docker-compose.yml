@@ -11,6 +11,9 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+      # AI 功能（explain_error / generate_lesson）的伺服器端金鑰：從宿主機環境變數帶入
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - LESSON_AI_API_KEY=${LESSON_AI_API_KEY:-}
     cap_add:
       - SYS_PTRACE
     security_opt:

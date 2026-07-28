@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<cmath>\nusing namespace std;\nclass Complex{public:\n   double x,y;\n   Complex(double a=0,double b=0):x(a),y(b){}\n   Complex operator-(const Complex& b)const{return Complex(x-b.x,y-b.y);}\n};\nistream &operator>>(istream &is,Complex &c){\n  char c1,c2;\n  is>>c.x>>c1>>c.y>>c2;\n  if(c1=='-')c.y*=-1;\n  return is;\n}\nostream& operator<<(ostream &os,Complex &a){return os<<a.x<<\"/\"<<a.y;}\nclass Arrow{public:\n   Complex a,b;\n   double len(){\n      Complex d=a-b;\n      return sqrt(d.x*d.x+d.y*d.y);\n   }\n};\nistream& operator>>(istream &is,Arrow &a){\n   return is>>a.a>>a.b;\n}\n\nint main(){\n   int n;cin>>n;\n   while(n--){\n      Arrow ar;cin>>ar;\n      cout<<ar.len()<<endl;  //@ @guide uml:ar\n   }\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "31",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 4  56  +  42  i  45  -  53  i  52  +  34  i  94  -  66  i  26  +  61  i  89  -  48  i  76  +  58  i  86  +  37  i "
+}

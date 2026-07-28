@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<vector>\n#include<algorithm>\n#include<cstdlib>\nusing namespace std;\nclass Fraction{public:\n   int x,y;\n   Fraction(int a=0,int b=0):x(a),y(b){}\n         Fraction operator +( Fraction b){\n                return  Fraction(x*b.y+y*b.x,y*b.y);\n        }\n         Fraction operator *( Fraction b){\n                return  Fraction(x*b.x,y*b.y);\n        }\n         Fraction operator /(int b){\n                return  Fraction(x,y*b);\n        }\n};\nistream& operator>>(istream &is,Fraction &a){char c;return is>>a.x>>c>>a.y;}\nostream& operator<<(ostream &os,const Fraction &a){return os<<a.x<<\"/\"<<a.y;}\n\nclass FVec{\n     vector<Fraction>fv;\npublic:\n\n     void push(Fraction f){fv.push_back(f);}\n     Fraction reduce(Fraction f)const{\n         int g=std::__gcd(f.x<0?-f.x:f.x, f.y<0?-f.y:f.y);\n         if(g==0) g=1;\n         return Fraction(f.x/g, f.y/g);\n     }\n     Fraction sum(){\n         Fraction s=fv[0];\n         for(size_t i=1;i<fv.size();i++) s=s+fv[i];\n         return reduce(s);\n     }\n     Fraction pro(){\n         Fraction p=fv[0];\n         for(size_t i=1;i<fv.size();i++) p=p*fv[i];\n         return reduce(p);\n     }\n     Fraction avg(){\n         return reduce(sum()/(int)fv.size());\n     }\n\n};\nistream& operator>>(istream &xis,FVec &a){\n     int n;xis>>n;\n     for(int i=0;i<n;i++){Fraction f;xis>>f;a.push(f);}\n     return xis;\n}\nint main(){\n  FVec a;cin>>a;\n  cout<<a.sum()<<endl<<a.pro()<<endl<<a.avg()<<endl;  //@ @guide uml:a\n  return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "54",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 3  90  /  82  73  /  13  12  /  57 "
+}

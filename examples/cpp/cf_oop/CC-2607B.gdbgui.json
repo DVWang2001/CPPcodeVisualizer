@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<vector>\n#include<numeric>\nusing namespace std;\nclass Score{\n   double m_x,m_y;\n   static int s_popu;//靜態成員變數\npublic:\n\n   ~Score(){s_popu--;}\n   Score(Score &b):m_x(b.m_x),m_y(b.m_y){s_popu++;}\n   Score(double x=0,double y=1):m_x(x),m_y(y){s_popu++;}\n   Score operator+(const Score& b)const{\n   \t  double ia=m_x*b.m_y+b.m_x*m_y;\n   \t  double ib=m_y*b.m_y;\n   \t  return Score(ia,ib);\n   }\n   Score operator-(const Score& b)const{\n      double ia=m_x*b.m_y-b.m_x*m_y;\n   \t  double ib=m_y*b.m_y;\n   \t  return Score(ia,ib);\n   }\n   Score operator*(const Score& b)const{return Score(m_x*b.m_x,m_y*b.m_y);}\n   Score operator/(const Score& b)const{return Score(m_x*b.m_y,m_y*b.m_x);}\n   static int Population(){return s_popu;}\n   friend istream& operator>>(istream &is,Score &a);\n   friend ostream& operator<<(ostream &os,const Score&a);\n};\nint Score::s_popu;//靜態成員變數安排空間\nistream& operator>>(istream &is,Score&a){\n   is>>a.m_x;\n   if(!is.fail()){\n      double tmp;\n      is>>tmp;\n      if(!is.fail()) a.m_y=tmp;\n   }\n   return is;\n}\nostream& operator<<(ostream &os,const Score&a){\n   return os<<a.m_x<<\"/\"<<a.m_y;\n}\nclass FVec:public vector<Score>{\n   public:\n   FVec(int n):vector<Score>(n){}\n   Score sum()const{return accumulate(begin(),end(),Score());}\n   Score avg()const{return sum()/size();}\n};\nistream& operator>>(istream &is,FVec&a){\n   for(int k=0;k<a.size();k++)is>>a[k];\n   return is;\n}\nostream& operator<<(ostream &os,const FVec &a){\n   return os<<\"sum:\"<<a.sum()<<endl<<\"avg:\"<<a.avg()<<endl;\n}\nint main(){\n   {\n   \tint n;cin>>n;\n\tFVec pts(n);cin>>pts;\n\tcout<<pts<<endl;  //@ @guide uml:pts\n\tcout<<Score::Population()<<endl;\n   }\n   cout<<Score::Population()<<endl;\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "59",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 3  12  /  35  80  /  24  57  /  30 "
+}

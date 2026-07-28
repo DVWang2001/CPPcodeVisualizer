@@ -39,9 +39,9 @@ test('✎ inline panel writes //@ while editor is readOnly (play mode)', async (
   await page.evaluate(() => (window as any).store.set('edit_mode', false));
   await expect(page.locator('.gdbgui-readonly-editor')).toHaveCount(1, { timeout: 5_000 });
 
-  // Hover line 6 (`int b = 20;`, no annotation yet) to reveal ✎, then click it.
-  const gutter6 = page.locator('.monaco-editor .margin-view-overlays > div').filter({ hasText: /^6$/ }).first();
-  await gutter6.hover({ force: true });
+  // Hover line 6's content (`int b = 20;`, no annotation yet) to reveal the ✎ widget
+  // (it follows the hovered line, anchored past end-of-code), then click it.
+  await page.locator('.view-line', { hasText: 'int b = 20' }).first().hover({ force: true });
   await page.locator('.gdbgui-annot-edit-glyph').first().click({ force: true });
 
   await expect(page.getByTestId('line-annot-panel')).toBeVisible({ timeout: 5_000 });

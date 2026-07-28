@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<vector>\n#include<numeric>\n#include<cmath>\nusing namespace std;\nclass Point{\n   double m_x,m_y;\npublic:\n   Point(double x=0,double y=0):m_x(x),m_y(y){}\n   Point operator+(const Point& b)const{return Point(m_x+b.m_x,m_y+b.m_y);}\n   Point operator/(double b)const{   return Point(m_x/b,m_y/b);}\n   operator double()const{return sqrt(m_x*m_x+m_y*m_y);}\n   friend istream& operator>>(istream &is,Point&a);\n   friend ostream& operator<<(ostream &os,const Point&a);\n};\nistream& operator>>(istream &is,Point&a){return is>>a.m_x>>a.m_y;}\nostream& operator<<(ostream &os,const Point&a){\n   return os<<\"(\"<<a.m_x<<\",\"<<a.m_y<<\")\";\n}\nclass PVec:public vector<Point>{\npublic:\n   PVec(int n):vector<Point>(n){}\n   Point sum()const{\n     return accumulate(begin(),end(),Point());\n   }\n   Point avg()const{\n   \t\treturn sum()/size();\n   }\n   operator Point()const{return avg();}\n   operator double()const{\n      double s=0;\n      for(size_t k=0;k<size();k++) s+=(double)(*this)[k];\n      return s;\n   }\n   friend istream& operator>>(istream &,PVec&);\n   friend ostream& operator<<(ostream &,const PVec&);\n};\nistream& operator>>(istream &is,PVec&a){\n   for(int k=0;k<a.size();k++)is>>a[k];\n   return is;\n}\nostream& operator<<(ostream &os,const PVec &a){\n   return os<<\"sum:\"<<a.sum()<<endl\n          <<\"avg:\"<<a.avg()<<endl;\n}\nint main(){\n   int n;cin>>n;\n   PVec pts(n);cin>>pts;\n   cout<<pts<<endl;//第一行 PVec  //@ @guide uml:pts\n   Point G=pts;cout<<G<<endl;//第二行 Point\n   cout<<pts.size()<<endl;//第三行 vector<Point>\n   cout<<(double)pts<<endl;//第三行 轉換為 double\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "49",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 27 38 17 34 12 47 3 1 "
+}

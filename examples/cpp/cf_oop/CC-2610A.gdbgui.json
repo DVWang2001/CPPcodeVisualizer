@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<cmath>\nusing namespace std;\nclass Point{\n   double m_x,m_y;\npublic:\n   Point(double x=0,double y=0):m_x(x),m_y(y){}\n   Point operator+(const Point b)const{return Point(m_x+b.m_x,m_y+b.m_y);}\n   Point operator*(double b)const{return Point(m_x*b,m_y*b);}\n   Point operator/(double b)const{return operator*(1/b);}\n   Point operator-(const Point &a)const{return operator+(a*(-1.));}\n   operator double()const{return sqrt(m_x*m_x+m_y*m_y);}\n   friend istream& operator>>(istream &is,Point&a);\n   friend ostream& operator<<(ostream &os,const Point&a);\n};\nistream& operator>>(istream &is,Point&a){return is>>a.m_x>>a.m_y;}\nostream& operator<<(ostream &os,const Point&a){\n   return os<<\"(\"<<a.m_x<<\",\"<<a.m_y<<\")\";\n}\n\nclass Triangle{public:\n   Point A,B,C;\n};\nistream& operator>>(istream &is,Triangle &t){return is>>t.A>>t.B>>t.C;}\nostream& operator<<(ostream &os,Triangle &t){\n   Point G=(t.A+t.B+t.C)/3;\n   double a=(double)(t.B-t.C);\n   double b=(double)(t.C-t.A);\n   double c=(double)(t.A-t.B);\n   Point I=(t.A*a+t.B*b+t.C*c)/(a+b+c);\n   os<<\"G:\"<<G<<endl;\n   os<<\"I:\"<<I;\n   return os;\n}\n\nint main(){\n   Triangle tri;cin>>tri;\n   cout<<tri<<endl;  //@ @guide uml:tri\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "38",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 49 21 30 39 73 24 "
+}

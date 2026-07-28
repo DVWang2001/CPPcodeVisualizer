@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<vector>\n#include<algorithm>\n#include<cstdlib>\nusing namespace std;\nclass Fraction{\n   int x,y;\n   public:\n   Fraction(int a=0,int b=1):x(a),y(b){\n   int g=std::__gcd(x<0?-x:x, y<0?-y:y);\n   if(g!=0){ x/=g; y/=g; }\n   }\n         Fraction operator +( Fraction b)const{\n                return  Fraction(x*b.y+y*b.x,y*b.y);\n        }\n         Fraction operator *( Fraction b)const{\n                return  Fraction(x*b.x,y*b.y);\n        }\n         Fraction operator /(int b)const{\n                return  Fraction(x,y*b);\n        }\nfriend istream& operator>>(istream &is,Fraction &a);\nfriend ostream& operator<<(ostream &os,const Fraction &a);\n\n};\n\nistream& operator>>(istream &is,Fraction &a){\n   char c;\n   int p,q;\n   is>>p>>c>>q;\n   a=Fraction(p,q);\n   return is;\n}\nostream& operator<<(ostream &os,const Fraction &a){\n   return os<<a.x<<\"/\"<<a.y;\n}\n\nclass FVec{\n   vector<Fraction>fv;\npublic:\n        Fraction tol()const{\n                Fraction ans=fv[0];\n                for(int i=1;i<fv.size();i++){\n                        ans=ans+fv[i];\n                }\n                return ans;\n        }\n        Fraction cross()const{\n                Fraction ans=fv[0];\n                for(int i=1;i<fv.size();i++){\n                        ans=ans*fv[i];\n                }\n                return ans;\n        }\n        Fraction avg()const{\n                return tol()/fv.size();\n        }\n\nfriend istream& operator>>(istream &is,FVec &a);\nfriend ostream& operator<<(ostream &os,const FVec &a);\n\n};\n\nistream& operator>>(istream &is,FVec &a){\n   int n;is>>n;\n   for(int i=0;i<n;i++){Fraction f;is>>f;a.fv.push_back(f);}\n   return is;\n}\nostream& operator<<(ostream &os,const FVec &a){\n   return os<<a.tol()<<endl<<a.cross()<<endl<<a.avg()<<endl;\n}\n\nint main(){\n   FVec a;cin>>a;\n   cout<<a;  //@ @guide uml:a\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "75",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": "4\n40/32\n60/87\n71/12\n69/49\n"
+}

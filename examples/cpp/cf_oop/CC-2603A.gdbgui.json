@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<vector>\n#include<numeric>\nusing namespace std;\nclass Point{\n   double m_x,m_y;\npublic:\n   Point(double x=0,double y=0):m_x(x),m_y(y){}\n   Point operator+(Point b){return Point(m_x+b.m_x,m_y+b.m_y);}\n   Point operator/(double b){return Point(m_x/b,m_y/b);}\n   friend istream& operator>>(istream &is,Point&a);\n   friend ostream& operator<<(ostream &os,const Point&a);\n};\nistream& operator>>(istream &is,Point&a){\n   return is>>a.m_x>>a.m_y;\n}\nostream& operator<<(ostream &os,const Point&a){\n   return os<<\"(\"<<a.m_x<<\",\"<<a.m_y<<\")\";\n}\nclass PVec{\n   vector<Point> m_pts;\npublic:\n   PVec(int n):m_pts(n){}\n   Point sum(){return accumulate(m_pts.begin(),m_pts.end(),Point());}\n   Point avg(){return sum()/m_pts.size();}\n   int size(){return m_pts.size();}\n   Point& operator[](int k){return m_pts[k];}\n};\nistream& operator>>(istream &is,PVec&a){\n   for(int k=0;k<a.size();k++)is>>a[k];\n   return is;\n}\nostream& operator<<(ostream &os,PVec&a){\n   return os<<\"sum:\"<<a.sum()<<endl<<\"avg:\"<<a.avg()<<endl;\n}\nint main(){\n   int n;cin>>n;\n   PVec pts(n);\n   cin>>pts;\n   cout<<pts<<endl;  //@ @guide uml:pts\n   return 0;\n}\n\n",
+  "breakpoints": [
+    {
+      "line": "40",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 6 98 17 51 46 48 54 58 23 41 98 51 62 "
+}

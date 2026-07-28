@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<vector>\n#include<numeric>\nusing namespace std;\nclass Point{\n   double m_x,m_y;\n   static int s;\npublic:\n   Point(double x=0,double y=0):m_x(x),m_y(y){s++;}\n   Point(const Point& b):m_x(b.m_x),m_y(b.m_y){s++;}\n   ~Point(){s--;}\n   Point operator+(const Point& b)const{return Point(m_x+b.m_x,m_y+b.m_y);}\n   Point operator/(double b)const{return Point(m_x/b,m_y/b);}\n   static int Population(){return s;}\n   friend istream& operator>>(istream &is,Point &a);\n   friend ostream& operator<<(ostream &os,const Point&a);\n};\nint Point::s=0;\nistream& operator>>(istream &is,Point&a){return is>>a.m_x>>a.m_y;}\nostream& operator<<(ostream &os,const Point&a){\n   return os<<\"(\"<<a.m_x<<\",\"<<a.m_y<<\")\";\n}\nclass PVec:public vector<Point>{\n   public:\n   PVec(int n):vector<Point>(n){}\n   Point sum()const{return accumulate(begin(),end(),Point());}\n   Point avg()const{return sum()/size();}\n};\nistream& operator>>(istream &is,PVec&a){\n   for(int k=0;k<a.size();k++)is>>a[k];\n   return is;\n}\nostream& operator<<(ostream &os,const PVec &a){\n   return os<<\"sum:\"<<a.sum()<<endl<<\"avg:\"<<a.avg()<<endl;\n}\nint main(){\n   {\n   \tint n;cin>>n;\n\tPVec pts(n);cin>>pts;\n\tcout<<pts<<endl;  //@ @guide uml:pts\n\tcout<<Point::Population()<<endl;\n   }\n   cout<<Point::Population()<<endl;\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "40",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 4  49 84 38 44 60 67 60 49 75 63 35 65 "
+}

@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<vector>\n#include<algorithm>\n#include<cstdlib>\nusing namespace std;\nclass Frac{public:\n  int m_x,m_y;\n  Frac(int n=0,int d=1):m_x(n),m_y(d){\n    int g=std::__gcd(m_x<0?-m_x:m_x, m_y<0?-m_y:m_y);\n    if(g!=0){ m_x/=g; m_y/=g; }\n  }\n  Frac operator+(const Frac& b)const{\n   \t return Frac(m_x*b.m_y+m_y*b.m_x, m_y*b.m_y);\n  }\n  Frac operator-(const Frac& b)const{\n      return Frac(m_x*b.m_y-m_y*b.m_x, m_y*b.m_y);\n  }\n  Frac operator*(const Frac& b)const{return Frac(m_x*b.m_x, m_y*b.m_y);}\n  Frac operator/(const Frac& b)const{return Frac(m_x*b.m_y, m_y*b.m_x);}\n};\nistream& operator>>(istream &xin,Frac &a){\n  char c;\n  return xin>>a.m_x>>c>>a.m_y;\n}\nostream& operator<<(ostream &xout,const Frac &a){return xout<<a.m_x<<\"/\"<<a.m_y;}\n\nint main(){\n  Frac a,b;\n  cin>>a>>b;\n  cout<<a+b<<endl;  //@ @guide uml:a\n  cout<<a-b<<endl;\n  cout<<a*b<<endl;\n  cout<<a/b<<endl;\n  return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "30",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 2  /  27  8  /  13 "
+}

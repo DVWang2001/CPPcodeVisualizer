@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<vector>\n#include<algorithm>\n#include<cstdlib>\nusing namespace std;\ntypedef long long LL;\nclass Frac{public:\n  LL m_n,m_d;\n  Frac(LL n=0,LL d=1):m_n(n),m_d(d){}\n  void operator+=(Frac b){m_n=m_n*b.m_d+m_d*b.m_n;m_d*=b.m_d;}\n  void operator*=(Frac b){m_n=m_n*b.m_n;m_d*=b.m_d;}\n  Frac operator/(int b){return  Frac(m_n,m_d*b);}\n};\nistream& operator>>(istream &is,Frac &a){\n  char c;\n  return is>>a.m_n>>c>>a.m_d;\n}\nostream& operator<<(ostream &os,const Frac &a){return os<<a.m_n<<\"/\"<<a.m_d;}\nclass FVec{public:\n  vector<Frac> m_vs;\n  Frac reduce(Frac f){\n    LL g=std::__gcd(f.m_n<0?-f.m_n:f.m_n, f.m_d<0?-f.m_d:f.m_d);\n    if(g!=0){ f.m_n/=g; f.m_d/=g; }\n    return f;\n  }\n  Frac sum(){\n    Frac s;\n    for(auto &v: m_vs) s+=v;\n    return reduce(s);\n  }\n  Frac pro(){\n    Frac p(1,1);\n    for(auto &v: m_vs) p*=v;\n    return reduce(p);\n  }\n  Frac avg(){\n    return reduce(sum()/(int)m_vs.size());\n  }\n};\nistream& operator>>(istream &is,FVec &vs){\n  int n;is>>n;Frac v;\n  while(n--){is>>v;vs.m_vs.push_back(v);}\n  return is;\n}\nint main(){\n  FVec a;cin>>a;\n  cout<<a.sum()<<endl<<a.pro()<<endl<<a.avg()<<endl;  //@ @guide uml:a\n  return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "47",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 5  71  /  45  25  /  40  43  /  92  60  /  74  80  /  47 "
+}

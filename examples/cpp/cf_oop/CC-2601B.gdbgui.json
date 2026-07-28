@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "",
+  "source_code": "#include<iostream>\n#include<cstdlib>\nusing namespace std;\nclass Fraction{public:\n   int x,y;\n   Fraction(int a=0,int b=0):x(a),y(b){}\n   Fraction operator-(Fraction b){return Fraction(abs(x*b.y-y*b.x),y*b.y);}\n};\nistream& operator>>(istream &is,Fraction &a){char c;return is>>a.x>>c>>a.y;}\nostream& operator<<(ostream &os,Fraction &a){return os<<a.x<<\"/\"<<a.y;}\n\nint gcd(int a,int b){return b==0?a:gcd(b,a%b);}\n\nclass Section{public:\n   Fraction a,b;\n   Fraction len(){\n      Fraction d=a-b;\n      int g=gcd(d.x,d.y);\n      return Fraction(d.x/g,d.y/g);\n   }\n};\nistream& operator>>(istream &is,Section &a){\n   return is>>a.a>>a.b;\n}\nostream& operator<<(ostream &os,Section a){\n   Fraction l=a.len();\n   return os<<a.a<<\" \"<<a.b<<\" \"<<l;\n}\n\nint main(){\n   int n;cin>>n;\n   while(n--){\n      Section sec;cin>>sec;\n      cout<<sec<<endl;  //@ @guide uml:sec\n   }\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "34",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 3  76  /  87 9  /  29  17  /  86 56  /  92  24  /  50 31  /  23 "
+}
