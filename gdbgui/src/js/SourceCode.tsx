@@ -19,6 +19,7 @@ import { normalizeBundle } from "./bundleAdapter";
 import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
 import { lineIdentifiers } from "./lineIdentifiers";
+import { parseForHeader, segRange } from "./forHeader";
 import LessonGenPanel from "./LessonGenPanel";
 
 type State = any;
@@ -74,6 +75,7 @@ class SourceCode extends React.Component<{}, State> {
       "compile_errors",
       "user_source_fullname",
       "monaco_font_size",
+      "for_sub_step",
     ]);
 
     // bind methods
@@ -460,6 +462,26 @@ class SourceCode extends React.Component<{}, State> {
           glyphMarginClassName: "fas fa-arrow-right"
         },
       });
+      // for 迴圈三段式單步：在整行 paused_on_line 之上「多疊一層」字元範圍高亮，
+      // 標出目前停在 A / B / C 哪一段。整行高亮本身完全不動。
+      // for_sub_step 為 null（非 for 行、或該行解析不出三段）時什麼都不加。
+      const sub = this.state.for_sub_step;
+      if (sub && sub.line === line) {
+        const model = this.editorInstance.getModel();
+        // getLineContent 會對超出範圍的行號丟例外（整行裝飾的 Range 則會被 Monaco
+        // 容忍），所以停在別的檔案或程式已結束時必須先擋掉，否則 render 會炸。
+        const lineInModel = !!model && line >= 1 && line <= model.getLineCount();
+        const segs = lineInModel ? parseForHeader(model.getLineContent(line)) : null;
+        if (segs) {
+          const [seg_start, seg_end] = segRange(segs, sub.seg);
+          if (seg_end > seg_start) {
+            newDecorations.push({
+              range: new this.monaco.Range(line, seg_start + 1, line, seg_end + 1),
+              options: { inlineClassName: "for_seg_active" },
+            });
+          }
+        }
+      }
       // Scroll Monaco to the current line if make_current_line_visible is true
       if (this.state.make_current_line_visible) {
         this.editorInstance.revealLineInCenter(line);

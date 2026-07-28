@@ -270,6 +270,13 @@ td.line_num {
 .paused_on_line td {
   background-color: var(--highlight-soft) !important;
 }
+/* for 迴圈三段式單步：在整行高亮之上，再標出目前執行的 A / B / C 那一段。
+   用實心 amber（--highlight）壓過整行的 amber tint，兩層才分得出來。*/
+.for_seg_active {
+  background-color: var(--highlight) !important;
+  border-radius: 2px;
+  box-shadow: 0 1px 0 var(--highlight);
+}
 /* CallGraph active-node operation area: flashes amber when the current
    line's @guide changes (spec: docs/superpowers/specs/2026-07-21-node-operation-focus-design.md). */
 @keyframes cg-op-flash {

@@ -36,6 +36,10 @@ function _parseCompileErrors(stderr: string): any[] {
 void React; // needed when using JSX, but not marked as used
 /* global debug */
 
+// 自動播放時，for 迴圈的虛步（條件段 B）停留多久才自己接續下一步。
+// 與現有動畫結果停留時間一致。
+const FOR_SUBSTEP_DWELL_MS = 800;
+
 // print to console if debug is true
 let log: {
   (arg0: string): void;
@@ -667,7 +671,37 @@ const GdbApi = {
       "-exec-continue" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
   },
-  click_next_button: function (reverse = false) {
+  // for 迴圈三段式單步：A/C 已經是真正的 GDB 停駐點，B（條件段）沒有對應的
+  // 停駐位址，所以做成 UI 虛步——這一次點擊只換高亮、不送 -exec-next，再點一次
+  // 才真的走。反向單步完全跳過這個機制。
+  //
+  // opts.autoplay：自動播放模式下，虛步不會產生 GDB pause → 不會觸發新的 TTS →
+  // 沒有人排下一個命令，播放會卡死。所以被虛步消耗掉的那一次要自己排接續。
+  // 手動點擊不排接續（使用者自己按下一步）。
+  click_next_button: function (reverse = false, opts: { autoplay?: boolean } = {}) {
+    if (!reverse && !store.get("debug_in_reverse")) {
+      const sub = store.get("for_sub_step");
+      if (sub && (sub.seg === "A" || sub.seg === "C")) {
+        // 虛步：只換高亮，不送 GDB 命令
+        store.set("for_sub_step", { line: sub.line, seg: "B" });
+        if (opts.autoplay) {
+          setTimeout(() => {
+            // 停留期間使用者可能關掉或暫停自動播放，比照 gdbgui_execute_autoplay_command
+            if (!store.get("autoplay_enabled")) return;
+            if (store.get("autoplay_paused")) {
+              store.set("autoplay_pending_command", "next");
+              return;
+            }
+            GdbApi.click_next_button(false, { autoplay: true });
+          }, FOR_SUBSTEP_DWELL_MS);
+        }
+        return;
+      }
+      // 目前是 B → 清空，送出真正的 -exec-next（下一個 pause 會重算段落）
+      if (sub) {
+        store.set("for_sub_step", null);
+      }
+    }
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-next" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
@@ -1023,7 +1057,9 @@ GdbApi.socket = socket;
 // 執行自動播放指令（供暫停恢復時呼叫）
 (window as any).gdbgui_run_autoplay_command = (command: string) => {
   switch (command) {
-    case "next":     GdbApi.click_next_button();     break;
+    // autoplay: true —— for 虛步不會產生 GDB pause，被虛步消耗掉的這一次
+    // 必須由 click_next_button 自行排接續，否則播放會卡在條件段
+    case "next":     GdbApi.click_next_button(false, { autoplay: true }); break;
     case "step-in":  GdbApi.click_step_button();     break;
     case "step-out": GdbApi.click_return_button();   break;
     case "continue": GdbApi.click_continue_button(); break;

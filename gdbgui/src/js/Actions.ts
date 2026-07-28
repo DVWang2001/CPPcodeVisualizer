@@ -8,11 +8,40 @@ import constants from "./constants";
 import React from "react";
 import VisualizerHelper from "./VisualizerHelper";
 import Visualizer from "./Visualizer";
+import { parseForHeader, decideForSegment } from "./forHeader";
 void React; // using jsx implicity uses React
+
+// ── for 迴圈三段式單步：每個真正的 GDB 停駐點重算一次 ──────────
+// 停在能解析成 `for (A; B; C)` 的行上時，用 frame.addr 判定是初始化段(A)
+// 還是遞增段(C)；其餘情況一律設 null，代表走現有行為。
+// 條件段 B 不在這裡產生——GDB 永遠不會為它停下來，它是 GdbApi 的 UI 虛步。
+function recompute_for_sub_step(frame: any) {
+  const line = parseInt(frame?.line);
+  if (isNaN(line)) {
+    store.set("for_sub_step", null);
+    return;
+  }
+  const src = (global_variable as any).__source_text;
+  const line_text = typeof src === "string" ? src.split("\n")[line - 1] : undefined;
+  if (typeof line_text !== "string" || !parseForHeader(line_text)) {
+    store.set("for_sub_step", null);
+    return;
+  }
+  if (!(global_variable as any).__for_line_min_addr) {
+    (global_variable as any).__for_line_min_addr = {};
+  }
+  const seg = decideForSegment(
+    (global_variable as any).__for_line_min_addr,
+    line,
+    frame?.addr
+  );
+  store.set("for_sub_step", { line, seg });
+}
 
 const Actions = {
   clear_program_state: function () {
     store.set("line_of_source_to_flash", undefined);
+    store.set("for_sub_step", null);
     store.set("paused_on_frame", undefined);
     store.set("selected_frame_num", 0);
     store.set("current_thread_id", undefined);
@@ -53,6 +82,8 @@ const Actions = {
     (window as any).gdbgui_reset_uml_state?.();
     // 程式重新開始，重置每行的進入計數
     (global_variable as any).__line_visit_count = {};
+    // 重置 for 行看過的最小位址（A/C 判定的依據），否則上一次執行的位址會殘留
+    (global_variable as any).__for_line_min_addr = {};
     // 重置呼叫樹，避免上一次執行的節點殘留
     delete (global_variable as any).__call_tree;
     (global_variable as any).__call_graph_nodes = [];
@@ -89,6 +120,8 @@ const Actions = {
       if (!(global_variable as any).__visited_lines) (global_variable as any).__visited_lines = new Set<number>();
       (global_variable as any).__visited_lines.add(_visitLine);
     }
+    // for 迴圈三段式單步：每次真正停下來都重算一次目前段落（A 或 C，或 null）
+    recompute_for_sub_step(frame);
     // 讀取指導，如果存在指導並且當前的frame有line這個資訊
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
     VisualizerHelper.processing_guide(frame.line, frame.func);
