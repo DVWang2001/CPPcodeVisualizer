@@ -1,13 +1,10 @@
 import React from "react";
 import { ContainerData } from "./ContainerPlugin";
 import { PluginOp } from "./AnimScheduler";
+import { delay } from "./anim";
 
 type ColorRule = { value: string; color: string };
 type HighlightEntry = { index: number; color: string };
-
-function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 interface CellChangePayload {
     row: number;

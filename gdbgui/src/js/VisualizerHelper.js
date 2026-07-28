@@ -8,6 +8,18 @@ import { getPlugin } from "./ContainerPlugin";
 import { bstPlugin } from "./BSTPlugin";
 import { resolveChildValues } from "./containerParsers/index";
 import { buildUmlPayload } from "./umlPayload";
+import {
+  parseFastDirective,
+  stripFastDirective,
+  isFastTargetExpr,
+  fastTargetExpr,
+  toFastTarget,
+  decideFastState,
+  getFastForward,
+  armFastForward,
+  disarmFastForward,
+  FAST_FORWARD_STEP_LIMIT,
+} from "./fastForward";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
@@ -337,16 +349,147 @@ class VisualizerHelper {
     VisualizerHelper.graphics_instruction(content, frame_line, funcName);
   }
 
+  /**
+   * 向 GDB 求一個 TTS 運算式的值（`{變數}` 的共用實作）。
+   * 逾時（5 秒）回傳運算式本身——呼叫端如果是唸出來就唸變數名，
+   * 如果是 `[fast @{n}]` 求目標次數，則會因為不是正整數而不武裝。
+   */
+  static async _eval_tts_expression(expr, funcName) {
+    // 使用 tts:: 前綴，避免與 graphics_instruction 的變數抓取產生 Race Condition
+    const displayKey = funcName ? `tts::${funcName}::${expr}` : `tts::${expr}`;
+
+    const expressions = store.get("expressions");
+    const existingVar = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
+    if (existingVar) {
+      GdbVariable.delete_gdb_variable(existingVar.name);
+    }
+    GdbVariable.create_variable(expr, "expr", displayKey);
+
+    // 非同步輪詢獲取結果
+    return await new Promise((resolve) => {
+      let checkTicks = 0;
+      const checkStore = () => {
+        checkTicks++;
+        if (checkTicks > 50) {
+          console.warn(`[VisualizerHelper] play_tts TIMEOUT for expression: ${expr}`);
+          resolve(expr); // 超時則發音原本的變數名
+          return;
+        }
+        const exprs = store.get("expressions");
+        const varObj = exprs.find(obj => obj.expression === displayKey && obj.in_scope === "true");
+        if (varObj) {
+          if (varObj.value !== undefined) {
+            // 無論是容器還是一般變數，TTS 儘量發音其值
+            // 如果是字串或容器，這裡簡單的處理為直接取值
+            resolve(varObj.value);
+          } else {
+            setTimeout(checkStore, 100);
+          }
+        } else {
+          setTimeout(checkStore, 100);
+        }
+      };
+      checkStore();
+    });
+  }
+
+  // ── 快轉模式 `[fast @N]` ────────────────────────────────────────────
+  // 抑制是全域的：武裝之後每一個停駐點都靜音、零延遲、立刻步進，
+  // 只有「停在武裝行且造訪次數達標」才解除。逐行步進照做，所以容器、
+  // 呼叫圖、__line_visit_count 全部照常累積，落地時狀態是對的。
+
+  /** 目前這一行的造訪次數（inferior_program_paused 已經加過 1）。 */
+  static _visit_count(lineNum) {
+    const counts = global_variable.__line_visit_count;
+    return (counts && counts[lineNum]) || 0;
+  }
+
+  /**
+   * 已武裝時處理這一次停駐。
+   * 回傳 true 代表「本次停駐已被快轉吃掉」——呼叫端要立刻 return，不播 TTS、不動字幕。
+   * 回傳 false 代表已解除（或本來就沒武裝），照常往下播這一行。
+   */
+  static _fast_forward_pause(lineNum) {
+    const armed = getFastForward();
+    if (!armed) return false;
+
+    // 展示到一半關掉自動播放＝要中止快轉；不然畫面會停在無聲狀態沒人推進
+    if (!store.get("autoplay_enabled")) {
+      console.warn("[fast] 自動播放已關閉，解除快轉");
+      disarmFastForward();
+      return false;
+    }
+
+    const decision = decideFastState(lineNum, VisualizerHelper._visit_count(lineNum), armed);
+    if (decision === "disarm") {
+      if (armed.steps > FAST_FORWARD_STEP_LIMIT) {
+        console.warn(`[fast] 已達 ${FAST_FORWARD_STEP_LIMIT} 步安全上限，強制解除快轉（第 ${armed.line} 行 @${armed.target} 可能永遠達不到）`);
+      }
+      disarmFastForward();
+      return false; // 落地：這一行照常唸自己的 TTS，行為等同 [next]
+    }
+
+    // hold：靜音步進。不設字幕、不進 TTS 播放清單，直接排下一步。
+    armed.steps++;
+    if (typeof window.gdbgui_execute_autoplay_command === 'function') {
+      window.gdbgui_execute_autoplay_command('next');
+    }
+    return true;
+  }
+
+  /**
+   * 嘗試武裝快轉。回傳 true 代表已武裝並靜音步進（呼叫端要 return）。
+   * 求值失敗一律不武裝、只留 console 警告——失敗模式是「沒快轉」而非「教案壞掉」。
+   */
+  static async _try_arm_fast_forward(lineNum, rawTarget, funcName) {
+    // 只在自動播放模式生效：手動按下一步卻一口氣衝掉兩百步太突兀
+    if (!store.get("autoplay_enabled")) return false;
+
+    let target;
+    if (isFastTargetExpr(rawTarget)) {
+      // {變數} 只在武裝當下求值一次，之後固定不變
+      const value = await VisualizerHelper._eval_tts_expression(fastTargetExpr(rawTarget), funcName);
+      target = toFastTarget(value);
+      if (target === null) {
+        console.warn(`[fast] @${rawTarget} 求值為 "${value}"，不是正整數 → 不武裝，退回 [next]`);
+        return false;
+      }
+    } else {
+      target = toFastTarget(rawTarget);
+      if (target === null) {
+        console.warn(`[fast] @${rawTarget} 不是正整數 → 不武裝，退回 [next]`);
+        return false;
+      }
+    }
+
+    const visitCount = VisualizerHelper._visit_count(lineNum);
+    if (decideFastState(lineNum, visitCount, null, target) !== "arm") {
+      // 次數已達標（例如迴圈第二次進入同一個 [fast]）：不武裝，照常播放
+      return false;
+    }
+
+    console.log(`[fast] 武裝：第 ${lineNum} 行，目標第 ${target} 次造訪（目前第 ${visitCount} 次）`);
+    armFastForward(lineNum, target);
+    // 武裝當下這一次停駐也算快轉的一步，同樣靜音步進
+    return VisualizerHelper._fast_forward_pause(lineNum);
+  }
+
   static async play_tts(frame_line, funcName) {
     const myTaskId = ++_tts_task_id; // 新任務 ID，舊任務將自動放棄
     _tts_cancel();                   // 立即停止目前播放的音訊
     console.log(`[play_tts] Called with frame_line: ${frame_line}, funcName: ${funcName}`);
+    const lineNum = parseInt(frame_line);
+
+    // ── 快轉模式優先處理 ────────────────────────────────────────
+    // 必須放在所有 early return 之前：抑制是全域的，沒有 //@ 標註的行
+    // （甚至沒有行號的停駐點）也得靜音步進，否則快轉會斷在半路沒人推進。
+    if (VisualizerHelper._fast_forward_pause(lineNum)) return;
+
+    if (isNaN(lineNum)) return;
     if (!('__tts' in global_variable)) {
       console.log(`[play_tts] __tts not found in global_variable`);
       return;
     }
-    const lineNum = parseInt(frame_line);
-    if (isNaN(lineNum)) return;
     const rawTtsContent = global_variable.__tts[lineNum] || global_variable.__tts[String(lineNum)];
     console.log(`[play_tts] Extracted ttsContent: ${rawTtsContent}`);
     if (!rawTtsContent) return;
@@ -400,9 +543,22 @@ class VisualizerHelper {
     // 解析自動播放指令前綴：先移除 [speed:N]，再抓 [next]/[continue] 等
     const ttsContentNoSpeed = ttsContent.replace(/\[speed:[\d.]+\]/g, '').trimStart();
     const cmdMatch = ttsContentNoSpeed.match(/^\[(next|step-in|step-out|continue)\]\s*/);
-    const autoplayCommand = cmdMatch ? cmdMatch[1] : globalAutoplayCommand;
-    // 去除所有控制標籤（[speed:N] 及任意數量的指令標籤）得到純說話文字
-    const ttsText = ttsContentNoSpeed
+
+    // ── 快轉指令 [fast @N]：只解析「被選中的那一段」──────────────
+    // 武裝成功就靜音步進、這一次不播；未武裝（求值失敗、次數已達標、
+    // 非自動播放）則退化成 [next]，教案照常播放。
+    const fastDirective = parseFastDirective(ttsContentNoSpeed);
+    if (fastDirective) {
+      const armed = await VisualizerHelper._try_arm_fast_forward(lineNum, fastDirective.target, funcName);
+      if (myTaskId !== _tts_task_id) return; // 求值期間有新的停駐進來
+      if (armed) return;
+    }
+
+    const autoplayCommand = cmdMatch
+      ? cmdMatch[1]
+      : (fastDirective ? 'next' : globalAutoplayCommand);
+    // 去除所有控制標籤（[speed:N]、[fast @N] 及任意數量的指令標籤）得到純說話文字
+    const ttsText = stripFastDirective(ttsContentNoSpeed)
       .replace(/^\s*(\[(next|step-in|step-out|continue)\]\s*)*/,'')
       .trim();
 
@@ -421,42 +577,7 @@ class VisualizerHelper {
 
       // 2. 遇到 {變數}，先解析
       const trimmedInst = inst.slice(1, -1).trim();
-      // 使用 tts:: 前綴，避免與 graphics_instruction 的變數抓取產生 Race Condition
-      const displayKey = funcName ? `tts::${funcName}::${trimmedInst}` : `tts::${trimmedInst}`;
-
-      const expressions = store.get("expressions");
-      const existingVar = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
-      if (existingVar) {
-        GdbVariable.delete_gdb_variable(existingVar.name);
-      }
-      GdbVariable.create_variable(trimmedInst, "expr", displayKey);
-
-      // 非同步輪詢獲取結果
-      const result = await new Promise((resolve) => {
-        let checkTicks = 0;
-        const checkStore = () => {
-          checkTicks++;
-          if (checkTicks > 50) {
-            console.warn(`[VisualizerHelper] play_tts TIMEOUT for expression: ${trimmedInst}`);
-            resolve(trimmedInst); // 超時則發音原本的變數名
-            return;
-          }
-          const exprs = store.get("expressions");
-          const varObj = exprs.find(obj => obj.expression === displayKey && obj.in_scope === "true");
-          if (varObj) {
-            if (varObj.value !== undefined) {
-              // 無論是容器還是一般變數，TTS 儘量發音其值
-              // 如果是字串或容器，這裡簡單的處理為直接取值
-              resolve(varObj.value);
-            } else {
-              setTimeout(checkStore, 100);
-            }
-          } else {
-            setTimeout(checkStore, 100);
-          }
-        };
-        checkStore();
-      });
+      const result = await VisualizerHelper._eval_tts_expression(trimmedInst, funcName);
       console.log(`[play_tts] Evaluated expression ${trimmedInst} -> ${result}`);
       // 收錄非同步查詢到的值；先把 [] 轉成 ⟦⟧ 避免被 TTS 控制標記 regex 吃掉
       outputArray.push(String(result).replace(/\[/g, '⟦').replace(/\]/g, '⟧'));
@@ -1164,7 +1285,7 @@ class VisualizerHelper {
       if (!plugin) return null;
       const bstHist = global_variable.__bst_history;
       if (!bstHist || !(containerName in bstHist)) return null;
-      if (!animScheduler.reserveBarrier()) return null; // barrier 已被佔用
+      if (!animScheduler.reserveBarrier()) return null; // 另一個前瞻動畫正在進行
       return { plugin, cData };
     };
 

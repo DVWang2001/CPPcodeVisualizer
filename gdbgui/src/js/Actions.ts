@@ -9,6 +9,7 @@ import React from "react";
 import VisualizerHelper from "./VisualizerHelper";
 import Visualizer from "./Visualizer";
 import { parseForHeader, decideForSegment } from "./forHeader";
+import { decideFastState, getFastForward, disarmFastForward } from "./fastForward";
 void React; // using jsx implicity uses React
 
 // ── for 迴圈三段式單步：每個真正的 GDB 停駐點重算一次 ──────────
@@ -17,6 +18,18 @@ void React; // using jsx implicity uses React
 // 條件段 B 不在這裡產生——GDB 永遠不會為它停下來，它是 GdbApi 的 UI 虛步。
 function recompute_for_sub_step(frame: any) {
   const line = parseInt(frame?.line);
+  // 會被快轉吃掉的停駐點一律不進虛步：GdbApi.click_next_button 同樣會跳過攔截，
+  // 兩邊必須一致，否則每個 for 行要多花一個虛步、B 段高亮還會在無聲快轉中閃爍。
+  // 反之「落地」的那一次（decideFastState 判 disarm）照常算段落——落地之後
+  // 一切行為都要和沒有快轉時一模一樣。
+  const _fast = getFastForward();
+  if (_fast) {
+    const _count = (global_variable as any).__line_visit_count?.[line] || 0;
+    if (decideFastState(line, _count, _fast) === "hold") {
+      store.set("for_sub_step", null);
+      return;
+    }
+  }
   if (isNaN(line)) {
     store.set("for_sub_step", null);
     return;
@@ -89,6 +102,8 @@ const Actions = {
     (window as any).gdbgui_reset_uml_state?.();
     // 程式重新開始，重置每行的進入計數
     (global_variable as any).__line_visit_count = {};
+    // 快轉綁在 __line_visit_count 上，計數歸零就必須解除（之後會再武裝一次）
+    disarmFastForward();
     // 重置 for 行看過的最小位址（A/C 判定的依據），否則上一次執行的位址會殘留
     (global_variable as any).__for_line_min_addr = {};
     // 重置呼叫樹，避免上一次執行的節點殘留
@@ -146,6 +161,8 @@ const Actions = {
   },
   inferior_program_exited: function () {
     Actions.stop_tts();
+    // 程式結束就沒有停駐點能解除快轉了，一律在這裡收掉
+    disarmFastForward();
     store.set("inferior_program", constants.inferior_states.exited);
     store.set("disassembly_for_missing_file", []);
     store.set("root_gdb_tree_var", null);

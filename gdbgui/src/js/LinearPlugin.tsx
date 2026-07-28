@@ -3,6 +3,7 @@ import { global_variable } from "./global_variable";
 import { store } from "statorgfc";
 import { ContainerPlugin, ContainerData } from "./ContainerPlugin";
 import { PluginOp } from "./AnimScheduler";
+import { delay } from "./anim";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,10 +20,6 @@ interface SwapPayload   { indexA: number; indexB: number; cellIdA: string; cellI
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 let _cellId = 0;
-
-function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 function afterFrame(): Promise<void> {
     return new Promise(resolve => requestAnimationFrame(() => resolve()));

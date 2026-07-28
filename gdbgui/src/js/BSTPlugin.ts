@@ -6,6 +6,7 @@ import React from "react";
 import { global_variable } from "./global_variable";
 import { ContainerPlugin, ContainerData } from "./ContainerPlugin";
 import { PluginOp } from "./AnimScheduler";
+import { delay } from "./anim";
 
 // ── BST data structures ───────────────────────────────────────────────────────
 
@@ -135,10 +136,6 @@ interface ErasePayload  { entry: BSTEntry; compPath: string[]; }
 const _deletingIds = new Set<string>();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 function afterFrame(): Promise<void> {
     return new Promise(resolve => requestAnimationFrame(() => resolve()));
