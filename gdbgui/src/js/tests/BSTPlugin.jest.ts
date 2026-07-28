@@ -3,7 +3,7 @@
 // Guards against wrong animation sequences (e.g. "empty,empty,{3,6}" instead of
 // "empty,{3},{3,6}") and against state leaking across program runs.
 
-import { bstPlugin } from '../BSTPlugin';
+import { bstPlugin, bstInsertNode, computeBoundPath, BSTNode, BSTEntry } from '../BSTPlugin';
 import { global_variable } from '../global_variable';
 
 // Shorthand to read the live BST history from global state.
@@ -364,5 +364,96 @@ describe('resetContainer', () => {
         bstPlugin.resetContainer('s1');
         // s2 history is intact; same data should return []
         expect(bstPlugin.diffOps('s2', { type: 'set', values: ['6'] })).toEqual([]);
+    });
+});
+
+// ── computeBoundPath ────────────────────────────────────────────────────────────
+
+// Builds a BST by inserting entries (id === key, for easy assertions) in order.
+const buildTree = (keys: string[]): BSTNode | null => {
+    let root: BSTNode | null = null;
+    for (const k of keys) {
+        const entry: BSTEntry = { id: k, key: k, label: k };
+        root = bstInsertNode(root, entry);
+    }
+    return root;
+};
+
+describe('computeBoundPath', () => {
+    it('set: lower_bound(3) hits the exact node 3', () => {
+        const root = buildTree(['5', '3', '7', '1', '9']);
+        const { path, candidates } = computeBoundPath(root, '3', false);
+        expect(candidates[candidates.length - 1]).toBe('3');
+        expect(candidates.length).toBe(path.length);
+    });
+
+    it('set: lower_bound(4) lands on 5 (no exact match, walks left subtree)', () => {
+        const root = buildTree(['5', '3', '7', '1', '9']);
+        const { path, candidates } = computeBoundPath(root, '4', false);
+        expect(candidates[candidates.length - 1]).toBe('5');
+        expect(candidates.length).toBe(path.length);
+    });
+
+    it('set: upper_bound(3) lands on 5', () => {
+        const root = buildTree(['5', '3', '7', '1', '9']);
+        const { path, candidates } = computeBoundPath(root, '3', true);
+        expect(candidates[candidates.length - 1]).toBe('5');
+        expect(candidates.length).toBe(path.length);
+    });
+
+    it('multiset (duplicate keys): lower_bound(5) lands on the leftmost 5 node id', () => {
+        // Insert order 5,2,5,8,5 — equal keys always inserted to the right,
+        // so nodes get ids in insertion order: '5a' (root), '2', '5b', '8', '5c'.
+        let root: BSTNode | null = null;
+        const order: [string, string][] = [['5a', '5'], ['2', '2'], ['5b', '5'], ['8', '8'], ['5c', '5']];
+        for (const [id, key] of order) {
+            root = bstInsertNode(root, { id, key, label: key });
+        }
+        const { candidates } = computeBoundPath(root, '5', false);
+        // Leftmost 5 == the one first inserted (root), since duplicates go right.
+        expect(candidates[candidates.length - 1]).toBe('5a');
+    });
+
+    it('multiset (duplicate keys): upper_bound(5) -> 8', () => {
+        let root: BSTNode | null = null;
+        const order: [string, string][] = [['5a', '5'], ['2', '2'], ['5b', '5'], ['8', '8'], ['5c', '5']];
+        for (const [id, key] of order) {
+            root = bstInsertNode(root, { id, key, label: key });
+        }
+        const { candidates, path } = computeBoundPath(root, '5', true);
+        expect(candidates[candidates.length - 1]).toBe('8');
+        expect(candidates.length).toBe(path.length);
+    });
+
+    it('end(): lower_bound(99) on a non-empty tree returns null', () => {
+        const root = buildTree(['5', '3', '7', '1', '9']);
+        const { path, candidates } = computeBoundPath(root, '99', false);
+        expect(candidates[candidates.length - 1] ?? null).toBeNull();
+        expect(candidates.length).toBe(path.length);
+    });
+
+    it('end(): lower_bound on an empty tree returns null with empty path/candidates', () => {
+        const { path, candidates } = computeBoundPath(null, '3', false);
+        expect(path).toEqual([]);
+        expect(candidates).toEqual([]);
+    });
+
+    it('early exit: set lower_bound(3) path length is 2 (nodes 5,3), excludes node 1', () => {
+        const root = buildTree(['5', '3', '7', '1', '9']);
+        const { path } = computeBoundPath(root, '3', false);
+        expect(path).toEqual(['5', '3']);
+        expect(path).not.toContain('1');
+    });
+
+    it('upper_bound does not early-exit on an equal key: multiset upper_bound(5) walks the full path to null', () => {
+        let root: BSTNode | null = null;
+        const order: [string, string][] = [['5a', '5'], ['2', '2'], ['5b', '5'], ['8', '8'], ['5c', '5']];
+        for (const [id, key] of order) {
+            root = bstInsertNode(root, { id, key, label: key });
+        }
+        const { path } = computeBoundPath(root, '5', true);
+        // Walks the entire right-leaning chain of 5s, then into 8's left child (5c),
+        // before falling off to null. No early exit on the repeated equal keys.
+        expect(path).toEqual(['5a', '5b', '8', '5c']);
     });
 });

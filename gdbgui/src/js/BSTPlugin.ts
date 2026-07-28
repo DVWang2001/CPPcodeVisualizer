@@ -9,13 +9,13 @@ import { PluginOp } from "./AnimScheduler";
 
 // ── BST data structures ───────────────────────────────────────────────────────
 
-interface BSTEntry {
+export interface BSTEntry {
     id: string;
     key: string;
     label: string;
 }
 
-interface BSTNode {
+export interface BSTNode {
     entry: BSTEntry;
     left: BSTNode | null;
     right: BSTNode | null;
@@ -31,7 +31,7 @@ function bstCmp(a: string, b: string): number {
     return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function bstInsertNode(root: BSTNode | null, entry: BSTEntry): BSTNode {
+export function bstInsertNode(root: BSTNode | null, entry: BSTEntry): BSTNode {
     const node: BSTNode = { entry, left: null, right: null };
     if (!root) return node;
     let cur: BSTNode = root;
@@ -77,6 +77,41 @@ function computeBSTComparisonPath(root: BSTNode | null, newKey: string): string[
     return path;
 }
 
+// computeBoundPath walks the tree like lower_bound/upper_bound, tracking the
+// rolling "best candidate so far" at each step. path[i] is the id of the node
+// visited at step i; candidates[i] is the candidate id after visiting path[i]
+// (null if none yet). strict=false → lower_bound (cur.key >= key qualifies),
+// strict=true → upper_bound (cur.key > key qualifies).
+export function computeBoundPath(
+    root: BSTNode | null, key: string, strict: boolean
+): { path: string[]; candidates: (string | null)[] } {
+    const path: string[] = [];
+    const candidates: (string | null)[] = [];
+    let cur = root;
+    let candidate: string | null = null;
+    while (cur !== null) {
+        path.push(cur.entry.id);
+        const c = bstCmp(cur.entry.key, key);
+        const qualifies = strict ? c > 0 : c >= 0;
+        if (qualifies) {
+            candidate = cur.entry.id;
+            cur = cur.left;
+        } else {
+            cur = cur.right;
+        }
+        candidates.push(candidate);
+        // Early exit: lower_bound only. bstInsertNode always inserts equal keys
+        // to the RIGHT, so every node's left subtree is strictly < that node's
+        // key. Once we hit an exact match (c === 0) and step left, nothing in
+        // that left subtree can be >= key with a value closer than this node,
+        // so the candidate just recorded is final — walking further is wasted
+        // motion. upper_bound has no such guarantee (equal keys don't qualify,
+        // so it never "locks in" a candidate this way) and must walk to null.
+        if (!strict && c === 0) break;
+    }
+    return { path, candidates };
+}
+
 // ── Animation state ───────────────────────────────────────────────────────────
 
 interface BSTAnimState {
@@ -85,6 +120,10 @@ interface BSTAnimState {
     hiddenIds:    Map<string, Set<string>>;
     comparingIds: Map<string, Set<string>>;
     findResultId: Map<string, { id: string; found: boolean; duplicate?: boolean } | null>;
+    boundCandidateId: Map<string, string | null>;
+    boundCaption:     Map<string, string | null>;
+    /** Labels of every value the rolling candidate took, in order. Empty for find. */
+    boundCandidateList: Map<string, string[]>;
 }
 
 // ── Op payload types ──────────────────────────────────────────────────────────
@@ -116,6 +155,9 @@ class BSTPlugin implements ContainerPlugin {
         hiddenIds:    new Map(),
         comparingIds: new Map(),
         findResultId: new Map(),
+        boundCandidateId: new Map(),
+        boundCaption:     new Map(),
+        boundCandidateList: new Map(),
     };
 
     // ── ContainerPlugin: diffOps ──────────────────────────────────────────────
@@ -267,6 +309,17 @@ class BSTPlugin implements ContainerPlugin {
             return this._runFind(containerName, compPath, true, true, requestRender);
         }
 
+        if (opType === 'lowerBound' || opType === 'upperBound') {
+            const history: BSTEntry[] = (bstHistory[containerName] as BSTEntry[])
+                .filter(e => !_deletingIds.has(e.id));
+            let root: BSTNode | null = null;
+            for (const e of history) root = bstInsertNode(root, e);
+            const strict = opType === 'upperBound';
+            const method = strict ? 'upper_bound' : 'lower_bound';
+            const { path, candidates } = computeBoundPath(root, key, strict);
+            return this._runBound(containerName, method, key, history, path, candidates, requestRender);
+        }
+
         return null;
     }
 
@@ -317,6 +370,9 @@ class BSTPlugin implements ContainerPlugin {
         const hiddenIds  = this.anim.hiddenIds.get(containerName)    ?? new Set<string>();
         const comparing  = this.anim.comparingIds.get(containerName) ?? new Set<string>();
         const findResult = this.anim.findResultId.get(containerName) ?? null;
+        const boundCand  = this.anim.boundCandidateId.get(containerName) ?? null;
+        const boundCaption = this.anim.boundCaption.get(containerName) ?? null;
+        const boundList  = this.anim.boundCandidateList.get(containerName) ?? [];
 
         const edges: React.ReactNode[] = [];
         const nodeElems: React.ReactNode[] = [];
@@ -352,6 +408,7 @@ class BSTPlugin implements ContainerPlugin {
             const isFindFound    = findResult?.id === node.entry.id && findResult.found && !findResult.duplicate;
             const isFindNotFound = findResult?.id === node.entry.id && findResult.found === false;
             const isDuplicate    = findResult?.id === node.entry.id && findResult.duplicate === true;
+            const isCandidate    = boundCand === node.entry.id;
 
             const opacity = (isNew || isDeleting || isHidden) ? 0 : 1;
             const scale   = (isNew || isDeleting || isHidden) ? 0.1
@@ -362,12 +419,19 @@ class BSTPlugin implements ContainerPlugin {
                           : isFindNotFound ? '#f44336'
                           : isDuplicate    ? '#ffd54f'
                           : '#fff';
-            const stroke  = isDeleting     ? '#e53935'
+            let stroke    = isDeleting     ? '#e53935'
                           : isComparing    ? '#e65100'
                           : isFindFound    ? '#2e7d32'
                           : isFindNotFound ? '#b71c1c'
                           : isDuplicate    ? '#e65100'
                           : '#333';
+            let strokeWidth = 2;
+            let strokeDasharray: string | undefined;
+            if (isCandidate && !isFindFound) {
+                stroke = '#1976d2';
+                strokeWidth = 4;
+                strokeDasharray = '4 3';
+            }
             const innerTransition = isHidden ? 'none' : 'opacity 0.45s ease, transform 0.45s ease';
 
             const lbl = node.entry.label.length > 10
@@ -390,7 +454,10 @@ class BSTPlugin implements ContainerPlugin {
                             transformOrigin: 'center',
                         }
                     },
-                        React.createElement('circle', { r: R, fill, stroke, strokeWidth: 2 }),
+                        React.createElement('circle', strokeDasharray
+                            ? { r: R, fill, stroke, strokeWidth, strokeDasharray }
+                            : { r: R, fill, stroke, strokeWidth }
+                        ),
                         React.createElement('text', {
                             textAnchor: 'middle', dy: 4,
                             fill: '#222', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold'
@@ -409,7 +476,36 @@ class BSTPlugin implements ContainerPlugin {
             ),
             React.createElement('div', {
                 style: { fontSize: '11px', color: '#888', marginTop: '4px', fontFamily: 'sans-serif' }
-            }, '傳統二元搜尋樹（按插入順序建樹，無旋轉）')
+            }, '傳統二元搜尋樹（按插入順序建樹，無旋轉）'),
+            // Candidate history: one cell per value the rolling candidate took.
+            // Shares the candidate ring's blue so the two read as the same idea;
+            // the last cell is the answer, so it takes the result green.
+            boundList.length > 0 ? React.createElement('div', {
+                'data-testid': 'bst-candidate-list',
+                style: {
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    marginTop: '6px', fontFamily: 'sans-serif', fontSize: '12px'
+                }
+            },
+                React.createElement('span', { style: { color: '#1976d2', fontWeight: 'bold' } }, '候選'),
+                ...boundList.map((lbl, i) => React.createElement('span', {
+                    key: `cand-${i}`,
+                    'data-testid': 'bst-candidate-cell',
+                    'data-key': lbl,
+                    style: {
+                        minWidth: '26px', padding: '2px 7px', textAlign: 'center',
+                        fontFamily: 'monospace', fontWeight: 'bold',
+                        borderRadius: '5px',
+                        border: `2px ${i === boundList.length - 1 ? 'solid' : 'dashed'} ${i === boundList.length - 1 ? '#2e7d32' : '#1976d2'}`,
+                        background: i === boundList.length - 1 ? '#4caf50' : 'transparent',
+                        color: i === boundList.length - 1 ? '#fff' : '#1976d2',
+                    }
+                }, lbl))
+            ) : null,
+            boundCaption ? React.createElement('div', {
+                'data-testid': 'bst-bound-caption',
+                style: { fontSize: '12px', color: '#1976d2', marginTop: '4px', fontFamily: 'sans-serif', fontWeight: 'bold' }
+            }, boundCaption) : null
         );
     }
 
@@ -425,7 +521,24 @@ class BSTPlugin implements ContainerPlugin {
             hiddenIds:    new Map(),
             comparingIds: new Map(),
             findResultId: new Map(),
+            boundCandidateId: new Map(),
+            boundCaption:     new Map(),
+            boundCandidateList: new Map(),
         };
+    }
+
+    /**
+     * Drop the marks left standing by the last prospective animation.
+     * find / lower_bound deliberately keep their result highlighted after the
+     * animation ends, so the student can read it while the guide text is on
+     * screen; the marks live until the program advances to the next line.
+     * Called once per GDB pause, before the new line's animations start.
+     */
+    clearProspectiveMarks(): void {
+        this.anim.findResultId.clear();
+        this.anim.boundCandidateId.clear();
+        this.anim.boundCaption.clear();
+        this.anim.boundCandidateList.clear();
     }
 
     resetContainer(containerName: string): void {
@@ -438,6 +551,9 @@ class BSTPlugin implements ContainerPlugin {
         this.anim.hiddenIds.delete(containerName);
         this.anim.comparingIds.delete(containerName);
         this.anim.findResultId.delete(containerName);
+        this.anim.boundCandidateId.delete(containerName);
+        this.anim.boundCaption.delete(containerName);
+        this.anim.boundCandidateList.delete(containerName);
     }
 
     // ── Private animation helpers ─────────────────────────────────────────────
@@ -526,9 +642,50 @@ class BSTPlugin implements ContainerPlugin {
             this.anim.findResultId.set(containerName, { id: lastNodeId, found, duplicate });
             requestRender();
         }
+        // The result stays marked until the next GDB pause clears it
+        // (clearProspectiveMarks). find has no rolling candidate, so no list.
         await delay(800);
-        this.anim.findResultId.delete(containerName);
+    }
+
+    private async _runBound(
+        containerName: string,
+        method: string,
+        key: string,
+        history: BSTEntry[],
+        path: string[],
+        candidates: (string | null)[],
+        requestRender: () => void
+    ): Promise<void> {
+        const labelOf = (id: string) => history.find(e => e.id === id)?.label ?? id;
+        const seen: string[] = [];
+        this.anim.boundCandidateList.set(containerName, seen);
+
+        for (let i = 0; i < path.length; i++) {
+            this.anim.comparingIds.set(containerName, new Set([path[i]]));
+            this.anim.boundCandidateId.set(containerName, candidates[i]);
+            // Record only when the candidate actually changes — that is the moment
+            // worth showing. Steps that walk right without qualifying add nothing.
+            if (candidates[i] && candidates[i] !== (i > 0 ? candidates[i - 1] : null)) {
+                seen.push(labelOf(candidates[i]!));
+            }
+            requestRender();
+            await afterFrame();
+            await delay(500);
+        }
+        this.anim.comparingIds.delete(containerName);
+
+        const final = candidates.length > 0 ? (candidates[candidates.length - 1] ?? null) : null;
+        const finalLabel = final ? labelOf(final) : 'end()';
+        this.anim.boundCaption.set(containerName, `${method}(${key}) → ${finalLabel}`);
+
+        if (final) {
+            this.anim.boundCandidateId.delete(containerName);
+            this.anim.findResultId.set(containerName, { id: final, found: true });
+        }
         requestRender();
+        // Result, caption and candidate list all stay on screen until the next
+        // GDB pause clears them (clearProspectiveMarks).
+        await delay(800);
     }
 }
 

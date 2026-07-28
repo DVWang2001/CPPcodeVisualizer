@@ -2,8 +2,10 @@ import { global_variable } from "./global_variable";
 import { store } from "statorgfc";
 import GdbVariable from "./GdbVariable";
 import GdbApi from "./GdbApi";
+import FileOps from "./FileOps";
 import { animScheduler } from "./AnimScheduler";
 import { getPlugin } from "./ContainerPlugin";
+import { bstPlugin } from "./BSTPlugin";
 import { resolveChildValues } from "./containerParsers/index";
 import { buildUmlPayload } from "./umlPayload";
 
@@ -90,6 +92,12 @@ const _gi_result_cache = new Map();
  * Bypasses React's batched setState so every intermediate state triggers animation.
  */
 function _eagerDiffOps(containerName, payload) {
+  // 記錄「這個容器本次停駐的 payload 已經處理過」，供 detect_container_op 等待用。
+  // 必須在任何提早 return 之前遞增，它代表的是「payload 到了」而非「有產生動畫」。
+  if (!global_variable.__container_diff_seq) global_variable.__container_diff_seq = {};
+  global_variable.__container_diff_seq[containerName] =
+    (global_variable.__container_diff_seq[containerName] || 0) + 1;
+
   const plugin = getPlugin(payload.type);
   if (!plugin) return;
   // BST types need BST mode toggle to be on
@@ -878,6 +886,16 @@ class VisualizerHelper {
             // string check MUST come after map/set: map<K,string> type contains "basic_string"
             else if (ty.includes("std::__cxx11::basic_string") || ty.includes("std::string")) { containerName = "string"; }
 
+            // 動態 pretty-printer 的 set/map varobj 在容器從空長大之後，numchild 會停留在
+            // 建立當下的 0（GDB 先更新 value 字串，子節點數要下一個 stop 才跟上），
+            // 但 value 已經寫成「with N elements」。比照 _uml_intnc 對 vector「of length N」
+            // 的補值做法用 value 修正，否則下方的空容器判定會把它誤判成 {}，
+            // 樹要慢一個停駐點才出現。
+            if (!parseInt(String(varObj.numchild))) {
+              const _nc = /with (\d+) element/i.exec(varObj.value || "");
+              if (_nc && parseInt(_nc[1]) > 0) varObj.numchild = parseInt(_nc[1]);
+            }
+
             // ── 建立 payload 函數 ──
             const buildPayload = (valuesArr) => {
               const payload = { name: displayKey, type: containerName, values: valuesArr, isContainer: true };
@@ -1093,17 +1111,23 @@ class VisualizerHelper {
   static detect_container_op(frame_line, funcName) {
     const myTaskId = ++_bst_op_task_id;
 
+    // find / lower_bound 的結果標記刻意留在畫面上，直到程式推進到下一行才清掉，
+    // 讓學生能一邊看指導文字一邊對照答案。這裡是每個停駐點都會經過的位置，
+    // 必須放在所有提早 return 之前。
+    bstPlugin.clearProspectiveMarks();
+    window.gdbgui_request_render?.();
+
     const lineNum = parseInt(frame_line);
     if (isNaN(lineNum)) return;
 
     const fullname = store.get("fullname_to_render");
-    const cachedFiles = store.get("cached_source_files");
-    if (!fullname || !cachedFiles) return;
+    if (!fullname) return;
 
-    const fileObj = cachedFiles.find(f => f.fullname === fullname);
-    if (!fileObj || !fileObj.source_code_array) return;
-
-    const rawLineHtml = fileObj.source_code_array[lineNum - 1];
+    // 快取的檔案物件存的是 source_code_obj（1-indexed，key 為行號），不是 source_code_array
+    // ——後者只是伺服器 AJAX 回應的欄位名，從未寫進快取。用 FileOps 既有的存取器，
+    // 避免再次寫錯屬性名（先前讀 source_code_array[lineNum-1] 恆為 undefined，
+    // 導致本函式整個靜默失效、find/lower_bound 的動畫從來沒觸發過）。
+    const rawLineHtml = FileOps.get_line_from_file(fullname, lineNum);
     if (!rawLineHtml) return;
 
     const rawLine = String(rawLineHtml)
@@ -1144,8 +1168,31 @@ class VisualizerHelper {
       return { plugin, cData };
     };
 
+    // ── 輔助：等本次停駐的容器狀態套用完畢 ────────────────────────────────────
+    // detect_container_op 是在 inferior_program_paused 裡同步呼叫的，那個當下本次
+    // 停駐的容器 payload 還沒抓回來，上一行的 insert/erase 也還沒進佇列。barrier
+    // 只是 TTS 的閘門、不是互斥鎖（pushOps 遇到已佔用的 barrier 會直接 no-op 然後
+    // 照樣 _drain），所以若立刻開始前瞻動畫，它會走在少一個節點的舊樹上，而插入
+    // 動畫同時在旁邊改 history、害佈局在走訪途中整個平移重繪。
+    // 因此：等到本次 payload 完成 diff（seq 遞增）且該容器佇列排空，再開始動畫。
+    const waitForSettled = (containerName) => {
+      const seqOf = () => (global_variable.__container_diff_seq || {})[containerName] || 0;
+      const seq0 = seqOf();
+      return new Promise(resolve => {
+        let tries = 0;
+        const poll = setInterval(() => {
+          if (myTaskId !== _bst_op_task_id) { clearInterval(poll); resolve(false); return; }
+          if (seqOf() !== seq0 && !animScheduler.isRunning(containerName)) {
+            clearInterval(poll); resolve(true); return;
+          }
+          // 上限 3 秒：某些行不會更新容器（guide 沒引用它），別把動畫永遠卡住。
+          if (++tries > 60) { clearInterval(poll); resolve(false); return; }
+        }, 50);
+      });
+    };
+
     // ── 偵測 find / count / contains ──────────────────────────────────────────
-    const matchFind = rawLine.match(/\b(\w+)\s*(?:\.|->>?)\s*(find|count|contains)\s*\(([^,)]+)/);
+    const matchFind = rawLine.match(/\b(\w+)\s*(?:\.|->>?)\s*(find|count|contains|lower_bound|upper_bound)\s*\(([^,)]+)/);
     if (matchFind) {
       const containerName = matchFind[1].trim();
       const keyExpr = matchFind[3].trim();
@@ -1157,7 +1204,12 @@ class VisualizerHelper {
         const dk = funcName ? `bst_find::${funcName}::${containerName}::${lineNum}` : `bst_find::${containerName}::${lineNum}`;
         const value = await evalKey(keyExpr, dk);
         if (myTaskId !== _bst_op_task_id || value == null) { animScheduler.releaseBarrier(); return; }
-        const animPromise = plugin.prospectiveOp(containerName, 'find', value, requestRender);
+        await waitForSettled(containerName);
+        if (myTaskId !== _bst_op_task_id) { animScheduler.releaseBarrier(); return; }
+        const boundOpType = matchFind[2] === 'lower_bound' ? 'lowerBound'
+                           : matchFind[2] === 'upper_bound' ? 'upperBound'
+                           : 'find';
+        const animPromise = plugin.prospectiveOp(containerName, boundOpType, value, requestRender);
         if (!animPromise) { animScheduler.releaseBarrier(); return; }
         animPromise.then(() => animScheduler.releaseBarrier());
       })();
@@ -1185,6 +1237,8 @@ class VisualizerHelper {
           ? cData.values.some(v => String(v.key) === keyStr)
           : cData.values.some(v => String(v) === keyStr);
         if (isDup) {
+          await waitForSettled(containerName);
+          if (myTaskId !== _bst_op_task_id) { animScheduler.releaseBarrier(); return; }
           const animPromise = plugin.prospectiveOp(containerName, 'dupInsert', keyStr, requestRender);
           if (!animPromise) { animScheduler.releaseBarrier(); return; }
           animPromise.then(() => animScheduler.releaseBarrier());
