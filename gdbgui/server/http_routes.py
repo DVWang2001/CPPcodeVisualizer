@@ -12,6 +12,7 @@ from pathlib import Path
 from werkzeug.utils import secure_filename
 
 from .sandbox import jail_manager
+from . import blocking
 
 try:
     import requests as _requests
@@ -116,8 +117,12 @@ def _run_confined(jail, argv, **kwargs):
     編譯器也要進去：g++ 處理的是不可信的原始碼，`#include "/etc/…"` 之類的
     把戲會把檔案內容寫進錯誤訊息裡回傳給使用者。以 session 帳號編譯，讀得到的
     就只有系統上本來就人人可讀的東西，讀不到其他 session 的 scratch。
+
+    走 blocking.run 而不是 subprocess.run：伺服器是 eventlet 單執行緒，直接
+    subprocess.run 會把 hub 連同**所有** session 的 GDB 輸出轉發一起卡住
+    （理由與量測見 blocking.py）。argv 沒有任何改變，confine() 的隔離照舊。
     """
-    return subprocess.run(jail_manager.confine(jail, list(argv)), **kwargs)
+    return blocking.run(jail_manager.confine(jail, list(argv)), **kwargs)
 
 
 # ── Layer 2：連結期 --wrap 攔截（stub.c 有對應實作）─────────────────────────
@@ -265,7 +270,7 @@ def _ensure_stub_compiled() -> bool:
     if _STUB_O.exists():
         return True
     try:
-        res = subprocess.run(
+        res = blocking.run(
             ["gcc", "-c", str(_STUB_C), "-o", str(_STUB_O)],
             capture_output=True, text=True, timeout=20,
         )
@@ -341,12 +346,12 @@ def tts_audio():
     if not ogg_path.exists():
         tmp_ogg = ogg_path.with_suffix(".ogg.tmp")
         try:
-            decode = subprocess.run(
+            decode = blocking.run(
                 ["mpg123", "-q", "-w", "-", str(mp3_path)],
                 capture_output=True, timeout=15
             )
             if decode.returncode == 0 and decode.stdout:
-                encode = subprocess.run(
+                encode = blocking.run(
                     ["oggenc", "-Q", "-q", "3", "-o", str(tmp_ogg), "-"],
                     input=decode.stdout, capture_output=True, timeout=15
                 )
