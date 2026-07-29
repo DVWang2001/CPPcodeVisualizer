@@ -32,6 +32,8 @@ import pytest
 
 from gdbgui.server.sandbox import jail_manager
 
+from .conftest import LoggedInUser, register_user
+
 
 needs_isolation = pytest.mark.skipif(
     not jail_manager.isolation_available(),
@@ -57,16 +59,18 @@ def gdbgui_app():
         app.config["initial_binary_and_args"] = saved
 
 
-class Visitor:
-    """一個瀏覽器 session：自己的 cookie jar、自己的 csrf token、自己的 jail。"""
+class Visitor(LoggedInUser):
+    """一個使用者：自己的帳號、cookie jar、csrf token、jail。
+
+    全站要求登入之後「一個訪客」就是「一個註冊過的使用者」——身分的單位從
+    cookie 換成了帳號（http_util.owner_key），所以 `prefix`（＝jail 的 key）
+    現在來自登入的 user id，而不是 session 裡憑空生的 uuid。
+    """
 
     def __init__(self, app):
-        self.app = app
-        self.http = app.test_client()
+        user = register_user(app)
+        super().__init__(app, user.http, user.user_id, user.username, user.csrf)
         assert self.http.get("/").status_code == 200
-        with self.http.session_transaction() as flask_session:
-            self.csrf = flask_session["csrf_token"]
-            self.prefix = flask_session["uploaded_prefix"]
 
     def compile(self, code=HELLO):
         """走使用者真正走的那條路：POST /create_and_upload，拿回自己的 binary 路徑。"""

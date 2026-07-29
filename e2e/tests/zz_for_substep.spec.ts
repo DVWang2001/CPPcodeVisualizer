@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { ensureLoggedIn } from './helpers';
 
 /**
  * for (A; B; C) three-phase stepping, Visual Studio style.
@@ -62,6 +63,7 @@ async function stepOnce(page: any) {
 }
 
 async function bootLesson(page: any) {
+    await ensureLoggedIn(page);
     await page.goto('/');
     await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 20_000 });
     await page.waitForSelector('.monaco-editor textarea', { timeout: 20_000 });

@@ -6,8 +6,9 @@ from gdbgui.server import sessionmanager
 from gdbgui.server.sandbox import jail_manager
 
 
-# 兩個「Flask session 的 uploaded_prefix」。形狀跟 uuid4().hex 一樣（32 hex），
-# 因為那就是正式環境用的東西。
+# 兩個 owner key（http_util.owner_key）。正式環境的形狀是 16 位 hex 的 user id，
+# 這裡用 32 hex —— 這一層只在乎「兩把不同的 key」，形狀的契約由
+# tests/test_auth.py 的 test_owner_key_is_a_valid_jail_session_key 釘住。
 OWNER_A = "a" * 32
 OWNER_B = "b" * 32
 

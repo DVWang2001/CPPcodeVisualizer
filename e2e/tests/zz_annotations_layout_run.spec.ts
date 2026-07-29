@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPage } from './helpers';
+import { ensureLoggedIn, setupPage } from './helpers';
 
 /**
  * B1 — Regression for the "__layout wiped on Run" bug fixed in 244bd66.
@@ -50,6 +50,7 @@ test('layout directive survives Run (regression: __layout not wiped)', async ({ 
   page.on('pageerror', err => { jsErrors.push(err.message); console.log(`[PAGE ERROR] ${err.message}`); });
 
   await setupPage(page);
+  await ensureLoggedIn(page);
   await page.goto('/');
   await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 15_000 });
   await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });

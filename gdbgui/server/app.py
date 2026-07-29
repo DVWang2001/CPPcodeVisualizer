@@ -1,4 +1,3 @@
-import binascii
 import logging
 import os
 from typing import Dict, List
@@ -40,9 +39,10 @@ except Exception:
 from flask_compress import Compress  # type: ignore
 from flask_socketio import SocketIO, emit  # type: ignore
 
+from . import auth, db
 from .constants import DEFAULT_GDB_EXECUTABLE, STATIC_DIR, TEMPLATE_DIR
 from .http_routes import blueprint
-from .http_util import is_cross_origin, owner_key
+from .http_util import is_cross_origin, owner_key, require_login
 from .sandbox import jail_manager
 from .sessionmanager import SessionManager, DebugSession
 
@@ -53,6 +53,7 @@ Compress(
     app
 )  # add gzip compression to Flask. see https://github.com/libwilliam/flask-compress
 app.register_blueprint(blueprint)
+app.register_blueprint(auth.blueprint)
 app.config["initial_binary_and_args"] = []
 app.config["gdb_path"] = DEFAULT_GDB_EXECUTABLE
 app.config["gdb_command"] = None
@@ -69,7 +70,24 @@ app.config["upload_folder"] = (
 )
 manager = SessionManager()
 app.config["_manager"] = manager
-app.secret_key = binascii.hexlify(os.urandom(24)).decode("utf-8")
+
+# 資料庫：建立資料目錄（0700）並套用 migration。必須在讀 SECRET_KEY 之前。
+db.initialize()
+
+# 這裡以前是 `binascii.hexlify(os.urandom(24))`——每次啟動換一把新鑰匙，所有
+# session 立刻失效。沒有登入時無所謂；有了登入之後，那代表每次部署或重啟都把
+# 所有人登出。金鑰現在活在 0600 的檔案裡、放在 0700 的資料目錄底下，那個目錄
+# 不在任何 session 帳號讀得到的地方（見 db.py 的模組說明）。
+app.secret_key = db.get_or_create_secret_key()
+
+# HttpOnly 是 Flask 預設；SameSite=Lax 讓瀏覽器不會在跨站的 POST 帶上 cookie，
+# 疊在既有的全域 CSRF token 檢查之上，一行、零成本。
+# Secure 要靠 HTTPS，而目前的部署是 http://；用環境變數開，預設不開（開了會
+# 讓 http 部署完全無法登入，那是比缺一個旗標更糟的失效模式）。
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("GDBGUI_SECURE_COOKIES") == "1"
+
 socketio = SocketIO(manage_session=False)
 
 
@@ -93,6 +111,20 @@ def csrf_protect_all_post_and_cross_origin_requests():
             abort(403)
 
 
+# ── 全站登入閘門 ──────────────────────────────────────────────────────────────
+#
+# **預設拒絕。** 白名單只有 /login、/register、/logout 與靜態資源
+# （http_util.PUBLIC_ENDPOINTS）；其餘所有已註冊路由——包含之後才加上去、
+# 作者忘了想這件事的那些——一律要求登入。
+#
+# 註冊在 CSRF 檢查**之後**：跨來源與 CSRF token 先驗，未登入者因此也不會有一條
+# 繞過那兩道檢查的捷徑。
+#
+# 這不是第二套認證機制，是同一套的另一個掛載點：它與 @authenticate 裝飾器共用
+# http_util.current_user_id() 這一個判斷（說明見 http_util）。
+app.before_request(require_login)
+
+
 @socketio.on("connect", namespace="/gdb_listener")
 def client_connected():
     """Connect a websocket client to a debug session
@@ -107,6 +139,24 @@ def client_connected():
     if is_cross_origin(request):
         logger.warning("Received cross origin request. Aborting")
         abort(403)
+
+    # ── 身分優先 ────────────────────────────────────────────────────────────
+    #
+    # HTTP 擋住而 websocket 沒擋等於沒擋：驅動 GDB 的就是這條連線。這裡以前只
+    # 檢查 CSRF token，而 CSRF token 是**任何**訪客 GET 一次頁面就拿得到的東西
+    # ——它證明「這個請求來自這個瀏覽器的 session」，不證明「這個 session 是
+    # 誰」。少了下面這一段，未登入者仍然可以開 websocket、配置一個 jail、
+    # 啟動 GDB 並執行任意編譯出來的程式。
+    #
+    # 在 CSRF 檢查之前做：先問「你是誰」，再問「這個請求是不是你送的」。
+    #
+    # 回傳 False 才是真的拒絕連線（只 emit 的話 socket 仍然是連上的，後續的
+    # run_gdb_command / pty_interaction 事件照樣進得來）。
+    session_key = owner_key()
+    if session_key is None:
+        logger.warning("[authz] refused unauthenticated websocket connection")
+        emit("server_error", {"message": "請先登入。"})
+        return False
 
     csrf_token = request.args.get("csrf_token")
     if csrf_token is None:
@@ -125,9 +175,9 @@ def client_connected():
         )
         return
 
-    # 本次連線的擁有者身分。attach 授權與「一人一個 debug session」都以它為準。
-    # 來源只有 http_util.owner_key() 一處（見該函式的說明）。
-    session_key = owner_key()
+    # session_key（＝本次連線的擁有者身分）已經在最上面取好了：attach 授權與
+    # 「一人一個 debug session」都以它為準，來源只有 http_util.owner_key() 一處。
+    # 不要在這裡重新取一次。
 
     try:
         desired_gdbpid = int(request.args.get("gdbpid", 0))

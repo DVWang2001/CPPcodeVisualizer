@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { ensureLoggedIn } from './helpers';
 
 /**
  * `[fast @N]` — silently fast-forward until the annotated line has been visited
@@ -42,6 +43,7 @@ const BUNDLE = {
 };
 
 async function boot(page: any, autoplay: boolean) {
+    await ensureLoggedIn(page);
     await page.goto('/');
     await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 20_000 });
     await page.waitForSelector('.monaco-editor textarea', { timeout: 20_000 });

@@ -1,0 +1,14 @@
+{% extends "_auth_base.html" %}
+{% block title %}登出 - gdbgui{% endblock %}
+{% block body %}
+  <h1>登出</h1>
+
+  {# 登出是狀態變更，所以按鈕送的是 POST（走全域 CSRF 檢查）。
+     GET /logout 只渲染這一頁，什麼都不改。 #}
+  <form method="post" action="{{ url_for('auth.logout') }}" data-testid="logout-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button id="submit" type="submit">確定登出</button>
+  </form>
+
+  <p class="hint"><a href="{{ url_for('http_routes.gdbgui') }}">返回</a></p>
+{% endblock %}

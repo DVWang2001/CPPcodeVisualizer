@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPage } from './helpers';
+import { ensureLoggedIn, setupPage } from './helpers';
 
 /**
  * Regression test for the pause button.  MARKED fixme: THE BUTTON IS STILL BROKEN.
@@ -49,6 +49,7 @@ const BUSY_LOOP = `int main() {
 test('pause button actually interrupts a running program', async ({ page }) => {
     test.setTimeout(120_000);
     await setupPage(page);
+    await ensureLoggedIn(page);
     await page.goto('/');
 
     await page.waitForFunction(() => (window as any).store !== undefined, null, {

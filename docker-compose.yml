@@ -16,6 +16,17 @@ services:
     tmpfs:
       # exec 是必要的：使用者編譯出來的程式就在這裡執行，Docker tmpfs 預設 noexec。
       - /srv/gdbgui-scratch:exec,mode=0755,size=512m
+    volumes:
+      # 唯一的持久儲存：使用者資料庫與 Flask 的 SECRET_KEY。
+      #
+      # SECRET_KEY 必須活過重啟——它以前每次啟動重新產生，有了登入之後那代表
+      # 每次部署都把所有人登出。而這個目錄裡同時有密碼雜湊，所以伺服器啟動時會
+      # 把它收成 0700（db.ensure_data_dir）：同一個容器裡跑著不可信的
+      # per-session 帳號，那些帳號連 traverse 這個目錄都不行。
+      #
+      # 刻意**不是** bind mount，也刻意不放在 /srv/gdbgui-scratch 底下（那裡是
+      # tmpfs，而且每個 session 帳號在裡面都有自己的目錄）。
+      - gdbgui-data:/var/lib/gdbgui
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
@@ -45,3 +56,8 @@ services:
     mem_limit: 3g
     pids_limit: 512
     cpus: 2.0
+
+volumes:
+  # 使用者資料庫 + SECRET_KEY。`docker compose down` 不會刪 named volume，
+  # 所以重啟後大家還是登入著的（`down -v` 才會刪掉，那等於重置整個站）。
+  gdbgui-data:

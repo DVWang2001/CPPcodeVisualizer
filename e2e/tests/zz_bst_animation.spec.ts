@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { ensureLoggedIn } from './helpers';
 
 /**
  * End-to-end coverage for the set/multiset BST animations, driven by the real
@@ -140,6 +141,7 @@ async function stepOnce(page: any) {
 test('set lesson: tree keeps pace with inserts, and find / lower_bound animate', async ({ page }) => {
     page.on('pageerror', (e: any) => console.log(`[PAGE ERROR] ${e.message}`));
 
+    await ensureLoggedIn(page);
     await page.goto('/');
     await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 20_000 });
     await page.waitForSelector('.monaco-editor textarea', { timeout: 20_000 });

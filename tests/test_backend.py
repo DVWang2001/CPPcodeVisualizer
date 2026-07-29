@@ -23,14 +23,26 @@ def test_connect():
 
 
 @pytest.fixture
-def test_client():
-    return app.test_client()
+def test_client(logged_in):
+    """全站要求登入之後，「一個瀏覽器」的意思就是「一個已登入的瀏覽器」。
+
+    這幾條測的是頁面本身，不是閘門（閘門在 tests/test_route_gate.py）。
+    """
+    return logged_in.http
 
 
 def test_load_main_page(test_client):
     response = test_client.get("/")
     assert response.status_code == 200
     assert "<!DOCTYPE html>" in response.data.decode()
+
+
+def test_the_main_page_needs_a_login():
+    """對照組：沒登入就看不到它。"""
+    anonymous = app.test_client()
+    response = anonymous.get("/")
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
 
 
 def test_dashboard_needs_a_binary_in_this_session(test_client):

@@ -3,6 +3,37 @@ import { Page, expect } from '@playwright/test';
 const E2E_BP_LINE = 26;
 export const E2E_GUIDE = '{v} {a} {s} {l} {st} {q} {dq} {se} {ms} {m} {mm} {um}';
 
+const E2E_PASSWORD = 'e2e-password-1234';
+
+/**
+ * Register a throwaway account and land logged in.  Must be called BEFORE the
+ * spec's own page.goto('/') -- the whole site now requires a login, so an
+ * anonymous goto('/') just redirects to /login and the app never boots.
+ *
+ * A FRESH account per call, deliberately.  The account is now the unit of
+ * isolation: one user gets one jail and one debug session, and a second browser
+ * for the same user ATTACHES to the first one's gdb instead of starting its own
+ * (that is the documented consequence of keying ownership on the user).  Specs
+ * run serially and share a server, so a shared login would let one spec attach
+ * to the previous spec's gdb -- still holding the previous spec's binary.
+ * Registration is open, so a unique account costs nothing.
+ */
+export async function ensureLoggedIn(page: Page): Promise<void> {
+    // Must satisfy the server's USERNAME_RE: 3-32 chars, lowercase alnum plus
+    // _ and -, first and last character alphanumeric.
+    const username = `e2e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+    await page.goto('/register');
+    await page.fill('#username', username);
+    await page.fill('#display_name', 'E2E');
+    await page.fill('#password', E2E_PASSWORD);
+    await Promise.all([
+        // Registration logs you in and redirects to the new profile page.
+        page.waitForURL(/\/u\//, { timeout: 15_000 }),
+        page.click('#submit'),
+    ]);
+}
+
 /**
  * Must be called BEFORE page.goto('/').
  * Sets auto_add_breakpoint_to_main=false in localStorage so BinaryLoader's

@@ -1,0 +1,24 @@
+{% extends "_auth_base.html" %}
+{% block title %}{{ display_name }} - gdbgui{% endblock %}
+{% block body %}
+  {# Jinja 的 autoescape 是開著的，display_name / title 都是使用者輸入，
+     一律靠它轉義；這裡沒有任何 |safe。 #}
+  <h1 data-testid="profile-display-name">{{ display_name }}</h1>
+  <p class="hint" data-testid="profile-username">@{{ profile_username }}</p>
+
+  <h2 style="font-size: 1rem; margin-top: 1.5rem;">教案</h2>
+  {% if lessons %}
+    <ul data-testid="profile-lessons">
+      {% for lesson in lessons %}
+        <li data-testid="profile-lesson">{{ lesson["title"] }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="hint" data-testid="profile-no-lessons">還沒有教案。</p>
+  {% endif %}
+
+  <p class="hint">
+    <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
+    {% if is_self %} · <a href="{{ url_for('auth.logout') }}">登出</a>{% endif %}
+  </p>
+{% endblock %}

@@ -21,33 +21,29 @@ import pytest
 
 from gdbgui.server.sandbox import jail_manager
 
+from .conftest import register_user
+
 
 # ---------------------------------------------------------------------------
 # 1. 頁面渲染不配置 jail
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def flask_app():
-    from gdbgui.server.app import app
-
-    app.config["gdb_command"] = "gdb"
-    return app
-
-
 def test_page_loads_do_not_create_jails(flask_app):
-    """N 個全新的瀏覽器各載入一次首頁，jail 數量必須完全不動。"""
+    """N 個不同的使用者各載入一次首頁，jail 數量必須完全不動。
+
+    身分的單位現在是帳號（http_util.owner_key），所以「N 個全新的瀏覽器」
+    在這裡的意思是 N 個不同的帳號。
+    """
     before = jail_manager.active_session_count()
 
     owners = []
     for _ in range(5):
-        client = flask_app.test_client()
-        assert client.get("/").status_code == 200
-        with client.session_transaction() as flask_session:
-            # 頁面仍然要建立身分（websocket 那端要用），只是不配置 OS 資源
-            owners.append(flask_session["uploaded_prefix"])
+        user = register_user(flask_app)
+        assert user.http.get("/").status_code == 200
+        owners.append(user.owner_key)
 
-    assert len(set(owners)) == 5, "each browser must get its own identity"
+    assert len(set(owners)) == 5, "each account must get its own identity"
     for owner in owners:
         assert jail_manager.get(owner) is None, "a page load created a jail"
 
@@ -57,11 +53,25 @@ def test_page_loads_do_not_create_jails(flask_app):
     )
 
 
-def test_repeated_page_loads_by_one_browser_do_not_create_jails(flask_app):
+def test_repeated_page_loads_by_one_browser_do_not_create_jails(flask_app, logged_in):
     before = jail_manager.active_session_count()
-    client = flask_app.test_client()
     for _ in range(10):
-        assert client.get("/").status_code == 200
+        assert logged_in.http.get("/").status_code == 200
+    assert jail_manager.active_session_count() == before
+
+
+def test_anonymous_page_loads_do_not_create_jails(flask_app):
+    """未登入者連身分都拿不到，更不可能配置 OS 資源。
+
+    這是 pre-auth DoS 那條路徑最終的樣子：以前 GET / 會無條件 acquire 一個
+    jail，現在連進門都要先登入。
+    """
+    before = jail_manager.active_session_count()
+    for _ in range(10):
+        anonymous = flask_app.test_client()
+        response = anonymous.get("/")
+        assert response.status_code == 302
+        assert "/login" in response.headers["Location"]
     assert jail_manager.active_session_count() == before
 
 
@@ -77,11 +87,11 @@ def test_starting_a_real_debug_session_still_creates_exactly_one_jail(flask_app)
     if socketio.server is None:
         run_server(testing=True, app=flask_app, socketio=socketio)
 
-    http = flask_app.test_client()
+    user = register_user(flask_app)
+    http = user.http
     assert http.get("/").status_code == 200
-    with http.session_transaction() as flask_session:
-        csrf = flask_session["csrf_token"]
-        owner = flask_session["uploaded_prefix"]
+    csrf = user.csrf
+    owner = user.owner_key
 
     assert jail_manager.get(owner) is None
     before = jail_manager.active_session_count()

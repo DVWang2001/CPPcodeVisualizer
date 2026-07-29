@@ -1,0 +1,69 @@
+{# 登入／註冊／登出共用的外框。刻意不引入任何前端框架或外部字型：
+   這幾頁是未登入者唯一看得到的東西，越少東西越好。 #}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}gdbgui{% endblock %}</title>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" />
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f7f8fa;
+        color: #1f2933;
+        font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+      }
+      .card {
+        width: min(26rem, calc(100vw - 2rem));
+        background: #fff;
+        border: 1px solid #e2e6eb;
+        border-radius: 10px;
+        padding: 1.75rem;
+        box-shadow: 0 1px 3px rgba(15, 23, 32, 0.06);
+      }
+      h1 { font-size: 1.25rem; margin: 0 0 1.25rem; }
+      label { display: block; font-size: 0.85rem; margin: 0.85rem 0 0.3rem; color: #52606d; }
+      input[type="text"], input[type="password"] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.5rem 0.6rem;
+        border: 1px solid #cbd2d9;
+        border-radius: 6px;
+        font-size: 1rem;
+      }
+      button {
+        margin-top: 1.25rem;
+        width: 100%;
+        padding: 0.55rem;
+        border: 0;
+        border-radius: 6px;
+        background: #2b6cb0;
+        color: #fff;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+      .error {
+        margin: 0 0 1rem;
+        padding: 0.6rem 0.75rem;
+        border-radius: 6px;
+        background: #fdecea;
+        border: 1px solid #f5c2bd;
+        color: #8a1c11;
+        font-size: 0.9rem;
+      }
+      .hint { margin-top: 1.1rem; font-size: 0.85rem; color: #616e7c; }
+      a { color: #2b6cb0; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      {% block body %}{% endblock %}
+    </main>
+  </body>
+</html>

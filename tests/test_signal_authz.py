@@ -21,6 +21,8 @@ import pytest
 
 from gdbgui.server.sandbox import jail_manager
 
+from .conftest import register_user
+
 
 pytestmark = pytest.mark.skipif(
     not jail_manager.isolation_available(),
@@ -53,32 +55,60 @@ def _pid_uid(pid: int):
 _SIGINT_BIT = 1 << (2 - 1)  # SIGINT == 2；SigCgt 是從 0 開始編號的位元遮罩
 
 
+def _has_execed_gdb(pid: int) -> bool:
+    """這個 pid 現在真的是**我們啟動的那個 GDB** 了嗎？
+
+    `-iex new-ui …` 是 sessionmanager 加上去的參數，只有我們起的 GDB 有；
+    比對它比比對 argv[0] 可靠（setpriv/unshare/env 都不會有這個參數）。
+    """
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            argv = f.read().split(b"\0")
+    except OSError:
+        return False
+    return any(arg.startswith(b"new-ui ") for arg in argv)
+
+
 def _wait_until_gdb_is_up(pid: int) -> None:
-    """等到 GDB 真的裝好自己的 SIGINT handler 為止。
+    """等到 GDB 真的起來、而且裝好自己的 SIGINT handler 為止。
 
     setpriv -> unshare -> env -> gdb 是同一個 pid 一路接力 exec，前三棒對 SIGINT
-    的處置是預設的「終止」，而且連 exec 成 gdb 之後也還有一小段初始化期間
-    handler 尚未就位。在那之前送 SIGINT 會直接殺掉行程——那是測試起跑得比 GDB
-    快，不是端點的行為（真人按 pause 鍵不可能快到這個程度）。
+    的處置是預設的「終止」。在那之前送 SIGINT 會直接殺掉行程——那是測試起跑得比
+    GDB 快，不是端點的行為（真人按 pause 鍵不可能快到這個程度）。
 
-    /proc/<pid>/status 的 SigCgt（caught signals 遮罩）就是「handler 裝好了沒」
-    的直接答案，不用猜一個 sleep 的長度。
+    ★ 光看 SigCgt 不夠 ★
+
+    GDB 是用 `pty.fork()` 起的，所以在 exec 之前那一小段時間裡，這個 pid 還是
+    **forked 出來的 Python 直譯器**——而 Python（與 eventlet）自己就裝了一堆
+    signal handler，包含 SIGINT。於是 SigCgt 在 exec 發生**之前**就已經有 SIGINT
+    的位元了，這個等待會在 0.3 毫秒內就「成功」返回，然後測試對一個還沒 exec 成
+    GDB 的行程送 SIGINT，把它殺掉。
+
+    量測（容器內）：先確認已經 exec 成 GDB 再看 SigCgt，等待時間約 40 ms；
+    只看 SigCgt 的話返回時 /proc/<pid>/cmdline 還是空的（正在 exec）。
+
+    fork 與 exec 之間的窗口有多寬，取決於當下父行程有多大（fork 要複製頁表），
+    所以這個洞是否會發作跟「這個測試前面剛好做了什麼」有關——正是一個間歇性
+    失敗該有的樣子。這裡改成同時要求兩件事，讓它跟時序無關：
+      1. 這個 pid 已經 exec 成我們的 GDB（cmdline 有 `-iex new-ui …`）
+      2. 它自己裝好了 SIGINT handler（SigCgt）
     """
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
-        try:
-            with open(f"/proc/{pid}/status") as f:
-                caught = next(
-                    int(line.split()[1], 16)
-                    for line in f
-                    if line.startswith("SigCgt:")
-                )
-        except (OSError, StopIteration):
-            caught = 0
-        if caught & _SIGINT_BIT:
-            return
+        if _has_execed_gdb(pid):
+            try:
+                with open(f"/proc/{pid}/status") as f:
+                    caught = next(
+                        int(line.split()[1], 16)
+                        for line in f
+                        if line.startswith("SigCgt:")
+                    )
+            except (OSError, StopIteration):
+                caught = 0
+            if caught & _SIGINT_BIT:
+                return
         time.sleep(0.02)
-    raise AssertionError(f"gdb pid {pid} never installed a SIGINT handler")
+    raise AssertionError(f"gdb pid {pid} never came up with a SIGINT handler")
 
 
 def _spawn_victim_process(jail):
@@ -118,16 +148,20 @@ def gdbgui_app():
 
 
 class Session:
-    """一個瀏覽器：HTTP client + websocket + 這個 session 的 jail/debug session。"""
+    """一個使用者：帳號 + HTTP client + websocket + 這個使用者的 jail/debug session。
+
+    擁有者身分（self.owner）＝ http_util.owner_key()，也就是登入的 user id；
+    「兩個獨立的 session」現在是「兩個獨立的帳號」。
+    """
 
     def __init__(self, app, socketio, manager, *, with_gdb=True):
         self.app = app
         self.manager = manager
-        self.http = app.test_client()
+        user = register_user(app)
+        self.http = user.http
         assert self.http.get("/").status_code == 200
-        with self.http.session_transaction() as flask_session:
-            self.csrf = flask_session["csrf_token"]
-            self.owner = flask_session["uploaded_prefix"]
+        self.csrf = user.csrf
+        self.owner = user.owner_key
         self.ws = None
         if with_gdb:
             self.ws = socketio.test_client(

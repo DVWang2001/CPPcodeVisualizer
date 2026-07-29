@@ -20,6 +20,8 @@ import pytest
 
 from gdbgui.server.sandbox import jail_manager
 
+from .conftest import register_user
+
 
 pytestmark = pytest.mark.skipif(
     not jail_manager.isolation_available(),
@@ -359,12 +361,13 @@ def _connection_event(ws_client):
 def test_two_tabs_in_one_flask_session_share_one_gdb_process(gdbgui_app):
     app, manager, socketio = gdbgui_app
 
-    flask_client = app.test_client()
-    # 首頁會建立 uploaded_prefix（＝擁有者身分）與 jail
+    # 擁有者身分＝登入的使用者（http_util.owner_key）。「兩個分頁」＝同一個
+    # 帳號、同一個 cookie jar 上的兩條 websocket。
+    user = register_user(app)
+    flask_client = user.http
     assert flask_client.get("/").status_code == 200
-    with flask_client.session_transaction() as flask_session:
-        csrf_token = flask_session["csrf_token"]
-        owner = flask_session["uploaded_prefix"]
+    csrf_token = user.csrf
+    owner = user.owner_key
 
     baseline = _settled_gdb_count()
 
@@ -426,21 +429,21 @@ def test_two_tabs_in_one_flask_session_share_one_gdb_process(gdbgui_app):
 
 
 def test_a_foreign_flask_session_cannot_attach_to_someone_elses_gdbpid(gdbgui_app):
-    """端對端版本的授權測試：victim 與 attacker 是兩個獨立的 Flask session
+    """端對端版本的授權測試：victim 與 attacker 是兩個獨立的**帳號**
     （兩個 cookie jar，等同兩個瀏覽器）。"""
     app, manager, socketio = gdbgui_app
 
-    victim_http = app.test_client()
+    victim = register_user(app)
+    victim_http = victim.http
     assert victim_http.get("/").status_code == 200
-    with victim_http.session_transaction() as flask_session:
-        victim_csrf = flask_session["csrf_token"]
-        victim_owner = flask_session["uploaded_prefix"]
+    victim_csrf = victim.csrf
+    victim_owner = victim.owner_key
 
-    attacker_http = app.test_client()
+    attacker = register_user(app)
+    attacker_http = attacker.http
     assert attacker_http.get("/").status_code == 200
-    with attacker_http.session_transaction() as flask_session:
-        attacker_csrf = flask_session["csrf_token"]
-        attacker_owner = flask_session["uploaded_prefix"]
+    attacker_csrf = attacker.csrf
+    attacker_owner = attacker.owner_key
 
     assert victim_owner != attacker_owner
 

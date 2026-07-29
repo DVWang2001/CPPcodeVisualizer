@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPage } from './helpers';
+import { ensureLoggedIn, setupPage } from './helpers';
 
 /**
  * Regression: importing a tutorial JSON and pressing Run must compile + start
@@ -120,6 +120,7 @@ test('tutorial import then Run reaches paused', async ({ page }) => {
   page.on('pageerror', err => { jsErrors.push(err.message); console.log(`[PAGE ERROR] ${err.message}`); });
 
   await setupPage(page);
+  await ensureLoggedIn(page);
   await page.goto('/');
   await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 15_000 });
   await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });

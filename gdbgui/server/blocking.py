@@ -75,6 +75,26 @@ def eventlet_hub_running() -> bool:
     return getattr(hubs._threadlocal, "hub", None) is not None
 
 
+def call(fn, *args, **kwargs):
+    """呼叫一個會阻塞的同步函式，但不卡住 eventlet hub。
+
+    用在 CPU 密集、在 C 層裡不會讓出 GIL 的呼叫上——目前是密碼雜湊
+    （`werkzeug.security` 的 scrypt，刻意慢，約 100 ms 一次）。scrypt 若直接在
+    hub 上跑，每一次登入或註冊都會讓**所有**使用者的請求與 GDB 輸出轉發停擺
+    那麼久；而登入沒有速率限制（設計決定），連續打就是一個被放大的 DoS。
+
+    雜湊參數一個都沒動，換的只有「誰在等它」。
+
+    沒有 eventlet hub 時（pytest、本機非 socketio 情境）直接呼叫，行為不變。
+    """
+    if not eventlet_hub_running():
+        return fn(*args, **kwargs)
+
+    from eventlet import tpool
+
+    return tpool.execute(fn, *args, **kwargs)
+
+
 def run(argv, **kwargs) -> "subprocess.CompletedProcess":
     """`subprocess.run(argv, **kwargs)`，但不會卡住 eventlet hub。
 
@@ -84,9 +104,4 @@ def run(argv, **kwargs) -> "subprocess.CompletedProcess":
     沒有 eventlet hub 時（pytest、本機非 socketio 情境）直接呼叫
     `subprocess.run`，行為完全不變。
     """
-    if not eventlet_hub_running():
-        return subprocess.run(argv, **kwargs)
-
-    from eventlet import tpool
-
-    return tpool.execute(subprocess.run, argv, **kwargs)
+    return call(subprocess.run, argv, **kwargs)

@@ -21,6 +21,7 @@ except ImportError:
 
 from flask import (
     Blueprint,
+    abort,
     current_app,
     jsonify,
     redirect,
@@ -66,16 +67,22 @@ def _upload_root() -> str:
 
 
 def _session_prefix() -> str:
-    """本 session 的識別字串：既是 owner key（http_util.owner_key），
-    也是 jail 的 key。
+    """本請求的識別字串：既是 owner key（http_util.owner_key），也是 jail 的 key。
+
+    這裡以前會在 Flask session 裡憑空生一個 uuid4（匿名的 `uploaded_prefix`）。
+    全站要求登入之後匿名身分不再存在，唯一的身分來源是登入的使用者——所以這個
+    函式現在只是 owner_key() 的別名，不再自己造身分。
 
     只產生一個字串，**不碰 jail_manager**，不建立任何作業系統資源。
-    需要「這個請求屬於誰」但還不需要執行任何東西的路徑（例如頁面渲染）
-    只該呼叫這一個。
+
+    未登入時 abort(401) 而不是回退成匿名：fail closed。理論上到不了這裡
+    （全域的 require_login 閘門在前面），這是那個不變式壞掉時的第二道網。
     """
-    if "uploaded_prefix" not in session:
-        session["uploaded_prefix"] = uuid.uuid4().hex
-    return session["uploaded_prefix"]
+    key = owner_key()
+    if not key:
+        logger.warning("[authz] refusing to serve a request with no identity")
+        abort(401)
+    return key
 
 
 def _session_scratch(create: bool = True):
@@ -757,7 +764,9 @@ def help_route():
 
 @blueprint.route("/docs/authoring-guide")
 def authoring_guide():
-    # 給 AI agent / 老師取用的教案撰寫指南；不需登入，回傳原始 markdown
+    # 給 AI agent / 老師取用的教案撰寫指南，回傳原始 markdown。
+    # 全站要求登入之後這條也需要登入（不在 PUBLIC_ENDPOINTS 裡）——豁免清單
+    # 只有登入流程本身與靜態資源，其餘一律預設拒絕。
     # root_path 是 gdbgui/server（app 建立於 gdbgui.server），repo root 在上兩層
     p = Path(current_app.root_path).parents[1] / "AUTHORING_GUIDE.md"
     if not p.exists():
@@ -801,12 +810,12 @@ def gdbgui():
     # 不必登入、不必開 websocket、不必跑任何程式：GDBGUI_MAX_SESSIONS 次
     # GET / 就把所有人的併發額度吃光——一個 pre-auth 的 DoS。
     #
-    # 渲染這一頁真正需要的只有 session 的 uploaded_prefix（身分／jail 的 key），
-    # 而產生那個字串不需要任何作業系統資源。jail 改成在真的要用時才建立，
-    # 那些路徑本來就已經是這樣做的：
+    # 渲染這一頁真正需要的只有身分（＝jail 的 key），而那現在直接就是登入的
+    # 使用者，連產生字串都不必。jail 改成在真的要用時才建立，那些路徑本來就
+    # 已經是這樣做的：
     #   /upload、/create_and_upload（要編譯）與 websocket connect（要起 GDB）。
-    # 前端在開 websocket 之前一定會先拿到這一頁，所以 uploaded_prefix 必然
-    # 已經存在，websocket 那端 acquire() 得到的仍是同一個 key 的 jail。
+    # 身分跟著使用者走，所以 websocket 那端 acquire() 得到的必然是同一個
+    # key 的 jail。
     _session_prefix()
 
     # session 裡記的 binary 可能已經隨著上一個 jail 被回收而消失（scratch 是
@@ -1215,10 +1224,10 @@ def prerun_calltree():
     安全設計（威脅模型見 task-1-report.md）：
       - 完全不讀取 request body / query string 任何欄位；所有輸入只來自
         server-side session 狀態（uploaded_binary / real_src_path /
-        exec_wrapper / uploaded_input / uploaded_prefix），避免攻擊者透過
+        exec_wrapper / uploaded_input）與登入身分（owner_key），避免攻擊者透過
         任意參數指定要執行的 binary 或注入 gdb 腳本內容。
       - binary 必須存在、realpath 必須落在**本 session 自己的 scratch 目錄**內、
-        檔名必須以本 session 的 uploaded_prefix + "_" 開頭 -- 防止透過 session
+        檔名必須以本 session 的 owner key + "_" 開頭 -- 防止透過 session
         竄改或路徑穿越去執行別的 session / 系統上任意的可執行檔。
       - gdb 以本 session 的臨時 OS 帳號、在 user+net namespace 內執行
         （_run_confined）；exec-wrapper 額外套用 ulimit 資源限制。
@@ -1233,7 +1242,9 @@ def prerun_calltree():
     """
     binary = session.get("uploaded_binary")
     src = session.get("real_src_path")
-    prefix = session.get("uploaded_prefix", "")
+    # 身分只從 owner_key() 來（登入的使用者），不從 session 裡另一格自己記的
+    # 字串來——兩個來源就會有一天對不齊，而對不齊的那一天就是授權漏洞。
+    prefix = owner_key() or ""
 
     # 只認本 session 自己的 scratch 目錄（不建立新的：沒有就是沒有）
     jail = jail_manager.get(prefix) if prefix else None

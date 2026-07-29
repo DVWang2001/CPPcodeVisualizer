@@ -66,31 +66,24 @@ for _sig in (signal.SIGINT, signal.SIGTERM):
         # ignore platforms that don't support these signals
         pass
 
-def get_gdbgui_auth_user_credentials(auth_file, user, password):
-    if auth_file and (user or password):
-        print("Cannot supply auth file and username/password")
+#: 舊的 HTTP Basic Auth 旗標（--auth-file / --user / --password）。
+#:
+#: 那是「給這台 gdbgui 加一道鎖」的單一組帳密，沒有使用者概念，已經被帳號登入
+#: 取代（gdbgui/server/auth.py）。旗標保留下來但**必須直接失敗**，不能靜靜地
+#: 被忽略：部署者若以為 `--auth-file` 還在保護這台機器而它其實什麼都沒做，
+#: 那比一開始就沒有這個旗標危險得多。
+_BASIC_AUTH_REMOVED_MESSAGE = (
+    "HTTP Basic auth (--auth-file / --user / --password) has been replaced by user "
+    "accounts: everyone registers at /register and logs in at /login. There is no "
+    "single shared credential any more, so these flags no longer do anything and "
+    "gdbgui refuses to start with them rather than pretend to be protected."
+)
+
+
+def reject_removed_basic_auth_flags(auth_file, user, password):
+    if auth_file or user or password:
+        print(_BASIC_AUTH_REMOVED_MESSAGE)
         exit(1)
-    if auth_file:
-        if os.path.isfile(auth_file):
-            with open(auth_file, "r") as authFile:
-                data = authFile.read()
-                split_file_contents = data.split("\n")
-                if len(split_file_contents) < 2:
-                    print(
-                        'Auth file "%s" requires username on first line and password on second line'
-                        % auth_file
-                    )
-                    exit(1)
-                return split_file_contents
-
-        else:
-            print('Auth file "%s" for HTTP Basic auth not found' % auth_file)
-            exit(1)
-    elif user and password:
-        return [user, password]
-
-    else:
-        return None
 
 
 def warn_startup_with_shell_off(platform: str, gdb_args: str):
@@ -149,14 +142,21 @@ def get_parser():
         action="store_true",
     )
 
+    # 這三個旗標已被帳號登入取代。留著只是為了在有人使用它們時**明確報錯**
+    # 而不是安靜地忽略（見 reject_removed_basic_auth_flags）。
     security.add_argument(
         "--auth-file",
-        help="Require authentication before accessing gdbgui in the browser. "
-        "Specify a file that contains the HTTP Basic auth username and password separate by newline. ",
+        help="REMOVED. HTTP Basic auth has been replaced by user accounts "
+        "(/register, /login). Passing this flag is an error.",
     )
-
-    security.add_argument("--user", help="Username when authenticating")
-    security.add_argument("--password", help="Password when authenticating")
+    security.add_argument(
+        "--user",
+        help="REMOVED. See --auth-file.",
+    )
+    security.add_argument(
+        "--password",
+        help="REMOVED. See --auth-file.",
+    )
     security.add_argument(
         "--key",
         default=None,
@@ -255,9 +255,7 @@ def main():
     app.config["initial_binary_and_args"] = get_initial_binary_and_args(
         args.args, args.debug_program
     )
-    app.config["gdbgui_auth_user_credentials"] = get_gdbgui_auth_user_credentials(
-        args.auth_file, args.user, args.password
-    )
+    reject_removed_basic_auth_flags(args.auth_file, args.user, args.password)
     app.config["project_home"] = args.project
     if args.remap_sources:
         try:
@@ -272,11 +270,6 @@ def main():
     if args.remote:
         args.host = "0.0.0.0"
         args.no_browser = True
-        if app.config["gdbgui_auth_user_credentials"] is None:
-            print(
-                "Warning: authentication is recommended when serving on a publicly "
-                "accessible IP address. See gdbgui --help."
-            )
 
     if warn_startup_with_shell_off(platform.platform().lower(), args.gdb_cmd):
         logger.warning(
