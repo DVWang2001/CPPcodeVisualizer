@@ -1,4 +1,19 @@
-node_modules
+# Docker 只用 filepath.Match 比對，不加 **/ 的規則「只擋頂層」——先前
+# e2e/node_modules 與 e2e 的測試產物就是這樣整包進了 image。
+**/node_modules
+
+# Playwright 產物：trace: 'on' 每個測試都寫一份，累積得很快（曾達 344 MB）
+**/playwright-report
+**/test-results
+e2e/Dockerfile
+
+# 論文與簡報素材，執行期用不到
+論文圖片集
+10個經典案例
+screenshots
+images
+*.pptx
+docs
 dist
 gdbgui/static/js/main.js
 __pycache__
