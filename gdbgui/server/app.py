@@ -405,6 +405,10 @@ def read_and_forward_gdb_and_pty_output():
                     debug_sessions_to_remove.append(debug_session)
 
                 if response:
+                    # 在轉發給瀏覽器之前先自己看一遍：inferior 的 pid 只有這裡
+                    # 拿得到，而 /send_signal 需要伺服器端自己有一份紀錄
+                    # （呼叫端不再被允許指定 pid）。
+                    debug_session.observe_gdb_response(response)
                     for client_id in client_ids:
                         logger.info(
                             "emiting message to websocket client id " + client_id

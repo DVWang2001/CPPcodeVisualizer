@@ -82,6 +82,11 @@ class DebugSession:
         self.pty_for_debugged_program = pty_for_debugged_program
         self.mi_version = mi_version
         self.pid = pid
+        # 被除錯程式（inferior）的 pid，由伺服器自己從 GDB 的 MI 串流讀出來
+        # （見 observe_gdb_response）。**這是伺服器唯一承認的來源**：
+        # /send_signal 不再接受呼叫端送 pid 上來，所以要送訊號給 inferior，
+        # 伺服器必須自己知道它是誰。沒有正在跑的 inferior 時是 None。
+        self.inferior_pid: Optional[int] = None
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.client_ids: Set[str] = set()
         # Token tied to the current compilation/run session; validated on every GDB command.
@@ -109,6 +114,39 @@ class DebugSession:
                 logger.exception(
                     "[jail] failed to release jail for session %s", self.jail_key[:8]
                 )
+
+    def observe_gdb_response(self, records) -> None:
+        """從 GDB 的 MI 串流記下／清掉 inferior 的 pid。
+
+        `=thread-group-started,id="i1",pid="1234"` 是 GDB 在 inferior 起來時發的
+        非同步通知；`=thread-group-exited` 是它結束時發的。前端本來就在解析同一
+        份串流（process_gdb_response.tsx）來顯示 pid，但**顯示**跟**授權**是兩
+        件事：伺服器要對 inferior 送訊號，就必須有一份自己的、不經過瀏覽器的
+        紀錄，否則就等於又讓呼叫端指定要 kill 誰。
+
+        這條串流是 GDB 對 gdbgui 專用的 new-ui pty，被除錯程式的輸出走的是另一
+        個 pty，所以使用者程式沒辦法往這裡塞假的通知記錄。使用者仍然可以在 GDB
+        console 打任意指令（例如 attach），所以真正動手前還會再驗一次那個 pid
+        現在屬不屬於這個 session 的 OS 帳號——見 http_routes.send_signal。
+        """
+        if not isinstance(records, list):
+            return
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            message = record.get("message")
+            if message == "thread-group-started":
+                payload = record.get("payload")
+                raw_pid = payload.get("pid") if isinstance(payload, dict) else None
+                try:
+                    pid = int(raw_pid)
+                except (TypeError, ValueError):
+                    continue
+                # pid 1 是 tini；<=1 一律不接受，免得任何解析怪異變成「合法目標」。
+                if pid > 1:
+                    self.inferior_pid = pid
+            elif message == "thread-group-exited":
+                self.inferior_pid = None
 
     def is_owned_by(self, owner_key: Optional[str]) -> bool:
         """這個 debug session 是不是屬於 owner_key？

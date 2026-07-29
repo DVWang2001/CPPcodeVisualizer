@@ -11,9 +11,12 @@ class InferiorProgramInfo extends React.Component<{}, State> {
     super();
     this.get_li_for_signal = this.get_li_for_signal.bind(this);
     this.get_dropdown = this.get_dropdown.bind(this);
+    // 這裡以前還有一個 other_pid 欄位 + 「送訊號給任意 PID」的按鈕。
+    // 那在單人本機工具上說得通，在公開註冊的部署上它就是漏洞本身：
+    // 伺服器端是以 root 執行 os.kill(使用者送來的 pid)。欄位與按鈕都已移除，
+    // 現在只能指名 gdb / inferior 兩個目標，pid 由伺服器自己解析。
     this.state = {
-      selected_signal: "SIGINT",
-      other_pid: ""
+      selected_signal: "SIGINT"
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, ["inferior_pid", "gdb_pid"]);
@@ -78,9 +81,7 @@ class InferiorProgramInfo extends React.Component<{}, State> {
         // style={{marginLeft: '5px'}}
         type="button"
         title={`Send signal to gdb`}
-        onClick={() =>
-          Actions.send_signal(this.state.selected_signal, this.state.gdb_pid)
-        }
+        onClick={() => Actions.send_signal(this.state.selected_signal, "gdb")}
       >
         {`gdb (pid ${this.state.gdb_pid})`}
       </button>
@@ -93,28 +94,13 @@ class InferiorProgramInfo extends React.Component<{}, State> {
           className="btn btn-default btn-xs"
           type="button"
           title={`Send signal to program being debugged`}
-          onClick={() =>
-            Actions.send_signal(this.state.selected_signal, this.state.inferior_pid)
-          }
+          onClick={() => Actions.send_signal(this.state.selected_signal, "inferior")}
         >
           {`debug program (pid ${this.state.inferior_pid})`}
         </button>
       );
     }
 
-    let other_input_and_button = (
-      <button
-        disabled={!this.state.other_pid}
-        className="btn btn-default btn-xs"
-        type="button"
-        title={`Send signal to custom PID. Enter PID to enable this button.`}
-        onClick={() =>
-          Actions.send_signal(this.state.selected_signal, this.state.other_pid)
-        }
-      >
-        {`other pid ${this.state.other_pid}`}
-      </button>
-    );
     return (
       <div>
         send&nbsp;
@@ -124,23 +110,6 @@ class InferiorProgramInfo extends React.Component<{}, State> {
           {gdb_button}
           {inferior_button}
         </div>
-        <p>
-          {other_input_and_button}
-          <input
-            placeholder="pid"
-            style={{
-              display: "inline",
-              height: "25px",
-              width: "75px",
-              border: "1px solid #ccc",
-              borderRadius: "4px"
-            }}
-            onChange={e => {
-              this.setState({ other_pid: e.currentTarget.value });
-            }}
-            value={this.state.other_pid}
-          />
-        </p>
       </div>
     ); // return
   } // render

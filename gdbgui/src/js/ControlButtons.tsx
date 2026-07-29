@@ -43,7 +43,7 @@ class ControlButtons extends React.Component<{}, State> {
         </button>
 
         <button
-          onClick={() => { Actions.stop_tts(); Actions.send_signal("SIGINT", this.state.gdb_pid); }}
+          onClick={() => { Actions.stop_tts(); Actions.send_signal("SIGINT", "gdb"); }}
           type="button"
           title="Send Interrupt signal (SIGINT) to gdb process to pause it (if it's running)"
           className={btn_class}

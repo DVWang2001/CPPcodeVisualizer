@@ -339,7 +339,16 @@ const Actions = {
     store.set("max_lines_of_code_to_fetch", new_value);
     localStorage.setItem("max_lines_of_code_to_fetch", JSON.stringify(new_value));
   },
-  send_signal(signal_name: any, pid: any) {
+  /**
+   * Send a signal to one of *this session's own* processes.
+   *
+   * `target` names which process the server should signal — "gdb" or
+   * "inferior" — and the server resolves the pid itself from the debug
+   * session this browser session owns. The client deliberately cannot supply
+   * a pid: the old endpoint took one from the form and os.kill()'d it as root,
+   * which let any user signal PID 1, the gdbgui server, or another user's gdb.
+   */
+  send_signal(signal_name: any, target: "gdb" | "inferior") {
     $.ajax({
       beforeSend: function (xhr) {
         xhr.setRequestHeader(
@@ -348,10 +357,10 @@ const Actions = {
           initial_data.csrf_token
         ); /* global initial_data */
       },
-      url: "/send_signal_to_pid",
+      url: "/send_signal",
       cache: false,
       type: "POST",
-      data: { signal_name: signal_name, pid: pid },
+      data: { signal_name: signal_name, target: target },
       success: function (response) {
         Actions.add_console_entries(
           response.message,

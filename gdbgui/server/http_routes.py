@@ -64,6 +64,19 @@ def _upload_root() -> str:
     )
 
 
+def _session_prefix() -> str:
+    """本 session 的識別字串：既是 owner key（http_util.owner_key），
+    也是 jail 的 key。
+
+    只產生一個字串，**不碰 jail_manager**，不建立任何作業系統資源。
+    需要「這個請求屬於誰」但還不需要執行任何東西的路徑（例如頁面渲染）
+    只該呼叫這一個。
+    """
+    if "uploaded_prefix" not in session:
+        session["uploaded_prefix"] = uuid.uuid4().hex
+    return session["uploaded_prefix"]
+
+
 def _session_scratch(create: bool = True):
     """回傳 (prefix, jail, directory)。
 
@@ -74,9 +87,7 @@ def _session_scratch(create: bool = True):
 
     呼叫端要處理 jail_manager.TooManySessions（併發上限）。
     """
-    if "uploaded_prefix" not in session:
-        session["uploaded_prefix"] = uuid.uuid4().hex
-    prefix = session["uploaded_prefix"]
+    prefix = _session_prefix()
 
     jail = jail_manager.acquire(prefix) if create else jail_manager.get(prefix)
     if jail is not None:
@@ -779,100 +790,34 @@ def dashboard():
 @blueprint.route("/", methods=["GET"])
 @authenticate
 def gdbgui():
-    # 無條件先確保本 session 有 scratch 目錄與 OS 帳號。
+    # ── 這條路徑刻意**不**碰 jail_manager ────────────────────────────────────
     #
-    # 時序很重要：頁面載入後前端會立刻開 websocket，而 websocket 那端是用
-    # session["uploaded_prefix"] 去找這個 session 的 jail 來啟動 GDB。若等到
-    # 使用者按下編譯才建立，GDB 早就以 root、在沒有 namespace 的情況下起來了。
-    try:
-        _session_scratch()
-    except jail_manager.TooManySessions:
-        return _too_many_sessions_response()
-    except jail_manager.JailError:
-        logger.exception("[jail] could not establish execution isolation")
-        return client_error({"message": "無法建立執行隔離環境。"})
+    # 以前它無條件 jail_manager.acquire()（再加上「session 裡沒有 binary 就當場
+    # 編一支預設 hello world」），所以單純打開一個頁面就會建立一個臨時 OS 帳號
+    # 與 scratch 目錄，而且要等 IDLE_TIMEOUT_SECONDS（3600 秒）閒置回收才會還。
+    # 不必登入、不必開 websocket、不必跑任何程式：GDBGUI_MAX_SESSIONS 次
+    # GET / 就把所有人的併發額度吃光——一個 pre-auth 的 DoS。
+    #
+    # 渲染這一頁真正需要的只有 session 的 uploaded_prefix（身分／jail 的 key），
+    # 而產生那個字串不需要任何作業系統資源。jail 改成在真的要用時才建立，
+    # 那些路徑本來就已經是這樣做的：
+    #   /upload、/create_and_upload（要編譯）與 websocket connect（要起 GDB）。
+    # 前端在開 websocket 之前一定會先拿到這一頁，所以 uploaded_prefix 必然
+    # 已經存在，websocket 那端 acquire() 得到的仍是同一個 key 的 jail。
+    _session_prefix()
 
-    # check if user didn't upload file
-    # check if user didn't upload file, OR if the uploaded file is missing from disk
-    resp = require_uploaded_binary()
-    should_create_default = False
-    
-    if resp:
-        # Case 1: No file in session
-        should_create_default = True
-    else:
-        # Case 2: File in session, but check if it exists on disk
-        bin_path = session.get("uploaded_binary")
-        upload_dir = current_app.config.get("upload_folder") or os.path.join(
-            current_app.root_path, "uploads"
-        )
-        # Determine if we should check for missing source
-        # Only check if the binary is inside our uploads folder (don't mess with external local debug targets)
-        if bin_path and os.path.abspath(bin_path).startswith(os.path.abspath(upload_dir)):
-            if not os.path.exists(bin_path):
-                should_create_default = True
-            else:
-                # Also check if corresponding source exists (assuming .a -> .cpp/.c mapping from uploads)
-                # If it's a .a file we created, we expect a source file
-                base, ext = os.path.splitext(bin_path)
-                if ext == '.a':
-                     # Check common extensions
-                     found_source = False
-                     for src_ext in ['.cpp', '.c', '.cc', '.cxx', '.c++']:
-                         if os.path.exists(base + src_ext):
-                             found_source = True
-                             break
-                     if not found_source:
-                         logger.info(f"Binary {bin_path} exists but source missing. Recreating default.")
-                         should_create_default = True
-
-    if should_create_default:
-        # Create a default hello world cpp in this session's own scratch dir
-        try:
-            prefix, jail, upload_dir = _session_scratch()
-        except jail_manager.TooManySessions:
-            return _too_many_sessions_response()
-        except jail_manager.JailError:
-            logger.exception("[jail] could not establish execution isolation")
-            return client_error({"message": "無法建立執行隔離環境。"})
-
-        filename = f"{prefix}_default_hello_{uuid.uuid4().hex}.cpp"
-        src_path = os.path.join(upload_dir, filename)
-
-        default_code = '#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}\n'
-
-        jail_manager.write_session_file(src_path, default_code, jail, 0o600)
-
-        # Compile it
-        name_only, _ = os.path.splitext(filename)
-        exec_filename = name_only + ".a"
-        exec_path = os.path.join(upload_dir, exec_filename)
-        compiler = current_app.config.get("c_compiler") or "g++"
-
-        try:
-            res = _run_confined(
-                jail,
-                [compiler, "-g", "-O0", "-no-pie", src_path, "-o", exec_path],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if res.returncode == 0:
-                try:
-                    os.chmod(exec_path, 0o700)
-                except Exception:
-                    pass
-
-                # Set session variables
-                session["uploaded_binary"] = exec_path
-                current_app.config["initial_binary_and_args"] = [exec_path]
-            else:
-                 # If compilation fails, log and fallback to redirect if strictly needed
-                 logger.error(f"Default hello world compilation failed: {res.stderr}")
-                 if resp: return resp 
-        except Exception as e:
-            logger.error(f"Default hello world generation failed: {e}")
-            if resp: return resp
+    # session 裡記的 binary 可能已經隨著上一個 jail 被回收而消失（scratch 是
+    # 暫存，session 結束或閒置逾時就整個刪掉）。留著一個指向不存在檔案的路徑
+    # 只會讓前端拿它去餵 GDB 然後噴錯，直接清掉，讓 UI 回到「還沒編譯」的乾淨
+    # 狀態即可——重新編譯本來就是使用者的下一個動作。
+    #
+    # 這裡以前是「當場編一支預設 hello world」，那正是頁面渲染會取得 jail 的
+    # 原因；預設樣板由前端 Monaco 提供，伺服器不需要為了它 fork 一個編譯器。
+    bin_path = session.get("uploaded_binary")
+    if bin_path and not os.path.exists(bin_path):
+        logger.info("[session] uploaded binary is gone; clearing stale session paths")
+        for key in ("uploaded_binary", "uploaded_input", "real_src_path", "virtual_src_path"):
+            session.pop(key, None)
 
     """Render the main gdbgui interface"""
     gdbpid = request.args.get("gdbpid", 0)
@@ -883,12 +828,20 @@ def gdbgui():
     # uses initial_data.themes[0] as the default when no stored preference
     # exists in localStorage.
     THEMES = ["light", "monokai"]
+    # 優先用**這個 session 自己的** binary。app.config["initial_binary_and_args"]
+    # 是全域的（CLI 起 gdbgui 時帶的參數），在多人部署下會被任何一次網頁編譯
+    # 覆寫成那個人的 scratch 路徑，別人載入頁面就會拿到它。自己有就用自己的。
+    _session_binary = session.get("uploaded_binary")
     initial_data = {
         "csrf_token": session["csrf_token"],
         "gdbgui_version": __version__,
         "gdbpid": gdbpid,
         "gdb_command": gdb_command,
-        "initial_binary_and_args": current_app.config["initial_binary_and_args"],
+        "initial_binary_and_args": (
+            [_session_binary]
+            if _session_binary
+            else current_app.config["initial_binary_and_args"]
+        ),
         "project_home": current_app.config["project_home"],
         "remap_sources": current_app.config["remap_sources"],
         "themes": THEMES,
@@ -941,44 +894,101 @@ def kill_session():
     return jsonify({"success": True})
 
 
-@blueprint.route("/send_signal_to_pid", methods=["POST"])
-def send_signal_to_pid():
+#: 訊號端點**唯一**的拒絕訊息。理由與 sessionmanager.ATTACH_REFUSED_MESSAGE
+#: 相同：只要「沒有 session」「目標還沒起來」「那個 pid 不是你的」「行程已經
+#: 結束」之間有任何可觀察的差別，這個端點就變成一台探測機。全部同形。
+SIGNAL_REFUSED_MESSAGE = "No signal was sent."
+
+#: 呼叫端唯一能指定的東西：**哪一個**目標。pid 一律由伺服器解析。
+SIGNAL_TARGETS = ("gdb", "inferior")
+
+
+def _signal_refused():
+    return jsonify({"message": SIGNAL_REFUSED_MESSAGE}), 400
+
+
+def _pid_owner_uid(pid: int):
+    """/proc/<pid> 的擁有者 uid（＝該行程的有效 uid）；查不到回 None。"""
+    try:
+        return os.stat(f"/proc/{pid}").st_uid
+    except OSError:
+        return None
+
+
+@blueprint.route("/send_signal", methods=["POST"])
+@authenticate
+def send_signal():
+    """對**呼叫者自己的** GDB 或被除錯程式送訊號。
+
+    這裡以前是 /send_signal_to_pid：從 form 讀一個 pid、轉成 int，然後以容器內
+    的 root 執行 os.kill()。沒有 @authenticate，沒有擁有者檢查。任何有 session
+    的人都能對 PID 1（tini）、gdbgui 伺服器自己、或別人的 GDB 與別人正在跑的
+    程式送任意訊號——公開註冊的部署上這是直接的服務中斷與跨使用者干擾。
+
+    修法不是「驗證使用者送上來的 pid」，而是**不讓呼叫端送 pid**：
+    請求只能指名目標的種類（gdb / inferior），pid 由伺服器從呼叫者擁有的
+    debug session 解析。使用者能表達的東西裡不再存在「別人的 pid」這個值，
+    整類漏洞就消失了，而不是在它旁邊多加一層檢查。
+
+    三道關卡，全部 fail closed：
+      1. 目標名稱必須在 SIGNAL_TARGETS 白名單內（pid 不可由請求提供）。
+      2. debug session 必須存在且屬於 owner_key()（同一個身分來源、同一個
+         is_owned_by 原語，與 attach / kill 一致）。
+      3. 解析出來的 pid 現在必須真的屬於這個 session 的 OS 帳號。
+         第 3 點是深度防禦：gdb pid 是伺服器自己 fork 的可以信任，但 inferior
+         pid 來自 GDB 的 MI 串流，而使用者可以在 GDB console 打任意指令；
+         有隔離時每個 session 一個 uid，所以 root 的行程（PID 1、伺服器本身）
+         與別的 session 的行程都不可能通過這一關。
+    """
+    from .app import manager
+
     signal_name = request.form.get("signal_name", "").upper()
-    pid_str = str(request.form.get("pid"))
-    try:
-        pid_int = int(pid_str)
-    except ValueError:
-        return (
-            jsonify(
-                {
-                    "message": "The pid %s cannot be converted to an integer. Signal %s was not sent."
-                    % (pid_str, signal_name)
-                }
-            ),
-            400,
-        )
+    target = request.form.get("target", "")
 
-    if signal_name not in SIGNAL_NAME_TO_OBJ:
-        raise ValueError("no such signal %s" % signal_name)
+    if signal_name not in SIGNAL_NAME_TO_OBJ or target not in SIGNAL_TARGETS:
+        logger.warning(
+            "[authz] refused signal request (signal=%r target=%r)", signal_name, target
+        )
+        return _signal_refused()
+
+    debug_session = manager.debug_session_from_owner(owner_key())
+    if debug_session is None:
+        logger.warning("[authz] refused signal: caller owns no live debug session")
+        return _signal_refused()
+
+    pid = debug_session.pid if target == "gdb" else debug_session.inferior_pid
+    if not pid or pid <= 1:
+        logger.warning("[authz] refused signal: no live %s to signal", target)
+        return _signal_refused()
+
+    jail = jail_manager.get(debug_session.jail_key) if debug_session.jail_key else None
+    if jail is not None:
+        expected_uid = jail.uid
+    else:
+        # 沒有隔離＝本機單一使用者的開發模式（部署時 GDBGUI_REQUIRE_ISOLATION=1
+        # 會讓 GDB 根本起不來，見 sessionmanager.add_new_debug_session）。
+        # 那時候所有東西都跟伺服器同一個 uid，這一關檢不出東西，但也不放行
+        # 任何「不是伺服器 uid」的行程。geteuid 不存在（Windows）就直接拒絕。
+        geteuid = getattr(os, "geteuid", None)
+        expected_uid = geteuid() if geteuid is not None else None
+
+    if expected_uid is None or _pid_owner_uid(pid) != expected_uid:
+        logger.warning(
+            "[authz] refused signal to pid %s: not owned by this session's account", pid
+        )
+        return _signal_refused()
+
     signal_value = int(SIGNAL_NAME_TO_OBJ[signal_name])
-
     try:
-        os.kill(pid_int, signal_value)
-    except Exception:
-        return (
-            jsonify(
-                {
-                    "message": "Process could not be killed. Is %s an active PID?"
-                    % pid_int
-                }
-            ),
-            400,
-        )
+        os.kill(pid, signal_value)
+    except OSError:
+        logger.warning("[signal] os.kill(%s, %s) failed", pid, signal_value)
+        return _signal_refused()
+
+    # 回應刻意不含 pid：使用者不需要它，而回音出去只是把剛剛拿掉的那個
+    # 「pid 是可觀察的」的性質再送回去。
     return jsonify(
-        {
-            "message": "sent signal %s (%s) to process id %s"
-            % (signal_name, signal_value, pid_str)
-        }
+        {"message": f"sent signal {signal_name} ({signal_value}) to {target}"}
     )
 
 

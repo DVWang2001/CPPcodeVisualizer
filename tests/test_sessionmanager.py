@@ -283,3 +283,54 @@ def test_kill_is_scoped_to_the_owner(manager):
     assert victim.is_owned_by(OWNER_A)
     assert manager.debug_sessions_owned_by(OWNER_B) == []
     assert manager.debug_sessions_owned_by(OWNER_A) == [victim]
+
+
+# ---------------------------------------------------------------------------
+# inferior pid 的來源
+#
+# /send_signal 不再接受呼叫端送 pid（見 tests/test_signal_authz.py），所以要對
+# 被除錯的程式送訊號，伺服器必須自己知道它的 pid。唯一的來源是 GDB 的 MI 串流
+# 上的 =thread-group-started / =thread-group-exited。這裡守住那個解析：任何解析
+# 不出來或不合理的值都**不可以**變成一個可以被 os.kill 的目標。
+# ---------------------------------------------------------------------------
+
+
+def _bare_debug_session():
+    """只要 observe_gdb_response 的那一小塊狀態，不用 fork 一個 GDB。"""
+    debug_session = sessionmanager.DebugSession.__new__(sessionmanager.DebugSession)
+    debug_session.inferior_pid = None
+    return debug_session
+
+
+def test_inferior_pid_is_taken_from_the_mi_stream():
+    debug_session = _bare_debug_session()
+
+    debug_session.observe_gdb_response(
+        [{"type": "notify", "message": "thread-group-started",
+          "payload": {"id": "i1", "pid": "4321"}}]
+    )
+    assert debug_session.inferior_pid == 4321
+
+    debug_session.observe_gdb_response(
+        [{"type": "notify", "message": "thread-group-exited",
+          "payload": {"id": "i1", "exit-code": "0"}}]
+    )
+    assert debug_session.inferior_pid is None, "a dead inferior stayed a signal target"
+
+
+def test_garbage_in_the_mi_stream_never_becomes_a_signal_target():
+    debug_session = _bare_debug_session()
+    debug_session.inferior_pid = 4321
+
+    for payload in (
+        {"pid": "0"}, {"pid": "1"}, {"pid": "-9"}, {"pid": "nope"},
+        {}, None, "not a dict",
+    ):
+        debug_session.observe_gdb_response(
+            [{"message": "thread-group-started", "payload": payload}]
+        )
+        assert debug_session.inferior_pid == 4321, payload
+
+    for junk in (None, "string", 7, [None], [{"message": None}], [{}]):
+        debug_session.observe_gdb_response(junk)
+        assert debug_session.inferior_pid == 4321, junk
