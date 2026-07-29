@@ -43,9 +43,16 @@ class ControlButtons extends React.Component<{}, State> {
         </button>
 
         <button
-          onClick={() => { Actions.stop_tts(); Actions.send_signal("SIGINT", "gdb"); }}
+          id="pause_button"
+          // 訊號送給「被除錯的程式」而不是 gdb 本身。送給 gdb 沒有作用：
+          // 這裡的 MI 是同步的，程式在跑的時候 gdb 根本沒在讀 MI pty，
+          // 所以 -exec-interrupt 也一樣無效（兩者都實測過）。
+          // 送給 inferior 則由 gdb 透過 ptrace 攔下並停住；SIGINT 的預設處置是
+          // Stop=Yes Print=Yes Pass=No，所以不會轉交給程式，使用者自己註冊的
+          // signal handler 不會被觸發（已實測：繼續執行後 handler 計數仍為 0）。
+          onClick={() => { Actions.stop_tts(); Actions.send_signal("SIGINT", "inferior"); }}
           type="button"
-          title="Send Interrupt signal (SIGINT) to gdb process to pause it (if it's running)"
+          title="中斷正在執行的程式（送 SIGINT），回到除錯狀態"
           className={btn_class}
         >
           <span className="glyphicon glyphicon-pause" />

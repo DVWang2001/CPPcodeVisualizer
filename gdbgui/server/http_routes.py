@@ -442,12 +442,12 @@ def upload():
             except Exception as e:
                 return client_error({"message": str(e)})
 
+            # 只寫進 session。app.config["initial_binary_and_args"] 是 process 全域，
+            # 保留給 CLI 啟動時帶進來的 binary；網頁編譯不再碰它（見 gdbgui() 的註解）。
             session["uploaded_binary"] = exec_path
-            current_app.config["initial_binary_and_args"] = [exec_path]
         # If assembly uploaded (or other), use it directly
         else:
             session["uploaded_binary"] = dest_path
-            current_app.config["initial_binary_and_args"] = [dest_path]
 
         return redirect(url_for(".gdbgui"))
 
@@ -597,7 +597,6 @@ def create_and_upload():
 
         session["uploaded_binary"] = exec_path
         binary_path_result = exec_path
-        current_app.config["initial_binary_and_args"] = [exec_path]
 
         # exec-wrapper 只做 ulimit（sandbox/wrapper.sh）。降權與 namespace 隔離
         # 由 jail_manager 在更外層完成——GDB 自己就在裡面跑，因為跨 uid /
@@ -608,7 +607,6 @@ def create_and_upload():
         # non-C source: just register the source file as uploaded_binary
         session["uploaded_binary"] = src_path
         binary_path_result = src_path
-        current_app.config["initial_binary_and_args"] = [src_path]
 
     # Write the program input to a .in file
     input_filename = f"{prefix}_input.in"
@@ -829,8 +827,12 @@ def gdbgui():
     # exists in localStorage.
     THEMES = ["light", "monokai"]
     # 優先用**這個 session 自己的** binary。app.config["initial_binary_and_args"]
-    # 是全域的（CLI 起 gdbgui 時帶的參數），在多人部署下會被任何一次網頁編譯
-    # 覆寫成那個人的 scratch 路徑，別人載入頁面就會拿到它。自己有就用自己的。
+    # 是 process 全域的，現在只剩一個來源：CLI 起 gdbgui 時帶的參數（cli.py）。
+    # 網頁上傳／編譯過去也會寫它，於是任何一次編譯都會把該使用者的 scratch 路徑
+    # （路徑裡含他的 session id）留給下一個載入頁面的陌生人。那些寫入已經移除，
+    # 因為每個寫入點旁邊本來就有等價的 session["uploaded_binary"]。
+    # 所以這個 fallback 現在只會回到「部署者自己在命令列指定的 binary」，
+    # 那是部署設定、不是別的使用者的資料。
     _session_binary = session.get("uploaded_binary")
     initial_data = {
         "csrf_token": session["csrf_token"],
