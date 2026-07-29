@@ -42,7 +42,7 @@ from flask_socketio import SocketIO, emit  # type: ignore
 
 from .constants import DEFAULT_GDB_EXECUTABLE, STATIC_DIR, TEMPLATE_DIR
 from .http_routes import blueprint
-from .http_util import is_cross_origin
+from .http_util import is_cross_origin, owner_key
 from .sandbox import jail_manager
 from .sessionmanager import SessionManager, DebugSession
 
@@ -125,20 +125,45 @@ def client_connected():
         )
         return
 
-    desired_gdbpid = int(request.args.get("gdbpid", 0))
+    # 本次連線的擁有者身分。attach 授權與「一人一個 debug session」都以它為準。
+    # 來源只有 http_util.owner_key() 一處（見該函式的說明）。
+    session_key = owner_key()
+
+    try:
+        desired_gdbpid = int(request.args.get("gdbpid", 0))
+    except (TypeError, ValueError):
+        desired_gdbpid = 0
+
+    if not desired_gdbpid:
+        # 一個使用者一個 debug session：同一個 Flask session 開第二個分頁時
+        # 不再另外起一個 GDB（每個約 21 MB 容器記憶體，且兩者共用同一個 jail
+        # 帳號），而是接到既有的那一個上，兩個分頁看到同一個 session。
+        #
+        # 這裡帶出來的 pid 是伺服器自己查到的、屬於本 session 的，不是使用者
+        # 送上來的，但底下仍然走同一條有授權檢查的路徑，不開後門。
+        existing = manager.debug_session_from_owner(session_key)
+        if existing is not None:
+            desired_gdbpid = existing.pid
+
     try:
         if desired_gdbpid:
-            # connect to exiting debug session
+            # connect to existing debug session（需通過擁有者檢查）
             debug_session = manager.connect_client_to_debug_session(
-                desired_gdbpid=desired_gdbpid, client_id=request.sid
+                desired_gdbpid=desired_gdbpid,
+                client_id=request.sid,
+                owner_key=session_key,
             )
+            # attach 不佔用新的併發額度，但要讓 jail 的閒置計時器知道這個
+            # session 還活著，否則長時間只有第二個分頁在用會被 reap 掉。
+            if session_key:
+                jail_manager.touch(session_key)
             emit(
                 "debug_session_connection_event",
                 {
                     "ok": True,
                     "started_new_gdb_process": False,
                     "pid": debug_session.pid,
-                    "message": f"Connected to existing gdb process {desired_gdbpid}",
+                    "message": f"Connected to existing gdb process {debug_session.pid}",
                 },
             )
         else:
@@ -150,7 +175,7 @@ def client_connected():
             gdb_command = app.config["gdb_command"]
             mi_version = request.args.get("mi_version", "mi2")
 
-            session_key = session.get("uploaded_prefix")
+            # session_key 就是上面那一個 owner_key()；不要在這裡重新取一次身分。
             try:
                 if session_key:
                     jail_manager.acquire(session_key)
@@ -335,8 +360,17 @@ def send_msg_to_clients(client_ids, msg, error=False, run_token=None):
 
 
 @socketio.on("disconnect", namespace="/gdb_listener")
-def client_disconnected():
-    """do nothing if client disconnects"""
+def client_disconnected(reason=None):
+    """A websocket went away: drop that client from its debug session.
+
+    reason= 是 python-socketio 5.x 傳進來的。舊簽章（不收參數）之所以還能動，
+    只是因為 socketio 在 TypeError 之後會退回 legacy 的單參數呼叫；這條清理路徑
+    太重要（少了它 GDB 行程與 jail 都不會被回收），不該靠那個 fallback 活著。
+
+    這裡只移除這一個 client。debug session 要等到**最後一個** client 離開才
+    收掉（見 DebugSession.remove_client），兩個分頁共用一個 session 時關掉其中
+    一個不可以把另一個一起帶走。
+    """
     manager.disconnect_client(request.sid)
     logger.info("Client websocket disconnected, id %s" % (request.sid))
 

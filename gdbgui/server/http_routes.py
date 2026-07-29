@@ -40,6 +40,7 @@ from .http_util import (
     authenticate,
     client_error,
     csrf_protect,
+    owner_key,
 )
 from .share_function import require_uploaded_binary
 from . import lesson_gen
@@ -769,7 +770,7 @@ def dashboard():
     GdbController instance"""
     return render_template(
         "dashboard.html",
-        gdbgui_sessions=manager.get_dashboard_data(),
+        gdbgui_sessions=manager.get_dashboard_data(owner_key=owner_key()),
         csrf_token=session["csrf_token"],
         default_command=current_app.config["gdb_command"],
     )
@@ -910,7 +911,7 @@ def gdbgui():
 def dashboard_data():
     manager = current_app.config.get("_manager")
 
-    return jsonify(manager.get_dashboard_data())
+    return jsonify(manager.get_dashboard_data(owner_key=owner_key()))
 
 
 @blueprint.route("/kill_session", methods=["PUT"])
@@ -919,14 +920,25 @@ def kill_session():
     from .app import manager
 
     pid = request.json.get("gdbpid")
-    if pid:
-        manager.remove_debug_session_by_pid(pid)
-        return jsonify({"success": True})
-    else:
+    if not pid:
         return Response(
             "Missing required parameter: gdbpid",
             401,
         )
+
+    # 沒有擁有者檢查的話，任何人都能用可列舉的小整數 pid 殺掉別人正在跑的
+    # GDB。回應不區分「不存在」與「不是你的」，理由同 attach 那條路徑。
+    debug_session = manager.debug_session_from_pid(pid)
+    if debug_session is None or not debug_session.is_owned_by(owner_key()):
+        logger.warning(
+            "[authz] refused kill of gdbpid %s (session exists: %s)",
+            pid,
+            debug_session is not None,
+        )
+        return jsonify({"success": True})
+
+    manager.remove_debug_session(debug_session)
+    return jsonify({"success": True})
 
 
 @blueprint.route("/send_signal_to_pid", methods=["POST"])

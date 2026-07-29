@@ -1,6 +1,7 @@
 import datetime
 import logging
 import os
+import secrets
 import shlex
 import signal
 import stat
@@ -19,6 +20,12 @@ from .sandbox import jail_manager
 _SANDBOX_WRAPPER = Path(__file__).parent / "sandbox" / "wrapper.sh"
 
 logger = logging.getLogger(__name__)
+
+#: 每一次被拒絕的 attach 都回這一句，**不區分**「這個 pid 不存在」與
+#: 「這個 pid 存在但不是你的」。gdbpid 是小整數、可列舉，只要兩者的回應
+#: 有任何差別，這個端點就變成「哪些 pid 是別人正在跑的 GDB」的 oracle，
+#: 攻擊者可以先掃出目標再去想辦法。兩條路徑必須完全同形。
+ATTACH_REFUSED_MESSAGE = "No debug session is available with that id"
 
 
 def _reap(pid: int, attempts: int = 20, interval: float = 0.05) -> None:
@@ -53,11 +60,22 @@ class DebugSession:
         command: str,
         mi_version: str,
         pid: int,
-        session_key: Optional[str] = None,
+        owner_key: Optional[str] = None,
+        jail_key: Optional[str] = None,
     ):
         self.command = command
+        # ── 授權用的擁有者身分 ──────────────────────────────────────────────
+        # 誰可以 attach 到這個 debug session。目前的來源是 Flask session 的
+        # uploaded_prefix（也就是 jail 用的同一把 key，見 http_util.owner_key）。
+        # 之後接上登入時，只要改 http_util.owner_key() 的回傳來源成 user id，
+        # 這裡與所有授權判斷都不用動 —— is_owned_by() 是唯一的判斷點。
+        #
+        # 刻意與 jail_key 分開兩個欄位：jail_key 只在真的有隔離時才有值
+        # （本機無隔離開發時是 None），但「誰擁有這個 session」必須在兩種
+        # 環境下都成立，不能因為沒有 jail 就退化成「大家都可以 attach」。
+        self.owner_key = owner_key
         # 這個 debug session 綁到哪個隔離 session（jail）。session 結束時要一起清掉。
-        self.session_key = session_key
+        self.jail_key = jail_key
         self.pygdbmi_controller = pygdbmi_controller
         self.pty_for_gdbgui = pty_for_gdbgui
         self.pty_for_gdb = pty_for_gdb
@@ -84,13 +102,34 @@ class DebugSession:
         # SIGKILL 不給 GDB 收尾的機會，被除錯的 inferior 可能變成孤兒。
         # release() 會 pkill 該 session uid 的所有行程，再刪帳號與 scratch 目錄，
         # 所以清理不依賴 GDB 自己乖乖結束。
-        if self.session_key:
+        if self.jail_key:
             try:
-                jail_manager.release(self.session_key)
+                jail_manager.release(self.jail_key)
             except Exception:
                 logger.exception(
-                    "[jail] failed to release jail for session %s", self.session_key[:8]
+                    "[jail] failed to release jail for session %s", self.jail_key[:8]
                 )
+
+    def is_owned_by(self, owner_key: Optional[str]) -> bool:
+        """這個 debug session 是不是屬於 owner_key？
+
+        Fail closed：沒有記錄擁有者的 session（例如單元測試裡不帶 key 建立的）
+        不屬於任何人，誰都 attach 不上去。空的 owner_key 同理 —— 「我沒有身分」
+        絕不能等於「我符合沒有擁有者的那個 session」。
+
+        用 compare_digest 而不是 ==：owner key 是 secret（uuid4 hex），
+        逐字元短路比較會洩漏前綴資訊。
+        """
+        if not self.owner_key or not owner_key:
+            return False
+        try:
+            return secrets.compare_digest(self.owner_key, owner_key)
+        except TypeError:
+            # compare_digest 對非 ASCII 的 str 會丟 TypeError。不該發生
+            # （key 是伺服器自己產的 uuid4 hex），但如果發生了要當成「不符合」，
+            # 不是讓例外從授權檢查裡冒出去變成別的行為。
+            logger.warning("[authz] non-ascii owner key rejected")
+            return False
 
     def to_dict(self):
         return {
@@ -121,21 +160,74 @@ class SessionManager(object):
         self.run_tokens: Dict[str, str] = {}
 
     def connect_client_to_debug_session(
-        self, *, desired_gdbpid: int, client_id: str
+        self, *, desired_gdbpid: int, client_id: str, owner_key: Optional[str]
     ) -> DebugSession:
+        """把一個 websocket client 接到既有的 debug session 上。
+
+        desired_gdbpid 直接來自 request.args，完全由呼叫端控制，所以這裡一定
+        要驗擁有者。attach 上去就等於取得那個 GDB 的完整控制權（讀對方記憶體、
+        下任意 GDB 指令、在對方的 jail 裡執行程式），而 pid 是可列舉的小整數。
+
+        owner_key 是必填的 keyword，沒有預設值 —— 未來新增呼叫端時會被
+        TypeError 擋下來，而不是安靜地跳過授權。
+        """
         debug_session = self.debug_session_from_pid(desired_gdbpid)
 
-        if not debug_session:
-            raise ValueError(f"No existing gdb process with pid {desired_gdbpid}")
+        if debug_session is None or not debug_session.is_owned_by(owner_key):
+            # 這一行只進伺服器 log，不會回給對方 —— 偵測用的細節留在這邊，
+            # 送出去的訊息維持同形。
+            logger.warning(
+                "[authz] refused attach to gdbpid %s (session exists: %s)",
+                desired_gdbpid,
+                debug_session is not None,
+            )
+            # 「不存在」與「不是你的」共用同一個例外與同一句訊息，見
+            # ATTACH_REFUSED_MESSAGE。不要在這裡加上 pid 或任何條件式細節。
+            raise ValueError(ATTACH_REFUSED_MESSAGE)
         debug_session.add_client(client_id)
         self.debug_session_to_client_ids[debug_session].append(client_id)
         return debug_session
+
+    def debug_session_from_owner(self, owner_key: Optional[str]) -> Optional[DebugSession]:
+        """owner_key 目前還活著的 debug session（沒有就 None）。
+
+        「一個使用者一個 debug session」用的：第二個分頁不再另外開一個 GDB，
+        而是 attach 到第一個。每個 GDB 大約 21 MB 容器記憶體，200 個帳號的
+        部署下分頁數量會直接變成記憶體上限問題。
+
+        已經 terminate 但還沒從簿記中移除的 session（pygdbmi_controller 為
+        None）不算數 —— 重用一個死掉的 GDB 會讓第二個分頁停在一個永遠不回應
+        的 session。
+        """
+        if not owner_key:
+            return None
+        for debug_session in list(self.debug_session_to_client_ids):
+            if debug_session.pygdbmi_controller is None:
+                continue
+            if debug_session.is_owned_by(owner_key):
+                return debug_session
+        return None
+
+    def debug_sessions_owned_by(self, owner_key: Optional[str]) -> List[DebugSession]:
+        """owner_key 擁有的所有 debug session。dashboard 與 kill 用。"""
+        if not owner_key:
+            return []
+        return [
+            debug_session
+            for debug_session in list(self.debug_session_to_client_ids)
+            if debug_session.is_owned_by(owner_key)
+        ]
 
     def add_new_debug_session(
         self, *, gdb_command: str, mi_version: str, client_id: str,
         exec_wrapper: Optional[str] = None,
         session_key: Optional[str] = None,
     ) -> DebugSession:
+        """開一個新的 GDB。
+
+        session_key 同時是**擁有者身分**與 jail 的 key（來源見
+        http_util.owner_key）。刻意共用一把 key，不另外發明一組平行身分。
+        """
         pty_for_debugged_program = Pty(echo=False)
         pty_for_gdbgui = Pty(echo=False)
         gdbgui_startup_cmds = [
@@ -192,7 +284,10 @@ class SessionManager(object):
 
         pid = pty_for_gdb.pid
         debug_session = DebugSession(
-            session_key=session_key if jail is not None else None,
+            # 擁有者一律記錄下來（即使沒有 jail），jail_key 只有在真的建立了
+            # 隔離時才有值 —— 只有那時候 terminate() 才需要去 release 它。
+            owner_key=session_key,
+            jail_key=session_key if jail is not None else None,
             pygdbmi_controller=IoManager(
                 os.fdopen(pty_for_gdbgui.stdin, mode="wb", buffering=0),  # type: ignore
                 os.fdopen(pty_for_gdbgui.stdout, mode="rb", buffering=0),  # type: ignore
@@ -209,14 +304,10 @@ class SessionManager(object):
         self.debug_session_to_client_ids[debug_session] = [client_id]
         return debug_session
 
-    def remove_debug_session_by_pid(self, gdbpid: int) -> List[str]:
-        debug_session = self.debug_session_from_pid(gdbpid)
-        if debug_session:
-            orphaned_client_ids = self.remove_debug_session(debug_session)
-        else:
-            logger.info(f"could not find debug session with gdb pid {gdbpid}")
-            orphaned_client_ids = []
-        return orphaned_client_ids
+    # 這裡以前有 remove_debug_session_by_pid(gdbpid)：使用者送什麼 pid 就殺什麼，
+    # 沒有任何擁有者檢查。唯一的呼叫端 /kill_session 現在自己先做擁有者檢查再呼叫
+    # remove_debug_session()，所以這個「拿 pid 直接殺」的原語被刻意移除，
+    # 免得日後有人再接回去而漏掉授權。
 
     def remove_debug_session(self, debug_session: DebugSession) -> List[str]:
         logger.info(f"Removing debug session for pid {debug_session.pid}")
@@ -253,10 +344,16 @@ class SessionManager(object):
                 return debug_session
         return None
 
-    def get_dashboard_data(self) -> List[DebugSession]:
+    def get_dashboard_data(self, *, owner_key: Optional[str]) -> List[dict]:
+        """dashboard 只列出呼叫者自己的 debug session。
+
+        以前它列出**所有人**的 pid、啟動時間與 websocket id。就算 attach 已經
+        擋住了，把別人的 gdbpid 列出來仍然是替攻擊者省掉列舉的工，也讓
+        「pid 存不存在」這件事重新變得可觀察。owner_key 一樣是必填 keyword。
+        """
         return [
             debug_session.to_dict()
-            for debug_session in self.debug_session_to_client_ids.keys()
+            for debug_session in self.debug_sessions_owned_by(owner_key)
         ]
 
     def disconnect_client(self, client_id: str):

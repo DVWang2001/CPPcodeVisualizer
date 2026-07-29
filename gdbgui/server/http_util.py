@@ -13,6 +13,24 @@ def add_csrf_token_to_session():
         session["csrf_token"] = binascii.hexlify(os.urandom(20)).decode("utf-8")
 
 
+def owner_key():
+    """本次請求的「擁有者身分」—— 授權判斷唯一的身分來源。
+
+    ★ 這是接上登入時要改的那一個地方 ★
+
+    目前回傳 Flask session 的 uploaded_prefix，也就是 jail 已經在用的同一把
+    key（jail_manager.acquire(session_key)）。刻意**不另外發明**一組平行身分：
+    多一套身分就多一個會跟 jail 對不齊的地方。
+
+    等登入（子專案 A）落地後，這個函式改成回傳 user id 即可，
+    debug session 的擁有權判斷（DebugSession.is_owned_by）與所有呼叫端都不用動。
+
+    回傳 None 代表「這個請求沒有身分」。所有判斷都必須 fail closed：
+    沒有身分不等於符合任何東西。
+    """
+    return session.get("uploaded_prefix")
+
+
 def is_cross_origin(request):
     """Compare headers HOST and ORIGIN. Remove protocol prefix from ORIGIN, then
     compare. Return true if they are not equal

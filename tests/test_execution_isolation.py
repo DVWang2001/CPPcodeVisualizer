@@ -14,6 +14,7 @@
 import os
 import subprocess
 import textwrap
+import time
 
 import pytest
 
@@ -261,3 +262,237 @@ def test_session_key_must_be_hex():
     for bad in ("../../etc/passwd", "root; rm -rf /", "abc", "", "ZZZZ" * 8):
         with pytest.raises(jail_manager.JailError):
             jail_manager.acquire(bad)
+
+
+# ---------------------------------------------------------------------------
+# 一個 Flask session 一個 GDB（端對端）
+#
+# 上面的 test_sessionmanager.py 測的是簿記；這裡走真正的 websocket handler
+# （app.client_connected），而且是**數作業系統裡的 GDB 行程**，不是數字典的
+# key。每個 GDB 約 21 MB 容器記憶體，兩個分頁開兩個 GDB 在 200 個帳號的部署
+# 下會直接變成記憶體問題，而且兩個 GDB 還共用同一個 jail 帳號。
+# ---------------------------------------------------------------------------
+
+
+def _count_gdb_processes() -> int:
+    """真的去 /proc 數 GDB 行程。
+
+    刻意不用 `pgrep -f "gdb -iex"`：pgrep 自己的 command line 就含有那個樣式，
+    所以它在真實數量是 0 的時候會回報 1。這裡逐一讀 /proc/<pid>/cmdline，
+    比對只有我們啟動的 GDB 才有的 `-iex new-ui …` 參數。
+
+    setpriv → unshare → env → gdb 是同一個 pid 接力 exec，所以不論走到哪一步
+    都只算一個行程。
+    """
+    count = 0
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/cmdline", "rb") as f:
+                argv = f.read().split(b"\0")
+        except OSError:
+            continue  # 行程剛結束
+        if any(arg.startswith(b"new-ui ") for arg in argv):
+            count += 1
+    return count
+
+
+def _settled_gdb_count(settle: float = 0.4, timeout: float = 15.0) -> int:
+    """等 GDB 行程數不再變動，回傳穩定後的數字。
+
+    pty.fork() 一回到父行程，子行程可能還沒 exec 完 —— 那一瞬間它的
+    /proc cmdline 還是 python 的，數不到；結束那一側同理。
+
+    刻意**不是**「輪詢到等於期望值就回傳」：那樣的話多開了一個 GDB 但它出現
+    得比較慢的情況會被誤判成通過。這裡等到數字自己穩定下來，再讓呼叫端去比對。
+    """
+    deadline = time.monotonic() + timeout
+    count = _count_gdb_processes()
+    stable_since = time.monotonic()
+    while time.monotonic() < deadline:
+        time.sleep(0.05)
+        now = _count_gdb_processes()
+        if now != count:
+            count = now
+            stable_since = time.monotonic()
+        elif time.monotonic() - stable_since >= settle:
+            return count
+    return count
+
+
+@pytest.fixture
+def gdbgui_app():
+    """初始化 socketio 並在測試後把所有 debug session 清乾淨。"""
+    from gdbgui.server.app import app, manager, socketio
+    from gdbgui.server.server import run_server
+
+    if socketio.server is None:
+        # 只初始化一次。run_server() 會 reap_orphans()，重複呼叫會把還在用的
+        # session 帳號清掉。
+        run_server(testing=True, app=app, socketio=socketio)
+    app.config["gdb_command"] = "gdb"
+    try:
+        yield app, manager, socketio
+    finally:
+        for debug_session in list(manager.debug_session_to_client_ids):
+            manager.remove_debug_session(debug_session)
+
+
+def _connect_tab(app, socketio, flask_client, csrf_token):
+    """模擬一個新分頁：同一個 Flask session cookie，新的 websocket。"""
+    return socketio.test_client(
+        app,
+        namespace="/gdb_listener",
+        query_string=f"csrf_token={csrf_token}",
+        flask_test_client=flask_client,
+    )
+
+
+def _connection_event(ws_client):
+    for message in ws_client.get_received("/gdb_listener"):
+        if message["name"] == "debug_session_connection_event":
+            return message["args"][0]
+    raise AssertionError("no debug_session_connection_event received")
+
+
+def test_two_tabs_in_one_flask_session_share_one_gdb_process(gdbgui_app):
+    app, manager, socketio = gdbgui_app
+
+    flask_client = app.test_client()
+    # 首頁會建立 uploaded_prefix（＝擁有者身分）與 jail
+    assert flask_client.get("/").status_code == 200
+    with flask_client.session_transaction() as flask_session:
+        csrf_token = flask_session["csrf_token"]
+        owner = flask_session["uploaded_prefix"]
+
+    baseline = _settled_gdb_count()
+
+    tab1 = _connect_tab(app, socketio, flask_client, csrf_token)
+    slots_after_first_tab = jail_manager.active_session_count()
+    tab2 = _connect_tab(app, socketio, flask_client, csrf_token)
+    try:
+        event1 = _connection_event(tab1)
+        event2 = _connection_event(tab2)
+
+        # attach 不可以吃掉一個 GDBGUI_MAX_SESSIONS 名額
+        assert jail_manager.active_session_count() == slots_after_first_tab, (
+            "第二個分頁佔用了一個新的併發名額"
+        )
+
+        assert event1["ok"] and event2["ok"], (event1, event2)
+        assert event1["started_new_gdb_process"] is True
+        assert event2["started_new_gdb_process"] is False, "第二個分頁又開了一個 GDB"
+        assert event2["pid"] == event1["pid"]
+
+        # 這是頭條主張：作業系統裡只多了一個 GDB 行程，不是兩個
+        after_two_tabs = _settled_gdb_count()
+        assert after_two_tabs == baseline + 1, (
+            f"expected exactly one new gdb process for two tabs, "
+            f"baseline={baseline} after_two_tabs={after_two_tabs}"
+        )
+
+        # 簿記上也只有一個 debug session，而且掛著兩個 client
+        owned = manager.debug_sessions_owned_by(owner)
+        assert len(owned) == 1
+        assert len(owned[0].client_ids) == 2
+
+        # attach 不佔用新的併發額度：jail 還是同一個
+        assert jail_manager.active_session_count() >= 1
+        assert jail_manager.get(owner) is not None
+
+        # 關掉一個分頁，另一個要活著（含 GDB 行程本身）
+        tab1.disconnect(namespace="/gdb_listener")
+        still_owned = manager.debug_sessions_owned_by(owner)
+        assert still_owned, "剩一個分頁時 session 被收掉了"
+        # client 真的被移掉了（證明 disconnect handler 有跑，不是斷線被吞掉）
+        assert len(still_owned[0].client_ids) == 1
+        assert still_owned[0].pygdbmi_controller is not None
+        assert _settled_gdb_count() == baseline + 1, "剩一個分頁時 GDB 行程被殺掉了"
+
+        # 最後一個分頁也走了，才可以歸零 —— 清理不能因為這次改動而退化
+        tab2.disconnect(namespace="/gdb_listener")
+        assert manager.debug_sessions_owned_by(owner) == []
+        assert _settled_gdb_count() == baseline, "GDB 行程沒有被回收"
+        # jail 也要跟著消失（scratch 目錄 + OS 帳號）
+        assert jail_manager.get(owner) is None, "session 結束後 jail 還在"
+    finally:
+        for tab in (tab1, tab2):
+            try:
+                tab.disconnect(namespace="/gdb_listener")
+            except Exception:
+                pass
+        jail_manager.release(owner)
+
+
+def test_a_foreign_flask_session_cannot_attach_to_someone_elses_gdbpid(gdbgui_app):
+    """端對端版本的授權測試：victim 與 attacker 是兩個獨立的 Flask session
+    （兩個 cookie jar，等同兩個瀏覽器）。"""
+    app, manager, socketio = gdbgui_app
+
+    victim_http = app.test_client()
+    assert victim_http.get("/").status_code == 200
+    with victim_http.session_transaction() as flask_session:
+        victim_csrf = flask_session["csrf_token"]
+        victim_owner = flask_session["uploaded_prefix"]
+
+    attacker_http = app.test_client()
+    assert attacker_http.get("/").status_code == 200
+    with attacker_http.session_transaction() as flask_session:
+        attacker_csrf = flask_session["csrf_token"]
+        attacker_owner = flask_session["uploaded_prefix"]
+
+    assert victim_owner != attacker_owner
+
+    victim_tab = _connect_tab(app, socketio, victim_http, victim_csrf)
+    attacker_tab = None
+    try:
+        victim_event = _connection_event(victim_tab)
+        assert victim_event["ok"]
+        victim_pid = victim_event["pid"]
+
+        # attacker 明確指定 victim 的 gdbpid
+        attacker_tab = socketio.test_client(
+            app,
+            namespace="/gdb_listener",
+            query_string=f"csrf_token={attacker_csrf}&gdbpid={victim_pid}",
+            flask_test_client=attacker_http,
+        )
+        attacker_event = _connection_event(attacker_tab)
+
+        assert attacker_event["ok"] is False, "attacker attached to another user's gdb"
+        assert str(victim_pid) not in attacker_event["message"], (
+            "拒絕訊息回音了 pid"
+        )
+
+        # victim 的 session 沒有被動到
+        victim_sessions = manager.debug_sessions_owned_by(victim_owner)
+        assert len(victim_sessions) == 1
+        assert len(victim_sessions[0].client_ids) == 1
+
+        # 不存在的 pid 必須得到**一模一樣**的回應，否則就是 pid oracle
+        absent_tab = socketio.test_client(
+            app,
+            namespace="/gdb_listener",
+            query_string=f"csrf_token={attacker_csrf}&gdbpid={victim_pid + 7919}",
+            flask_test_client=attacker_http,
+        )
+        absent_event = _connection_event(absent_tab)
+        absent_tab.disconnect(namespace="/gdb_listener")
+
+        assert absent_event["ok"] is False
+        assert absent_event["message"] == attacker_event["message"], (
+            "「不存在」與「不是你的」回應不同，可用來列舉別人的 gdbpid"
+        )
+    finally:
+        for tab in (victim_tab, attacker_tab):
+            if tab is None:
+                continue
+            try:
+                tab.disconnect(namespace="/gdb_listener")
+            except Exception:
+                pass
+        for debug_session in list(manager.debug_session_to_client_ids):
+            manager.remove_debug_session(debug_session)
+        jail_manager.release(victim_owner)
+        jail_manager.release(attacker_owner)
