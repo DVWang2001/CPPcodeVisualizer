@@ -60,9 +60,25 @@ def _start_execution_isolation():
         return
 
     jail_manager.ensure_scratch_root()
-    reaped = jail_manager.reap_orphans()
-    if reaped:
-        logger.info("[jail] reaped %d orphaned session account(s) at startup", reaped)
+
+    # 取得 scratch root 的獨佔擁有權。拿到的行程才有資格做破壞性的 reap；
+    # 拿不到代表這台機器上已經有一個活著的 gdbgui 在服務（例如在容器裡跑
+    # `pytest tests/`，而 test_backend.py 在 import 時就會呼叫 run_server），
+    # 那時候絕不能清掉線上使用者的帳號與 scratch 目錄。
+    #
+    # 拿不到只跳過 reap，**不跳過**底下的閒置回收執行緒：reap_idle() 只會處理
+    # 本行程自己 _jails 裡的 session，對別人無害，少了它反而會讓這個行程的
+    # session 永遠不被回收、慢慢吃光併發額度。
+    if jail_manager.claim_scratch_root():
+        reaped = jail_manager.reap_orphans()
+        if reaped:
+            logger.info("[jail] reaped %d orphaned session account(s) at startup", reaped)
+    else:
+        logger.warning(
+            "[jail] another live process owns %s -- skipping the startup reap. "
+            "Orphaned accounts from a previous run (if any) are left alone.",
+            jail_manager.SCRATCH_ROOT,
+        )
 
     def _reaper():
         while True:

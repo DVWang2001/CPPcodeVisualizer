@@ -65,6 +65,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+try:
+    import fcntl
+except ImportError:  # Windows：本模組在那裡本來就不作用（見 _missing_prerequisites）
+    fcntl = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 
@@ -121,6 +126,90 @@ class Jail:
 
 _lock = threading.RLock()
 _jails: Dict[str, Jail] = {}
+
+#: 持有 scratch root 獨佔鎖的 fd（None = 本行程還沒拿到）。
+#: 刻意是行程層級的狀態：鎖由核心綁在 open file description 上，行程死掉
+#: （含被 kill、當掉）核心會自動釋放，不會留下需要人工清的殘留鎖。
+_owner_lock_fd: Optional[int] = None
+
+
+# ---------------------------------------------------------------------------
+# scratch root 的獨佔擁有權
+#
+# reap_orphans() 是**破壞性**操作：它刪掉主機上所有 gdbs_* 帳號與 scratch 目錄，
+# 也就是把當下每一個正在除錯的使用者踢下線。它唯一正當的使用時機是伺服器啟動、
+# 且這台機器上沒有別的 gdbgui 在跑（清掉上一次執行的殘留）。
+#
+# 但它會被任何 import 到 run_server() 的東西觸發——tests/test_backend.py 在
+# module import 時就呼叫 run_server(testing=True)，所以
+# `docker compose exec gdbgui pytest tests/` 打在**正在服務的容器**上時，
+# 測試會把線上使用者的帳號與檔案全部刪掉。（實測會發生。）
+#
+# 光在測試那邊加 guard 不夠：下一個測試檔一樣會踩到。真正的不變式要放在這裡——
+# reap_orphans() 只有在**本行程獨佔擁有 SCRATCH_ROOT** 時才會動手，而擁有權
+# 是一把 flock。活著的伺服器一直持有它，所以任何在旁邊跑起來的行程
+# （測試、腳本、第二個伺服器）都拿不到，reap 就會拒絕執行並回 0。
+# ---------------------------------------------------------------------------
+
+#: 獨佔鎖檔。放在 SCRATCH_ROOT（root 擁有、0755）底下，session 帳號動不了它。
+#: 名稱刻意不以 ACCOUNT_PREFIX 開頭，reap 的清掃迴圈才不會把它自己刪掉。
+_OWNER_LOCK_NAME = ".scratch-root-owner.lock"
+
+
+def _owner_lock_path() -> Path:
+    return SCRATCH_ROOT / _OWNER_LOCK_NAME
+
+
+def claim_scratch_root() -> bool:
+    """試著取得 SCRATCH_ROOT 的獨佔擁有權，成功回傳 True。
+
+    冪等：本行程已經持有就直接回 True。取得後**不釋放**（除非明確呼叫
+    release_scratch_root()），鎖跟著行程的生命週期走。
+    """
+    global _owner_lock_fd
+    if fcntl is None:
+        return False
+    with _lock:
+        if _owner_lock_fd is not None:
+            return True
+        try:
+            ensure_scratch_root()
+            fd = os.open(str(_owner_lock_path()), os.O_RDWR | os.O_CREAT, 0o600)
+        except OSError:
+            logger.exception("[jail] could not open the scratch-root owner lock")
+            return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            # 別的行程活著且持有它。
+            os.close(fd)
+            return False
+        try:
+            os.ftruncate(fd, 0)
+            os.write(fd, f"{os.getpid()}\n".encode("ascii"))
+        except OSError:
+            pass
+        _owner_lock_fd = fd
+        return True
+
+
+def owns_scratch_root() -> bool:
+    """本行程是否持有獨佔擁有權（不嘗試取得）。"""
+    with _lock:
+        return _owner_lock_fd is not None
+
+
+def release_scratch_root() -> None:
+    """放掉獨佔擁有權。正常運作不需要呼叫（行程結束核心會收），
+    測試要模擬「換一個擁有者」時才用。"""
+    global _owner_lock_fd
+    with _lock:
+        if _owner_lock_fd is not None:
+            try:
+                os.close(_owner_lock_fd)
+            except OSError:
+                pass
+            _owner_lock_fd = None
 
 
 # ---------------------------------------------------------------------------
@@ -344,8 +433,33 @@ def reap_orphans() -> int:
 
     scratch 依設計不含任何持久資料（架構 ④），所以無條件清除是安全的，
     而且是必要的——否則重啟後殘留帳號會一直佔用併發額度。
+
+    ★ 只有在本行程獨佔擁有 SCRATCH_ROOT 時才會動手 ★
+    見上方「scratch root 的獨佔擁有權」。這裡是那條不變式的唯一守門處：
+    只要有另一個活著的 gdbgui 持有鎖（正在服務的伺服器），本函式一律拒絕
+    並回 0，絕不去刪別人正在用的帳號與檔案。呼叫端不需要（也不該）自己判斷。
     """
     if _missing_prerequisites():
+        return 0
+
+    if not claim_scratch_root():
+        logger.warning(
+            "[jail] refusing to reap orphaned sessions: another live process owns %s. "
+            "This is the guard that stops a test run from wiping a serving deployment.",
+            SCRATCH_ROOT,
+        )
+        return 0
+
+    with _lock:
+        live = len(_jails)
+    if live:
+        # 只有「啟動時清上一次執行的殘留」這一個正當用途，那時候 _jails 必然是空的。
+        # 已經有活著的 session 還來 reap，就是把自己的使用者砍掉（run_server()
+        # 被重複呼叫時會發生），一律拒絕。
+        logger.warning(
+            "[jail] refusing to reap orphaned sessions: %d session(s) are live in "
+            "this process", live,
+        )
         return 0
 
     removed = 0
