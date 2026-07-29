@@ -296,10 +296,14 @@ _TTS_CACHE_DIR.mkdir(exist_ok=True)
 @authenticate
 def tts_audio():
     """生成並回傳 TTS 音訊。相同文字直接從快取回傳，節省資源。
-    使用 ffmpeg 將 gTTS MP3 轉為 OGG Vorbis：
+    將 gTTS MP3 轉為 OGG Vorbis：
       - OGG 無 MP3 encoder delay，開頭不會被截掉
       - 檔案更小（約 -20%）
-    若 ffmpeg 不存在則回退使用原始 MP3。
+
+    轉檔用 mpg123 解碼成 WAV 再用 oggenc 編碼，而不是 ffmpeg。ffmpeg 為了硬體
+    影像加速會相依 mesa 與 libllvm，在這個 image 裡多帶約 190 MB 完全用不到的
+    東西；mpg123 + vorbis-tools 加起來只有幾 MB，輸出的 OGG 相同。
+    兩個工具任一不存在時回退使用原始 MP3。
     """
     text = request.args.get("text", "").strip()
     if not text:
@@ -320,19 +324,27 @@ def tts_audio():
             logger.error(f"[tts_audio] gTTS error: {e}")
             return Response("TTS generation failed", status=503)
 
-    # 嘗試用 ffmpeg 轉 OGG（無 encoder delay）
+    # 嘗試轉 OGG（無 encoder delay）：mpg123 解碼 → oggenc 編碼，走 stdout/stdin
+    # 串接，不落地中間的 WAV。任一工具缺席就靜靜回退 MP3。
     if not ogg_path.exists():
+        tmp_ogg = ogg_path.with_suffix(".ogg.tmp")
         try:
-            result = subprocess.run(
-                ["ffmpeg", "-y", "-i", str(mp3_path),
-                 "-c:a", "libvorbis", "-q:a", "3",
-                 str(ogg_path)],
+            decode = subprocess.run(
+                ["mpg123", "-q", "-w", "-", str(mp3_path)],
                 capture_output=True, timeout=15
             )
-            if result.returncode != 0:
-                ogg_path.unlink(missing_ok=True)
+            if decode.returncode == 0 and decode.stdout:
+                encode = subprocess.run(
+                    ["oggenc", "-Q", "-q", "3", "-o", str(tmp_ogg), "-"],
+                    input=decode.stdout, capture_output=True, timeout=15
+                )
+                # 只有整條鏈成功才 rename 就位，避免半成品被當成快取命中
+                if encode.returncode == 0 and tmp_ogg.exists() and tmp_ogg.stat().st_size > 0:
+                    tmp_ogg.replace(ogg_path)
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass  # ffmpeg 不存在，回退 MP3
+            pass  # mpg123 / oggenc 不存在，回退 MP3
+        finally:
+            tmp_ogg.unlink(missing_ok=True)
 
     if ogg_path.exists():
         return send_file(str(ogg_path), mimetype="audio/ogg", conditional=True)

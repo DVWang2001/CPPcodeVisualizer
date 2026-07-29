@@ -12,7 +12,7 @@ FROM python:3.13-slim
 # util-linux -> setpriv/unshare ; passwd -> useradd/userdel ; procps -> pkill.
 # These are the per-session execution isolation primitives (sandbox/jail_manager.py).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential g++ gdb ffmpeg libstdc++-12-dev \
+    build-essential g++ gdb mpg123 vorbis-tools \
     util-linux passwd procps \
     && rm -rf /var/lib/apt/lists/*
 
