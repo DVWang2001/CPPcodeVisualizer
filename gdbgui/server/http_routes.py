@@ -47,6 +47,7 @@ from .http_util import (
     owner_key,
 )
 from . import db
+from . import tags as tags_module
 from .share_function import require_uploaded_binary
 from . import lesson_gen
 from .prerun import build_gdb_script, parse_prerun_output
@@ -1704,6 +1705,33 @@ def get_lesson(lesson_id: int):
             "is_mine": current_user_id() == int(row["user_id"]),
         }
     )
+
+
+@blueprint.route("/api/lessons/<int:lesson_id>/tags", methods=["POST"])
+@authenticate
+def update_lesson_tags(lesson_id: int):
+    """整批設定一篇教案的標籤。只有作者可以。
+
+    刻意不叫 set_lesson_tags——那是 tags.py 裡做實事的那個函式的名字，
+    兩個同名會讓「哪一個擋權限」變成要看 import 才知道的事。
+
+    刻意**不**沿用 PUT /api/lessons/<id> 的 fork 行為（那條在教案不是你的
+    時候會另存一份副本）。改內容是創作，另存合理；改標籤不是。靜默 fork 會
+    讓使用者以為自己整理了教案庫，其實只是替自己複製了一堆。
+    """
+    user_id = _lesson_author()
+    payload = request.get_json(silent=True) or {}
+    raw = payload.get("tags", "")
+
+    try:
+        result = tags_module.set_lesson_tags(lesson_id, user_id, raw)
+    except tags_module.TagRejected as exc:
+        return jsonify({"message": str(exc)}), 400
+
+    if result is None:
+        logger.info("[authz] refused tag write on lesson %s", lesson_id)
+        return _lesson_not_found()
+    return jsonify({"tags": result})
 
 
 @blueprint.route("/lessons", methods=["GET"])
