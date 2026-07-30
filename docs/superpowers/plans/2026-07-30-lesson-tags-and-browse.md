@@ -254,7 +254,7 @@ def parse_tag_input(raw: Optional[str]) -> List[str]:
 - [ ] **Step 5: 確認測試通過**
 
 Run: `python -m pytest tests/test_tags.py -q`
-Expected: PASS（16 passed）
+Expected: PASS（15 passed）
 
 - [ ] **Step 6: 提交**
 
