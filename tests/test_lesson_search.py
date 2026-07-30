@@ -252,3 +252,65 @@ def test_tag_counts_are_ordered_by_use_then_name(corpus):
     rows = db.tag_counts()
     pairs = [(-int(r["n"]), r["name"]) for r in rows]
     assert pairs == sorted(pairs)
+
+
+def _make_lessons_with_many_tags(user_id, uniq, count):
+    """把 `count` 個各不相同的標籤灑到夠多篇教案上（一篇最多
+    tags.MAX_TAGS_PER_LESSON=8 個），全部教案標題都帶 `uniq`，
+    好讓 q=uniq 一次撈到全部標籤。"""
+    tag_names = [f"{uniq}-{i:02d}" for i in range(count)]
+    for start in range(0, count, tags.MAX_TAGS_PER_LESSON):
+        chunk = tag_names[start:start + tags.MAX_TAGS_PER_LESSON]
+        lesson_id = db.create_lesson(
+            user_id, f"facet 測試 {uniq} {start}",
+            '{"version":"2.0","source_code":"int main(){}"}',
+        )
+        tags.set_lesson_tags(lesson_id, user_id, ", ".join(chunk))
+    return tag_names
+
+
+def test_tag_counts_limit_none_means_unlimited_not_the_default(flask_app):
+    """`limit=None` 是「不設限」，不是「套用某個預設上限」——這條把 FACET_LIMIT
+    (=12) 的真正呼叫端（lesson_library 的 `limit=None if show_all_tags else
+    db.FACET_LIMIT`）在資料層釘住：一旦 tag_counts 把 limit=None 也硬套成
+    FACET_LIMIT，這條就會抓到。"""
+    uniq = uuid.uuid4().hex[:8]
+    user_id = register_user(flask_app, display_name=f"facet{uniq}").user_id
+    tag_names = _make_lessons_with_many_tags(user_id, uniq, db.FACET_LIMIT + 3)
+
+    unlimited = db.tag_counts(q=uniq, limit=None)
+    assert len(unlimited) == len(tag_names) > db.FACET_LIMIT
+
+    capped = db.tag_counts(q=uniq, limit=db.FACET_LIMIT)
+    assert len(capped) == db.FACET_LIMIT
+
+
+def test_lesson_library_passes_facet_limit_unless_alltags_is_set(flask_app):
+    """?alltags=1 要能拿到超過 FACET_LIMIT 個標籤；不帶則最多 FACET_LIMIT 個。
+
+    lessons.html（Task 6 才建）還沒把 facets 印進頁面，所以這裡不驗 HTML，
+    改成攔截 db.tag_counts 實際收到的 limit，確認路由真的照 alltags 切換它。"""
+    import gdbgui.server.http_routes as http_routes
+
+    uniq = uuid.uuid4().hex[:8]
+    user = register_user(flask_app, display_name=f"faceth{uniq}")
+    _make_lessons_with_many_tags(user.user_id, uniq, db.FACET_LIMIT + 3)
+
+    seen_limits = []
+    real_tag_counts = http_routes.db.tag_counts
+
+    def spy(*args, **kwargs):
+        seen_limits.append(kwargs.get("limit"))
+        return real_tag_counts(*args, **kwargs)
+
+    http_routes.db.tag_counts = spy
+    try:
+        assert user.http.get(f"/?q={uniq}").status_code == 200
+        assert user.http.get(f"/?q={uniq}&alltags=1").status_code == 200
+    finally:
+        http_routes.db.tag_counts = real_tag_counts
+
+    # 每個 request 呼叫 tag_counts 兩次（facets、facet_total）；第一次才是
+    # show_all_tags 真正生效的那次呼叫。
+    assert seen_limits[0] == db.FACET_LIMIT
+    assert seen_limits[2] is None

@@ -70,7 +70,7 @@ class Visitor(LoggedInUser):
     def __init__(self, app):
         user = register_user(app)
         super().__init__(app, user.http, user.user_id, user.username, user.csrf)
-        assert self.http.get("/").status_code == 200
+        assert self.http.get("/edit").status_code == 200
 
     def compile(self, code=HELLO):
         """走使用者真正走的那條路：POST /create_and_upload，拿回自己的 binary 路徑。"""
@@ -85,8 +85,11 @@ class Visitor(LoggedInUser):
         return body["binary_path"]
 
     def initial_data(self):
-        """首頁 render 給這個 session 看的 initial_data（前端讀的就是這一份）。"""
-        resp = self.http.get("/")
+        """/edit render 給這個 session 看的 initial_data（前端讀的就是這一份）。
+
+        以前這是首頁；主頁換成教案瀏覽之後除錯器搬到 /edit。
+        """
+        resp = self.http.get("/edit")
         assert resp.status_code == 200
         return _parse_initial_data(resp.data.decode()), resp.data.decode()
 

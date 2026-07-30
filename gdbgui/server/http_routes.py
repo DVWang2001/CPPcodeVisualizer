@@ -947,7 +947,10 @@ def dashboard():
     )
 
 
-@blueprint.route("/", methods=["GET"])
+# 除錯器。以前掛在 "/"；主頁讓給教案瀏覽之後搬到這裡。
+# endpoint 名稱刻意維持 "gdbgui"——模板裡既有的 url_for('http_routes.gdbgui')
+# 因此自動指向 /edit，不必逐一改呼叫端。
+@blueprint.route("/edit", methods=["GET"])
 @authenticate
 def gdbgui():
     # ── 這條路徑刻意**不**碰 jail_manager ────────────────────────────────────
@@ -1743,18 +1746,29 @@ def update_lesson_tags(lesson_id: int):
     return jsonify({"tags": result})
 
 
-@blueprint.route("/lessons", methods=["GET"])
+@blueprint.route("/", methods=["GET"])
 @authenticate
 def lesson_library():
-    """教案庫：全部教案，每頁 db.LESSONS_PER_PAGE 篇，updated_at DESC。
+    """主頁：可搜尋、可依標籤篩選的教案清單。
 
     標題與作者顯示名稱是使用者輸入，全部靠 Jinja 的 autoescape 轉義
-    （lessons.html 裡沒有任何 |safe，也沒有任何使用者字串被插進 <script>）。
+    （模板裡沒有任何 |safe，也沒有任何使用者字串被插進 <script>）。
     """
+    # /?lesson=42 是除錯器的舊深連結（教案庫頁與外部書籤都在用）。
+    # 主頁換了用途，但那些連結必須繼續有用。
+    requested_lesson = request.args.get("lesson")
+    if requested_lesson is not None:
+        return redirect(url_for("http_routes.gdbgui", lesson=requested_lesson))
+
     add_csrf_token_to_session()
 
+    q = request.args.get("q", "")
+    # tag 是可重複參數：/?tag=stl&tag=bst。上限在 db 層截斷。
+    selected_tags = request.args.getlist("tag")
+    show_all_tags = request.args.get("alltags") == "1"
+
     per_page = db.LESSONS_PER_PAGE
-    total = db.lesson_count()
+    total = db.search_count(q=q, tags=selected_tags)
     last_page = max(1, -(-total // per_page))  # ceil
 
     try:
@@ -1765,13 +1779,32 @@ def lesson_library():
     # OFFSET 999999999990 的全表掃描，一個 GET 就能點的 DoS。
     page = min(max(1, page), last_page)
 
+    lessons = db.search_lessons(q=q, tags=selected_tags,
+                                limit=per_page, offset=(page - 1) * per_page)
+    facets = db.tag_counts(q=q, tags=selected_tags,
+                           limit=None if show_all_tags else db.FACET_LIMIT)
+    facet_total = len(db.tag_counts(q=q, tags=selected_tags))
+
     return render_template(
         "lessons.html",
-        lessons=db.recent_lessons(per_page, (page - 1) * per_page),
+        lessons=lessons,
+        lesson_tags=tags_module.tags_for_lessons([row["id"] for row in lessons]),
+        facets=facets,
+        facet_total=facet_total,
+        show_all_tags=show_all_tags,
+        q=q,
+        selected_tags=[t for t in selected_tags if t],
         page=page,
         last_page=last_page,
         total=total,
-        per_page=per_page,  # 樣板用它算行號槽裡的全域序號
+        per_page=per_page,
         current_user_id=current_user_id(),
         csrf_token=session["csrf_token"],
     )
+
+
+@blueprint.route("/lessons", methods=["GET"])
+@authenticate
+def lesson_library_legacy():
+    """教案庫的舊網址。內容搬到主頁了，但書籤要繼續有用。"""
+    return redirect(url_for("http_routes.lesson_library", **request.args.to_dict(flat=True)))

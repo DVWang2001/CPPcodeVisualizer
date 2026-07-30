@@ -185,14 +185,14 @@ def test_the_where_clause_is_the_real_check_not_the_route_branch(alice, bob):
 def test_owner_can_delete_and_it_disappears_from_both_lists(alice):
     lesson_id = _create(alice, title="要刪掉的教案")
 
-    assert "要刪掉的教案" in alice.http.get("/lessons").data.decode("utf-8")
+    assert "要刪掉的教案" in alice.http.get("/").data.decode("utf-8")
     assert lesson_id in {int(r["id"]) for r in db.lessons_for_user(alice.user_id)}
 
     assert _delete_lesson(alice, lesson_id).status_code == 200
 
     assert db.lesson_by_id(lesson_id) is None
     assert lesson_id not in {int(r["id"]) for r in db.lessons_for_user(alice.user_id)}
-    library = alice.http.get("/lessons").data.decode("utf-8")
+    library = alice.http.get("/").data.decode("utf-8")
     assert "要刪掉的教案" not in library
     profile = alice.http.get(f"/u/{alice.username}").data.decode("utf-8")
     assert "要刪掉的教案" not in profile
@@ -242,7 +242,7 @@ def test_saving_makes_a_lesson_appear_on_the_profile_and_in_the_library(alice):
     profile = alice.http.get(f"/u/{alice.username}").data.decode("utf-8")
     assert "出現在兩邊的教案" in profile
 
-    library = alice.http.get("/lessons").data.decode("utf-8")
+    library = alice.http.get("/").data.decode("utf-8")
     assert "出現在兩邊的教案" in library
     assert alice.username in library  # 作者連結 /u/<username>
 
@@ -256,7 +256,7 @@ def _library_ids(client, page):
     """從教案庫頁抓出這一頁的 lesson id。"""
     import re
 
-    html = client.get(f"/lessons?page={page}").data.decode("utf-8")
+    html = client.get(f"/?page={page}").data.decode("utf-8")
     return [int(m) for m in re.findall(r"\?lesson=(\d+)", html)]
 
 
@@ -288,11 +288,11 @@ def test_pages_are_ordered_newest_first(alice):
 
 def test_an_absurd_page_number_is_clamped(alice):
     _create(alice)
-    response = alice.http.get("/lessons?page=99999999999")
+    response = alice.http.get("/?page=99999999999")
     assert response.status_code == 200
-    response = alice.http.get("/lessons?page=-5")
+    response = alice.http.get("/?page=-5")
     assert response.status_code == 200
-    response = alice.http.get("/lessons?page=not-a-number")
+    response = alice.http.get("/?page=not-a-number")
     assert response.status_code == 200
 
 
@@ -386,13 +386,13 @@ def test_a_script_tag_in_a_title_renders_as_text_on_both_pages(flask_app):
     user = register_user(flask_app, display_name=_XSS)
     _create(user, title=_XSS)
 
-    for path in ("/lessons", f"/u/{user.username}"):
+    for path in ("/", f"/u/{user.username}"):
         html = user.http.get(path).data.decode("utf-8")
         assert _XSS not in html, f"{path} rendered the title unescaped"
         assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html, path
 
     # 顯示名稱也走同一條路（教案庫頁的作者欄）
-    library = user.http.get("/lessons").data.decode("utf-8")
+    library = user.http.get("/").data.decode("utf-8")
     assert library.count("&lt;script&gt;") >= 2
 
 
@@ -414,7 +414,7 @@ def test_the_new_routes_are_covered_by_the_site_wide_login_gate(flask_app):
     endpoints = {
         rule.endpoint
         for rule in flask_app.url_map.iter_rules()
-        if rule.rule.startswith("/api/lessons") or rule.rule == "/lessons"
+        if rule.rule.startswith("/api/lessons") or rule.rule in ("/", "/lessons")
     }
     assert endpoints >= {
         "http_routes.create_lesson",
@@ -422,6 +422,7 @@ def test_the_new_routes_are_covered_by_the_site_wide_login_gate(flask_app):
         "http_routes.delete_lesson",
         "http_routes.get_lesson",
         "http_routes.lesson_library",
+        "http_routes.lesson_library_legacy",
     }, endpoints
     assert not (endpoints & PUBLIC_ENDPOINTS)
 
