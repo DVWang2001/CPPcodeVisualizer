@@ -1533,6 +1533,9 @@ MAX_LESSON_REQUEST_BYTES = 2 * db.MAX_BUNDLE_BYTES
 LESSON_TOO_LARGE_MESSAGE = "教案內容超過大小上限，請縮小後再儲存。"
 LESSON_INVALID_MESSAGE = "教案標題或內容格式不正確。"
 LESSON_NOT_FOUND_MESSAGE = "找不到這個教案。"
+#: 只描述「這個請求哪裡不對」——不提教案是否存在、屬於誰。與其他 400 訊息同樣
+#: 的規則：讀得出違反了哪一條輸入規則，讀不出伺服器上有什麼。
+TAGS_FIELD_REQUIRED_MESSAGE = "請提供 tags 欄位（要清空標籤請送空字串）。"
 
 
 def _quota_response(exc):
@@ -1720,8 +1723,14 @@ def update_lesson_tags(lesson_id: int):
     讓使用者以為自己整理了教案庫，其實只是替自己複製了一堆。
     """
     user_id = _lesson_author()
-    payload = request.get_json(silent=True) or {}
-    raw = payload.get("tags", "")
+    # 缺欄位**不等於**清空。`get_json(silent=True)` 在任何解析失敗時都回 None
+    # （Content-Type 打錯、body 被截斷、送 [] 或 0、body 是空的），若把那一律
+    # 當成 raw=""，一個破壞性操作就會在「請求根本沒讀懂」時 fail open 並回 200。
+    # 要清空標籤必須明確送 {"tags": ""}。
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or "tags" not in payload:
+        return jsonify({"message": TAGS_FIELD_REQUIRED_MESSAGE}), 400
+    raw = payload["tags"]
 
     try:
         result = tags_module.set_lesson_tags(lesson_id, user_id, raw)
