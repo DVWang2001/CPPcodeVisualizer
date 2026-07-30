@@ -5,6 +5,7 @@
 """
 
 import uuid
+from contextlib import closing
 
 import pytest
 
@@ -199,26 +200,33 @@ def test_ties_on_updated_at_break_on_id_descending(corpus):
     """`_now()` 只到秒，corpus 這幾篇是同一次 fixture 呼叫連續建立的，
     `updated_at` 幾乎必定完全相同——同秒平手是常態，不是邊角案例。
 
-    沒有 `id DESC` 這個第二排序鍵，`LIMIT/OFFSET` 分頁在平手時會漏或重複
-    （SQLite 沒有 tie-break 時的列順序不是排序契約的一部分，會隨 query plan、
-    索引、資料量變動）。用 `limit=1` 一列一列走過去，逼查詢在每一步都重新
-    決定「下一筆是誰」，而不是仰賴一次拿全部時偶然正確的列序。
+    沒有 `id DESC` 這個第二排序鍵，`LIMIT/OFFSET` 分頁在平手時會漏或重複。
+
+    這裡刻意連 `migrations/0002` 建的 `lessons_recent_idx (updated_at DESC, id DESC)`
+    也暫時拿掉（結束前還原）：那個索引本身就是 `(updated_at DESC, id DESC)`，只要
+    query planner 選它做 index scan，掃描順序天生就是 id DESC——不管 SQL 文字裡的
+    `ORDER BY` 到底有沒有寫 `id DESC` 都一樣，那個索引會替沒寫 tie-break 的查詢
+    「頂住」。所以光靠平常的查詢觀察不到「拿掉 id DESC」這個退化：只有沒有索引可用、
+    SQLite 真的得對 updated_at 做 filesort 時，缺 tie-break 才會現形（那時候平手的
+    列會退回 rowid／插入順序，也就是 id 遞增，跟預期的遞減相反）。
     """
-    q = corpus["uniq"]  # 五篇教案的標題都帶這個後綴
+    q = corpus["uniq"]  # 五篇教案的標題都帶這個後綴，updated_at 全部相同
     all_ids = _ids(db.search_lessons(q=q, limit=50))
     assert len(all_ids) == 5
 
-    paged_ids = []
-    offset = 0
-    while True:
-        page = db.search_lessons(q=q, limit=1, offset=offset)
-        if not page:
-            break
-        paged_ids.append(int(page[0]["id"]))
-        offset += 1
-
-    assert set(paged_ids) == all_ids  # 沒漏、沒重複
-    assert paged_ids == sorted(paged_ids, reverse=True)  # 嚴格遞減，不是巧合
+    with closing(db.connect()) as conn:
+        conn.execute("DROP INDEX IF EXISTS lessons_recent_idx")
+    try:
+        rows = db.search_lessons(q=q, limit=50)
+        ids = [int(r["id"]) for r in rows]
+        assert set(ids) == all_ids  # 沒漏、沒重複
+        assert ids == sorted(ids, reverse=True)  # 嚴格遞減，不是巧合
+    finally:
+        with closing(db.connect()) as conn:
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS lessons_recent_idx"
+                " ON lessons (updated_at DESC, id DESC)"
+            )
 
 
 # ── 標籤列 ─────────────────────────────────────────────────────────────────
