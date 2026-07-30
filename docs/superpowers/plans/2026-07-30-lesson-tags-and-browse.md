@@ -584,9 +584,20 @@ def test_a_literal_percent_in_a_title_is_findable(flask_app):
     assert lid in _ids(db.search_lessons(q="50%"))
 
 
-def test_an_over_long_query_is_truncated_not_rejected(corpus):
-    """網址是可以被亂改的，把它當輸入而不是契約。"""
-    assert db.search_lessons(q="x" * (db.MAX_QUERY_LENGTH + 50)) == []
+def test_an_over_long_query_is_truncated_to_the_cap(flask_app):
+    """截斷必須真的發生，不能只是「沒有爆炸」。
+
+    標題剛好 MAX_QUERY_LENGTH 個 x，查 MAX_QUERY_LENGTH + 50 個 x：
+      有截斷 → pattern 收成 100 個 x → 命中
+      無截斷 → pattern 是 150 個 x → 永遠比不到
+    兩種行為給出不同結果，所以這條分辨得出來。
+    網址是可以被亂改的，把它當輸入而不是契約。
+    """
+    uid = register_user(flask_app, display_name="q_trunc").user_id
+    title = "x" * db.MAX_QUERY_LENGTH  # < MAX_TITLE_LENGTH (200)，存得下
+    lid = db.create_lesson(uid, title, '{"version":"2.0","source_code":"y"}')
+    found = _ids(db.search_lessons(q="x" * (db.MAX_QUERY_LENGTH + 50), limit=50))
+    assert lid in found
 
 
 # ── 標籤篩選 ───────────────────────────────────────────────────────────────
@@ -610,9 +621,20 @@ def test_an_unknown_tag_gives_no_results_not_an_error(corpus):
     assert db.search_lessons(tags=["不存在的標籤"]) == []
 
 
-def test_too_many_filter_tags_are_truncated(corpus):
-    many = [f"t{i}" for i in range(db.MAX_FILTER_TAGS + 5)]
-    assert db.search_lessons(tags=many) == []  # 截斷後仍然無結果，但不爆炸
+def test_too_many_filter_tags_are_truncated_to_the_cap(flask_app):
+    """截斷必須真的發生，而且是「保留前 N 個」。
+
+    一篇教案貼滿 MAX_FILTER_TAGS 個真標籤，篩選時送那些 + 5 個不存在的：
+      有截斷 → 只用前 8 個（都存在）→ 命中
+      無截斷 → 13 個全都要有 → 落空
+    """
+    uid = register_user(flask_app, display_name="tag_trunc").user_id
+    real = [f"tt{i}" for i in range(db.MAX_FILTER_TAGS)]
+    lid = db.create_lesson(uid, "貼滿標籤", '{"version":"2.0","source_code":"y"}')
+    tags.set_lesson_tags(lid, uid, ", ".join(real))
+
+    many = real + [f"fake{i}" for i in range(5)]
+    assert lid in _ids(db.search_lessons(tags=many, limit=50))
 
 
 # ── 計數與分頁 ─────────────────────────────────────────────────────────────
@@ -985,11 +1007,14 @@ git commit -m "feat(tags): POST /api/lessons/<id>/tags，非作者一律 404"
 from .conftest import register_user
 
 
-def test_the_root_is_the_browse_page(flask_app):
+def test_the_root_is_no_longer_the_debugger(flask_app):
+    """這個任務只換路由，模板是 Task 6 的事。所以這裡驗的是「根路徑不再是
+    除錯器」——用 initial_data 判斷，那是除錯器頁面才有的東西，不依賴任何
+    還沒建立的 data-testid。"""
     user = register_user(flask_app, display_name="rt_a")
     response = user.http.get("/")
     assert response.status_code == 200
-    assert b"lesson-browse-list" in response.data or b"lesson-browse-empty" in response.data
+    assert b"initial_data" not in response.data
 
 
 def test_edit_serves_the_debugger(flask_app):
@@ -1025,19 +1050,6 @@ def test_the_root_still_requires_login(flask_app):
 def test_edit_also_requires_login(flask_app):
     anon = flask_app.test_client()
     assert anon.get("/edit").status_code == 302
-
-
-def test_the_search_box_filters_the_listing(flask_app):
-    from gdbgui.server import db, tags
-
-    user = register_user(flask_app, display_name="rt_e")
-    lid = db.create_lesson(user.user_id, "獨一無二的標題ZZQ",
-                           '{"version":"2.0","source_code":"int main(){}"}')
-    tags.set_lesson_tags(lid, user.user_id, "獨特標籤ZZQ")
-
-    assert b"ZZQ" in user.http.get("/?q=ZZQ").data
-    assert b"ZZQ" in user.http.get("/?tag=%E7%8D%A8%E7%89%B9%E6%A8%99%E7%B1%A4ZZQ").data
-    assert b"ZZQ" not in user.http.get("/?q=絕對不存在的字串QQQ").data
 
 
 def test_an_out_of_range_page_is_clamped_not_an_error(flask_app):
@@ -1132,10 +1144,11 @@ def lesson_library_legacy():
 
 `redirect` 與 `url_for` 在 `http_routes.py:23-35` 的 `from flask import (...)` 裡已經有了，不必加。
 
-- [ ] **Step 4: 確認轉址與登入門檻的測試通過**
+- [ ] **Step 4: 確認測試全數通過**
 
-Run: `python -m pytest tests/test_routes_swap.py -q -k "redirect or login or edit"`
-Expected: PASS（模板相關的兩條還會失敗，Task 6 才補）
+Run: `python -m pytest tests/test_routes_swap.py -q`
+Expected: PASS（6 passed）。這個任務收尾時整檔全綠——瀏覽頁 UI 的驗證屬於
+Task 6，不放在這裡，所以不該有任何「預期失敗」的測試。
 
 - [ ] **Step 5: 提交**
 
@@ -1360,22 +1373,51 @@ git commit -m "feat(routes): 主頁換成教案瀏覽，除錯器搬到 /edit"
 {% endblock %}
 ```
 
-- [ ] **Step 3: 確認整組路由測試通過**
+- [ ] **Step 3: 追加瀏覽頁 UI 的測試**
+
+這兩條驗的是這個任務才建立的模板，所以放在這裡而不是 Task 5。
+追加到 `tests/test_routes_swap.py`：
+
+```python
+def test_the_root_renders_the_browse_ui(flask_app):
+    user = register_user(flask_app, display_name="rt_ui")
+    response = user.http.get("/")
+    assert response.status_code == 200
+    assert b"lesson-browse-search" in response.data
+    assert b"lesson-browse-list" in response.data or b"lesson-browse-empty" in response.data
+
+
+def test_the_search_box_and_tag_filter_narrow_the_listing(flask_app):
+    from gdbgui.server import tags
+
+    user = register_user(flask_app, display_name="rt_e")
+    lid = db.create_lesson(user.user_id, "獨一無二的標題ZZQ",
+                           '{"version":"2.0","source_code":"int main(){}"}')
+    tags.set_lesson_tags(lid, user.user_id, "獨特標籤ZZQ")
+
+    assert b"ZZQ" in user.http.get("/?q=ZZQ").data
+    assert b"ZZQ" in user.http.get("/?tag=%E7%8D%A8%E7%89%B9%E6%A8%99%E7%B1%A4ZZQ").data
+    assert b"ZZQ" not in user.http.get("/?q=絕對不存在的字串QQQ").data
+```
+
+檔案最上面補 `from gdbgui.server import db`（Task 5 建立時沒有用到它）。
+
+- [ ] **Step 4: 確認整組路由測試通過**
 
 Run: `python -m pytest tests/test_routes_swap.py -q`
 Expected: PASS（8 passed）
 
-- [ ] **Step 4: 手動看一眼**
+- [ ] **Step 5: 手動看一眼**
 
 ```bash
 docker compose up -d --build
 ```
 開 http://localhost:5000/ ——應該是教案清單、有搜尋框；點一個標籤，網址出現 `?tag=`，清單縮小，該標籤變成實心。
 
-- [ ] **Step 5: 提交**
+- [ ] **Step 6: 提交**
 
 ```bash
-git add gdbgui/templates/lessons.html gdbgui/templates/_auth_base.html
+git add gdbgui/templates/lessons.html gdbgui/templates/_auth_base.html tests/test_routes_swap.py
 git commit -m "feat(browse): 主頁的搜尋框與標籤篩選列"
 ```
 
