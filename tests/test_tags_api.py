@@ -127,6 +127,14 @@ def test_the_two_404s_are_indistinguishable(flask_app):
     assert someone_elses.status_code == does_not_exist.status_code == 404
     assert someone_elses.get_json() == does_not_exist.get_json()
 
+    # 上面兩行只保證這兩個回應「彼此一樣」——而它們現在來自同一個 return，所以
+    # 一個把訊息換成「這篇教案不是你的。」的改動會讓它們一起變、兩行照樣綠。
+    # 再釘一次：這個拒絕必須跟教案 API 其他地方的「找不到」長得一模一樣，
+    # 刻意拿另一條路由的實際回應來比，而不是複製一份訊息常數到測試裡。
+    canonical = other.http.get("/api/lessons/999999997")
+    assert canonical.status_code == 404
+    assert someone_elses.get_json() == canonical.get_json()
+
 
 def test_the_route_never_looks_the_lesson_up_itself(flask_app, monkeypatch):
     """擁有權只能由 tags.set_lesson_tags 在它自己的交易裡判斷。
