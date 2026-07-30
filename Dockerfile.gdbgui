@@ -46,5 +46,9 @@ COPY --from=frontend-builder /app/gdbgui/static/js/ ./gdbgui/static/js/
 
 RUN pip install -e . --no-deps
 
+# 把「這個 image 是從哪一版原始碼建出來的」烙進去。e2e 啟動前會比對它與
+# 工作區的指紋，不同就拒絕開跑——避免對著一個不是你剛建的容器測半天。
+RUN python scripts/source_stamp.py > /app/.build-stamp && cat /app/.build-stamp
+
 EXPOSE 5000
 CMD ["python", "-m", "gdbgui", "--host=0.0.0.0", "--port=5000"]
