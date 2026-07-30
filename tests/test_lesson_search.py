@@ -80,8 +80,16 @@ def test_an_empty_query_returns_everything(corpus):
 
 
 def test_a_percent_sign_is_a_literal_not_a_wildcard(corpus):
-    """打 % 要找的是標題裡有 % 的教案，不是「全部」。"""
-    assert db.search_lessons(q="%") == []
+    """打 % 要找的是標題裡有 % 的教案，不是「全部」。
+
+    斷言刻意不是「全域結果是空的」：共用 DB 裡可能有別條測試（例如
+    test_a_literal_percent_in_a_title_is_findable）留下真的帶 % 的標題，
+    那本來就該被找到，不算誤判。這裡只驗證 corpus 這五篇（標題都不含 %）
+    不會被「當萬用字元」意外命中。
+    """
+    found = _ids(db.search_lessons(q="%", limit=1000))
+    corpus_ids = {corpus["bst"], corpus["vec"], corpus["rec"], corpus["dp"], corpus["bare"]}
+    assert not (found & corpus_ids)
 
 
 def test_an_underscore_is_a_literal_not_a_single_char_wildcard(corpus):
@@ -94,9 +102,10 @@ def test_a_backslash_does_not_break_the_query(corpus):
 
 
 def test_a_literal_percent_in_a_title_is_findable(flask_app):
-    uid = register_user(flask_app, display_name="pct").user_id
-    lid = db.create_lesson(uid, "折扣 50% 的算法", '{"version":"2.0","source_code":"x"}')
-    assert lid in _ids(db.search_lessons(q="50%"))
+    uniq = uuid.uuid4().hex[:8]
+    uid = register_user(flask_app, display_name=f"pct{uniq}").user_id
+    lid = db.create_lesson(uid, f"折扣 50% 的算法 {uniq}", '{"version":"2.0","source_code":"x"}')
+    assert lid in _ids(db.search_lessons(q="50%", limit=1000))
 
 
 def test_an_over_long_query_is_truncated_to_the_cap(flask_app):
@@ -159,7 +168,18 @@ def test_too_many_filter_tags_are_truncated_to_the_cap(flask_app):
 
 
 def test_search_count_matches_the_unpaged_result(corpus):
-    assert db.search_count(q="王老師") == len(db.search_lessons(q="王老師", limit=100))
+    q = f"王老師{corpus['uniq']}"
+    assert db.search_count(q=q) == len(db.search_lessons(q=q, limit=100))
+
+
+def test_search_count_with_tags_matches_the_unpaged_result(corpus):
+    """`search_count` 也要吃 `tags=`——不然使用者會看到「共 N 筆」跟清單筆數對不起來。
+
+    這是 `_search_predicate` 三處共用存在的理由：只餵 `q=` 測不出計數忘了套用
+    標籤篩選這種壞法。
+    """
+    t = [corpus["T"]("stl")]
+    assert db.search_count(tags=t) == len(db.search_lessons(tags=t, limit=100))
 
 
 def test_pagination_does_not_repeat_or_drop(corpus):
@@ -173,6 +193,32 @@ def test_ordering_is_newest_first(corpus):
     rows = db.search_lessons(limit=50)
     keys = [(r["updated_at"], int(r["id"])) for r in rows]
     assert keys == sorted(keys, reverse=True)
+
+
+def test_ties_on_updated_at_break_on_id_descending(corpus):
+    """`_now()` 只到秒，corpus 這幾篇是同一次 fixture 呼叫連續建立的，
+    `updated_at` 幾乎必定完全相同——同秒平手是常態，不是邊角案例。
+
+    沒有 `id DESC` 這個第二排序鍵，`LIMIT/OFFSET` 分頁在平手時會漏或重複
+    （SQLite 沒有 tie-break 時的列順序不是排序契約的一部分，會隨 query plan、
+    索引、資料量變動）。用 `limit=1` 一列一列走過去，逼查詢在每一步都重新
+    決定「下一筆是誰」，而不是仰賴一次拿全部時偶然正確的列序。
+    """
+    q = corpus["uniq"]  # 五篇教案的標題都帶這個後綴
+    all_ids = _ids(db.search_lessons(q=q, limit=50))
+    assert len(all_ids) == 5
+
+    paged_ids = []
+    offset = 0
+    while True:
+        page = db.search_lessons(q=q, limit=1, offset=offset)
+        if not page:
+            break
+        paged_ids.append(int(page[0]["id"]))
+        offset += 1
+
+    assert set(paged_ids) == all_ids  # 沒漏、沒重複
+    assert paged_ids == sorted(paged_ids, reverse=True)  # 嚴格遞減，不是巧合
 
 
 # ── 標籤列 ─────────────────────────────────────────────────────────────────
