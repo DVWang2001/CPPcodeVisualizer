@@ -998,6 +998,14 @@ class SourceCode extends React.Component<{}, State> {
             (window as any).last_compiled_code = null;
           } else {
             // Monaco 尚未掛載（FILE_MISSING / NONE_AVAILABLE 狀態）
+            //
+            // 交棒給 handleEditorDidMount。少了這一行，/?lesson= 在暖快取下會
+            // 靜默失敗：bundle 已經收到、也寫進了下面的 cache 與 localStorage，
+            // 但 Monaco 早一步用預設值建好 model，之後沒有任何東西再回頭去讀。
+            // 冷載入時 Monaco 慢、教案先落地，所以看起來是間歇性的——實際上
+            // 只取決於 fetch 與 Monaco 掛載誰先到。
+            (global_variable as any).__pending_source_code = mergedSource;
+
             // 將 source_code 直接注入 FileOps cache，讓 Monaco 立刻顯示
             const lines = mergedSource.split("\n");
             const source_code_obj: any = {};

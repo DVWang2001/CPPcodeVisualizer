@@ -29,6 +29,13 @@ services:
     environment:
       - PLAYWRIGHT_BASE_URL=http://app:5000
     volumes:
+      # 測試碼掛進去而不是烤進 image：改一條測試就要重建 image 的話，
+      # 除錯迭代會慢到讓人開始「憑印象」判斷，而不是每次都真的重跑。
+      - ./e2e/tests:/e2e/tests
+      # 教案 bundle：zz_bst_animation 在 module 載入時就讀它，找不到會讓整批
+      # 測試在收集階段中止（不是那一支失敗而已）。spec 從 /e2e/tests 往上兩層
+      # 找，容器裡就是 /examples。
+      - ./examples:/examples:ro
       - ./e2e/test-results:/e2e/test-results
       - ./e2e/playwright-report:/e2e/playwright-report
     networks:
