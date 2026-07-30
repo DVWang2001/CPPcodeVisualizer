@@ -1653,6 +1653,20 @@ git commit -m "feat(tags): 個人檔案頁的標籤編輯"
 **Files:**
 - Create: `e2e/tests/zz_lesson_tags.spec.ts`
 - Modify: `e2e/tests/zz_lesson_sharing.spec.ts`
+- Modify（全面替換 `goto('/')` → `goto('/edit')`）：`f5_breakpoints`、`linear`、
+  `memwatch_screenshot`、`ordered`、`restricted`、`run_button`、`smoke`（3 處）、
+  `tutorial_import_run`、`unordered`、`zz_annotations_layout_run`、
+  `zz_annotations_modal_playmode`、`zz_bst_animation`、`zz_fast_forward`、
+  `zz_for_substep`、`zz_pause_button`、`zz_read_file_confinement`、
+  `zz_system_header_source`，以及 `helpers.ts` 的註解
+
+**為什麼要全面替換**：Task 5 把 `/` 換成教案瀏覽頁之後，這 17 個 spec 會 goto 到
+清單頁、找不到除錯器的 DOM 而全數失敗。Task 5 的 Python 測試不會發現這件事——
+它跑的是 pytest，不是 Playwright。這是 Task 5 審查者靜態盤點出來的，原本沒有
+任何任務認領。
+
+替換時只改導覽的網址，**不要順手改動任何斷言**——那些 spec 驗的東西與這次
+變更無關，改了就分不清失敗是路由造成還是被你改壞的。
 
 **Interfaces:**
 - Consumes: Task 6/7 的 `data-testid`；既有的 `ensureLoggedIn`
