@@ -74,6 +74,18 @@ def test_the_old_gdbpid_deeplink_redirects_to_edit(flask_app):
     assert "gdbpid=4242" in location
 
 
+def test_the_old_gdb_command_deeplink_redirects_to_edit(flask_app):
+    """dashboard 的「Start a new gdb session」以前打的是 /?gdb_command=...，
+    換位前就是有效的除錯器深連結，可能有人存過書籤。這條路徑不帶 lesson 也
+    不帶 gdbpid，得單獨釘住。"""
+    user = register_user(flask_app, display_name="rt_j")
+    response = user.http.get("/?gdb_command=mygdb")
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert location.startswith("/edit")
+    assert "gdb_command=mygdb" in location
+
+
 def test_the_lesson_deeplink_redirect_keeps_every_other_query_param(flask_app):
     """轉址不能只挑 lesson 出來、把其他參數（例如 gdb_command）丟在地上——
     那樣使用者拿到的是一個「看起來成功、行為卻不同」的頁面。"""

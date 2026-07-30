@@ -1754,12 +1754,13 @@ def lesson_library():
     標題與作者顯示名稱是使用者輸入，全部靠 Jinja 的 autoescape 轉義
     （模板裡沒有任何 |safe，也沒有任何使用者字串被插進 <script>）。
     """
-    # 舊的除錯器深連結：/?lesson=N（教案庫與外部書籤）與 /?gdbpid=N
-    # （dashboard 的 "Copy Sharable URL" 產生過這種網址，可能已經被貼到別處）。
-    # 主頁換了用途，但那些連結必須繼續有用，而且**整個 query string 要原樣帶過去**
-    # ——gdb_command 之類的參數在轉址時被丟掉，使用者拿到的是一個「看起來成功、
-    # 行為卻不同」的頁面，比直接壞掉更難查。
-    if "lesson" in request.args or "gdbpid" in request.args:
+    # 舊的除錯器深連結：/?lesson=N（教案庫與外部書籤）、/?gdbpid=N
+    # （dashboard 的 "Copy Sharable URL" 產生過這種網址，可能已經被貼到別處）、
+    # /?gdb_command=...（dashboard 的 "Start a new gdb session" 換位前打的
+    # 就是這條，同樣可能被存成書籤）。主頁換了用途，但那些連結必須繼續有用，
+    # 而且**整個 query string 要原樣帶過去**——參數在轉址時被丟掉，使用者
+    # 拿到的是一個「看起來成功、行為卻不同」的頁面，比直接壞掉更難查。
+    if any(k in request.args for k in ("lesson", "gdbpid", "gdb_command")):
         qs = request.query_string.decode("utf-8", "replace")
         target = url_for("http_routes.gdbgui")
         return redirect(f"{target}?{qs}" if qs else target)

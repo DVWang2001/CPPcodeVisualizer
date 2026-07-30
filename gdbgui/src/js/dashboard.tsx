@@ -116,7 +116,8 @@ class StartCommand extends React.Component<any, { value: string }> {
     const params = new URLSearchParams({
       gdb_command: this.state.value
     }).toString();
-    redirect(`/?${params}`);
+    // 主頁換成教案瀏覽之後除錯器搬到 /edit（見第 34 行同樣的修法）。
+    redirect(`/edit?${params}`);
   }
 
   render() {
