@@ -1178,7 +1178,8 @@ class SourceCode extends React.Component<{}, State> {
   };
 
   openLessonLibrary = () => {
-    window.location.href = "/lessons";
+    // 教案庫換到主頁了；/lessons 還在但只是一個轉址，直接打 / 省一趟往返。
+    window.location.href = "/";
   };
 
   tempFullname = '';

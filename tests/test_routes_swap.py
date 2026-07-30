@@ -60,3 +60,37 @@ def test_an_out_of_range_page_is_clamped_not_an_error(flask_app):
     assert response.status_code == 200
     body = response.data.decode("utf-8")
     assert f"{last_page} / {last_page}" in body, body
+
+
+def test_the_old_gdbpid_deeplink_redirects_to_edit(flask_app):
+    """dashboard 的「Connect to Session／Copy Sharable URL」以前產生的是
+    /?gdbpid=N。主頁換了用途之後，這種已經被貼出去的舊網址也得繼續有用，
+    否則使用者打開它只會看到一份教案清單，完全看不出附掛失敗了。"""
+    user = register_user(flask_app, display_name="rt_g")
+    response = user.http.get("/?gdbpid=4242")
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert location.startswith("/edit")
+    assert "gdbpid=4242" in location
+
+
+def test_the_lesson_deeplink_redirect_keeps_every_other_query_param(flask_app):
+    """轉址不能只挑 lesson 出來、把其他參數（例如 gdb_command）丟在地上——
+    那樣使用者拿到的是一個「看起來成功、行為卻不同」的頁面。"""
+    user = register_user(flask_app, display_name="rt_h")
+    response = user.http.get("/?lesson=42&gdb_command=xyz")
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert "lesson=42" in location
+    assert "gdb_command=xyz" in location
+
+
+def test_the_legacy_lessons_redirect_keeps_repeated_tag_params(flask_app):
+    """request.args.to_dict(flat=True) 對重複參數只留第一個；/lessons 若被當
+    長期入口，這樣會悄悄吃掉多選標籤。轉址必須保留兩個 tag。"""
+    user = register_user(flask_app, display_name="rt_i")
+    response = user.http.get("/lessons?tag=a&tag=b")
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert "tag=a" in location
+    assert "tag=b" in location

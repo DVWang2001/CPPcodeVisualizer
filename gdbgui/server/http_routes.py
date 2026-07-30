@@ -1754,11 +1754,15 @@ def lesson_library():
     標題與作者顯示名稱是使用者輸入，全部靠 Jinja 的 autoescape 轉義
     （模板裡沒有任何 |safe，也沒有任何使用者字串被插進 <script>）。
     """
-    # /?lesson=42 是除錯器的舊深連結（教案庫頁與外部書籤都在用）。
-    # 主頁換了用途，但那些連結必須繼續有用。
-    requested_lesson = request.args.get("lesson")
-    if requested_lesson is not None:
-        return redirect(url_for("http_routes.gdbgui", lesson=requested_lesson))
+    # 舊的除錯器深連結：/?lesson=N（教案庫與外部書籤）與 /?gdbpid=N
+    # （dashboard 的 "Copy Sharable URL" 產生過這種網址，可能已經被貼到別處）。
+    # 主頁換了用途，但那些連結必須繼續有用，而且**整個 query string 要原樣帶過去**
+    # ——gdb_command 之類的參數在轉址時被丟掉，使用者拿到的是一個「看起來成功、
+    # 行為卻不同」的頁面，比直接壞掉更難查。
+    if "lesson" in request.args or "gdbpid" in request.args:
+        qs = request.query_string.decode("utf-8", "replace")
+        target = url_for("http_routes.gdbgui")
+        return redirect(f"{target}?{qs}" if qs else target)
 
     add_csrf_token_to_session()
 
@@ -1806,5 +1810,11 @@ def lesson_library():
 @blueprint.route("/lessons", methods=["GET"])
 @authenticate
 def lesson_library_legacy():
-    """教案庫的舊網址。內容搬到主頁了，但書籤要繼續有用。"""
-    return redirect(url_for("http_routes.lesson_library", **request.args.to_dict(flat=True)))
+    """教案庫的舊網址。內容搬到主頁了，但書籤要繼續有用。
+
+    轉址帶的是原始 query string，不是 `request.args.to_dict(flat=True)`——
+    後者對重複參數（例如 `tag=a&tag=b`）只留第一個，會悄悄吃掉多選標籤。
+    """
+    qs = request.query_string.decode("utf-8", "replace")
+    target = url_for("http_routes.lesson_library")
+    return redirect(f"{target}?{qs}" if qs else target)

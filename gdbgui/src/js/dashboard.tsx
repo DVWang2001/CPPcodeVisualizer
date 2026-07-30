@@ -29,7 +29,9 @@ function GdbguiSession(props: { session: GdbguiSession; updateData: Function }) 
   const params = new URLSearchParams({
     gdbpid: session.pid.toString()
   }).toString();
-  const url = `${window.location.origin}/?${params}`;
+  // 主頁換成教案瀏覽之後除錯器搬到 /edit；這條網址可能已經被貼到別處
+  // （"Copy Sharable URL"），所以是 /edit 不是 /。
+  const url = `${window.location.origin}/edit?${params}`;
   const [shareButtonText, setShareButtonText] = useState(copyIcon);
   const [clickedKill, setClickedKill] = useState(false);
   let timeout: NodeJS.Timeout;
