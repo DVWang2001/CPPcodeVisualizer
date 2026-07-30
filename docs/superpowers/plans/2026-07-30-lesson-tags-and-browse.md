@@ -275,6 +275,17 @@ git commit -m "feat(tags): 標籤資料表與正規化"
 - Consumes: Task 1 的 `parse_tag_input`、`TagRejected`
 - Produces: `tags.set_lesson_tags(lesson_id: int, user_id: int, raw: str) -> Optional[List[str]]`（非作者回 `None`）、`tags.tags_for_lessons(lesson_ids: Iterable[int]) -> Dict[int, List[str]]`
 
+**另外要修 Task 1 留下的一個缺陷**（審查發現，使用者裁決在此處一併處理）：
+
+`parse_tag_input` 用 `piece.strip()` 判斷空片段，但 `str.strip()` 不吃 U+200B（零寬空格）
+與 U+FEFF（BOM），那些字元要到 `normalize_tag` 裡才被移除——結果變成空字串，於是
+**整串輸入被拒**。實測 `parse_tag_input("a,,b")` 回 `["a","b"]`，但
+`parse_tag_input("a,​,b")` 拋 `TagRejected`。從網頁複製貼上很容易夾帶這些字元，
+而「只有看不見的字元」的片段比空片段更像手滑。
+
+改法：讓 `normalize_tag` 對「正規化後什麼都不剩」拋一個可辨識的子類，
+`parse_tag_input` 只吞這一種。**不要用比對錯誤訊息字串的方式分辨**——訊息改個字就壞。
+
 - [ ] **Step 1: 寫失敗的測試**
 
 追加到 `tests/test_tags.py`：
@@ -389,6 +400,23 @@ def test_tags_for_lessons_returns_an_entry_for_every_id_asked(flask_app):
 
 def test_tags_for_lessons_with_no_ids_is_an_empty_dict(flask_app):
     assert tags.tags_for_lessons([]) == {}
+
+
+def test_a_zero_width_only_piece_is_skipped_like_an_empty_one():
+    """U+200B（零寬空格）與 U+FEFF（BOM）從網頁複製貼上很常見。
+
+    str.strip() 不吃這兩個字元，所以它們會活到 normalize_tag 才被移除，
+    結果變成空字串 → 整串被拒。空片段跳過、零寬片段爆炸，這兩種行為不該不一致。
+    """
+    assert tags.parse_tag_input("a,​,b") == ["a", "b"]
+    assert tags.parse_tag_input("a,﻿,b") == ["a", "b"]
+
+
+def test_a_genuinely_invalid_tag_still_raises():
+    """寬容只給「空」這一種。太長仍然要拒——否則上面那個改動會順手
+    把長度上限一起吞掉，那就從修一個缺陷變成開一個洞。"""
+    with pytest.raises(tags.TagRejected):
+        tags.parse_tag_input("ok, " + "x" * (tags.MAX_TAG_LENGTH + 1))
 ```
 
 檔案最上面補上 `from contextlib import closing`。
@@ -398,7 +426,43 @@ def test_tags_for_lessons_with_no_ids_is_an_empty_dict(flask_app):
 Run: `python -m pytest tests/test_tags.py -q`
 Expected: FAIL — `AttributeError: module 'gdbgui.server.tags' has no attribute 'set_lesson_tags'`
 
-- [ ] **Step 3: 實作關聯讀寫**
+- [ ] **Step 3a: 修掉零寬字元那個缺陷**
+
+在 `gdbgui/server/tags.py` 的 `TagRejected` 底下加一個子類：
+
+```python
+class EmptyTag(TagRejected):
+    """正規化之後什麼都不剩。
+
+    獨立成一個子類，是為了讓 parse_tag_input 能只寬容「空片段」這一種情況，
+    而不必去比對錯誤訊息字串——訊息改個字那種寫法就壞了。
+    它繼承 TagRejected，所以既有的 `except TagRejected` 呼叫端不受影響。
+    """
+```
+
+`normalize_tag` 裡「空」那一條改成拋 `EmptyTag`（訊息不變）：
+
+```python
+    if not text:
+        raise EmptyTag("標籤不可以是空的。")
+```
+
+`parse_tag_input` 裡原本那個 for 迴圈整段換掉，改成先正規化、只吞 `EmptyTag`：
+
+```python
+    out: List[str] = []
+    for piece in raw.replace("，", ",").split(","):
+        try:
+            tag = normalize_tag(piece)
+        except EmptyTag:
+            # 空片段、或只有空白／零寬字元的片段：那是打字或複製貼上的手滑，
+            # 不是錯誤。長度超標之類的真問題仍然往外拋。
+            continue
+        if tag not in out:
+            out.append(tag)
+```
+
+- [ ] **Step 3b: 實作關聯讀寫**
 
 追加到 `gdbgui/server/tags.py`：
 
@@ -471,13 +535,13 @@ def tags_for_lessons(lesson_ids: Iterable[int]) -> Dict[int, List[str]]:
 - [ ] **Step 4: 確認測試通過**
 
 Run: `python -m pytest tests/test_tags.py -q`
-Expected: PASS（27 passed）
+Expected: PASS（29 passed）
 
 - [ ] **Step 5: 提交**
 
 ```bash
 git add gdbgui/server/tags.py tests/test_tags.py
-git commit -m "feat(tags): 標籤關聯的讀寫，擁有權在交易裡擋"
+git commit -m "feat(tags): 標籤關聯讀寫，並修掉零寬字元讓整串被拒的缺陷"
 ```
 
 ---
