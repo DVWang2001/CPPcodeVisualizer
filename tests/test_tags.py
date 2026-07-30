@@ -95,6 +95,19 @@ def test_setting_tags_stores_them_normalized(flask_app):
     assert tags.tags_for_lessons([lid]) == {lid: ["bst", "stl"]}
 
 
+def test_setting_tags_returns_alphabetical_order_matching_tags_for_lessons(flask_app):
+    """set_lesson_tags 當下回傳的順序，要跟重新整理頁面時 tags_for_lessons 讀回來的
+    順序一致——否則同一批標籤在寫入當下（若照輸入序）跟重新整理後（字母序，
+    tags_for_lessons 用 ORDER BY t.name ASC）會不一樣，UI 上會閃一下。
+    這裡刻意用一個輸入序不等於字母序的例子，讓這條斷言在 sorted() 被拿掉時會紅。
+    """
+    uid = register_user(flask_app, display_name="tag_order").user_id
+    lid = _lesson(uid)
+    result = tags.set_lesson_tags(lid, uid, "zeta, alpha, mid")
+    assert result == ["alpha", "mid", "zeta"]
+    assert tags.tags_for_lessons([lid]) == {lid: result}
+
+
 def test_setting_tags_replaces_wholesale_not_incrementally(flask_app):
     """送什麼就是什麼。增量語意會讓「拿掉一個標籤」變成沒有辦法表達的動作。"""
     uid = register_user(flask_app, display_name="tag_b").user_id
@@ -156,29 +169,32 @@ def test_tags_do_not_count_against_the_storage_quota(flask_app, monkeypatch):
     """配額防的是 bundle 撐爆磁碟。標籤有自己的上限（8 個 × 24 字），本身就有界，
     所以不進配額——否則貼幾個標籤就可能讓一個原本存得下的教案存不下。
 
-    白箱斷言：直接檢查配額用量的 SQL（db._USED_BYTES_SQL）只掃 lessons.bundle_json，
-    不涉及 lesson_tags / tags。如果哪天有人把標籤位元組併進配額計算，這裡要紅——
-    用測試自己重寫一份「只看 lessons」的用量查詢來跟真正的配額邏輯比對數字，
-    突變測試證明抓不到（見 task-2-report.md），所以改成直接檢查配額 SQL 的來源，
-    而不是拿測試自己的 SQL 去對答案。
+    行為性斷言（主要防線）：門檻由測試自己從兩篇教案的實際位元組數算出來，
+    剛好卡在邊界、不留任何餘裕。這樣不管「標籤位元組被併入配額」這件事發生
+    在哪一層——SQL 常數本身，或是 _check_quotas 裡额外的 Python 加總——
+    第二篇教案都會因為餘裕被吃掉而存不下，測試會紅。之前只斷言
+    `db._USED_BYTES_SQL` 這個字串常數不含 "lesson_tags"，那只堵得住「改 SQL
+    常數」這一種寫法；審查者的突變測試把位元組加總寫在 _check_quotas 的
+    Python 邏輯裡（完全不碰那個字串常數），因此完全繞過去、28 passed。
     """
-    assert "lesson_tags" not in db._USED_BYTES_SQL
-    assert "FROM lessons" in db._USED_BYTES_SQL
-
-    monkeypatch.setattr(db, "MAX_USER_BYTES", 3000)
     uid = register_user(flask_app, display_name="tag_quota").user_id
-    lid = _lesson(uid)
+    first_bundle = '{"version":"2.0","source_code":"int main(){}"}'
+    second_bundle = '{"version":"2.0","source_code":"x"}'
+    lid = db.create_lesson(uid, "測試教案", first_bundle)
+
+    # 門檻 = 兩篇教案的位元組數總和，一點餘裕都不留。只要標籤的任何一個
+    # 位元組被算進「這個使用者已用掉的空間」，第二篇就會超過門檻而被拒。
+    first_bytes = len(first_bundle.encode("utf-8"))
+    second_bytes = len(second_bundle.encode("utf-8"))
+    monkeypatch.setattr(db, "MAX_USER_BYTES", first_bytes + second_bytes)
+
     tags.set_lesson_tags(lid, uid, "一, 二, 三, 四, 五, 六, 七, 八")
 
-    # 貼滿標籤之後，這個人的可用空間應該跟貼之前一樣：拿實際的配額查詢
-    # （db._USED_BYTES_SQL，跟 _check_quotas 用的是同一份）來算用量，而不是
-    # 測試自己另外寫一份等價 SQL——那樣測不到「標籤位元組被併進配額」這個突變。
-    with closing(db.connect()) as conn:
-        used = int(conn.execute(
-            db._USED_BYTES_SQL + " WHERE user_id = ?", (uid,)
-        ).fetchone()[0])
-    assert used < 3000
-    assert db.create_lesson(uid, "還存得下", '{"version":"2.0","source_code":"x"}')
+    assert db.create_lesson(uid, "還存得下", second_bundle)
+
+    # 白箱防線（次要，補強而非取代上面的行為性斷言）：目前這份 SQL 常數本身
+    # 沒有牽扯 lesson_tags/tags。
+    assert "lesson_tags" not in db._USED_BYTES_SQL
 
 
 def test_too_many_tags_is_refused_at_the_write_boundary(flask_app):
