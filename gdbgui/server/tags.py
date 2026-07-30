@@ -119,7 +119,9 @@ def set_lesson_tags(lesson_id: int, user_id: int, raw: Optional[str]) -> Optiona
                 (lesson_id, tag_id),
             )
         conn.commit()
-    return tag_names
+    # tags_for_lessons 用 ORDER BY t.name ASC 讀回來；這裡也回字母序，
+    # 避免寫入當下（輸入順序）跟重新整理後（字母序）看到的順序不一致而閃動。
+    return sorted(tag_names)
 
 
 def tags_for_lessons(lesson_ids: Iterable[int]) -> Dict[int, List[str]]:

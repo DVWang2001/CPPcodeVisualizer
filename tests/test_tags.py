@@ -154,29 +154,44 @@ def test_deleting_a_lesson_removes_its_tag_links(flask_app):
 
 def test_tags_do_not_count_against_the_storage_quota(flask_app, monkeypatch):
     """配額防的是 bundle 撐爆磁碟。標籤有自己的上限（8 個 × 24 字），本身就有界，
-    所以不進配額——否則貼幾個標籤就可能讓一個原本存得下的教案存不下。"""
+    所以不進配額——否則貼幾個標籤就可能讓一個原本存得下的教案存不下。
+
+    白箱斷言：直接檢查配額用量的 SQL（db._USED_BYTES_SQL）只掃 lessons.bundle_json，
+    不涉及 lesson_tags / tags。如果哪天有人把標籤位元組併進配額計算，這裡要紅——
+    用測試自己重寫一份「只看 lessons」的用量查詢來跟真正的配額邏輯比對數字，
+    突變測試證明抓不到（見 task-2-report.md），所以改成直接檢查配額 SQL 的來源，
+    而不是拿測試自己的 SQL 去對答案。
+    """
+    assert "lesson_tags" not in db._USED_BYTES_SQL
+    assert "FROM lessons" in db._USED_BYTES_SQL
+
     monkeypatch.setattr(db, "MAX_USER_BYTES", 3000)
     uid = register_user(flask_app, display_name="tag_quota").user_id
     lid = _lesson(uid)
     tags.set_lesson_tags(lid, uid, "一, 二, 三, 四, 五, 六, 七, 八")
 
-    # 貼滿標籤之後，這個人的可用空間應該跟貼之前一樣
+    # 貼滿標籤之後，這個人的可用空間應該跟貼之前一樣：拿實際的配額查詢
+    # （db._USED_BYTES_SQL，跟 _check_quotas 用的是同一份）來算用量，而不是
+    # 測試自己另外寫一份等價 SQL——那樣測不到「標籤位元組被併進配額」這個突變。
     with closing(db.connect()) as conn:
         used = int(conn.execute(
-            "SELECT COALESCE(SUM(LENGTH(CAST(bundle_json AS BLOB))), 0) "
-            "FROM lessons WHERE user_id = ?", (uid,)
+            db._USED_BYTES_SQL + " WHERE user_id = ?", (uid,)
         ).fetchone()[0])
     assert used < 3000
     assert db.create_lesson(uid, "還存得下", '{"version":"2.0","source_code":"x"}')
 
 
 def test_too_many_tags_is_refused_at_the_write_boundary(flask_app):
+    """被拒時，不能連原本已經存在的標籤都一起弄丟——這要求驗證發生在任何
+    毀壞性寫入（DELETE FROM lesson_tags）之前，而不是之後。"""
     uid = register_user(flask_app, display_name="tag_h").user_id
     lid = _lesson(uid)
+    tags.set_lesson_tags(lid, uid, "a, b")
+
     raw = ",".join(f"t{i}" for i in range(tags.MAX_TAGS_PER_LESSON + 1))
     with pytest.raises(tags.TagRejected):
         tags.set_lesson_tags(lid, uid, raw)
-    assert tags.tags_for_lessons([lid]) == {lid: []}
+    assert tags.tags_for_lessons([lid]) == {lid: ["a", "b"]}
 
 
 def test_tags_for_lessons_returns_an_entry_for_every_id_asked(flask_app):
