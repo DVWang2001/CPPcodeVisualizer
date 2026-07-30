@@ -647,6 +647,128 @@ def recent_lessons(limit: int, offset: int) -> List[sqlite3.Row]:
         )
 
 
+#: 搜尋字串的字元上限。超過就截斷——網址是可以被亂改的，把它當輸入不是契約。
+MAX_QUERY_LENGTH = 100
+#: 一次可以篩選幾個標籤。tag 是可重複的 query 參數，不設限就是一個用網址
+#: 就能點的 DoS（跟 ?page=99999999 是同一類問題）。
+MAX_FILTER_TAGS = 8
+#: 標籤列預設顯示幾個。
+FACET_LIMIT = 12
+
+#: LIKE 的萬用字元。不跳脫的話使用者打一個 % 就是無條件全表掃描。
+_LIKE_ESCAPE = str.maketrans({"\\": r"\\", "%": r"\%", "_": r"\_"})
+
+
+def _like_pattern(q: str) -> str:
+    return "%" + q.translate(_LIKE_ESCAPE) + "%"
+
+
+def _clean_query(q) -> str:
+    return (q or "").strip()[:MAX_QUERY_LENGTH] if isinstance(q, str) else ""
+
+
+def _clean_tags(tags) -> List[str]:
+    if not tags:
+        return []
+    # dict.fromkeys 去重且保持順序；順序不影響結果，但影響 SQL 快取命中。
+    return [t for t in dict.fromkeys(tags) if isinstance(t, str) and t][:MAX_FILTER_TAGS]
+
+
+def _search_predicate(q: str, tags: List[str]):
+    """回傳 (WHERE 片段, 參數list)。搜尋、計數、標籤列三處共用同一個條件。
+
+    共用是刻意的：三者若各寫一份，標籤列的計數遲早會跟清單對不起來。
+    """
+    clauses = ["1=1"]
+    params: List = []
+
+    if q:
+        pattern = _like_pattern(q)
+        clauses.append(
+            "(l.title LIKE ? ESCAPE '\\'"
+            " OR u.display_name LIKE ? ESCAPE '\\'"
+            " OR u.username LIKE ? ESCAPE '\\'"
+            " OR EXISTS (SELECT 1 FROM lesson_tags lt JOIN tags t ON t.id = lt.tag_id"
+            "             WHERE lt.lesson_id = l.id AND t.name LIKE ? ESCAPE '\\'))"
+        )
+        params += [pattern] * 4
+
+    if tags:
+        placeholders = ",".join("?" * len(tags))
+        # HAVING COUNT(DISTINCT t.id) = ? 就是「這些標籤全都有」（AND）。
+        clauses.append(
+            f"l.id IN (SELECT lt.lesson_id FROM lesson_tags lt"
+            f"          JOIN tags t ON t.id = lt.tag_id"
+            f"         WHERE t.name IN ({placeholders})"
+            f"         GROUP BY lt.lesson_id"
+            f"        HAVING COUNT(DISTINCT t.id) = ?)"
+        )
+        params += list(tags) + [len(tags)]
+
+    return " AND ".join(clauses), params
+
+
+def search_lessons(q="", tags=(), limit=None, offset=0) -> List[sqlite3.Row]:
+    """一頁搜尋結果。q 與每個標籤之間都是 AND。
+
+    用 EXISTS 而不是 LEFT JOIN tags + DISTINCT：後者會讓一篇教案有幾個標籤就
+    產生幾列，再靠 DISTINCT 收掉，而那跟 ORDER BY + LIMIT/OFFSET 分頁一起用
+    很脆。EXISTS 從一開始就不產生重複列。
+    """
+    q = _clean_query(q)
+    tags = _clean_tags(tags)
+    limit = LESSONS_PER_PAGE if limit is None else max(0, int(limit))
+    offset = max(0, int(offset))
+
+    where, params = _search_predicate(q, tags)
+    with closing(connect()) as conn:
+        return list(
+            conn.execute(
+                "SELECT l.id, l.user_id, l.title, l.created_at, l.updated_at, "
+                "       u.username, u.display_name "
+                "FROM lessons l JOIN users u ON u.id = l.user_id "
+                f"WHERE {where} "
+                "ORDER BY l.updated_at DESC, l.id DESC "
+                "LIMIT ? OFFSET ?",
+                params + [limit, offset],
+            )
+        )
+
+
+def search_count(q="", tags=()) -> int:
+    where, params = _search_predicate(_clean_query(q), _clean_tags(tags))
+    with closing(connect()) as conn:
+        return int(
+            conn.execute(
+                "SELECT COUNT(*) FROM lessons l JOIN users u ON u.id = l.user_id "
+                f"WHERE {where}",
+                params,
+            ).fetchone()[0]
+        )
+
+
+def tag_counts(q="", tags=(), limit=None) -> List[sqlite3.Row]:
+    """目前結果集裡出現的標籤與它們在結果集內的出現次數。
+
+    刻意不是全站計數：只列出結果集裡真的存在的標籤，使用者就點不出空清單——
+    會讓結果變空的標籤根本不會出現在列上。
+    """
+    where, params = _search_predicate(_clean_query(q), _clean_tags(tags))
+    sql = (
+        "SELECT t.name AS name, COUNT(*) AS n "
+        "FROM lesson_tags lt JOIN tags t ON t.id = lt.tag_id "
+        "WHERE lt.lesson_id IN ("
+        "  SELECT l.id FROM lessons l JOIN users u ON u.id = l.user_id "
+        f" WHERE {where}) "
+        "GROUP BY t.id ORDER BY n DESC, t.name ASC"
+    )
+    if limit is not None:
+        sql += " LIMIT ?"
+        params = params + [max(0, int(limit))]
+    with closing(connect()) as conn:
+        return list(conn.execute(sql, params))
+
+
 def lesson_count() -> int:
     with closing(connect()) as conn:
         return int(conn.execute("SELECT COUNT(*) FROM lessons").fetchone()[0])
