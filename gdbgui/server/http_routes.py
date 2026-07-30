@@ -43,8 +43,10 @@ from .http_util import (
     authenticate,
     client_error,
     csrf_protect,
+    current_user_id,
     owner_key,
 )
+from . import db
 from .share_function import require_uploaded_binary
 from . import lesson_gen
 from .prerun import build_gdb_script, parse_prerun_output
@@ -1493,3 +1495,225 @@ def prerun_calltree():
         return jsonify({"ok": False, "reason": "parse_failed"}), 200
 
     return jsonify({"ok": True, "snapshots": snaps})
+
+
+# ── 教案分享 ──────────────────────────────────────────────────────────────────
+#
+# 設計文件：docs/superpowers/specs/2026-07-30-lesson-sharing-design.md
+#
+# ## 這個切片的整個授權面是一條規則
+#
+#   **user_id 永遠取自 session，絕不從請求讀取。**
+#
+# 與 owner_key() 同一個形狀：請求裡能表達的東西當中，不存在「別人的身分」
+# 這個值。所以「請求夾帶 user_id 會怎樣」的答案不是「會被驗掉」，而是
+# 「根本沒有那條讀取路徑」——底下四條路由沒有任何一處讀 body 的 user_id。
+#
+# ## 「另存為自己的」不是特例
+#
+# 開啟別人的教案、改幾行、按儲存：沒有 fork 的話這個動作要嘛失敗、要嘛覆寫
+# 對方的。PUT 到不屬於自己的教案時改成在自己名下建立一份新的（原件一個位元組
+# 都不會動，因為那條路徑上根本沒有 UPDATE）。
+#
+# ## 可見性
+#
+# 每一篇都對每一個登入者可見（使用者 2026-07-30 決定）。沒有 visibility 欄位、
+# 沒有軟刪除、沒有「每條查詢都要記得過濾」的那類漏洞。理由見 db.py 的說明。
+
+#: 請求本體的位元組上限，在**解析 JSON 之前**就擋。
+#:
+#: 只檢查 bundle 大小是不夠的：那要先讓 Flask 把整份 body 讀進記憶體、再讓
+#: json 把它建成 Python 物件，一個 500 MB 的請求在被判定為「太大」之前就已經
+#: 把記憶體吃掉了。留兩倍 bundle 上限的餘裕給 JSON 轉義與其他欄位。
+MAX_LESSON_REQUEST_BYTES = 2 * db.MAX_BUNDLE_BYTES
+
+#: 錯誤訊息刻意只描述「使用者這邊哪裡不對」，不含任何伺服器路徑、限制以外的
+#: 內部細節，也不區分「不存在」與「不是你的」（見 _lesson_not_found）。
+LESSON_TOO_LARGE_MESSAGE = "教案內容超過大小上限，請縮小後再儲存。"
+LESSON_INVALID_MESSAGE = "教案標題或內容格式不正確。"
+LESSON_NOT_FOUND_MESSAGE = "找不到這個教案。"
+
+
+def _lesson_author() -> int:
+    """本次請求要記在誰名下。**唯一**來源是 session。
+
+    未登入時 abort(401) 而不是回退成任何預設身分：fail closed。理論上到不了
+    這裡（全域 require_login 閘門 + @authenticate 在前面），這是那個不變式
+    壞掉時的第二道網——與 _session_prefix() 同一個模式。
+    """
+    user_id = current_user_id()
+    if user_id is None:
+        logger.warning("[authz] refusing a lesson write with no identity")
+        abort(401)
+    return user_id
+
+
+def _lesson_not_found():
+    """「沒有這篇教案」與「這篇不是你的」回同一個東西。
+
+    可見性是全公開，所以「存在與否」本身不是秘密；但刪除的拒絕若與「不存在」
+    可區分，就變成一台「哪些 id 有主人」的探測機。兩者同形，理由與
+    SIGNAL_REFUSED_MESSAGE / ATTACH_REFUSED_MESSAGE 一致。
+    """
+    return jsonify({"message": LESSON_NOT_FOUND_MESSAGE}), 404
+
+
+def _lesson_payload():
+    """驗過的 ((title, bundle_json), None)，或 (None, error_response)。
+
+    回傳的 bundle_json 是**伺服器自己 json.dumps 出來的**，不是使用者送來的
+    字串原文：這樣資料庫裡的那一欄保證是合法 JSON（GET 會把它 parse 回去），
+    而且大小上限量的是實際會被寫進去的那份位元組。
+    """
+    length = request.content_length
+    if length is None or length > MAX_LESSON_REQUEST_BYTES:
+        # content_length is None＝chunked／沒宣告長度。一樣拒絕：不宣告長度就
+        # 沒有辦法在讀進來之前知道它多大，而「先讀再說」正是要避免的東西。
+        return None, (jsonify({"message": LESSON_TOO_LARGE_MESSAGE}), 413)
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return None, (jsonify({"message": LESSON_INVALID_MESSAGE}), 400)
+
+    title = body.get("title")
+    bundle = body.get("bundle")
+    # body 裡就算夾帶 user_id 也不會被看到——這裡只取這兩個欄位。
+    if not isinstance(title, str) or not isinstance(bundle, dict):
+        return None, (jsonify({"message": LESSON_INVALID_MESSAGE}), 400)
+
+    title = title.strip()
+    if not title or len(title) > db.MAX_TITLE_LENGTH:
+        return None, (jsonify({"message": LESSON_INVALID_MESSAGE}), 400)
+    if any(ch < " " or ch == "\x7f" for ch in title):
+        # 控制字元在 HTML 裡不可見，但會弄壞 log 與匯出格式（同 auth 的
+        # display_name 檢查）。這不是 XSS 防線——那一層是模板的 autoescape。
+        return None, (jsonify({"message": LESSON_INVALID_MESSAGE}), 400)
+
+    try:
+        bundle_json = json.dumps(bundle, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return None, (jsonify({"message": LESSON_INVALID_MESSAGE}), 400)
+    if len(bundle_json.encode("utf-8")) > db.MAX_BUNDLE_BYTES:
+        return None, (jsonify({"message": LESSON_TOO_LARGE_MESSAGE}), 413)
+
+    return (title, bundle_json), None
+
+
+@blueprint.route("/api/lessons", methods=["POST"])
+@authenticate
+def create_lesson():
+    """建立一篇教案。擁有者取自 session。"""
+    user_id = _lesson_author()
+    fields, error = _lesson_payload()
+    if error is not None:
+        return error
+    title, bundle_json = fields
+    try:
+        lesson_id = db.create_lesson(user_id, title, bundle_json)
+    except db.LessonRejected:
+        return jsonify({"message": LESSON_INVALID_MESSAGE}), 400
+    return jsonify({"id": lesson_id, "forked": False}), 201
+
+
+@blueprint.route("/api/lessons/<int:lesson_id>", methods=["PUT"])
+@authenticate
+def update_lesson(lesson_id: int):
+    """更新自己的教案；目標不屬於自己時改為在自己名下建立一份副本。
+
+    非擁有者走的是 create_lesson，那條路徑上沒有任何 UPDATE，所以原件不可能
+    被改到。擁有者那一條仍然走 `WHERE id = ? AND user_id = ?`（db 層），不是
+    只靠這裡的 if。
+    """
+    user_id = _lesson_author()
+    fields, error = _lesson_payload()
+    if error is not None:
+        return error
+    title, bundle_json = fields
+
+    existing = db.lesson_by_id(lesson_id)
+    if existing is None:
+        return _lesson_not_found()
+
+    try:
+        if int(existing["user_id"]) == user_id:
+            if not db.update_lesson_owned_by(lesson_id, user_id, title, bundle_json):
+                return _lesson_not_found()
+            return jsonify({"id": lesson_id, "forked": False})
+        new_id = db.create_lesson(user_id, title, bundle_json)
+    except db.LessonRejected:
+        return jsonify({"message": LESSON_INVALID_MESSAGE}), 400
+    return jsonify({"id": new_id, "forked": True}), 201
+
+
+@blueprint.route("/api/lessons/<int:lesson_id>", methods=["DELETE"])
+@authenticate
+def delete_lesson(lesson_id: int):
+    """硬刪除自己的教案。非擁有者一律拒絕（不是變成別的行為）。"""
+    user_id = _lesson_author()
+    try:
+        deleted = db.delete_lesson_owned_by(lesson_id, user_id)
+    except db.LessonRejected:
+        return _lesson_not_found()
+    if not deleted:
+        logger.info("[authz] refused delete of lesson %s", lesson_id)
+        return _lesson_not_found()
+    return jsonify({"ok": True})
+
+
+@blueprint.route("/api/lessons/<int:lesson_id>", methods=["GET"])
+@authenticate
+def get_lesson(lesson_id: int):
+    """讀一篇教案的 bundle。任何登入者都可以（可見性見上）。"""
+    row = db.lesson_by_id(lesson_id)
+    if row is None:
+        return _lesson_not_found()
+    try:
+        bundle = json.loads(row["bundle_json"])
+    except ValueError:
+        # 寫入時是伺服器自己 dumps 的，所以理論上到不了這裡。
+        logger.warning("[lessons] lesson %s holds unparsable json", lesson_id)
+        return _lesson_not_found()
+    return jsonify(
+        {
+            "id": int(row["id"]),
+            "title": row["title"],
+            "bundle": bundle,
+            "author_username": row["username"],
+            "author_display_name": row["display_name"],
+            "updated_at": row["updated_at"],
+            "is_mine": current_user_id() == int(row["user_id"]),
+        }
+    )
+
+
+@blueprint.route("/lessons", methods=["GET"])
+@authenticate
+def lesson_library():
+    """教案庫：全部教案，每頁 db.LESSONS_PER_PAGE 篇，updated_at DESC。
+
+    標題與作者顯示名稱是使用者輸入，全部靠 Jinja 的 autoescape 轉義
+    （lessons.html 裡沒有任何 |safe，也沒有任何使用者字串被插進 <script>）。
+    """
+    add_csrf_token_to_session()
+
+    per_page = db.LESSONS_PER_PAGE
+    total = db.lesson_count()
+    last_page = max(1, -(-total // per_page))  # ceil
+
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    # 夾到 [1, last_page]：否則 ?page=99999999999 會變成一個
+    # OFFSET 999999999990 的全表掃描，一個 GET 就能點的 DoS。
+    page = min(max(1, page), last_page)
+
+    return render_template(
+        "lessons.html",
+        lessons=db.recent_lessons(per_page, (page - 1) * per_page),
+        page=page,
+        last_page=last_page,
+        total=total,
+        current_user_id=current_user_id(),
+        csrf_token=session["csrf_token"],
+    )

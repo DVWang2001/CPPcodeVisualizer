@@ -10,7 +10,9 @@
   {% if lessons %}
     <ul data-testid="profile-lessons">
       {% for lesson in lessons %}
-        <li data-testid="profile-lesson">{{ lesson["title"] }}</li>
+        <li data-testid="profile-lesson"><a
+          href="{{ url_for('http_routes.gdbgui') }}?lesson={{ lesson['id'] }}"
+        >{{ lesson["title"] }}</a></li>
       {% endfor %}
     </ul>
   {% else %}
@@ -18,6 +20,7 @@
   {% endif %}
 
   <p class="hint">
+    <a href="{{ url_for('http_routes.lesson_library') }}">教案庫</a> ·
     <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
     {% if is_self %} · <a href="{{ url_for('auth.logout') }}">登出</a>{% endif %}
   </p>

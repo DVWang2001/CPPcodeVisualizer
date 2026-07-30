@@ -1,0 +1,81 @@
+{% extends "_auth_base.html" %}
+{% block title %}教案庫 - gdbgui{% endblock %}
+{% block body %}
+  {# Jinja 的 autoescape 是開著的。lesson["title"] 與 lesson["display_name"] 都是
+     使用者輸入，一律靠它轉義；這一頁沒有任何 |safe，也沒有任何使用者字串被插進
+     <script> 或 HTML 屬性裡——底下那段 JS 只讀 data-lesson-id（整數）。 #}
+  <h1>教案庫</h1>
+  <p class="hint" data-testid="lesson-library-total">共 {{ total }} 篇教案</p>
+
+  {% if lessons %}
+    <ul data-testid="lesson-library-list" style="list-style: none; padding: 0;">
+      {% for lesson in lessons %}
+        <li data-testid="lesson-library-item"
+            style="padding: 0.6rem 0; border-bottom: 1px solid #e2e6eb;">
+          <a href="{{ url_for('http_routes.gdbgui') }}?lesson={{ lesson['id'] }}"
+             data-testid="lesson-library-title">{{ lesson["title"] }}</a>
+          <div class="hint" style="margin-top: 0.2rem;">
+            <a href="{{ url_for('auth.profile', username=lesson['username']) }}"
+               data-testid="lesson-library-author">{{ lesson["display_name"] }}</a>
+            · {{ lesson["updated_at"] }}
+            {% if current_user_id is not none and lesson["user_id"] == current_user_id %}
+              · <button type="button"
+                        class="lesson-delete"
+                        data-lesson-id="{{ lesson['id'] }}"
+                        data-testid="lesson-delete"
+                        style="width: auto; margin: 0; padding: 0.1rem 0.5rem;
+                               background: #8a1c11; font-size: 0.8rem;">刪除</button>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="hint" data-testid="lesson-library-empty">還沒有任何教案。</p>
+  {% endif %}
+
+  <p class="hint">
+    {% if page > 1 %}
+      <a href="{{ url_for('http_routes.lesson_library', page=page - 1) }}"
+         data-testid="lesson-library-prev">← 上一頁</a>
+    {% endif %}
+    <span data-testid="lesson-library-page">第 {{ page }} / {{ last_page }} 頁</span>
+    {% if page < last_page %}
+      <a href="{{ url_for('http_routes.lesson_library', page=page + 1) }}"
+         data-testid="lesson-library-next">下一頁 →</a>
+    {% endif %}
+  </p>
+
+  <p class="hint">
+    <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
+  </p>
+
+  {# csrf_token 是伺服器產生的 hex，經由 data- 屬性交給下面的腳本讀取。
+     刻意不把它（或任何值）插進 JS 原始碼字串裡——那條路徑上一旦哪天換成
+     使用者可控的值就是 XSS，用屬性讀取就不會有那個形狀。 #}
+  <script data-csrf="{{ csrf_token }}">
+    // 刪除走 DELETE /api/lessons/<id>：擁有權在伺服器端判斷（SQL 的
+    // WHERE user_id = ?），這顆按鈕只是入口。非擁有者就算自己造一個請求
+    // 送出去也只會拿到 404。
+    (function () {
+      var token = document.currentScript.getAttribute("data-csrf");
+      document.querySelectorAll(".lesson-delete").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var id = button.getAttribute("data-lesson-id");
+          if (!window.confirm("刪除這篇教案？此操作無法復原。")) return;
+          fetch("/api/lessons/" + encodeURIComponent(id), {
+            method: "DELETE",
+            headers: { "x-csrftoken": token },
+            credentials: "same-origin"
+          }).then(function (response) {
+            if (response.ok) {
+              window.location.reload();
+            } else {
+              window.alert("刪除失敗。");
+            }
+          });
+        });
+      });
+    })();
+  </script>
+{% endblock %}

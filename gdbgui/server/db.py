@@ -373,8 +373,147 @@ def user_count() -> int:
 # ---------------------------------------------------------------------------
 # lessons
 #
-# 這一輪只**讀** lessons。寫入路徑（上傳／編輯／可見性）屬於下一個切片。
+# ## 可見性：全部公開給登入者
+#
+# 使用者於 2026-07-30 決定「每一篇存下來的教案都對每一個登入者可見」，所以
+# **沒有** visibility 欄位、**沒有** 軟刪除。這不是為了省一個欄位：有那種欄位
+# 時，每一條查詢都必須記得過濾，漏掉任何一條就是資料外洩，而那種疏漏在 code
+# review 裡幾乎看不出來。沒有可漏的過濾，就沒有那一整類漏洞。
+#
+# ## 授權：user_id 永遠取自 session
+#
+# 本模組的函式一律把 user_id 當成**呼叫端已經從 session 取好的身分**。
+# 「是不是擁有者」這件事寫在 SQL 的 WHERE 子句裡（`AND user_id = ?`），不是
+# 先 SELECT 出來再用 Python 比對——WHERE 版本沒有 check-then-act 的空隙，
+# 而且擋不住的時候是「改到 0 列」而不是「改到別人的那一列」。
 # ---------------------------------------------------------------------------
+
+#: 標題長度上限（字元）。標題會被渲染進教案庫頁與個人檔案頁。
+MAX_TITLE_LENGTH = 200
+
+#: bundle 原文的位元組上限。這是使用者提供的 JSON：沒有上限就等於一條把
+#: SQLite 檔案與伺服器記憶體塞爆的路徑（一個請求即可，不需要任何權限）。
+MAX_BUNDLE_BYTES = 1_000_000
+
+#: 教案庫頁每頁筆數。
+LESSONS_PER_PAGE = 10
+
+
+class LessonRejected(ValueError):
+    """教案的標題或內容不符合儲存層的限制。
+
+    在資料層而不只是在路由層檢查：路由那一層會回一個乾淨的 400/413，這一層
+    則保證「不管哪個呼叫端、將來多加幾條路由」，超過上限的東西都進不了資料庫。
+    """
+
+
+def _require_user_id(user_id) -> int:
+    """把 user_id 收成一個真的正整數，否則直接拒絕。
+
+    fail closed：一個壞掉的身分（None、字串、True）絕不可以被當成某個人的
+    id 送進 WHERE 子句去。
+    """
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        raise LessonRejected("a lesson needs a real user id")
+    return user_id
+
+
+def _require_lesson_id(lesson_id) -> Optional[int]:
+    if isinstance(lesson_id, bool) or not isinstance(lesson_id, int) or lesson_id <= 0:
+        return None
+    return lesson_id
+
+
+def _validated_lesson(title, bundle_json):
+    """(title, bundle_json)，不合格就 raise LessonRejected。"""
+    if not isinstance(title, str) or not isinstance(bundle_json, str):
+        raise LessonRejected("lesson title and bundle must both be text")
+    title = title.strip()
+    if not title:
+        raise LessonRejected("a lesson needs a title")
+    if len(title) > MAX_TITLE_LENGTH:
+        raise LessonRejected("lesson title is too long")
+    # 位元組而不是字元：撐爆磁碟與記憶體的是位元組，而一個中文字元是三個。
+    if len(bundle_json.encode("utf-8")) > MAX_BUNDLE_BYTES:
+        raise LessonRejected("lesson bundle is too large")
+    return title, bundle_json
+
+
+def create_lesson(user_id: int, title: str, bundle_json: str) -> int:
+    """新增一篇教案，回傳它的 id。
+
+    user_id 由呼叫端從 session 取得（http_util.current_user_id），永遠不是
+    請求本體裡的欄位。
+    """
+    user_id = _require_user_id(user_id)
+    title, bundle_json = _validated_lesson(title, bundle_json)
+    now = _now()
+    with closing(connect()) as conn:
+        cursor = conn.execute(
+            "INSERT INTO lessons (user_id, title, bundle_json, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, title, bundle_json, now, now),
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
+
+
+def lesson_by_id(lesson_id: int) -> Optional[sqlite3.Row]:
+    """一篇教案（含 bundle 原文與作者資訊）。任何登入者都讀得到——見上方
+    「可見性」的說明，這裡刻意沒有 user_id 條件。"""
+    lesson_id = _require_lesson_id(lesson_id)
+    if lesson_id is None:
+        return None
+    with closing(connect()) as conn:
+        return conn.execute(
+            "SELECT l.id, l.user_id, l.title, l.bundle_json, l.created_at, "
+            "       l.updated_at, u.username, u.display_name "
+            "FROM lessons l JOIN users u ON u.id = l.user_id "
+            "WHERE l.id = ?",
+            (lesson_id,),
+        ).fetchone()
+
+
+def update_lesson_owned_by(
+    lesson_id: int, user_id: int, title: str, bundle_json: str
+) -> bool:
+    """只更新「這個 id 而且屬於這個 user」的那一列，回傳有沒有真的改到。
+
+    `AND user_id = ?` 才是授權本身。呼叫端（http_routes）在此之前還會自己看
+    一次擁有權以決定要更新還是要另存副本，但那是**行為**分支；這裡的 WHERE
+    是最後一道，少了它，那個分支寫錯就會直接覆寫別人的教案。
+    """
+    user_id = _require_user_id(user_id)
+    lesson_id = _require_lesson_id(lesson_id)
+    if lesson_id is None:
+        return False
+    title, bundle_json = _validated_lesson(title, bundle_json)
+    with closing(connect()) as conn:
+        cursor = conn.execute(
+            "UPDATE lessons SET title = ?, bundle_json = ?, updated_at = ? "
+            "WHERE id = ? AND user_id = ?",
+            (title, bundle_json, _now(), lesson_id, user_id),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+
+
+def delete_lesson_owned_by(lesson_id: int, user_id: int) -> bool:
+    """硬刪除，只刪自己的那一列；回傳有沒有真的刪到。
+
+    硬刪除而不是軟刪除：軟刪除會讓「全部公開」的簡單性失效——每一條查詢又要
+    記得多過濾一個 `deleted_at IS NULL`，正是這個設計刻意避開的那類疏漏。
+    """
+    user_id = _require_user_id(user_id)
+    lesson_id = _require_lesson_id(lesson_id)
+    if lesson_id is None:
+        return False
+    with closing(connect()) as conn:
+        cursor = conn.execute(
+            "DELETE FROM lessons WHERE id = ? AND user_id = ?", (lesson_id, user_id)
+        )
+        conn.commit()
+        return cursor.rowcount == 1
 
 
 def lessons_for_user(user_id: int) -> List[sqlite3.Row]:
@@ -393,6 +532,34 @@ def lessons_for_user(user_id: int) -> List[sqlite3.Row]:
                 (user_id,),
             )
         )
+
+
+def recent_lessons(limit: int, offset: int) -> List[sqlite3.Row]:
+    """教案庫頁的一頁：全部教案，`updated_at DESC, id DESC`。
+
+    第二個排序鍵不是裝飾。updated_at 只到秒（_now()），同一秒存下的幾篇教案
+    光靠它沒有確定的先後，而 LIMIT/OFFSET 分頁在排序不是全序時會讓第 1 頁與
+    第 2 頁重複或遺漏項目。id 是 PRIMARY KEY，補上去就是全序。
+    索引見 migrations/0002_lessons_recent_index.sql。
+    """
+    limit = max(0, int(limit))
+    offset = max(0, int(offset))
+    with closing(connect()) as conn:
+        return list(
+            conn.execute(
+                "SELECT l.id, l.user_id, l.title, l.created_at, l.updated_at, "
+                "       u.username, u.display_name "
+                "FROM lessons l JOIN users u ON u.id = l.user_id "
+                "ORDER BY l.updated_at DESC, l.id DESC "
+                "LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+        )
+
+
+def lesson_count() -> int:
+    with closing(connect()) as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM lessons").fetchone()[0])
 
 
 # ---------------------------------------------------------------------------

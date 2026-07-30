@@ -95,6 +95,15 @@ class SourceCode extends React.Component<{}, State> {
   };
 
   componentDidMount() {
+    // /?lesson=<id>：從教案庫或個人檔案頁點進來的。伺服器上的那一篇優先於
+    // localStorage 的 autosave——使用者剛剛才明確選了要開哪一篇教案。
+    const requestedLesson = this.lessonIdFromUrl();
+    if (requestedLesson !== null) {
+      window.addEventListener("beforeunload", this.saveAutosave);
+      this.loadLessonFromServer(requestedLesson);
+      return;
+    }
+
     // 優先從 autosave JSON 還原（最可靠，格式同 Export JSON）
     try {
       const raw = JSON.parse(localStorage.getItem("gdbgui_autosave") || "null");
@@ -869,7 +878,9 @@ class SourceCode extends React.Component<{}, State> {
     GdbApi.run_gdb_command(["-interpreter-exec console \"delete\"", GdbApi.get_break_list_cmd()]);
   };
 
-  exportProject = () => {
+  // 目前編輯中的內容做成一份 bundle。Export JSON（下載成檔案）與
+  // 「存到我的帳號」（存進伺服器）送出去的是同一份東西。
+  buildProjectBundle = () => {
     // Mirror saveAutosave's v2 bundle shape exactly: source_code already carries
     // the //@ comments inline, so there is no separate line_data to emit. Emitting
     // line_data here would make normalizeBundle() re-append every directive on
@@ -878,13 +889,17 @@ class SourceCode extends React.Component<{}, State> {
     const programInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
     const breakpoints = store.get("breakpoints") || [];
 
-    const projectData = {
+    return {
       version: "2.0",
       fullname_to_render: this.state.fullname_to_render || "",
       source_code: source_code,
       breakpoints: breakpoints,
       program_input: programInput,
     };
+  };
+
+  exportProject = () => {
+    const projectData = this.buildProjectBundle();
 
     const jsonStr = JSON.stringify(projectData, null, 2);
 
@@ -941,21 +956,33 @@ class SourceCode extends React.Component<{}, State> {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // 若 GDB inferior 正在執行或暫停中，先強制終止，再進行 import
-    const infState = store.get("inferior_program");
-    if (
-      infState === constants.inferior_states.running ||
-      infState === constants.inferior_states.paused
-    ) {
-      GdbApi.run_gdb_command("kill");
-      Actions.inferior_program_exited();
-    }
-
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        const projectData = JSON.parse(content);
+        this.applyProjectBundle(JSON.parse(content));
+      } catch (err) {
+        console.error("Error parsing project file", err);
+        Actions.add_console_entries("Error parsing project file", constants.console_entry_type.STD_ERR);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
+  // 把一份 bundle 套進編輯器。「Import JSON」（本機檔案）與「從教案庫開啟」
+  // （伺服器上的教案）走同一條路徑：兩邊拿到的是同一種 bundle 物件，拆成兩份
+  // 實作就會有一天只有其中一邊懂新的欄位。
+  applyProjectBundle = (projectData: any) => {
+        // 若 GDB inferior 正在執行或暫停中，先強制終止，再套用新的 bundle
+        const infState = store.get("inferior_program");
+        if (
+          infState === constants.inferior_states.running ||
+          infState === constants.inferior_states.paused
+        ) {
+          GdbApi.run_gdb_command("kill");
+          Actions.inferior_program_exited();
+        }
 
         // Legacy (v1) projects carry guide/tts/layout separately in line_data;
         // normalizeBundle merges that into //@ comments on the matching source lines
@@ -1047,15 +1074,105 @@ class SourceCode extends React.Component<{}, State> {
         store.set("fullname_to_render", "");
         store.set("source_code_state", constants.source_code_states.NONE_AVAILABLE);
         store.set("edit_mode", true);
-
-      } catch (err) {
-        console.error("Error parsing project file", err);
-        Actions.add_console_entries("Error parsing project file", constants.console_entry_type.STD_ERR);
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
   };
+
+  // ── 教案分享 ───────────────────────────────────────────────────────────────
+  //
+  // Import JSON / Export JSON（本機檔案）保留不動——備份與離線交換仍然有用。
+  // 底下這兩顆是另一條路：存進自己的帳號、從教案庫開啟別人的。
+  //
+  // 擁有權完全由伺服器決定（session 裡的 user_id）。前端這裡送出的 lesson id
+  // 只是「要更新哪一篇」，不是「這篇算誰的」——PUT 到別人的教案時伺服器會在
+  // 呼叫者名下建立一份副本，所以下面不需要、也不應該自己判斷「這篇是不是我的」。
+
+  //: 目前這份內容對應到伺服器上的哪一篇教案（沒有就是還沒存過）。
+  currentLessonId: number | null = null;
+  currentLessonTitle: string | null = null;
+
+  lessonIdFromUrl = (): number | null => {
+    try {
+      const raw = new URLSearchParams(window.location.search).get("lesson");
+      if (!raw) return null;
+      const id = parseInt(raw, 10);
+      return Number.isFinite(id) && id > 0 ? id : null;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  loadLessonFromServer = (lessonId: number) => {
+    fetch(`/api/lessons/${lessonId}`, { credentials: "same-origin" })
+      .then((response) =>
+        response.ok ? response.json() : Promise.reject(new Error("load failed"))
+      )
+      .then((payload) => {
+        this.currentLessonId = payload.id;
+        this.currentLessonTitle = payload.title;
+        this.applyProjectBundle(payload.bundle || {});
+        Actions.add_console_entries(
+          `已載入教案「${payload.title}」（作者：${payload.author_display_name}）。` +
+            (payload.is_mine ? "" : " 儲存時會存成你自己的一份副本。"),
+          constants.console_entry_type.GDBGUI_OUTPUT
+        );
+      })
+      .catch(() => {
+        Actions.add_console_entries(
+          "無法載入教案。",
+          constants.console_entry_type.STD_ERR
+        );
+      });
+  };
+
+  saveLessonToAccount = () => {
+    const suggested = this.currentLessonTitle || "我的教案";
+    const title = window.prompt("教案標題", suggested);
+    if (title === null) return;
+    const trimmed = title.trim();
+    if (!trimmed) {
+      window.alert("標題不可為空。");
+      return;
+    }
+
+    const isUpdate = this.currentLessonId !== null;
+    fetch(isUpdate ? `/api/lessons/${this.currentLessonId}` : "/api/lessons", {
+      method: isUpdate ? "PUT" : "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "x-csrftoken": (window as any).initial_data?.csrf_token || "",
+      },
+      body: JSON.stringify({ title: trimmed, bundle: this.buildProjectBundle() }),
+    })
+      .then((response) =>
+        response
+          .json()
+          .catch(() => ({}))
+          .then((payload: any) => {
+            if (!response.ok) {
+              throw new Error(payload.message || "儲存失敗。");
+            }
+            return payload;
+          })
+      )
+      .then((payload: any) => {
+        this.currentLessonId = payload.id;
+        this.currentLessonTitle = trimmed;
+        Actions.add_console_entries(
+          payload.forked
+            ? `這篇教案不是你的，已在你名下另存一份「${trimmed}」（原作者的版本沒有被更動）。`
+            : `教案「${trimmed}」已儲存到你的帳號。`,
+          constants.console_entry_type.GDBGUI_OUTPUT
+        );
+      })
+      .catch((err: any) => {
+        window.alert(err && err.message ? err.message : "儲存失敗。");
+      });
+  };
+
+  openLessonLibrary = () => {
+    window.location.href = "/lessons";
+  };
+
   tempFullname = '';
   lastLoadedFilename: string | null = null;
   render() {
@@ -1129,6 +1246,24 @@ class SourceCode extends React.Component<{}, State> {
                 className="btn btn-default btn-sm"
                 style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
                 Export JSON
+              </button>
+              {/* Import/Export JSON 讀寫本機檔案（備份與離線交換）；底下兩顆是
+                  帳號那條路：存進伺服器、以及瀏覽別人的教案。 */}
+              <button
+                onClick={this.saveLessonToAccount}
+                data-testid="save-lesson-to-account"
+                className="btn btn-default btn-sm"
+                title="把目前的程式碼與斷點存成你帳號底下的一篇教案"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                存到我的帳號
+              </button>
+              <button
+                onClick={this.openLessonLibrary}
+                data-testid="open-lesson-library"
+                className="btn btn-default btn-sm"
+                title="瀏覽所有人的教案"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                從教案庫開啟
               </button>
               <button
                 onClick={this.clearAllBreakpoints}

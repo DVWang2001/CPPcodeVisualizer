@@ -98,15 +98,31 @@ def csrf_protect_all_post_and_cross_origin_requests():
     if is_cross_origin(request):
         logger.warning("Received cross origin request. Aborting")
         abort(403)
-    if request.method in ["POST", "PUT"]:
+    # DELETE 加進來的理由與 POST/PUT 完全一樣：它會改變伺服器狀態
+    # （/api/lessons/<id> 是硬刪除）。跨站的 DELETE 目前還被另外兩層擋著
+    # （SameSite=Lax 不帶 cookie、上面的 is_cross_origin 會 403），但一個
+    # 「只保護部分變更方法」的 CSRF 閘門遲早會在有人加第五條路由時漏掉。
+    if request.method in ["POST", "PUT", "DELETE", "PATCH"]:
         server_token = session.get("csrf_token")
+        if not isinstance(server_token, str) or not server_token:
+            # session 裡沒有 token 時，底下每一個 `server_token == X` 都會在
+            # 「請求也沒帶」的情況下變成 None == None 而放行。已登入的 session
+            # 一定有 token（start_user_session 會種），所以這條只會擋到未登入的
+            # 請求——但一個「兩邊都沒有就算通過」的比對不該存在。
+            logger.warning("Received a state-changing request with no session token")
+            abort(403)
         if server_token == request.form.get("csrf_token"):
             return success
         elif server_token == request.environ.get("HTTP_X_CSRFTOKEN"):
             return success
-        elif request.json and server_token == request.json.get("csrf_token"):
-            return success
         else:
+            # get_json(silent=True) 而不是 request.json：後者在 Content-Type
+            # 不是 application/json 時會丟 415，於是「CSRF token 不對」與
+            # 「body 不是 JSON」變成兩種不同的失敗，而且 415 比 403 難查。
+            # 判斷本身沒有放寬——token 仍然必須完全相等才放行。
+            body = request.get_json(silent=True)
+            if isinstance(body, dict) and server_token == body.get("csrf_token"):
+                return success
             logger.warning("Received invalid csrf token. Aborting")
             abort(403)
 

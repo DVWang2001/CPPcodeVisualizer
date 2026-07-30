@@ -1,0 +1,13 @@
+-- 教案庫頁的全域排序索引。
+--
+-- ★ Migration 必須寫成冪等的 ★（理由見 0001 與 db.migrate() 的說明）
+--
+-- 0001 只建了 `lessons (user_id)`，那涵蓋的是個人檔案頁的 `WHERE user_id = ?`。
+-- 教案庫頁沒有 WHERE，是「全部教案依 updated_at 由新到舊、每頁 10 筆」，
+-- 用不到那個索引，會退化成全表掃描 + 排序。
+--
+-- 第二個鍵是 id：updated_at 的精度只到秒（db._now()），同一秒內存的多篇教案
+-- 光靠 updated_at 沒有確定的先後。分頁是 LIMIT/OFFSET，排序不是全序的話，
+-- 第 1 頁與第 2 頁之間就會出現重複或遺漏的項目。id 是 PRIMARY KEY，補上去
+-- 之後這個排序是全序。
+CREATE INDEX IF NOT EXISTS lessons_recent_idx ON lessons (updated_at DESC, id DESC);
