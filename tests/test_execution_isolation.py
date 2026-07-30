@@ -214,6 +214,91 @@ def test_only_loopback_exists_in_the_session_namespace(two_sessions):
 
 
 # ---------------------------------------------------------------------------
+# 伺服器的環境變數不進使用者的程式
+#
+# 部署時 compose 會把 NVIDIA_API_KEY / LESSON_AI_API_KEY 放進伺服器行程的環境。
+# 使用者編譯出來的程式跟 GDB 走同一個 confine()，而且以該 session 的帳號執行——
+# 只要 confine() 沒有 `env -i`，那支程式讀自己的 environ 就拿到金鑰。降權與
+# namespace 完全擋不住：值是跟著 exec 交到它手上的。
+#
+# 這裡不去讀真的金鑰（部署上目前是空字串，unset 檢查證明不了任何事），而是自己
+# 塞一個形狀相同、內容可辨識的假值進伺服器行程的環境，再主張使用者的程式看不到。
+#
+# 負向對照：把 confine() 的 "-i" 拿掉，這個測試必須變紅。
+# ---------------------------------------------------------------------------
+
+_CANARY_NAME = "GDBGUI_TEST_FAKE_API_KEY"
+_CANARY_VALUE = "sk-canary-e5f0b1d2-must-not-reach-user-code"
+
+_DUMP_ENV_SOURCE = """
+    #include <stdio.h>
+    #include <stdlib.h>
+    extern char **environ;
+    int main() {
+        const char *v = getenv("%s");
+        printf("CANARY:%%s\\n", v ? v : "(absent)");
+        for (char **e = environ; *e; ++e) printf("ENV:%%s\\n", *e);
+        return 0;
+    }
+""" % _CANARY_NAME
+
+
+def test_user_code_cannot_read_the_servers_environment(two_sessions, monkeypatch):
+    jail_a, _ = two_sessions
+    monkeypatch.setenv(_CANARY_NAME, _CANARY_VALUE)
+
+    result = _compile_and_run(jail_a, "dump_env.cpp", _DUMP_ENV_SOURCE)
+    assert result.returncode == 0, result.stderr
+
+    assert _CANARY_VALUE not in result.stdout, (
+        "the server's environment leaked into user code -- confine() must use `env -i`"
+    )
+    assert "CANARY:(absent)" in result.stdout, result.stdout
+
+    # 而且是**整份**環境都沒過去，不是只有那一個變數被擋掉。
+    seen = {
+        line[len("ENV:"):].split("=", 1)[0]
+        for line in result.stdout.splitlines()
+        if line.startswith("ENV:")
+    }
+    assert seen == {"HOME", "TMPDIR", "PATH"}, f"unexpected inherited variables: {seen}"
+
+    # PATH 必須真的在（沒有它 g++/gdb 這種相對 argv[0] 解析不到），
+    # 否則上面的主張可以靠「環境整個是空的」矇混過關。
+    assert f"ENV:PATH={os.environ['PATH']}" in result.stdout
+
+
+def test_every_confined_child_starts_from_an_empty_environment(two_sessions, monkeypatch):
+    """不是只有使用者的 C++——g++、gdb、read_helper、TTS 轉檔鏈走的是同一個
+    confine()。這裡直接問 `env` 一個被關住的行程實際拿到什麼，涵蓋那些
+    不經過編譯器的路徑。"""
+    jail_a, _ = two_sessions
+    monkeypatch.setenv(_CANARY_NAME, _CANARY_VALUE)
+
+    result = subprocess.run(
+        jail_manager.confine(jail_a, ["/usr/bin/env"]),
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    names = {line.split("=", 1)[0] for line in result.stdout.splitlines() if "=" in line}
+    assert names == {"HOME", "TMPDIR", "PATH"}, result.stdout
+
+
+def test_child_environment_lists_everything_the_child_gets(two_sessions):
+    """白名單是唯一的來源：child_environment() 就是子行程環境的全部內容。"""
+    jail_a, _ = two_sessions
+    env = jail_manager.child_environment(jail_a)
+    assert f"HOME={jail_a.dir}" in env
+    assert f"TMPDIR={jail_a.dir}" in env
+    assert {item.split("=", 1)[0] for item in env} == {"HOME", "TMPDIR", "PATH"}
+
+    argv = jail_manager.confine(jail_a, ["/bin/true"])
+    assert argv[argv.index(jail_manager._ENV) + 1] == "-i", (
+        "confine() must start the child from an empty environment"
+    )
+
+
+# ---------------------------------------------------------------------------
 # 驗證 7：session 結束後帳號與 scratch 目錄確實消失
 # ---------------------------------------------------------------------------
 

@@ -171,15 +171,14 @@ def _running_as_root() -> bool:
 def _child_env() -> dict:
     """給讀檔子行程的乾淨環境變數。
 
-    `jail_manager.confine()` 用的是 `env HOME=… TMPDIR=…`（沒有 `-i`），所以
-    被關進去的子行程會**繼承伺服器整份環境**——其中包含 compose 帶進來的
-    NVIDIA_API_KEY / LESSON_AI_API_KEY。子行程的擁有者就是那個不可信的 session
-    帳號，它讀得到自己行程的 /proc/<pid>/environ。這支 helper 一個環境變數都不
-    需要（絕對路徑呼叫、只用標準函式庫、自己解碼位元組所以不看 locale），
-    那就一個都不給。
+    `jail_manager.confine()` 現在用 `env -i`，所以真正決定子行程環境的是
+    `jail_manager.child_environment()`，這裡設的東西在有 jail 時會被丟掉。
+    留著它是為了「confine() 回傳原樣 argv」的那條路（jail is None，本機開發）：
+    那時 subprocess 的 env= 是唯一的閘門，不設就等於把伺服器整份環境
+    （含 NVIDIA_API_KEY / LESSON_AI_API_KEY）交出去。
 
-    註：g++/gdb 走的是同一個 confine()，也同樣繼承那些金鑰——那是既有問題，
-    不在這次修改的範圍內，已另外回報。這裡至少不新增一個外流點。
+    這支 helper 一個環境變數都不需要（絕對路徑呼叫、只用標準函式庫、
+    自己解碼位元組所以不看 locale），那就一個都不給。
     """
     env = {"PATH": os.defpath}
     for name in ("SYSTEMROOT", "SystemRoot", "COMSPEC"):

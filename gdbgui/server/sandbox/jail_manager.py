@@ -21,11 +21,25 @@ jail_manager.py — 每個 debug session 一個臨時 OS 帳號 + 私有 scratch
 
     setpriv --reuid=U --regid=G --clear-groups --      ← 降權（檔案權限邊界）
       unshare --user --net --map-current-user --       ← user + network namespace
-        env HOME=<scratch> TMPDIR=<scratch>            ← 不碰 /root、不碰共用 /tmp
+        env -i PATH=… HOME=<scratch> TMPDIR=<scratch>  ← 空環境，只給必要的三個
           <實際命令>
 
 順序是有意義的，**不可對調**：`unshare --user` 之後 uid 對映會失效，
 `setpriv` 再降權到一個未對映的 uid 會失敗。
+
+## 為什麼是 `env -i`（環境變數也是一條資料邊界）
+
+`env` 沒有 `-i` 的話子行程會**繼承伺服器整份環境**。被關進去的東西裡有
+使用者自己編譯出來的程式，而它以該 session 的帳號執行——它讀得到自己的
+`/proc/self/environ`，也就是說任何登入者用三行 `getenv()` 就能把伺服器的
+`NVIDIA_API_KEY` / `LESSON_AI_API_KEY` 印出來。降權與 namespace 擋不住這件事，
+因為那些值是**跟著 exec 一起交到它手上的**。
+
+所以改成從空環境出發，白名單只有 `PATH`（見 `_ENV_PASSTHROUGH`）。
+實測（本專案 image）在只有 PATH/HOME/TMPDIR 的環境下：g++ 編譯與錯誤訊息
+正常、gdb 的內嵌 Python 正常、`/etc/gdb/gdbinit` 照樣載入、libstdc++
+pretty-printer 照樣輸出 `std::set with 5 elements = {…}`。
+`TERM`／`LANG`／`LC_*` 本來就不在這個 image 的環境裡，沒有東西可以失去。
 
 ## 為什麼 GDB 整個跑在 namespace 內，而不是只包住被除錯的程式
 
@@ -100,6 +114,16 @@ _ENV = "/usr/bin/env"
 _USERADD = "/usr/sbin/useradd"
 _USERDEL = "/usr/sbin/userdel"
 _PKILL = "/usr/bin/pkill"
+
+#: 唯一從伺服器環境傳給被關住的子行程的變數。
+#:
+#: 這是白名單，不是黑名單：新加進 compose 的任何變數（包含金鑰）預設**不會**
+#: 流進使用者的程式。要加東西進來，先問「使用者的 C++ 讀到它會怎樣」。
+#:
+#: PATH 在名單裡是因為 argv[0] 是 `g++` / `gdb` 這種相對名稱，要靠它解析
+#: （GNU env 用**新**環境的 PATH 查表）。HOME 與 TMPDIR 不在名單裡——
+#: 它們的值由 confine() 自己指定成 scratch 目錄，跟伺服器的值無關。
+_ENV_PASSTHROUGH = ("PATH",)
 
 
 class JailError(RuntimeError):
@@ -486,12 +510,31 @@ def active_session_count() -> int:
 # 命令封裝
 # ---------------------------------------------------------------------------
 
+def child_environment(jail: Jail) -> List[str]:
+    """被關住的子行程看到的**完整**環境，寫成 `NAME=VALUE` 的清單。
+
+    這裡回傳的就是全部——`confine()` 用 `env -i` 起頭，沒列在這裡的東西
+    一律不存在。理由見模組 docstring 的「為什麼是 `env -i`」。
+    """
+    env = [f"HOME={jail.dir}", f"TMPDIR={jail.dir}"]
+    for name in _ENV_PASSTHROUGH:
+        value = os.environ.get(name)
+        if value:
+            env.append(f"{name}={value}")
+    if not any(item.startswith("PATH=") for item in env):
+        # 伺服器自己沒有 PATH 的極端情況：給一個能找到 g++/gdb 的預設，
+        # 不要讓子行程落到「完全沒有 PATH」而 exec 失敗。
+        env.append(f"PATH={os.defpath}")
+    return env
+
+
 def confine(jail: Optional[Jail], argv: List[str]) -> List[str]:
-    """把 argv 包成「以 session 帳號、在 user+net namespace 內執行」的命令。
+    """把 argv 包成「以 session 帳號、在 user+net namespace 內、從空環境執行」的命令。
 
     jail 為 None（本機開發、隔離不可用）時原樣回傳。
 
     注意 setpriv 必須在 unshare 之前，理由見模組 docstring。
+    `env -i` 也不是可有可無的裝飾，理由同上。
     """
     if jail is None:
         return list(argv)
@@ -507,8 +550,8 @@ def confine(jail: Optional[Jail], argv: List[str]) -> List[str]:
         "--map-current-user",
         "--",
         _ENV,
-        f"HOME={jail.dir}",
-        f"TMPDIR={jail.dir}",
+        "-i",
+        *child_environment(jail),
         *argv,
     ]
 
