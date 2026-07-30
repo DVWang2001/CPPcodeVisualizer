@@ -1534,6 +1534,22 @@ LESSON_INVALID_MESSAGE = "教案標題或內容格式不正確。"
 LESSON_NOT_FOUND_MESSAGE = "找不到這個教案。"
 
 
+def _quota_response(exc):
+    """配額用盡的回應。
+
+    跟「格式不正確」分開，因為使用者要做的事不同：格式問題要改內容，配額問題
+    要刪掉舊教案。訊息帶上「已用／上限」讓對方知道自己站在哪裡，但只講他自己
+    的數字，不洩漏其他使用者的資料或任何路徑。
+    """
+    used_mb = exc.used / (1024 * 1024)
+    limit_mb = exc.limit / (1024 * 1024)
+    if "site" in str(exc):
+        msg = "全站儲存空間已滿，暫時無法新增教案，請稍後再試或聯絡管理員。"
+    else:
+        msg = f"你的儲存空間已滿（已用 {used_mb:.1f} MB / 上限 {limit_mb:.0f} MB），請先刪除舊教案。"
+    return jsonify({"message": msg}), 413
+
+
 def _lesson_author() -> int:
     """本次請求要記在誰名下。**唯一**來源是 session。
 
@@ -1610,6 +1626,8 @@ def create_lesson():
     title, bundle_json = fields
     try:
         lesson_id = db.create_lesson(user_id, title, bundle_json)
+    except db.LessonQuotaExceeded as exc:
+        return _quota_response(exc)
     except db.LessonRejected:
         return jsonify({"message": LESSON_INVALID_MESSAGE}), 400
     return jsonify({"id": lesson_id, "forked": False}), 201
@@ -1640,6 +1658,8 @@ def update_lesson(lesson_id: int):
                 return _lesson_not_found()
             return jsonify({"id": lesson_id, "forked": False})
         new_id = db.create_lesson(user_id, title, bundle_json)
+    except db.LessonQuotaExceeded as exc:
+        return _quota_response(exc)
     except db.LessonRejected:
         return jsonify({"message": LESSON_INVALID_MESSAGE}), 400
     return jsonify({"id": new_id, "forked": True}), 201

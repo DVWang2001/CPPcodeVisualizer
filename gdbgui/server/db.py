@@ -393,7 +393,34 @@ MAX_TITLE_LENGTH = 200
 
 #: bundle 原文的位元組上限。這是使用者提供的 JSON：沒有上限就等於一條把
 #: SQLite 檔案與伺服器記憶體塞爆的路徑（一個請求即可，不需要任何權限）。
-MAX_BUNDLE_BYTES = 1_000_000
+#:
+#: 256 KB 是量出來的，不是猜的：這個 repo 裡真實教案是 0.9–6.0 KB（cf_oop
+#: 那 24 篇平均 1.6 KB），所以這是最大真實教案的約 40 倍。原本的 1 MB 是
+#: 真實值的 500 倍，實際上沒有守住任何東西。
+MAX_BUNDLE_BYTES = 256 * 1024
+
+#: 單一使用者所有教案的位元組總和上限。以真實教案大小算約 3000 篇——正常
+#: 使用者一輩子碰不到，但擋得住一個粗心或惡意的**帳號**。
+#:
+#: 注意它擋不住蓄意攻擊：註冊是開放的且沒有速率限制（使用者明確的決定，見
+#: auth.py），所以攻擊者可以多開帳號繞過 per-user 配額。真正有界的是下面的
+#: 全域上限。
+MAX_USER_BYTES = 20 * 1024 * 1024
+
+#: 全站所有教案的位元組總和上限。這是唯一真正有界的一道。
+#:
+#: 它的價值在失敗方式：磁碟被塞爆時 SQLite 寫入失敗、secret key 無法輪替、
+#: 整個服務以無法預測的方式壞掉；這個上限觸發時只是「暫時存不了新教案」，
+#: 登入正常、既有教案照樣讀得到。
+MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024
+
+#: 用「bundle 位元組總和」而不是 SQLite 檔案大小來衡量用量。
+#:
+#: 檔案大小看起來更誠實（含索引與 WAL 的額外開銷），但 SQLite 刪除資料後
+#: **不會把頁面還給作業系統**（除非 VACUUM），所以用檔案大小會導致「使用者
+#: 刪掉教案之後仍然存不了東西」——一個使用者無法自救的死結。位元組總和會
+#: 隨刪除下降，代價是低估了索引開銷；用大額度的安全邊際吸收那個誤差。
+_USED_BYTES_SQL = "SELECT COALESCE(SUM(LENGTH(CAST(bundle_json AS BLOB))), 0) FROM lessons"
 
 #: 教案庫頁每頁筆數。
 LESSONS_PER_PAGE = 10
@@ -405,6 +432,60 @@ class LessonRejected(ValueError):
     在資料層而不只是在路由層檢查：路由那一層會回一個乾淨的 400/413，這一層
     則保證「不管哪個呼叫端、將來多加幾條路由」，超過上限的東西都進不了資料庫。
     """
+
+
+class LessonQuotaExceeded(LessonRejected):
+    """配額用盡（個人或全站），而不是這一篇本身有問題。
+
+    分成獨立的類別是為了讓路由能回一個**使用者能據以行動**的訊息：「這一篇
+    格式不對」跟「你的空間滿了，刪幾篇再存」要做的事完全不同。繼承
+    LessonRejected 所以既有的 except 仍然接得住，不會因為新增例外而漏接。
+    """
+
+    def __init__(self, message: str, used: int, limit: int):
+        super().__init__(message)
+        self.used = used
+        self.limit = limit
+
+
+def _check_quotas(conn, user_id: int, new_bytes: int, replacing_lesson_id=None) -> None:
+    """在同一個交易裡檢查個人與全站配額。
+
+    replacing_lesson_id 不是 None 時扣掉那一列的現有大小——更新一篇教案要算的
+    是**差額**，不是新版的完整大小。否則一個接近配額的使用者連「把教案改短」
+    都會被拒絕，那顯然是錯的。
+
+    fork（把別人的教案存成自己的）走的是新增路徑，所以整篇都算在 fork 的人
+    頭上，這是對的：那確實是一份新的資料。
+    """
+    old_bytes = 0
+    if replacing_lesson_id is not None:
+        row = conn.execute(
+            "SELECT LENGTH(CAST(bundle_json AS BLOB)) FROM lessons WHERE id = ? AND user_id = ?",
+            (replacing_lesson_id, user_id),
+        ).fetchone()
+        if row is not None:
+            old_bytes = int(row[0])
+
+    delta = new_bytes - old_bytes
+    if delta <= 0:
+        return  # 沒有變大就一定不會突破任何上限
+
+    user_used = int(
+        conn.execute(
+            _USED_BYTES_SQL + " WHERE user_id = ?", (user_id,)
+        ).fetchone()[0]
+    )
+    if user_used + delta > MAX_USER_BYTES:
+        raise LessonQuotaExceeded(
+            "user storage quota exceeded", used=user_used, limit=MAX_USER_BYTES
+        )
+
+    total_used = int(conn.execute(_USED_BYTES_SQL).fetchone()[0])
+    if total_used + delta > MAX_TOTAL_BYTES:
+        raise LessonQuotaExceeded(
+            "site storage quota exceeded", used=total_used, limit=MAX_TOTAL_BYTES
+        )
 
 
 def _require_user_id(user_id) -> int:
@@ -448,7 +529,12 @@ def create_lesson(user_id: int, title: str, bundle_json: str) -> int:
     user_id = _require_user_id(user_id)
     title, bundle_json = _validated_lesson(title, bundle_json)
     now = _now()
+    new_bytes = len(bundle_json.encode("utf-8"))
     with closing(connect()) as conn:
+        # BEGIN IMMEDIATE：檢查與寫入必須在同一個寫入交易裡，否則兩個同時
+        # 送出的儲存請求會各自讀到「還沒滿」然後都寫進去。
+        conn.execute("BEGIN IMMEDIATE")
+        _check_quotas(conn, user_id, new_bytes)
         cursor = conn.execute(
             "INSERT INTO lessons (user_id, title, bundle_json, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -488,7 +574,11 @@ def update_lesson_owned_by(
     if lesson_id is None:
         return False
     title, bundle_json = _validated_lesson(title, bundle_json)
+    new_bytes = len(bundle_json.encode("utf-8"))
     with closing(connect()) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        # 只算差額：把教案改短或改成一樣大的人，不該因為接近配額而被擋。
+        _check_quotas(conn, user_id, new_bytes, replacing_lesson_id=lesson_id)
         cursor = conn.execute(
             "UPDATE lessons SET title = ?, bundle_json = ?, updated_at = ? "
             "WHERE id = ? AND user_id = ?",
