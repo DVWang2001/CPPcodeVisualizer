@@ -4,49 +4,66 @@
   {# Jinja 的 autoescape 是開著的。lesson["title"] 與 lesson["display_name"] 都是
      使用者輸入，一律靠它轉義；這一頁沒有任何 |safe，也沒有任何使用者字串被插進
      <script> 或 HTML 屬性裡——底下那段 JS 只讀 data-lesson-id（整數）。 #}
+  <style>.card { --card-width: 38rem; }</style>
+
   <h1>教案庫</h1>
-  <p class="hint" data-testid="lesson-library-total">共 {{ total }} 篇教案</p>
+  <p class="lede">
+    共 <span class="count" data-testid="lesson-library-total">{{ total }}</span> 篇教案，最近更新的在前。
+  </p>
 
   {% if lessons %}
-    <ul data-testid="lesson-library-list" style="list-style: none; padding: 0;">
+    <ul class="listing" data-testid="lesson-library-list">
       {% for lesson in lessons %}
-        <li data-testid="lesson-library-item"
-            style="padding: 0.6rem 0; border-bottom: 1px solid #e2e6eb;">
-          <a href="{{ url_for('http_routes.gdbgui') }}?lesson={{ lesson['id'] }}"
-             data-testid="lesson-library-title">{{ lesson["title"] }}</a>
-          <div class="hint" style="margin-top: 0.2rem;">
-            <a href="{{ url_for('auth.profile', username=lesson['username']) }}"
-               data-testid="lesson-library-author">{{ lesson["display_name"] }}</a>
-            · {{ lesson["updated_at"] }}
-            {% if current_user_id is not none and lesson["user_id"] == current_user_id %}
-              · <button type="button"
+        {% set mine = current_user_id is not none and lesson["user_id"] == current_user_id %}
+        <li class="row" data-testid="lesson-library-item">
+          {# 行號槽。琥珀色中斷點圓點＝這一篇是你的：沿用 app 的規則
+             「顏色代表狀態，不代表類別」，掃過清單時自己的教案像檔案裡的
+             中斷點一樣一眼可見，不需要另外一個文字徽章。 #}
+          <span class="gutter" aria-hidden="true">
+            {% if mine %}<span class="bp"></span>{% endif %}{{ loop.index0 + (page - 1) * per_page + 1 }}
+          </span>
+          <span class="row-main">
+            <a class="row-title"
+               href="{{ url_for('http_routes.gdbgui') }}?lesson={{ lesson['id'] }}"
+               data-testid="lesson-library-title">{{ lesson["title"] }}</a>
+            <span class="row-meta">
+              <a href="{{ url_for('auth.profile', username=lesson['username']) }}"
+                 data-testid="lesson-library-author">{{ lesson["display_name"] }}</a>
+              <time datetime="{{ lesson['updated_at'] }}">{{ lesson["updated_at"] }}</time>
+              {% if mine %}
+                <button type="button"
                         class="lesson-delete"
                         data-lesson-id="{{ lesson['id'] }}"
-                        data-testid="lesson-delete"
-                        style="width: auto; margin: 0; padding: 0.1rem 0.5rem;
-                               background: #8a1c11; font-size: 0.8rem;">刪除</button>
-            {% endif %}
-          </div>
+                        data-testid="lesson-delete">刪除</button>
+              {% endif %}
+            </span>
+          </span>
         </li>
       {% endfor %}
     </ul>
   {% else %}
-    <p class="hint" data-testid="lesson-library-empty">還沒有任何教案。</p>
+    <p class="empty" data-testid="lesson-library-empty">
+      還沒有任何教案。<a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>寫第一篇。
+    </p>
   {% endif %}
 
-  <p class="hint">
-    {% if page > 1 %}
-      <a href="{{ url_for('http_routes.lesson_library', page=page - 1) }}"
-         data-testid="lesson-library-prev">← 上一頁</a>
-    {% endif %}
+  <p class="pager">
+    <span>
+      {% if page > 1 %}
+        <a href="{{ url_for('http_routes.lesson_library', page=page - 1) }}"
+           data-testid="lesson-library-prev">← 上一頁</a>
+      {% endif %}
+    </span>
     <span data-testid="lesson-library-page">第 {{ page }} / {{ last_page }} 頁</span>
-    {% if page < last_page %}
-      <a href="{{ url_for('http_routes.lesson_library', page=page + 1) }}"
-         data-testid="lesson-library-next">下一頁 →</a>
-    {% endif %}
+    <span>
+      {% if page < last_page %}
+        <a href="{{ url_for('http_routes.lesson_library', page=page + 1) }}"
+           data-testid="lesson-library-next">下一頁 →</a>
+      {% endif %}
+    </span>
   </p>
 
-  <p class="hint">
+  <p class="nav">
     <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
   </p>
 

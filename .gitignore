@@ -39,3 +39,6 @@ docs/superpowers/
 .superpowers/
 test_http.py
 test_pty.py
+
+# 截圖產物，不進版控
+shots/

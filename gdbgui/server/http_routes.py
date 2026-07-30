@@ -1734,6 +1734,7 @@ def lesson_library():
         page=page,
         last_page=last_page,
         total=total,
+        per_page=per_page,  # 樣板用它算行號槽裡的全域序號
         current_user_id=current_user_id(),
         csrf_token=session["csrf_token"],
     )
