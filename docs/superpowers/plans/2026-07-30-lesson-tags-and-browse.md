@@ -535,7 +535,7 @@ def tags_for_lessons(lesson_ids: Iterable[int]) -> Dict[int, List[str]]:
 - [ ] **Step 4: 確認測試通過**
 
 Run: `python -m pytest tests/test_tags.py -q`
-Expected: PASS（29 passed）
+Expected: PASS（28 passed）
 
 - [ ] **Step 5: 提交**
 
