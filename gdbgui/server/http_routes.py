@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -57,6 +58,8 @@ _SANDBOX_DIR = Path(__file__).parent / "sandbox"
 _STUB_C    = _SANDBOX_DIR / "stub.c"
 _STUB_O    = _SANDBOX_DIR / "stub.o"
 _WRAPPER   = _SANDBOX_DIR / "wrapper.sh"
+#: 以 session 帳號讀檔的子行程。契約與理由見 sandbox/read_helper.py。
+_READ_HELPER = str(_SANDBOX_DIR / "read_helper.py")
 
 def _upload_root() -> str:
     """所有 session scratch 目錄的根。實際隔離環境下是 jail_manager.SCRATCH_ROOT
@@ -130,6 +133,145 @@ def _run_confined(jail, argv, **kwargs):
     （理由與量測見 blocking.py）。argv 沒有任何改變，confine() 的隔離照舊。
     """
     return blocking.run(jail_manager.confine(jail, list(argv)), **kwargs)
+
+
+# ── 以 session 帳號讀檔（/read_file、/get_last_modified_unix_sec）────────────
+#
+# 為什麼存在、為什麼不是路徑白名單、失敗為什麼一律長同一個樣子：
+# 完整說明在 sandbox/read_helper.py 的檔頭。這裡只放伺服器端的驅動。
+
+#: 子行程逾時。正常是幾十毫秒（python 啟動 + 一次掃描）；這是最後一道網，
+#: 用來擋 O_NONBLOCK + S_ISREG 沒預期到的阻塞裝置。
+_READ_TIMEOUT_SECONDS = 20
+
+#: 兩條檔案路由**唯一**的失敗訊息。
+#:
+#: 「檔案不存在」與「有這個檔案但你沒權限」必須無法分辨，否則那個任意路徑的
+#: 存在性 oracle 只是換個形狀活下來。原本的實作除了區分這兩者，還把使用者送來的
+#: path 直接插進訊息裡回去。這裡兩條路由、兩種原因，回的都是同一個 400 加同一句話。
+_FILE_UNAVAILABLE_MESSAGE = "File not found or not accessible"
+
+
+def _file_unavailable():
+    return client_error({"message": _FILE_UNAVAILABLE_MESSAGE})
+
+
+def _running_as_root() -> bool:
+    """本行程是不是 root。
+
+    刻意用 euid 而不是 `jail_manager.isolation_available()`：真正的不變式是
+    「絕不以 root 的身分替某個請求碰檔案系統」。isolation_available() 在
+    「是 root 但少了 setpriv」時會回 False，那條路徑就會悄悄以 root 讀檔——
+    正好是要修掉的那個洞。
+    """
+    geteuid = getattr(os, "geteuid", None)
+    return geteuid is not None and geteuid() == 0
+
+
+def _child_env() -> dict:
+    """給讀檔子行程的乾淨環境變數。
+
+    `jail_manager.confine()` 用的是 `env HOME=… TMPDIR=…`（沒有 `-i`），所以
+    被關進去的子行程會**繼承伺服器整份環境**——其中包含 compose 帶進來的
+    NVIDIA_API_KEY / LESSON_AI_API_KEY。子行程的擁有者就是那個不可信的 session
+    帳號，它讀得到自己行程的 /proc/<pid>/environ。這支 helper 一個環境變數都不
+    需要（絕對路徑呼叫、只用標準函式庫、自己解碼位元組所以不看 locale），
+    那就一個都不給。
+
+    註：g++/gdb 走的是同一個 confine()，也同樣繼承那些金鑰——那是既有問題，
+    不在這次修改的範圍內，已另外回報。這裡至少不新增一個外流點。
+    """
+    env = {"PATH": os.defpath}
+    for name in ("SYSTEMROOT", "SystemRoot", "COMSPEC"):
+        if name in os.environ:
+            env[name] = os.environ[name]
+    return env
+
+
+def _resolve_requested_path(path: str) -> str:
+    """把前端看到的虛擬 `/workspace/…` 路徑翻回真實路徑。
+
+    翻譯的來源是 Flask session 裡的 real_src_path。那一格曾經是一條跨使用者的
+    讀取路徑（見 auth.py 與 tests/test_auth.py：登入時沒清乾淨的話，它指向
+    **前一位**使用者的 scratch，而 /read_file 會以 root 把它讀出來）。
+
+    新模型下這一格不再是權限判斷的一部分：不管它指到哪裡，實際的 open 都是以
+    **本次請求自己的** session 帳號執行，別人的 scratch 是 0700，一律 EACCES。
+    翻譯現在只影響「讀哪個檔」的方便性，不影響「讀不讀得到」。
+    """
+    virtual = session.get("virtual_src_path")
+    real = session.get("real_src_path")
+    if virtual and real and path == virtual:
+        return real
+    return path
+
+
+def _confined_file_request(
+    path: str, want_content: bool = False, start_line: int = 0, end_line: int = 0
+):
+    """以呼叫者自己的 session OS 帳號 stat／讀取 path，成功回 payload dict。
+
+    **任何**失敗都回 None，呼叫端一律回同一個訊息。
+
+    走 blocking.run（透過 _run_confined）而不是 subprocess.run：伺服器是 eventlet
+    單執行緒，同步的 subprocess.run 會連同**所有** session 的 GDB 輸出轉發一起
+    卡住（理由與量測見 blocking.py）。
+
+    沒有 jail 就拒絕，**不 acquire**：4c54fc1 才剛把「便宜的請求會建立 OS 帳號」
+    這件事拿掉（頁面載入曾經因此耗盡 MAX_SESSIONS）。前端只在 GDB 停下來時才抓
+    原始碼，那時 jail 一定在。
+    """
+    prefix = owner_key()
+    if not prefix:
+        logger.warning("[read] refusing a file request with no identity")
+        return None
+
+    jail = jail_manager.get(prefix)
+    if jail is None and _running_as_root():
+        logger.warning(
+            "[read] refusing to touch the filesystem as root: %s has no live jail",
+            prefix[:8],
+        )
+        return None
+
+    try:
+        completed = _run_confined(
+            jail,
+            [sys.executable or "python3", _READ_HELPER],
+            input=json.dumps(
+                {
+                    "path": path,
+                    "want_content": bool(want_content),
+                    "start_line": int(start_line),
+                    "end_line": int(end_line),
+                }
+            ),
+            capture_output=True,
+            text=True,
+            timeout=_READ_TIMEOUT_SECONDS,
+            env=_child_env(),
+        )
+    except Exception:
+        logger.exception("[read] the confined file helper failed to run")
+        return None
+
+    stderr = (completed.stderr or "").strip()[:200]
+    if completed.returncode != 0:
+        logger.warning("[read] helper exited %s: %s", completed.returncode, stderr)
+        return None
+    try:
+        result = json.loads(completed.stdout)
+    except ValueError:
+        logger.warning("[read] helper produced unparsable output")
+        return None
+    if not isinstance(result, dict) or not result.get("ok"):
+        logger.info("[read] refused for %s: %s", prefix[:8], stderr)
+        return None
+    if not isinstance(result.get("mtime"), (int, float)):
+        return None
+    if want_content and not isinstance(result.get("lines"), list):
+        return None
+    return result
 
 
 # ── Layer 2：連結期 --wrap 攔截（stub.c 有對應實作）─────────────────────────
@@ -662,7 +804,16 @@ def create_and_upload():
 @blueprint.route("/read_file", methods=["GET"])
 @csrf_protect
 def read_file():
-    """Read a file and return its contents as an array"""
+    """Read a file and return its contents as an array.
+
+    每一次檔案系統接觸都在 `_confined_file_request` 裡、以**呼叫者自己的**
+    session OS 帳號執行。這條路由自己不再 stat、不再 open——它以前兩件事都以
+    root 做，而 path 直接來自 request.args。理由與實測見 sandbox/read_helper.py。
+
+    語意刻意與原本逐項對齊（前端的捲動與快取是照這些數字算的）：
+    num_lines_in_file 沿用 `split("\\n")` 的行數、end_line 夾到檔案長度、
+    回傳範圍內的空行換成一個空白（否則 lexer 會把它吃掉、行號就對不上）。
+    """
 
     def should_highlight():
         try:
@@ -675,86 +826,81 @@ def read_file():
             else:
                 return True  # highlight argument was invalid for some reason, default to true
 
-    path = request.args.get("path")
-    # Translate virtual workspace path → real filesystem path
-    _virtual = session.get("virtual_src_path")
-    _real = session.get("real_src_path")
-    if _virtual and _real and path == _virtual:
-        path = _real
-    start_line = int(request.args.get("start_line"))
-    start_line = max(1, start_line)  # make sure it's not negative
-    end_line = int(request.args.get("end_line"))
+    path = request.args.get("path") or ""
+    try:
+        start_line = max(1, int(request.args.get("start_line")))  # make sure it's not negative
+        end_line = int(request.args.get("end_line"))
+    except (TypeError, ValueError):
+        # 以前少一個參數會直接 500（未捕捉的 TypeError）。回一般的拒絕訊息，
+        # 不讓「參數壞掉」與「檔案讀不到」變成兩種可分辨的結果。
+        return _file_unavailable()
 
-    if path and os.path.isfile(path):
-        try:
-            last_modified = os.path.getmtime(path)
-            with open(path, "r") as f:
-                raw_source_code_list = f.read().split("\n")
-                num_lines_in_file = len(raw_source_code_list)
-                end_line = min(
-                    num_lines_in_file, end_line
-                )  # make sure we don't try to go too far
+    payload = _confined_file_request(
+        _resolve_requested_path(path),
+        want_content=True,
+        start_line=start_line,
+        end_line=end_line,
+    )
+    if payload is None:
+        return _file_unavailable()
 
-                # if leading lines are '', then the lexer will strip them out, but we want
-                # to preserve blank lines. Insert a space whenever we find a blank line.
-                for i in range((start_line - 1), (end_line)):
-                    if raw_source_code_list[i] == "":
-                        raw_source_code_list[i] = " "
-                raw_source_code_lines_of_interest = raw_source_code_list[
-                    (start_line - 1) : (end_line)
-                ]
-            try:
-                lexer = get_lexer_for_filename(path)
-            except Exception:
-                lexer = None
+    num_lines_in_file = payload["num_lines"]
+    end_line = min(num_lines_in_file, end_line)  # make sure we don't try to go too far
 
-            if lexer and should_highlight():
-                highlighted = True
-                # convert string into tokens
-                tokens = lexer.get_tokens("\n".join(raw_source_code_lines_of_interest))
-                # format tokens into nice, marked up list of html
-                formatter = (
-                    htmllistformatter.HtmlListFormatter()
-                )  # Don't add newlines after each line
-                source_code = formatter.get_marked_up_list(tokens)
-            else:
-                highlighted = False
-                source_code = [_html.escape(line) for line in raw_source_code_lines_of_interest]
+    # if leading lines are '', then the lexer will strip them out, but we want
+    # to preserve blank lines. Insert a space whenever we find a blank line.
+    lines_of_interest = [line if line != "" else " " for line in payload["lines"]]
 
-            return jsonify(
-                {
-                    "source_code_array": source_code,
-                    "path": path,
-                    "last_modified_unix_sec": last_modified,
-                    "highlighted": highlighted,
-                    "start_line": start_line,
-                    "end_line": end_line,
-                    "num_lines_in_file": num_lines_in_file,
-                }
-            )
+    try:
+        # 只看副檔名，不碰檔案系統。刻意用呼叫端送來的 path 而不是翻譯後的真實
+        # 路徑——兩者副檔名一樣，而真實路徑不必要地帶著 scratch 目錄名。
+        lexer = get_lexer_for_filename(path)
+    except Exception:
+        lexer = None
 
-        except Exception as e:
-            return client_error({"message": "%s" % e})
-
+    if lexer and should_highlight():
+        highlighted = True
+        # convert string into tokens
+        tokens = lexer.get_tokens("\n".join(lines_of_interest))
+        # format tokens into nice, marked up list of html
+        formatter = (
+            htmllistformatter.HtmlListFormatter()
+        )  # Don't add newlines after each line
+        source_code = formatter.get_marked_up_list(tokens)
     else:
-        return client_error({"message": "File not found: %s" % path})
+        highlighted = False
+        source_code = [_html.escape(line) for line in lines_of_interest]
+
+    return jsonify(
+        {
+            "source_code_array": source_code,
+            # 回呼叫端自己送來的路徑。以前這裡回的是翻譯後的真實路徑，
+            # 等於把 scratch 目錄名（含 session 身分）送回前端；前端也沒在用它。
+            "path": path,
+            "last_modified_unix_sec": payload["mtime"],
+            "highlighted": highlighted,
+            "start_line": start_line,
+            "end_line": end_line,
+            "num_lines_in_file": num_lines_in_file,
+        }
+    )
 
 
 @blueprint.route("/get_last_modified_unix_sec", methods=["GET"])
 @csrf_protect
 def get_last_modified_unix_sec():
-    """Get last modified unix time for a given file"""
-    path = request.args.get("path")
-    if path and os.path.isfile(path):
-        try:
-            last_modified = os.path.getmtime(path)
-            return jsonify({"path": path, "last_modified_unix_sec": last_modified})
+    """Get last modified unix time for a given file.
 
-        except Exception as e:
-            return client_error({"message": "%s" % e, "path": path})
-
-    else:
-        return client_error({"message": "File not found: %s" % path, "path": path})
+    以前這條路由整個就只是 `os.path.isfile` + `os.path.getmtime`，兩者都以 root
+    執行、path 直接來自 request.args——也就是一個純粹的任意路徑存在性與修改時間
+    oracle。現在它和 /read_file 走同一條降權路徑，可及範圍完全相同。
+    """
+    path = request.args.get("path") or ""
+    payload = _confined_file_request(_resolve_requested_path(path))
+    if payload is None:
+        return _file_unavailable()
+    # path 回的是呼叫端自己送來的那個字串：前端拿它跟 inferior_binary_path 比對。
+    return jsonify({"path": path, "last_modified_unix_sec": payload["mtime"]})
 
 
 @blueprint.route("/help")
