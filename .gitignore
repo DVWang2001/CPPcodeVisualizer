@@ -37,6 +37,7 @@ e2e/test-results/
 e2e/playwright-report/
 docs/superpowers/
 .superpowers/
+.worktrees/
 test_http.py
 test_pty.py
 
