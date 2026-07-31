@@ -204,7 +204,7 @@
 - [ ] **Step 2: Run the focused unit test to establish red.**
 
   ```powershell
-  cd gdbgui; npm test -- --runInBand src/js/tests/lessonVersion.jest.ts
+  npm test -- --runInBand gdbgui/src/js/tests/lessonVersion.jest.ts
   ```
 
 - [ ] **Step 3: Implement only pure helpers and types.**
@@ -216,8 +216,8 @@
 - [ ] **Step 4: Run unit and type/build checks to green.**
 
   ```powershell
-  cd gdbgui; npm test -- --runInBand src/js/tests/lessonVersion.jest.ts
-  cd gdbgui; npm run build
+  npm test -- --runInBand gdbgui/src/js/tests/lessonVersion.jest.ts
+  npm run build
   ```
 
 - [ ] **Step 5: Commit the frontend model slice.**
@@ -256,8 +256,8 @@
 - [ ] **Step 5: Run frontend checks.**
 
   ```powershell
-  cd gdbgui; npm test -- --runInBand
-  cd gdbgui; npm run build
+  npm test -- --runInBand
+  npm run build
   ```
 
 - [ ] **Step 6: Commit the commit-preview slice.**
@@ -303,8 +303,8 @@
 - [ ] **Step 5: Run the full practical verification set.**
 
   ```powershell
-  cd gdbgui; npm test -- --runInBand
-  cd gdbgui; npm run build
+  npm test -- --runInBand
+  npm run build
   docker run --rm -v "${PWD}:/work" -w /work cppcodevisualizer-gdbgui sh -lc "pip install --quiet pytest && python -m pytest -p no:cacheprovider -q"
   docker compose exec gdbgui sh -lc "cd /app/e2e && npx playwright test --reporter=line"
   git diff --check
