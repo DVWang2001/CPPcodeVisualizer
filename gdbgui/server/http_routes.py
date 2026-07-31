@@ -46,7 +46,7 @@ from .http_util import (
     current_user_id,
     owner_key,
 )
-from . import db
+from . import db, live_quiz
 from . import tags as tags_module
 from .share_function import require_uploaded_binary
 from . import lesson_gen
@@ -1611,6 +1611,13 @@ def _lesson_payload():
         # 控制字元在 HTML 裡不可見，但會弄壞 log 與匯出格式（同 auth 的
         # display_name 檢查）。這不是 XSS 防線——那一層是模板的 autoescape。
         return None, (jsonify({"message": LESSON_INVALID_MESSAGE}), 400)
+
+    try:
+        normalized_quiz = live_quiz.validate_quiz_bundle(bundle)
+    except live_quiz.QuizRejected:
+        return None, (jsonify({"message": LESSON_INVALID_MESSAGE}), 400)
+    if "quiz" in bundle:
+        bundle["quiz"] = normalized_quiz
 
     try:
         bundle_json = json.dumps(bundle, ensure_ascii=False, separators=(",", ":"))

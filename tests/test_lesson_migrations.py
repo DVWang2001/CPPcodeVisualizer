@@ -35,7 +35,8 @@ def test_v3_lesson_is_backfilled_to_one_version_without_duplication(tmp_path, mo
         conn.commit()
 
     assert db.schema_version() == 3
-    assert db.migrate() == 1
+    assert db.migrate() >= 1
+    assert db.schema_version() == max(int(path.name[:4]) for path in db.migration_files())
 
     with closing(db.connect()) as conn:
         versions = list(
