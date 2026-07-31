@@ -116,6 +116,27 @@ def test_the_root_renders_the_browse_ui(flask_app):
     assert b"lesson-browse-list" in response.data or b"lesson-browse-empty" in response.data
 
 
+def test_browse_renders_only_the_capped_query_and_tags(flask_app):
+    """The route must not preserve filters the database has already ignored."""
+    user = register_user(flask_app, display_name="rt_caps")
+    kept_query = "x" * db.MAX_QUERY_LENGTH
+    query_tail = "UNIQUE_QUERY_TAIL"
+    kept_tags = [f"cap-tag-{i}" for i in range(db.MAX_FILTER_TAGS)]
+    ninth_tag = "UNIQUE_NINTH_TAG"
+
+    response = user.http.get(
+        "/",
+        query_string=[("q", kept_query + query_tail)]
+        + [("tag", tag) for tag in kept_tags + [ninth_tag]],
+    )
+    body = response.data.decode("utf-8")
+
+    assert f'value="{kept_query}"' in body
+    assert query_tail not in body
+    assert body.count('name="tag"') == db.MAX_FILTER_TAGS
+    assert ninth_tag not in body
+
+
 def test_the_search_box_and_tag_filter_narrow_the_listing(flask_app):
     from gdbgui.server import tags
 

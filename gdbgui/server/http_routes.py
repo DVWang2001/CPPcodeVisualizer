@@ -1767,9 +1767,9 @@ def lesson_library():
 
     add_csrf_token_to_session()
 
-    q = request.args.get("q", "")
-    # tag 是可重複參數：/?tag=stl&tag=bst。上限在 db 層截斷。
-    selected_tags = request.args.getlist("tag")
+    # 在進資料庫和模板前先正規化，讓 UI 與查詢使用完全相同的篩選條件。
+    q = db._clean_query(request.args.get("q", ""))
+    selected_tags = db._clean_tags(request.args.getlist("tag"))
     show_all_tags = request.args.get("alltags") == "1"
 
     per_page = db.LESSONS_PER_PAGE
