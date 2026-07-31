@@ -72,16 +72,20 @@ CREATE TABLE IF NOT EXISTS lesson_versions (
 CREATE INDEX IF NOT EXISTS lesson_versions_lesson_idx
     ON lesson_versions (lesson_id, version DESC);
 
-ALTER TABLE lessons ADD COLUMN current_version_id INTEGER
-    REFERENCES lesson_versions(id);
+CREATE TABLE IF NOT EXISTS lesson_current_versions (
+    lesson_id  INTEGER PRIMARY KEY REFERENCES lessons(id) ON DELETE CASCADE,
+    version_id INTEGER NOT NULL REFERENCES lesson_versions(id) ON DELETE CASCADE
+);
 ```
 
 `lesson_versions` 不複製 `user_id`：擁有權已由 `lessons.user_id` 作為唯一真相，避免兩份
 資料日後不一致。`parent_version_id` 由資料層驗證必須屬於同一篇教案；SQL 單靠外鍵無法
-表達這個跨欄位關係。外鍵 CASCADE 讓刪除教案時快照一併刪除。
+表達這個跨欄位關係。`lesson_current_versions` 是「目前公開內容／HEAD 是哪一版」的
+一列指標；用新表而不改 `lessons`，是因為本專案 migration 必須可重跑，而 SQLite 的
+`ALTER TABLE ADD COLUMN` 不是冪等操作。外鍵 CASCADE 讓刪除教案時快照與指標一併刪除。
 
 migration 會先替所有既有教案建立 v1（內容取現有 title/bundle，時間取既有更新時間），
-再把 `lessons.current_version_id` 指向該 v1。新安裝則直接從新表開始，不需要特例。
+再插入對應的 `lesson_current_versions` 指標。新安裝則直接從新表開始，不需要特例。
 
 歷史快照也納入既有帳號儲存配額；一次提交若會超過配額，整筆 transaction 拒絕，
 目前教案與版本紀錄都不變。這保留「每次成功提交都有版本」的承諾，同時避免無上限
@@ -89,7 +93,7 @@ migration 會先替所有既有教案建立 v1（內容取現有 title/bundle，
 
 `db.create_lesson()` 會在同一個 transaction 建立 `lessons`、v1 與目前版本指標；
 `db.update_lesson_owned_by()` 接受提交的 parent version，在同一個 transaction 插入版本號
-最大值加一的快照、更新 `lessons` 目前內容與 `current_version_id`。正常儲存使用目前版本
+最大值加一的快照、更新 `lessons` 目前內容與 `lesson_current_versions`。正常儲存使用目前版本
 當父節點；從歷史還原後儲存則使用所選舊版當父節點，因此自然形成分支。非擁有者 PUT 的
 既有 fork 行為沿用 `create_lesson()`，所以副本從自己的 v1 開始，不會攜帶原作者歷史。
 
@@ -154,7 +158,7 @@ code、行內註解、程式輸入和斷點都一起回到該版。
 
 * 建立教案會同時有唯一的 v1；正常更新會保留 v1 並建立以目前版本為父的 v2。
 * 還原 v3、修改、提交會建立 v6 並記錄 v3 為父節點；既有 v4→v5 與快照不變，
-  `current_version_id` 改指向 v6。
+  目前版本指標改指向 v6。
 * 同一個 title/bundle 的更新不會由前端送出；若 API 仍收到它，也不新增空版本。
 * 版本快照保存 title、`source_code`、`//@` 註解、program input 與 breakpoints。
 * 刪除教案會 CASCADE 刪除其版本。
