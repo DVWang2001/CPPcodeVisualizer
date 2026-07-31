@@ -268,6 +268,27 @@ def test_same_content_owner_save_returns_unchanged_without_a_new_snapshot(alice)
     assert len(_versions_for(created.lesson_id)) == 1
 
 
+def test_same_current_content_from_an_old_parent_creates_a_branch_snapshot(alice):
+    """還原舊版後即使內容恰好等於 HEAD，使用者仍明確要求建立分支。"""
+    created = db.create_lesson_with_version(alice.user_id, "v1", '{"source_code":"one"}')
+    db.update_lesson_owned_by(created.lesson_id, alice.user_id, "v2", '{"source_code":"two"}')
+
+    result = db.update_lesson_owned_by(
+        created.lesson_id,
+        alice.user_id,
+        "v2",
+        '{"source_code":"two"}',
+        parent_version=1,
+    )
+
+    assert (result.version, result.changed) == (3, True)
+    assert [(row["version"], row["parent_version"]) for row in _versions_for(created.lesson_id)] == [
+        (1, None),
+        (2, 1),
+        (3, 1),
+    ]
+
+
 def test_version_read_helpers_expose_history_only_to_the_owner(alice, bob):
     """history API 若只靠路由過濾，日後新增入口就可能把別人的版本洩出來。"""
     assert hasattr(db, "lesson_versions_owned_by")
@@ -341,12 +362,21 @@ def test_owner_can_choose_an_old_parent_version_when_saving(alice):
     ]
 
 
-@pytest.mark.parametrize("parent_version", [True, "1", 0, -1, 99])
+@pytest.mark.parametrize("parent_version", [True, "1", 0, -1, 99, 2**63])
 def test_owner_route_rejects_an_invalid_parent_version(alice, parent_version):
     """型別寬鬆會把 bool 或不存在的父節點寫進歷史樹。"""
     lesson_id = _create(alice)
     response = _put_lesson(alice, lesson_id, extra={"parent_version": parent_version})
     assert response.status_code == 400
+
+
+def test_owner_version_reads_hide_out_of_range_versions(alice):
+    """SQLite 綁定不了的版本號也必須維持歷史端點的 404 形狀。"""
+    lesson_id = _create(alice)
+    version = 2**63
+    for suffix in (f"versions/{version}", f"versions/{version}/diff"):
+        response = alice.http.get(f"/api/lessons/{lesson_id}/{suffix}")
+        assert response.status_code == 404
 
 
 def test_saving_an_unchanged_public_lesson_creates_an_independent_v1(alice, bob):

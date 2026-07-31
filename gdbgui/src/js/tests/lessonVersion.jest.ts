@@ -1,6 +1,7 @@
 import {
   hasSnapshotChanges,
   layoutVersionGraph,
+  mergeLessonBundle,
   LessonBundle,
   LessonSnapshot,
   VersionSummary
@@ -83,6 +84,33 @@ test("ignores recursively reordered object keys", () => {
   );
 });
 
+test("detects a changed array order", () => {
+  const original = snapshot({
+    bundle: bundle({ breakpoints: [{ line: 3 }, { line: 7 }] })
+  });
+
+  expect(
+    hasSnapshotChanges(original, {
+      title: original.title,
+      bundle: bundle({ breakpoints: [{ line: 7 }, { line: 3 }] })
+    })
+  ).toBe(true);
+});
+
+test("retains opaque bundle fields while replacing editor-owned fields", () => {
+  const retained = mergeLessonBundle(
+    bundle({ extra_future_field: { keep: ["this"] }, line_data: { legacy: true } }),
+    bundle({ source_code: "int main() { return 2; }", program_input: "42" })
+  );
+
+  expect(retained).toMatchObject({
+    extra_future_field: { keep: ["this"] },
+    source_code: "int main() { return 2; }",
+    program_input: "42"
+  });
+  expect(retained.line_data).toBeUndefined();
+});
+
 test("lays out a single-parent branch with the current HEAD", () => {
   const versions: VersionSummary[] = [
     { version: 1, parentVersion: null, createdAt: "1" },
@@ -103,6 +131,9 @@ test("lays out a single-parent branch with the current HEAD", () => {
   ]);
   expect(graph.laneCount).toBeGreaterThanOrEqual(2);
   expect(graph.nodes.filter(node => node.isHead).map(node => node.version)).toEqual([5]);
+  expect(graph.nodes.find(node => node.version === 3)!.lane).toBe(
+    graph.nodes.find(node => node.version === 5)!.lane
+  );
 });
 
 test("skips missing or malformed parent edges without throwing", () => {

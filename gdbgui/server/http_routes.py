@@ -1632,6 +1632,7 @@ def _optional_parent_version():
         isinstance(parent_version, bool)
         or not isinstance(parent_version, int)
         or parent_version <= 0
+        or parent_version > db.SQLITE_MAX_INTEGER
     ):
         raise db.LessonRejected("parent version must be a positive integer")
     return parent_version

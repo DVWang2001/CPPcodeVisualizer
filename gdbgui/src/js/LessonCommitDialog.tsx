@@ -1,6 +1,6 @@
-import React from "react";
+import * as React from "react";
 import { DiffEditor } from "@monaco-editor/react";
-import { LessonBundle, LessonSnapshot } from "./lessonVersion";
+import { LessonBundle, LessonSnapshot, nonSourceBundleJson } from "./lessonVersion";
 
 type Props = {
   baseline: LessonSnapshot;
@@ -35,6 +35,41 @@ export default function LessonCommitDialog({
   onConfirm,
   onCancel
 }: Props) {
+  const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  const previousFocus = React.useRef<HTMLElement | null>(null);
+  React.useEffect(() => {
+    previousFocus.current = document.activeElement as HTMLElement;
+    const first =
+      dialogRef.current &&
+      dialogRef.current.querySelector<HTMLElement>("button:not([disabled])");
+    if (first) first.focus();
+    return () => {
+      if (previousFocus.current && document.contains(previousFocus.current))
+        previousFocus.current.focus();
+    };
+  }, []);
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key !== "Tab" || !dialogRef.current) return;
+    const controls = Array.prototype.slice.call(
+      dialogRef.current.querySelectorAll(
+        "button:not([disabled]), [role='button'][tabindex]"
+      )
+    ) as HTMLElement[];
+    if (!controls.length) return;
+    const index = controls.indexOf(document.activeElement as HTMLElement);
+    if (
+      (!event.shiftKey && index === controls.length - 1) ||
+      (event.shiftKey && index <= 0)
+    ) {
+      event.preventDefault();
+      controls[event.shiftKey ? controls.length - 1 : 0].focus();
+    }
+  };
   return (
     <div
       role="dialog"
@@ -42,6 +77,8 @@ export default function LessonCommitDialog({
       aria-labelledby="lesson-commit-title"
       data-testid="lesson-commit-dialog"
       style={overlay}
+      ref={dialogRef}
+      onKeyDown={onKeyDown}
     >
       <div style={panel}>
         <h3 id="lesson-commit-title" style={{ marginTop: 0 }}>
@@ -59,6 +96,16 @@ export default function LessonCommitDialog({
           language="cpp"
           original={baseline.bundle.source_code || ""}
           modified={candidate.bundle.source_code || ""}
+          options={{ readOnly: true, renderSideBySide: true, automaticLayout: true }}
+        />
+        <p>
+          <strong>其他教案設定：</strong>
+        </p>
+        <DiffEditor
+          height="220px"
+          language="json"
+          original={nonSourceBundleJson(baseline.bundle)}
+          modified={nonSourceBundleJson(candidate.bundle)}
           options={{ readOnly: true, renderSideBySide: true, automaticLayout: true }}
         />
         <div

@@ -34,6 +34,23 @@ export type VersionGraph = {
   laneCount: number;
 };
 
+/** Keep unknown server fields when the editor writes the fields it owns. */
+export function mergeLessonBundle(
+  retained: LessonBundle | null,
+  editorBundle: LessonBundle
+): LessonBundle {
+  const merged = retained ? JSON.parse(JSON.stringify(retained)) : {};
+  // Legacy line_data is deliberately migrated into inline //@ source comments.
+  delete merged.line_data;
+  return { ...merged, ...editorBundle };
+}
+
+export function nonSourceBundleJson(bundle: LessonBundle): string {
+  const copy = { ...bundle };
+  delete copy.source_code;
+  return JSON.stringify(copy, null, 2);
+}
+
 function stableJson(value: any): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (value && typeof value === "object") {

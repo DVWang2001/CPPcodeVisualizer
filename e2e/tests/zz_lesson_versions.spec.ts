@@ -14,11 +14,8 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
   const stamp = Date.now();
   const titleV1 = `版本一 ${stamp}`;
   const titleV2 = `版本二 ${stamp}`;
-  const titleV3 = `版本三 ${stamp}`;
   const sourceV1 = "// v1\n//@guide: first\nint main() { return 0; }\n";
   const sourceV2 = "// v2\n//@guide: revised\nint main() { return 1; }\n";
-  const sourceV3 =
-    "// v3 branch\n//@guide: restored then branched\nint main() { return 3; }\n";
 
   const created = await page.request.post("/api/lessons", {
     headers: { "x-csrftoken": token, "Content-Type": "application/json" },
@@ -29,7 +26,8 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
         fullname_to_render: "main.cpp",
         source_code: sourceV1,
         breakpoints: [],
-        program_input: ""
+        program_input: "",
+        future_setting: { keep: "this" }
       }
     }
   });
@@ -63,7 +61,7 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
     expect(await unchanged.json()).toMatchObject({
       title: titleV1,
       current_version: 1,
-      bundle: { source_code: sourceV1 }
+      bundle: { source_code: sourceV1, future_setting: { keep: "this" } }
     });
 
     const editorInput = page.locator(".monaco-editor textarea.inputarea").first();
@@ -85,7 +83,7 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
     expect(await cancelled.json()).toMatchObject({
       title: titleV1,
       current_version: 1,
-      bundle: { source_code: sourceV1 }
+      bundle: { source_code: sourceV1, future_setting: { keep: "this" } }
     });
 
     page.once("dialog", dialog => dialog.accept(titleV2));
@@ -100,7 +98,7 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
       .toMatchObject({
         title: titleV2,
         current_version: 2,
-        bundle: { source_code: sourceV2 }
+        bundle: { source_code: sourceV2, future_setting: { keep: "this" } }
       });
 
     await page.getByTestId("lesson-history-open").click();
@@ -135,12 +133,9 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
     );
     expect(await restoredWithoutSaving.json()).toMatchObject({ current_version: 2 });
 
-    await page.evaluate(source => {
-      (window as any).monaco.editor.getModels()[0].setValue(source);
-    }, sourceV3);
     page.once("dialog", dialog => {
       expect(dialog.defaultValue()).toBe(titleV1);
-      dialog.accept(titleV3);
+      dialog.accept(titleV1);
     });
     await page.getByTestId("save-lesson-to-account").click();
     await expect(page.getByTestId("lesson-commit-dialog")).toBeVisible();
@@ -154,11 +149,16 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
       .toMatchObject({
         current_version: 3,
         versions: expect.arrayContaining([
-          { version: 3, parent_version: 1, title: titleV3 },
+          { version: 3, parent_version: 1, title: titleV1 },
           { version: 2, parent_version: 1, title: titleV2 },
           { version: 1, parent_version: null, title: titleV1 }
         ])
       });
+    expect(await (await page.request.get(`/api/lessons/${lessonId}`)).json()).toMatchObject({
+      title: titleV1,
+      current_version: 3,
+      bundle: { source_code: sourceV1, future_setting: { keep: "this" } }
+    });
   } finally {
     await page.request.delete(`/api/lessons/${lessonId}`, {
       headers: { "x-csrftoken": token }

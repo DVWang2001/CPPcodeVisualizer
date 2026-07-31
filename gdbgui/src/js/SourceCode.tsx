@@ -27,6 +27,7 @@ import {
   hasSnapshotChanges,
   LessonBundle,
   LessonSnapshot,
+  mergeLessonBundle,
   VersionSummary
 } from "./lessonVersion";
 
@@ -540,8 +541,8 @@ class SourceCode extends React.Component<{}, State> {
     // Hover Hint
     const { hoverLine } = this.state;
     if (hoverLine !== null) {
-      const hasAnyBkpt = bkpt_lines.includes(hoverLine) || 
-                         disabled_bkpt_lines.includes(hoverLine) || 
+      const hasAnyBkpt = bkpt_lines.includes(hoverLine) ||
+                         disabled_bkpt_lines.includes(hoverLine) ||
                          conditional_bkpt_lines.includes(hoverLine);
       if (!hasAnyBkpt) {
         newDecorations.push({
@@ -1115,7 +1116,9 @@ class SourceCode extends React.Component<{}, State> {
   currentLessonTitle: string | null = null;
   currentLessonIsMine = false;
   currentLessonVersion: number | null = null;
+  selectedLessonParentVersion: number | null = null;
   lessonBaseline: LessonSnapshot | null = null;
+  lessonBundleTemplate: LessonBundle | null = null;
   pendingLessonCommit: { title: string; bundle: LessonBundle } | null = null;
   lessonVersionSummaries: VersionSummary[] = [];
   lessonHistoryHeadVersion: number | null = null;
@@ -1130,6 +1133,9 @@ class SourceCode extends React.Component<{}, State> {
     parentVersion: null,
     createdAt: "",
   });
+
+  lessonBundleForSave = (): LessonBundle =>
+    mergeLessonBundle(this.lessonBundleTemplate, this.buildProjectBundle() as LessonBundle);
 
   lessonSnapshotFromApi = (payload: any): LessonSnapshot | null => {
     if (
@@ -1193,11 +1199,17 @@ class SourceCode extends React.Component<{}, State> {
           ? payload.current_version
           : null;
         const bundle = payload.bundle || {};
-        this.lessonBaseline = null;
         const hydratedBundle = this.applyProjectBundle(bundle);
+        this.lessonBundleTemplate = mergeLessonBundle(bundle as LessonBundle, hydratedBundle);
+        this.lessonBaseline = null;
+        this.selectedLessonParentVersion = null;
         const version = this.currentLessonVersion;
         if (version !== null) {
-          this.lessonBaseline = this.lessonSnapshot(payload.title, hydratedBundle, version);
+          this.lessonBaseline = this.lessonSnapshot(
+            payload.title,
+            this.lessonBundleTemplate,
+            version
+          );
         }
         this.setState({} as any);
         Actions.add_console_entries(
@@ -1224,7 +1236,7 @@ class SourceCode extends React.Component<{}, State> {
       return;
     }
 
-    const candidate = { title: trimmed, bundle: this.buildProjectBundle() as LessonBundle };
+    const candidate = { title: trimmed, bundle: this.lessonBundleForSave() };
     if (this.currentLessonId !== null && this.currentLessonIsMine) {
       if (!this.lessonBaseline) {
         Actions.add_console_entries(
@@ -1233,7 +1245,11 @@ class SourceCode extends React.Component<{}, State> {
         );
         return;
       }
-      if (!hasSnapshotChanges(this.lessonBaseline, candidate)) {
+      const parentVersion = this.selectedLessonParentVersion || this.currentLessonVersion;
+      if (
+        parentVersion === this.currentLessonVersion &&
+        !hasSnapshotChanges(this.lessonBaseline, candidate)
+      ) {
         Actions.add_console_entries(
           "教案沒有變更，沒有建立新版本。",
           constants.console_entry_type.GDBGUI_OUTPUT
@@ -1289,6 +1305,8 @@ class SourceCode extends React.Component<{}, State> {
           candidate.bundle,
           this.currentLessonVersion
         );
+        this.lessonBundleTemplate = JSON.parse(JSON.stringify(candidate.bundle));
+        this.selectedLessonParentVersion = null;
         this.pendingLessonCommit = null;
         this.setState({ showLessonCommit: false } as any);
         Actions.add_console_entries(
@@ -1305,7 +1323,7 @@ class SourceCode extends React.Component<{}, State> {
 
   confirmLessonCommit = () => {
     const candidate = this.pendingLessonCommit;
-    const parentVersion = this.currentLessonVersion;
+    const parentVersion = this.selectedLessonParentVersion || this.currentLessonVersion;
     if (!candidate || parentVersion === null) return;
     this.pendingLessonCommit = null;
     this.setState({ showLessonCommit: false } as any);
@@ -1389,11 +1407,8 @@ class SourceCode extends React.Component<{}, State> {
     if (!selected) return;
     const hydratedBundle = this.applyProjectBundle(selected.bundle);
     this.currentLessonTitle = selected.title;
-    this.currentLessonVersion = selected.version;
-    this.lessonBaseline = {
-      ...selected,
-      bundle: JSON.parse(JSON.stringify(hydratedBundle)),
-    };
+    this.lessonBundleTemplate = mergeLessonBundle(selected.bundle, hydratedBundle);
+    this.selectedLessonParentVersion = selected.version;
     this.pendingLessonCommit = null;
     this.setState({ showLessonHistory: false, showLessonCommit: false } as any);
     Actions.add_console_entries(

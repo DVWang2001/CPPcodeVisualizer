@@ -27,6 +27,11 @@ def test_v3_lesson_is_backfilled_to_one_version_without_duplication(tmp_path, mo
             "VALUES (7, 1, '舊教案', '{\"source_code\":\"old\"}', "
             "'2026-07-01T00:00:00+00:00', '2026-07-01T00:00:00+00:00')"
         )
+        # Simulate a crash after 0004's DDL/backfill committed but before its
+        # schema_version record was written. Re-running migrate must not add a
+        # second v1 or pointer.
+        migration = next(path for path in db.migration_files() if path.name.startswith("0004_"))
+        conn.executescript(migration.read_text(encoding="utf-8"))
         conn.commit()
 
     assert db.schema_version() == 3
@@ -50,6 +55,5 @@ def test_v3_lesson_is_backfilled_to_one_version_without_duplication(tmp_path, mo
 
     assert db.migrate() == 0
     with closing(db.connect()) as conn:
-        assert conn.execute(
-            "SELECT COUNT(*) FROM lesson_versions WHERE lesson_id = 7"
-        ).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM lesson_versions WHERE lesson_id = 7").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM lesson_current_versions WHERE lesson_id = 7").fetchone()[0] == 1

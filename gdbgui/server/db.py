@@ -415,6 +415,9 @@ MAX_USER_BYTES = 20 * 1024 * 1024
 #: 登入正常、既有教案照樣讀得到。
 MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024
 
+# Python accepts arbitrary-size ints but sqlite3 only binds signed 64-bit INTEGERs.
+SQLITE_MAX_INTEGER = 2**63 - 1
+
 #: 用「bundle 位元組總和」而不是 SQLite 檔案大小來衡量用量。
 #:
 #: 檔案大小看起來更誠實（含索引與 WAL 的額外開銷），但 SQLite 刪除資料後
@@ -486,15 +489,33 @@ def _require_user_id(user_id) -> int:
     fail closed：一個壞掉的身分（None、字串、True）絕不可以被當成某個人的
     id 送進 WHERE 子句去。
     """
-    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+    if (
+        isinstance(user_id, bool)
+        or not isinstance(user_id, int)
+        or user_id <= 0
+        or user_id > SQLITE_MAX_INTEGER
+    ):
         raise LessonRejected("a lesson needs a real user id")
     return user_id
 
 
 def _require_lesson_id(lesson_id) -> Optional[int]:
-    if isinstance(lesson_id, bool) or not isinstance(lesson_id, int) or lesson_id <= 0:
+    if (
+        isinstance(lesson_id, bool)
+        or not isinstance(lesson_id, int)
+        or lesson_id <= 0
+        or lesson_id > SQLITE_MAX_INTEGER
+    ):
         return None
     return lesson_id
+
+
+def _is_sqlite_version(value) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, int)
+        and 0 < value <= SQLITE_MAX_INTEGER
+    )
 
 
 def _validated_lesson(title, bundle_json):
@@ -607,11 +628,7 @@ def update_lesson_owned_by(
             if parent_version is None:
                 parent_id = int(current["version_id"])
             else:
-                if (
-                    isinstance(parent_version, bool)
-                    or not isinstance(parent_version, int)
-                    or parent_version <= 0
-                ):
+                if not _is_sqlite_version(parent_version):
                     raise LessonRejected("parent version must be a positive integer")
                 parent = conn.execute(
                     "SELECT id FROM lesson_versions WHERE lesson_id = ? AND version = ?",
@@ -622,7 +639,11 @@ def update_lesson_owned_by(
                 parent_id = int(parent["id"])
 
             current_version = int(current["version"])
-            if title == current["title"] and bundle_json == current["bundle_json"]:
+            if (
+                parent_id == int(current["version_id"])
+                and title == current["title"]
+                and bundle_json == current["bundle_json"]
+            ):
                 conn.commit()
                 return LessonWriteResult(lesson_id, current_version, changed=False)
 
@@ -687,9 +708,7 @@ def lesson_version_owned_by(
     lesson_id = _require_lesson_id(lesson_id)
     if (
         lesson_id is None
-        or isinstance(version, bool)
-        or not isinstance(version, int)
-        or version <= 0
+        or not _is_sqlite_version(version)
     ):
         return None
     with closing(connect()) as conn:

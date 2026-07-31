@@ -1,8 +1,9 @@
-import React from "react";
+import * as React from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import {
   layoutVersionGraph,
   LessonSnapshot,
+  nonSourceBundleJson,
   VersionSummary
 } from "./lessonVersion";
 
@@ -45,6 +46,41 @@ export default function LessonHistoryDialog({
   onRestore,
   onClose
 }: Props) {
+  const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  const previousFocus = React.useRef<HTMLElement | null>(null);
+  React.useEffect(() => {
+    previousFocus.current = document.activeElement as HTMLElement;
+    const first =
+      dialogRef.current &&
+      dialogRef.current.querySelector<HTMLElement>("button:not([disabled])");
+    if (first) first.focus();
+    return () => {
+      if (previousFocus.current && document.contains(previousFocus.current))
+        previousFocus.current.focus();
+    };
+  }, []);
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab" || !dialogRef.current) return;
+    const controls = Array.prototype.slice.call(
+      dialogRef.current.querySelectorAll(
+        "button:not([disabled]), [role='button'][tabindex]"
+      )
+    ) as HTMLElement[];
+    if (!controls.length) return;
+    const index = controls.indexOf(document.activeElement as HTMLElement);
+    if (
+      (!event.shiftKey && index === controls.length - 1) ||
+      (event.shiftKey && index <= 0)
+    ) {
+      event.preventDefault();
+      controls[event.shiftKey ? controls.length - 1 : 0].focus();
+    }
+  };
   const graph = layoutVersionGraph(versions, currentVersion);
   const rowHeight = 52;
   const laneWidth = 76;
@@ -66,6 +102,8 @@ export default function LessonHistoryDialog({
       aria-labelledby="lesson-history-title"
       data-testid="lesson-history-dialog"
       style={overlay}
+      ref={dialogRef}
+      onKeyDown={onKeyDown}
     >
       <div style={panel}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "16px" }}>
@@ -140,12 +178,7 @@ export default function LessonHistoryDialog({
                   stroke="#337ab7"
                   strokeWidth="3"
                 />
-                <text
-                  x={position.x + 21}
-                  y={position.y + 5}
-                  fill="#222"
-                  fontSize="14"
-                >
+                <text x={position.x + 21} y={position.y + 5} fill="#222" fontSize="14">
                   v{node.version}
                 </text>
                 {node.isHead && (
@@ -166,7 +199,11 @@ export default function LessonHistoryDialog({
         {selected ? (
           <div>
             <p>
-              <strong>{selected.title}</strong>
+              <strong>原標題：</strong>
+              {parent ? parent.title : ""}
+              <br />
+              <strong>新標題：</strong>
+              {selected.title}
               <br />
               版本 v{selected.version}・{selected.createdAt || "建立時間未知"}
               <br />
@@ -179,13 +216,23 @@ export default function LessonHistoryDialog({
               modified={selected.bundle.source_code || ""}
               options={{ readOnly: true, renderSideBySide: true, automaticLayout: true }}
             />
+            <p>
+              <strong>其他教案設定：</strong>
+            </p>
+            <DiffEditor
+              height="220px"
+              language="json"
+              original={nonSourceBundleJson(
+                parent ? parent.bundle : ({} as LessonSnapshot["bundle"])
+              )}
+              modified={nonSourceBundleJson(selected.bundle)}
+              options={{ readOnly: true, renderSideBySide: true, automaticLayout: true }}
+            />
           </div>
         ) : (
           <p>選擇一個版本以查看差異。</p>
         )}
-        <div
-          style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}
-        >
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}>
           <button
             type="button"
             className="btn btn-primary"
