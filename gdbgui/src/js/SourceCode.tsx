@@ -1134,14 +1134,19 @@ class SourceCode extends React.Component<{}, State> {
           ? payload.current_version
           : null;
         const bundle = payload.bundle || {};
-        if (this.currentLessonVersion !== null) {
-          this.lessonBaseline = this.lessonSnapshot(
-            payload.title,
-            bundle,
-            this.currentLessonVersion
-          );
-        }
+        this.lessonBaseline = null;
         this.applyProjectBundle(bundle);
+        const version = this.currentLessonVersion;
+        if (version !== null) {
+          window.setTimeout(() => {
+            if (this.currentLessonId !== payload.id || this.currentLessonVersion !== version) return;
+            this.lessonBaseline = this.lessonSnapshot(
+              payload.title,
+              this.buildProjectBundle(),
+              version
+            );
+          }, 0);
+        }
         Actions.add_console_entries(
           `已載入教案「${payload.title}」（作者：${payload.author_display_name}）。` +
             (payload.is_mine ? "" : " 儲存時會存成你自己的一份副本。"),
@@ -1167,7 +1172,14 @@ class SourceCode extends React.Component<{}, State> {
     }
 
     const candidate = { title: trimmed, bundle: this.buildProjectBundle() as LessonBundle };
-    if (this.currentLessonId !== null && this.currentLessonIsMine && this.lessonBaseline) {
+    if (this.currentLessonId !== null && this.currentLessonIsMine) {
+      if (!this.lessonBaseline) {
+        Actions.add_console_entries(
+          "教案仍在載入，請稍後再儲存。",
+          constants.console_entry_type.STD_ERR
+        );
+        return;
+      }
       if (!hasSnapshotChanges(this.lessonBaseline, candidate)) {
         Actions.add_console_entries(
           "教案沒有變更，沒有建立新版本。",

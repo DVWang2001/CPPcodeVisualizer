@@ -42,8 +42,12 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
       source => (window as any).monaco.editor.getModels()[0]?.getValue() === source,
       sourceV1
     );
-    await page.evaluate(
-      source => (window as any).monaco.editor.getModels()[0].setValue(source),
+    const editorInput = page.locator(".monaco-editor textarea.inputarea").first();
+    await editorInput.click();
+    await page.keyboard.press("Control+A");
+    await page.keyboard.insertText(sourceV2);
+    await page.waitForFunction(
+      source => (window as any).monaco.editor.getModels()[0]?.getValue() === source,
       sourceV2
     );
 
