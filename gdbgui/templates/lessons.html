@@ -1,38 +1,81 @@
 {% extends "_auth_base.html" %}
 {% block title %}教案庫 - gdbgui{% endblock %}
 {% block body %}
-  {# Jinja 的 autoescape 是開著的。lesson["title"] 與 lesson["display_name"] 都是
-     使用者輸入，一律靠它轉義；這一頁沒有任何 |safe，也沒有任何使用者字串被插進
-     <script> 或 HTML 屬性裡——底下那段 JS 只讀 data-lesson-id（整數）。 #}
-  <style>.card { --card-width: 38rem; }</style>
+  {# Jinja 的 autoescape 是開著的。title、display_name、標籤名都是使用者輸入，
+     一律靠它轉義；這一頁沒有任何 |safe，也沒有任何使用者字串被插進 <script>
+     或 HTML 屬性裡——底下那段 JS 只讀 data-lesson-id（整數）。 #}
+  <style>.card { --card-width: 42rem; }</style>
+
+  {# 目前的篩選條件，用來組「加上／拿掉一個標籤」的連結。 #}
+  {% macro tag_url(name, on) -%}
+    {%- set others = selected_tags | reject('equalto', name) | list -%}
+    {%- set final = others if on else (others + [name]) -%}
+    {{ url_for('http_routes.lesson_library', q=q or None, tag=final or None) }}
+  {%- endmacro %}
 
   <h1>教案庫</h1>
   <p class="lede">
-    共 <span class="count" data-testid="lesson-library-total">{{ total }}</span> 篇教案，最近更新的在前。
+    {% if q or selected_tags %}
+      <span class="count" data-testid="lesson-browse-total">{{ total }}</span> 篇符合條件
+    {% else %}
+      共 <span class="count" data-testid="lesson-browse-total">{{ total }}</span> 篇教案，最近更新的在前。
+    {% endif %}
   </p>
 
+  <form class="search-form" method="get" action="{{ url_for('http_routes.lesson_library') }}">
+    {# 已選的標籤跟著送出去，否則打字會把標籤篩選清掉。 #}
+    {% for name in selected_tags %}
+      <input type="hidden" name="tag" value="{{ name }}" />
+    {% endfor %}
+    <div class="search-row">
+      <input type="search" name="q" value="{{ q }}"
+             placeholder="搜尋標題、作者或標籤…"
+             aria-label="搜尋教案"
+             data-testid="lesson-browse-search" />
+      <button type="submit">搜尋</button>
+    </div>
+  </form>
+
+  {% if facets or selected_tags %}
+    <p class="facets">
+      <span class="facet-label">標籤</span>
+      {% for facet in facets %}
+        {% set on = facet['name'] in selected_tags %}
+        <a class="tag {% if on %}on{% endif %}"
+           href="{{ tag_url(facet['name'], on) }}"
+           data-testid="lesson-browse-facet">{{ facet["name"] }} <span class="n">{{ facet["n"] }}</span></a>
+      {% endfor %}
+      {% if not show_all_tags and facet_total > facets | length %}
+        <a class="tag" href="{{ url_for('http_routes.lesson_library', q=q or None, tag=selected_tags or None, alltags='1') }}">全部 {{ facet_total }} 個 →</a>
+      {% endif %}
+    </p>
+  {% endif %}
+
   {% if lessons %}
-    <ul class="listing" data-testid="lesson-library-list">
+    <ul class="listing" data-testid="lesson-browse-list">
       {% for lesson in lessons %}
         {% set mine = current_user_id is not none and lesson["user_id"] == current_user_id %}
-        <li class="row" data-testid="lesson-library-item">
+        <li class="row" data-testid="lesson-browse-item">
           {# 行號槽。琥珀色中斷點圓點＝這一篇是你的：沿用 app 的規則
-             「顏色代表狀態，不代表類別」，掃過清單時自己的教案像檔案裡的
-             中斷點一樣一眼可見，不需要另外一個文字徽章。 #}
+             「顏色代表狀態，不代表類別」。 #}
           <span class="gutter" aria-hidden="true">
             {% if mine %}<span class="bp"></span>{% endif %}{{ loop.index0 + (page - 1) * per_page + 1 }}
           </span>
           <span class="row-main">
             <a class="row-title"
-               href="{{ url_for('http_routes.gdbgui') }}?lesson={{ lesson['id'] }}"
-               data-testid="lesson-library-title">{{ lesson["title"] }}</a>
+               href="{{ url_for('http_routes.gdbgui', lesson=lesson['id']) }}"
+               data-testid="lesson-browse-title">{{ lesson["title"] }}</a>
             <span class="row-meta">
               <a href="{{ url_for('auth.profile', username=lesson['username']) }}"
-                 data-testid="lesson-library-author">{{ lesson["display_name"] }}</a>
+                 data-testid="lesson-browse-author">{{ lesson["display_name"] }}</a>
               <time datetime="{{ lesson['updated_at'] }}">{{ lesson["updated_at"] }}</time>
+              {% for name in lesson_tags.get(lesson["id"], []) %}
+                <a class="tag {% if name in selected_tags %}on{% endif %}"
+                   href="{{ tag_url(name, name in selected_tags) }}"
+                   data-testid="lesson-browse-tag">{{ name }}</a>
+              {% endfor %}
               {% if mine %}
-                <button type="button"
-                        class="lesson-delete"
+                <button type="button" class="lesson-delete"
                         data-lesson-id="{{ lesson['id'] }}"
                         data-testid="lesson-delete">刪除</button>
               {% endif %}
@@ -42,38 +85,39 @@
       {% endfor %}
     </ul>
   {% else %}
-    <p class="empty" data-testid="lesson-library-empty">
-      還沒有任何教案。<a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>寫第一篇。
+    <p class="empty" data-testid="lesson-browse-empty">
+      {% if q or selected_tags %}
+        沒有符合的教案。<a href="{{ url_for('http_routes.lesson_library') }}">清除條件</a>看全部。
+      {% else %}
+        還沒有任何教案。<a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>寫第一篇。
+      {% endif %}
     </p>
   {% endif %}
 
   <p class="pager">
     <span>
       {% if page > 1 %}
-        <a href="{{ url_for('http_routes.lesson_library', page=page - 1) }}"
-           data-testid="lesson-library-prev">← 上一頁</a>
+        <a href="{{ url_for('http_routes.lesson_library', q=q or None, tag=selected_tags or None, page=page - 1) }}"
+           data-testid="lesson-browse-prev">← 上一頁</a>
       {% endif %}
     </span>
-    <span data-testid="lesson-library-page">第 {{ page }} / {{ last_page }} 頁</span>
+    <span data-testid="lesson-browse-page">第 {{ page }} / {{ last_page }} 頁</span>
     <span>
       {% if page < last_page %}
-        <a href="{{ url_for('http_routes.lesson_library', page=page + 1) }}"
-           data-testid="lesson-library-next">下一頁 →</a>
+        <a href="{{ url_for('http_routes.lesson_library', q=q or None, tag=selected_tags or None, page=page + 1) }}"
+           data-testid="lesson-browse-next">下一頁 →</a>
       {% endif %}
     </span>
   </p>
 
   <p class="nav">
     <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
+    <a href="{{ url_for('auth.logout') }}">登出</a>
   </p>
 
   {# csrf_token 是伺服器產生的 hex，經由 data- 屬性交給下面的腳本讀取。
-     刻意不把它（或任何值）插進 JS 原始碼字串裡——那條路徑上一旦哪天換成
-     使用者可控的值就是 XSS，用屬性讀取就不會有那個形狀。 #}
+     刻意不把它（或任何值）插進 JS 原始碼字串裡。 #}
   <script data-csrf="{{ csrf_token }}">
-    // 刪除走 DELETE /api/lessons/<id>：擁有權在伺服器端判斷（SQL 的
-    // WHERE user_id = ?），這顆按鈕只是入口。非擁有者就算自己造一個請求
-    // 送出去也只會拿到 404。
     (function () {
       var token = document.currentScript.getAttribute("data-csrf");
       document.querySelectorAll(".lesson-delete").forEach(function (button) {
@@ -85,11 +129,8 @@
             headers: { "x-csrftoken": token },
             credentials: "same-origin"
           }).then(function (response) {
-            if (response.ok) {
-              window.location.reload();
-            } else {
-              window.alert("刪除失敗。");
-            }
+            if (response.ok) { window.location.reload(); }
+            else { window.alert("刪除失敗。"); }
           });
         });
       });

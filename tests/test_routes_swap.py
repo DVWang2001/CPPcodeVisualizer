@@ -106,3 +106,24 @@ def test_the_legacy_lessons_redirect_keeps_repeated_tag_params(flask_app):
     location = response.headers["Location"]
     assert "tag=a" in location
     assert "tag=b" in location
+
+
+def test_the_root_renders_the_browse_ui(flask_app):
+    user = register_user(flask_app, display_name="rt_ui")
+    response = user.http.get("/")
+    assert response.status_code == 200
+    assert b"lesson-browse-search" in response.data
+    assert b"lesson-browse-list" in response.data or b"lesson-browse-empty" in response.data
+
+
+def test_the_search_box_and_tag_filter_narrow_the_listing(flask_app):
+    from gdbgui.server import tags
+
+    user = register_user(flask_app, display_name="rt_e")
+    lid = db.create_lesson(user.user_id, "獨一無二的標題ZZQ",
+                           '{"version":"2.0","source_code":"int main(){}"}')
+    tags.set_lesson_tags(lid, user.user_id, "獨特標籤ZZQ")
+
+    assert b"ZZQ" in user.http.get("/?q=ZZQ").data
+    assert b"ZZQ" in user.http.get("/?tag=%E7%8D%A8%E7%89%B9%E6%A8%99%E7%B1%A4ZZQ").data
+    assert b"ZZQ" not in user.http.get("/?q=絕對不存在的字串QQQ").data

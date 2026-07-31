@@ -218,6 +218,59 @@
 
       .empty { margin: 0; padding: 1.25rem 0; color: var(--ink-soft); font-size: 0.9rem; }
 
+      /* ── 搜尋框 ───────────────────────────────────────────── */
+      .search-form { margin: 0 0 0.9rem; }
+      .search-row { display: flex; gap: 0.5rem; }
+      .search-row input[type="search"] {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--struct-border);
+        border-radius: 8px;
+        font-size: 1rem;
+        font-family: inherit;
+        color: var(--ink);
+        background: var(--surface);
+      }
+      .search-row input[type="search"]:focus-visible {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
+      }
+      .search-row button { margin-top: 0; width: auto; flex: none; padding: 0.55rem 1rem; }
+
+      /* ── 標籤 ─────────────────────────────────────────────
+         標籤列只列出目前結果集裡存在的標籤，所以點不出空清單。 */
+      .facets {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+        margin: 0 0 0.4rem;
+      }
+      .facets .facet-label {
+        font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+        letter-spacing: 0.08em; color: var(--ink-faint); flex: none;
+      }
+      .tag {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        font-size: 0.72rem; line-height: 1.5;
+        padding: 0.05rem 0.45rem;
+        border: 1px solid var(--struct-border);
+        border-radius: 999px;
+        color: var(--ink-soft);
+        background: var(--surface);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .tag:hover { border-color: var(--accent); color: var(--accent); }
+      .tag.on {
+        border-color: var(--accent); background: var(--accent-soft);
+        color: var(--accent); font-weight: 600;
+      }
+      .tag .n {
+        font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+        font-size: 0.68rem; color: var(--ink-faint);
+      }
+      .tag.on .n { color: var(--accent); }
+
       .pager {
         display: flex;
         align-items: center;
