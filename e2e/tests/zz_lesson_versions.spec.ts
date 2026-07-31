@@ -42,6 +42,27 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
       source => (window as any).monaco.editor.getModels()[0]?.getValue() === source,
       sourceV1
     );
+
+    const ownerPut = page
+      .waitForRequest(
+        request =>
+          request.method() === "PUT" &&
+          request.url().endsWith(`/api/lessons/${lessonId}`),
+        { timeout: 500 }
+      )
+      .then(() => true)
+      .catch(() => false);
+    page.once("dialog", dialog => dialog.accept(titleV1));
+    await page.getByTestId("save-lesson-to-account").click();
+    expect(await ownerPut).toBe(false);
+    await expect(page.getByTestId("lesson-commit-dialog")).toHaveCount(0);
+    const unchanged = await page.request.get(`/api/lessons/${lessonId}`);
+    expect(await unchanged.json()).toMatchObject({
+      title: titleV1,
+      current_version: 1,
+      bundle: { source_code: sourceV1 }
+    });
+
     const editorInput = page.locator(".monaco-editor textarea.inputarea").first();
     await editorInput.click();
     await page.keyboard.press("Control+A");

@@ -976,7 +976,7 @@ class SourceCode extends React.Component<{}, State> {
   // 把一份 bundle 套進編輯器。「Import JSON」（本機檔案）與「從教案庫開啟」
   // （伺服器上的教案）走同一條路徑：兩邊拿到的是同一種 bundle 物件，拆成兩份
   // 實作就會有一天只有其中一邊懂新的欄位。
-  applyProjectBundle = (projectData: any) => {
+  applyProjectBundle = (projectData: any): LessonBundle => {
         // 若 GDB inferior 正在執行或暫停中，先強制終止，再套用新的 bundle
         const infState = store.get("inferior_program");
         if (
@@ -1044,9 +1044,11 @@ class SourceCode extends React.Component<{}, State> {
           this.refreshAnnotationGlobals();
         }
 
+        let programInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
         if (projectData.program_input !== undefined) {
-          localStorage.setItem("gdbgui_program_input", projectData.program_input);
-          store.set("program_input", projectData.program_input);
+          programInput = projectData.program_input;
+          localStorage.setItem("gdbgui_program_input", programInput);
+          store.set("program_input", programInput);
         }
 
         // import 後的 fullname_to_render（可能是合成名稱或舊路徑）
@@ -1068,9 +1070,11 @@ class SourceCode extends React.Component<{}, State> {
                 : `frontend_${idx + 1}`
             }));
 
+        let breakpoints = store.get("breakpoints") || [];
         if (projectData.breakpoints !== undefined && Array.isArray(projectData.breakpoints)) {
           // JSON 有 breakpoints 欄位：匯入時一律套用（教案的斷點就是教案應該有的斷點）
           const frontendBkpts = normalizeBkpts(projectData.breakpoints);
+          breakpoints = frontendBkpts;
           store.set("breakpoints", frontendBkpts);
           localStorage.setItem("breakpoints", JSON.stringify(frontendBkpts));
         }
@@ -1085,6 +1089,13 @@ class SourceCode extends React.Component<{}, State> {
         store.set("fullname_to_render", "");
         store.set("source_code_state", constants.source_code_states.NONE_AVAILABLE);
         store.set("edit_mode", true);
+        return {
+          version: "2.0",
+          fullname_to_render: "",
+          source_code: mergedSource || this.editorInstance?.getValue?.() || "",
+          breakpoints,
+          program_input: programInput,
+        };
   };
 
   // ── 教案分享 ───────────────────────────────────────────────────────────────
@@ -1135,17 +1146,10 @@ class SourceCode extends React.Component<{}, State> {
           : null;
         const bundle = payload.bundle || {};
         this.lessonBaseline = null;
-        this.applyProjectBundle(bundle);
+        const hydratedBundle = this.applyProjectBundle(bundle);
         const version = this.currentLessonVersion;
         if (version !== null) {
-          window.setTimeout(() => {
-            if (this.currentLessonId !== payload.id || this.currentLessonVersion !== version) return;
-            this.lessonBaseline = this.lessonSnapshot(
-              payload.title,
-              this.buildProjectBundle(),
-              version
-            );
-          }, 0);
+          this.lessonBaseline = this.lessonSnapshot(payload.title, hydratedBundle, version);
         }
         Actions.add_console_entries(
           `已載入教案「${payload.title}」（作者：${payload.author_display_name}）。` +
