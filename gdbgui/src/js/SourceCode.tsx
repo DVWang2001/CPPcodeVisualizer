@@ -1434,9 +1434,17 @@ class SourceCode extends React.Component<{}, State> {
     let value = "";
     if (this.editorInstance && this.lastLoadedFilename !== null) {
       // Monaco is already mounted — always prefer the live editor content
-      try { value = this.editorInstance.getValue(); } catch (e) { value = ""; }
-      if (!value || value.trim() === "") {
-        // Editor returned empty (rare edge case), fall back to storage/cache
+      let gotEditorValue = false;
+      try {
+        const editorValue = this.editorInstance.getValue();
+        if (typeof editorValue === "string") {
+          value = editorValue;
+          gotEditorValue = true;
+        }
+      } catch (e) {}
+      if (!gotEditorValue) {
+        // Only a failed editor read falls back to storage/cache; an intentional
+        // empty source is still a valid program and must remain empty.
         value = this.get_monaco_value(obj?.source_code_obj ?? null, obj?.num_lines_in_file ?? 0);
       } else if (this.lastLoadedFilename !== ftrForMonaco && this.lastLoadedFilename !== "" && ftrForMonaco !== "") {
         // Filename changed while Monaco was mounted — persist code under new key
@@ -1446,8 +1454,12 @@ class SourceCode extends React.Component<{}, State> {
         localStorage.setItem("gdbgui_editor_filename_" + ftrForMonaco, ftrForMonaco);
       }
     } else {
-      // Monaco is (re)mounting — load from localStorage or server cache
-      value = this.get_monaco_value(obj?.source_code_obj ?? null, obj?.num_lines_in_file ?? 0);
+      // Monaco is (re)mounting. A pending bundle may intentionally carry an
+      // empty source, so distinguish that string from a missing pending value.
+      const pending = (global_variable as any).__pending_source_code;
+      value = typeof pending === "string"
+        ? pending
+        : this.get_monaco_value(obj?.source_code_obj ?? null, obj?.num_lines_in_file ?? 0);
     }
     this.lastLoadedFilename = ftrForMonaco;
 
