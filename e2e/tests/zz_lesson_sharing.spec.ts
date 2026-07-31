@@ -22,7 +22,7 @@ async function editorText(page: Page): Promise<string> {
 
 test('save to my account, then reopen it from the library link', async ({ page }) => {
   await ensureLoggedIn(page);
-  await page.goto('/');
+  await page.goto('/edit');
   await page.waitForFunction(() => (window as any).monaco?.editor?.getModels()?.length > 0);
 
   const marker = `// lesson-e2e-${Date.now()}`;
@@ -38,17 +38,17 @@ test('save to my account, then reopen it from the library link', async ({ page }
 
   // 存好之後它會出現在教案庫頁
   await expect
-    .poll(async () => (await page.request.get('/lessons')).text().then((t) => t.includes(title)), {
+    .poll(async () => (await page.request.get('/')).text().then((t) => t.includes(title)), {
       timeout: 10_000,
     })
     .toBe(true);
 
   // 教案庫頁：標題連到 /?lesson=<id>
-  await page.goto('/lessons');
-  const link = page.getByTestId('lesson-library-title').filter({ hasText: title }).first();
+  await page.goto('/');
+  const link = page.getByTestId('lesson-browse-title').filter({ hasText: title }).first();
   await expect(link).toBeVisible();
   const href = await link.getAttribute('href');
-  expect(href).toMatch(/\/\?lesson=\d+$/);
+  expect(href).toMatch(/\/edit\?lesson=\d+$/);
 
   // 開啟它 → 編輯器裡是剛剛存的內容
   await page.goto(href!);
@@ -64,7 +64,7 @@ test('save to my account, then reopen it from the library link', async ({ page }
     headers: { 'x-csrftoken': token },
   });
   expect(deleted.status()).toBe(200);
-  expect(await (await page.request.get('/lessons')).text()).not.toContain(title);
+  expect(await (await page.request.get('/')).text()).not.toContain(title);
 });
 
 test('opening someone else\'s lesson and saving makes a copy, leaving the original alone', async ({
@@ -75,7 +75,7 @@ test('opening someone else\'s lesson and saving makes a copy, leaving the origin
   const authorContext = await browser.newContext();
   const authorPage = await authorContext.newPage();
   await ensureLoggedIn(authorPage);
-  await authorPage.goto('/');
+  await authorPage.goto('/edit');
   await authorPage.waitForFunction(
     () => (window as any).monaco?.editor?.getModels()?.length > 0
   );
@@ -100,7 +100,7 @@ test('opening someone else\'s lesson and saving makes a copy, leaving the origin
 
   // 讀者：開作者的教案、改一行、按儲存
   await ensureLoggedIn(page);
-  await page.goto(`/?lesson=${lessonId}`);
+  await page.goto(`/edit?lesson=${lessonId}`);
   await page.waitForFunction(() => (window as any).monaco?.editor?.getModels()?.length > 0);
   await expect
     .poll(async () => (await editorText(page)).includes('AUTHOR ORIGINAL'), { timeout: 15_000 })
@@ -117,7 +117,7 @@ test('opening someone else\'s lesson and saving makes a copy, leaving the origin
   // 讀者名下多了一份副本…
   await expect
     .poll(
-      async () => (await (await page.request.get('/lessons')).text()).includes(readerTitle),
+      async () => (await (await page.request.get('/')).text()).includes(readerTitle),
       { timeout: 10_000 }
     )
     .toBe(true);
@@ -142,4 +142,17 @@ test('opening someone else\'s lesson and saving makes a copy, leaving the origin
     headers: { 'x-csrftoken': authorToken },
   });
   await authorContext.close();
+});
+
+test('the old bookmarks still work', async ({ page }) => {
+  await ensureLoggedIn(page);
+
+  // /lessons 是教案庫的舊網址，內容搬到主頁了
+  const lessons = await page.request.get('/lessons', { maxRedirects: 0 });
+  expect(lessons.status()).toBe(302);
+
+  // /?lesson=N 是教案的舊深連結，除錯器搬到 /edit 了
+  const deeplink = await page.request.get('/?lesson=1', { maxRedirects: 0 });
+  expect(deeplink.status()).toBe(302);
+  expect(deeplink.headers()['location']).toContain('/edit?lesson=1');
 });

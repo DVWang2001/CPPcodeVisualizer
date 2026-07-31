@@ -3,7 +3,7 @@ import { waitForContainerData, setupGuide, setupPage } from './helpers';
 
 test('Run button causes GDB to respond within 3 seconds', async ({ page }) => {
     await setupPage(page);
-    await page.goto('/');
+    await page.goto('/edit');
     await setupGuide(page);
 
     await page.evaluate(() => {

@@ -44,7 +44,7 @@ const BUNDLE = {
 
 async function boot(page: any, autoplay: boolean) {
     await ensureLoggedIn(page);
-    await page.goto('/');
+    await page.goto('/edit');
     await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 20_000 });
     await page.waitForSelector('.monaco-editor textarea', { timeout: 20_000 });
     await page.evaluate((ap: boolean) => (window as any).store.set('autoplay_enabled', ap), autoplay);

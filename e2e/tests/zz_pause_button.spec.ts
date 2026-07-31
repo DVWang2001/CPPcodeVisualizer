@@ -50,7 +50,7 @@ test('pause button actually interrupts a running program', async ({ page }) => {
     test.setTimeout(120_000);
     await setupPage(page);
     await ensureLoggedIn(page);
-    await page.goto('/');
+    await page.goto('/edit');
 
     await page.waitForFunction(() => (window as any).store !== undefined, null, {
         timeout: 15_000,

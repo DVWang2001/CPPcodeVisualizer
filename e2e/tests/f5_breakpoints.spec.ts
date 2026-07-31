@@ -29,7 +29,7 @@ const bkptLines = (page: any): Promise<number[]> => page.evaluate(() =>
  */
 test('breakpoints survive F5 after typing + running real code', async ({ page }) => {
     await setupPage(page);
-    await page.goto('/');
+    await page.goto('/edit');
     await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 15_000 });
     await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });
 

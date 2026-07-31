@@ -7,7 +7,7 @@ test.describe('linear containers', () => {
     test.beforeAll(async ({ browser }) => {
         page = await browser.newPage();
         await setupPage(page);
-        await page.goto('/');
+        await page.goto('/edit');
         await runToBreakpoint(page, '{v} {a} {s} {l}');
         await waitForContainer(page, 'l');
     });

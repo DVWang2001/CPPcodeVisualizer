@@ -41,7 +41,7 @@ const TARGETS = [
 test('a logged-in user cannot read server secrets through the file routes', async ({ page }) => {
     test.setTimeout(180_000);
     await ensureLoggedIn(page);
-    await page.goto('/');
+    await page.goto('/edit');
 
     await page.waitForFunction(() => (window as any).store !== undefined, null, {
         timeout: 15_000,

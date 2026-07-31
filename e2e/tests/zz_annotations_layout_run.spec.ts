@@ -51,7 +51,7 @@ test('layout directive survives Run (regression: __layout not wiped)', async ({ 
 
   await setupPage(page);
   await ensureLoggedIn(page);
-  await page.goto('/');
+  await page.goto('/edit');
   await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 15_000 });
   await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });
 

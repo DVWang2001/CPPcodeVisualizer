@@ -25,7 +25,7 @@ test('✎ inline panel writes //@ while editor is readOnly (play mode)', async (
   page.on('pageerror', err => { jsErrors.push(err.message); console.log(`[PAGE ERROR] ${err.message}`); });
 
   await setupPage(page);
-  await page.goto('/');
+  await page.goto('/edit');
   await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 15_000 });
   await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });
 

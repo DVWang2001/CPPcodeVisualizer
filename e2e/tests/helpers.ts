@@ -7,8 +7,8 @@ const E2E_PASSWORD = 'e2e-password-1234';
 
 /**
  * Register a throwaway account and land logged in.  Must be called BEFORE the
- * spec's own page.goto('/') -- the whole site now requires a login, so an
- * anonymous goto('/') just redirects to /login and the app never boots.
+ * spec's own page.goto('/edit') -- the whole site now requires a login, so an
+ * anonymous goto('/edit') just redirects to /login and the app never boots.
  *
  * A FRESH account per call, deliberately.  The account is now the unit of
  * isolation: one user gets one jail and one debug session, and a second browser
@@ -35,7 +35,7 @@ export async function ensureLoggedIn(page: Page): Promise<void> {
 }
 
 /**
- * Must be called BEFORE page.goto('/').
+ * Must be called BEFORE page.goto('/edit').
  * Sets auto_add_breakpoint_to_main=false in localStorage so BinaryLoader's
  * componentDidMount (triggered by initial_binary_and_args from CLI) does NOT
  * send -break-insert -f main.  Without this, GDB stops at main (line 29)

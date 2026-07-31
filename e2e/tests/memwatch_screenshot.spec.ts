@@ -107,7 +107,7 @@ test('MemoryWatch screenshots through swap tutorial', async ({ page }) => {
   page.on('console', msg => console.log(`[browser] ${msg.type()}: ${msg.text()}`));
 
   await setupPage(page);
-  await page.goto('/');
+  await page.goto('/edit');
   await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 15_000 });
   await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });
 

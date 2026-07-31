@@ -121,7 +121,7 @@ test('tutorial import then Run reaches paused', async ({ page }) => {
 
   await setupPage(page);
   await ensureLoggedIn(page);
-  await page.goto('/');
+  await page.goto('/edit');
   await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 15_000 });
   await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });
   await installStateRecorder(page);

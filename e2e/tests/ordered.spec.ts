@@ -7,7 +7,7 @@ test.describe('ordered containers', () => {
     test.beforeAll(async ({ browser }) => {
         page = await browser.newPage();
         await setupPage(page);
-        await page.goto('/');
+        await page.goto('/edit');
         await runToBreakpoint(page, '{se} {ms} {m} {mm}');
         await waitForContainer(page, 'mm');
     });
