@@ -195,3 +195,16 @@ def test_a_request_without_the_csrf_header_is_refused(flask_app):
     )
     assert response.status_code >= 400
     assert tags.tags_for_lessons([lid]) == {lid: []}
+
+
+def test_the_tag_editor_only_appears_on_your_own_profile(flask_app):
+    """別人的個人檔案不該顯示無法使用的標籤編輯表單。"""
+    author = register_user(flask_app, display_name="prof_a")
+    other = register_user(flask_app, display_name="prof_b")
+    _lesson(author.user_id)
+
+    own = author.http.get(f"/u/{author.username}")
+    assert b"profile-tag-save" in own.data
+
+    theirs = other.http.get(f"/u/{author.username}")
+    assert b"profile-tag-save" not in theirs.data

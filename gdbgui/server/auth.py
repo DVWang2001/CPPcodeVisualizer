@@ -30,7 +30,7 @@ from typing import Optional
 from flask import Blueprint, abort, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from . import blocking, db
+from . import blocking, db, tags
 from .constants import TEMPLATE_DIR
 from .http_util import add_csrf_token_to_session, current_user_id
 
@@ -255,11 +255,14 @@ def profile(username: str):
         abort(404)
 
     lessons = db.lessons_for_user(int(user["id"]))
+    add_csrf_token_to_session()
     return render_template(
         "profile.html",
         profile_username=user["username"],
         display_name=user["display_name"],
         created_at=user["created_at"],
         lessons=lessons,
+        lesson_tags=tags.tags_for_lessons([row["id"] for row in lessons]),
         is_self=(current_user_id() == int(user["id"])),
+        csrf_token=session["csrf_token"],
     )

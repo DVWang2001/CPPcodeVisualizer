@@ -271,6 +271,29 @@
       }
       .tag.on .n { color: var(--accent); }
 
+      /* ── 標籤編輯（只在自己的個人檔案頁出現）───────────────── */
+      .tag-edit {
+        margin-top: 0.5rem;
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .tag-edit input[type="text"] {
+        flex: 1 1 16rem;
+        min-width: 0;
+        padding: 0.35rem 0.5rem;
+        font-family: var(--font-mono);
+        font-size: 0.82rem;
+        border-radius: 6px;
+      }
+      .tag-edit button {
+        margin-top: 0; width: auto; flex: none;
+        padding: 0.35rem 0.75rem; font-size: 0.8rem;
+      }
+      .tag-edit .status { font-size: 0.78rem; color: var(--ink-faint); }
+      .tag-edit .status.bad { color: var(--danger); }
+
       .pager {
         display: flex;
         align-items: center;

@@ -24,6 +24,26 @@
             <span class="row-meta">
               <time datetime="{{ lesson['updated_at'] }}">{{ lesson["updated_at"] }}</time>
             </span>
+            <span class="row-meta" data-testid="profile-tag-list">
+              {% for name in lesson_tags.get(lesson["id"], []) %}
+                <a class="tag" href="{{ url_for('http_routes.lesson_library', tag=name) }}">{{ name }}</a>
+              {% else %}
+                <span style="font-size:0.78rem; color:var(--ink-faint)">還沒有標籤</span>
+              {% endfor %}
+            </span>
+            {% if is_self %}
+              <span class="tag-edit">
+                <input type="text"
+                       value="{{ lesson_tags.get(lesson['id'], []) | join(', ') }}"
+                       placeholder="逗號分隔，最多 8 個"
+                       aria-label="這篇教案的標籤"
+                       data-lesson-id="{{ lesson['id'] }}"
+                       data-testid="profile-tag-input" />
+                <button type="button" data-lesson-id="{{ lesson['id'] }}"
+                        data-testid="profile-tag-save">儲存標籤</button>
+                <span class="status"></span>
+              </span>
+            {% endif %}
           </span>
         </li>
       {% endfor %}
@@ -43,4 +63,40 @@
     <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
     {% if is_self %}<a href="{{ url_for('auth.logout') }}">登出</a>{% endif %}
   </p>
+
+  {% if is_self %}
+  <script data-csrf="{{ csrf_token }}">
+    // 標籤走 POST /api/lessons/<id>/tags：擁有權在伺服器端判斷，
+    // 這個表單只是入口。非作者就算自己造請求也只會拿到 404。
+    (function () {
+      var token = document.currentScript.getAttribute("data-csrf");
+      document.querySelectorAll("[data-testid='profile-tag-save']").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var id = button.getAttribute("data-lesson-id");
+          var box = button.parentNode;
+          var input = box.querySelector("input");
+          var status = box.querySelector(".status");
+          status.className = "status";
+          status.textContent = "儲存中…";
+          fetch("/api/lessons/" + encodeURIComponent(id) + "/tags", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-csrftoken": token },
+            credentials: "same-origin",
+            body: JSON.stringify({ tags: input.value })
+          }).then(function (response) {
+            return response.json().catch(function () { return {}; }).then(function (data) {
+              if (response.ok) {
+                input.value = (data.tags || []).join(", ");
+                status.textContent = "已儲存";
+              } else {
+                status.className = "status bad";
+                status.textContent = data.message || "儲存失敗。";
+              }
+            });
+          });
+        });
+      });
+    })();
+  </script>
+  {% endif %}
 {% endblock %}
