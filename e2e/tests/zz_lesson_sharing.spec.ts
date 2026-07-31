@@ -67,7 +67,7 @@ test('save to my account, then reopen it from the library link', async ({ page }
   expect(await (await page.request.get('/')).text()).not.toContain(title);
 });
 
-test('opening someone else\'s lesson and saving makes a copy, leaving the original alone', async ({
+test('opening someone else\'s unchanged lesson saves an independent private v1', async ({
   page,
   browser,
 }) => {
@@ -98,36 +98,44 @@ test('opening someone else\'s lesson and saving makes a copy, leaving the origin
   expect(created.status()).toBe(201);
   const lessonId = (await created.json()).id;
 
-  // 讀者：開作者的教案、改一行、按儲存
+  // 讀者：開作者的教案，不改內容，直接另存。
   await ensureLoggedIn(page);
   await page.goto(`/edit?lesson=${lessonId}`);
   await page.waitForFunction(() => (window as any).monaco?.editor?.getModels()?.length > 0);
   await expect
     .poll(async () => (await editorText(page)).includes('AUTHOR ORIGINAL'), { timeout: 15_000 })
     .toBe(true);
+  await expect(page.getByTestId('lesson-history-open')).toHaveCount(0);
 
-  await page.evaluate(() => {
-    const model = (window as any).monaco.editor.getModels()[0];
-    model.setValue('// READER EDIT\nint main() { return 0; }\n');
-  });
-  const readerTitle = `讀者的版本 ${Date.now()}`;
-  page.once('dialog', (dialog) => dialog.accept(readerTitle));
+  const forkResponse = page.waitForResponse(
+    response =>
+      response.request().method() === 'PUT' &&
+      response.url().endsWith(`/api/lessons/${lessonId}`) &&
+      response.status() === 201
+  );
+  page.once('dialog', (dialog) => dialog.accept(authorTitle));
   await page.getByTestId('save-lesson-to-account').click();
+  const forked = await (await forkResponse).json();
+  const forkId = forked.id;
+  expect(forked).toMatchObject({ forked: true, version: 1, changed: true });
+  expect(forkId).not.toBe(lessonId);
 
-  // 讀者名下多了一份副本…
-  await expect
-    .poll(
-      async () => (await (await page.request.get('/')).text()).includes(readerTitle),
-      { timeout: 10_000 }
-    )
-    .toBe(true);
+  // 副本從讀者自己的 v1 開始，沒有原作者的歷史。
+  const forkHistory = await page.request.get(`/api/lessons/${forkId}/versions`);
+  expect(forkHistory.status()).toBe(200);
+  expect(await forkHistory.json()).toMatchObject({
+    current_version: 1,
+    versions: [{ version: 1, parent_version: null, title: authorTitle }]
+  });
+  const hiddenOriginalHistory = await page.request.get(`/api/lessons/${lessonId}/versions`);
+  expect(hiddenOriginalHistory.status()).toBe(404);
 
   // …而作者的原件一個字都沒變。
   const original = await authorPage.request.get(`/api/lessons/${lessonId}`);
   const originalBody = await original.json();
   expect(originalBody.title).toBe(authorTitle);
   expect(originalBody.bundle.source_code).toContain('AUTHOR ORIGINAL');
-  expect(originalBody.bundle.source_code).not.toContain('READER EDIT');
+  expect(originalBody.current_version).toBe(1);
 
   // 讀者刪不掉作者的
   const refused = await page.request.delete(`/api/lessons/${lessonId}`, {
@@ -140,6 +148,9 @@ test('opening someone else\'s lesson and saving makes a copy, leaving the origin
 
   await authorPage.request.delete(`/api/lessons/${lessonId}`, {
     headers: { 'x-csrftoken': authorToken },
+  });
+  await page.request.delete(`/api/lessons/${forkId}`, {
+    headers: { 'x-csrftoken': await csrfToken(page) },
   });
   await authorContext.close();
 });

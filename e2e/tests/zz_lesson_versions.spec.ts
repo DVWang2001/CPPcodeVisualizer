@@ -14,8 +14,10 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
   const stamp = Date.now();
   const titleV1 = `版本一 ${stamp}`;
   const titleV2 = `版本二 ${stamp}`;
+  const titleV3 = `版本三 ${stamp}`;
   const sourceV1 = "// v1\n//@guide: first\nint main() { return 0; }\n";
   const sourceV2 = "// v2\n//@guide: revised\nint main() { return 1; }\n";
+  const sourceV3 = "// v3 branch\n//@guide: restored then branched\nint main() { return 3; }\n";
 
   const created = await page.request.post("/api/lessons", {
     headers: { "x-csrftoken": token, "Content-Type": "application/json" },
@@ -98,6 +100,48 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
         title: titleV2,
         current_version: 2,
         bundle: { source_code: sourceV2 }
+      });
+
+    await page.getByTestId("lesson-history-open").click();
+    await expect(page.getByTestId("lesson-history-dialog")).toBeVisible();
+    await expect(page.getByTestId("lesson-version-node-1")).toBeVisible();
+    await expect(page.getByTestId("lesson-version-node-2")).toBeVisible();
+    await expect(page.getByText("HEAD", { exact: true })).toBeVisible();
+
+    await page.getByTestId("lesson-version-node-1").click();
+    await expect(page.getByText(titleV1, { exact: true })).toBeVisible();
+    await page.getByTestId("lesson-version-restore").click();
+    await expect(page.getByTestId("lesson-history-dialog")).toHaveCount(0);
+    await expect
+      .poll(async () => (await page.evaluate(() => (window as any).monaco.editor.getModels()[0]?.getValue())))
+      .toBe(sourceV1);
+
+    const restoredWithoutSaving = await page.request.get(`/api/lessons/${lessonId}/versions`);
+    expect(await restoredWithoutSaving.json()).toMatchObject({ current_version: 2 });
+
+    await page.evaluate(source => {
+      (window as any).monaco.editor.getModels()[0].setValue(source);
+    }, sourceV3);
+    page.once("dialog", dialog => {
+      expect(dialog.defaultValue()).toBe(titleV1);
+      dialog.accept(titleV3);
+    });
+    await page.getByTestId("save-lesson-to-account").click();
+    await expect(page.getByTestId("lesson-commit-dialog")).toBeVisible();
+    await page.getByTestId("lesson-commit-confirm").click();
+
+    await expect
+      .poll(async () => {
+        const response = await page.request.get(`/api/lessons/${lessonId}/versions`);
+        return response.json();
+      })
+      .toMatchObject({
+        current_version: 3,
+        versions: expect.arrayContaining([
+          { version: 3, parent_version: 1, title: titleV3 },
+          { version: 2, parent_version: 1, title: titleV2 },
+          { version: 1, parent_version: null, title: titleV1 }
+        ])
       });
   } finally {
     await page.request.delete(`/api/lessons/${lessonId}`, {

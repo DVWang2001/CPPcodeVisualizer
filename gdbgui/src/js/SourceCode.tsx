@@ -22,7 +22,13 @@ import { lineIdentifiers } from "./lineIdentifiers";
 import { parseForHeader, segRange } from "./forHeader";
 import LessonGenPanel from "./LessonGenPanel";
 import LessonCommitDialog from "./LessonCommitDialog";
-import { hasSnapshotChanges, LessonBundle, LessonSnapshot } from "./lessonVersion";
+import LessonHistoryDialog from "./LessonHistoryDialog";
+import {
+  hasSnapshotChanges,
+  LessonBundle,
+  LessonSnapshot,
+  VersionSummary
+} from "./lessonVersion";
 
 type State = any;
 
@@ -53,6 +59,7 @@ class SourceCode extends React.Component<{}, State> {
       },
       showLessonGen: false,
       showLessonCommit: false,
+      showLessonHistory: false,
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
@@ -1112,6 +1119,11 @@ class SourceCode extends React.Component<{}, State> {
   currentLessonVersion: number | null = null;
   lessonBaseline: LessonSnapshot | null = null;
   pendingLessonCommit: { title: string; bundle: LessonBundle } | null = null;
+  lessonVersionSummaries: VersionSummary[] = [];
+  lessonHistoryHeadVersion: number | null = null;
+  selectedLessonVersion: LessonSnapshot | null = null;
+  selectedLessonVersionParent: LessonSnapshot | null = null;
+  lessonHistoryRequest = 0;
 
   lessonSnapshot = (title: string, bundle: LessonBundle, version: number): LessonSnapshot => ({
     title,
@@ -1120,6 +1132,44 @@ class SourceCode extends React.Component<{}, State> {
     parentVersion: null,
     createdAt: "",
   });
+
+  lessonSnapshotFromApi = (payload: any): LessonSnapshot | null => {
+    if (
+      !payload ||
+      !Number.isInteger(payload.version) ||
+      payload.version <= 0 ||
+      typeof payload.title !== "string" ||
+      !payload.bundle ||
+      typeof payload.bundle !== "object" ||
+      Array.isArray(payload.bundle) ||
+      (payload.parent_version !== null &&
+        (!Number.isInteger(payload.parent_version) || payload.parent_version <= 0))
+    ) {
+      return null;
+    }
+    return {
+      ...this.lessonSnapshot(payload.title, payload.bundle as LessonBundle, payload.version),
+      parentVersion: payload.parent_version,
+      createdAt: typeof payload.created_at === "string" ? payload.created_at : "",
+    };
+  };
+
+  lessonSummaryFromApi = (payload: any): VersionSummary | null => {
+    if (
+      !payload ||
+      !Number.isInteger(payload.version) ||
+      payload.version <= 0 ||
+      (payload.parent_version !== null &&
+        (!Number.isInteger(payload.parent_version) || payload.parent_version <= 0))
+    ) {
+      return null;
+    }
+    return {
+      version: payload.version,
+      parentVersion: payload.parent_version,
+      createdAt: typeof payload.created_at === "string" ? payload.created_at : "",
+    };
+  };
 
   lessonIdFromUrl = (): number | null => {
     try {
@@ -1151,6 +1201,7 @@ class SourceCode extends React.Component<{}, State> {
         if (version !== null) {
           this.lessonBaseline = this.lessonSnapshot(payload.title, hydratedBundle, version);
         }
+        this.setState({} as any);
         Actions.add_console_entries(
           `已載入教案「${payload.title}」（作者：${payload.author_display_name}）。` +
             (payload.is_mine ? "" : " 儲存時會存成你自己的一份副本。"),
@@ -1268,6 +1319,93 @@ class SourceCode extends React.Component<{}, State> {
     this.setState({ showLessonCommit: false } as any);
   };
 
+  openLessonHistory = () => {
+    if (this.currentLessonId === null || !this.currentLessonIsMine) return;
+    const lessonId = this.currentLessonId;
+    fetch(`/api/lessons/${lessonId}/versions`, { credentials: "same-origin" })
+      .then(response =>
+        response.ok ? response.json() : Promise.reject(new Error("history failed"))
+      )
+      .then(payload => {
+        const summaries = Array.isArray(payload.versions)
+          ? payload.versions.map(this.lessonSummaryFromApi).filter(Boolean) as VersionSummary[]
+          : [];
+        const currentVersion = payload.current_version;
+        if (
+          !Number.isInteger(currentVersion) ||
+          !summaries.some(summary => summary.version === currentVersion)
+        ) {
+          throw new Error("invalid history");
+        }
+        this.lessonVersionSummaries = summaries;
+        this.lessonHistoryHeadVersion = currentVersion;
+        this.selectedLessonVersion = null;
+        this.selectedLessonVersionParent = null;
+        this.lessonHistoryRequest++;
+        this.setState({ showLessonHistory: true } as any);
+        this.selectLessonVersion(currentVersion);
+      })
+      .catch(() => {
+        Actions.add_console_entries(
+          "無法讀取版本紀錄。",
+          constants.console_entry_type.STD_ERR
+        );
+      });
+  };
+
+  selectLessonVersion = (version: number) => {
+    if (this.currentLessonId === null || !this.currentLessonIsMine) return;
+    const lessonId = this.currentLessonId;
+    const request = ++this.lessonHistoryRequest;
+    fetch(`/api/lessons/${lessonId}/versions/${version}/diff`, {
+      credentials: "same-origin"
+    })
+      .then(response =>
+        response.ok ? response.json() : Promise.reject(new Error("diff failed"))
+      )
+      .then(payload => {
+        if (request !== this.lessonHistoryRequest) return;
+        const selected = this.lessonSnapshotFromApi(payload.version);
+        const parent = payload.parent === null ? null : this.lessonSnapshotFromApi(payload.parent);
+        if (!selected || (payload.parent !== null && !parent)) {
+          throw new Error("invalid diff");
+        }
+        this.selectedLessonVersion = selected;
+        this.selectedLessonVersionParent = parent;
+        this.setState({} as any);
+      })
+      .catch(() => {
+        if (request !== this.lessonHistoryRequest) return;
+        Actions.add_console_entries(
+          "無法讀取版本差異。",
+          constants.console_entry_type.STD_ERR
+        );
+      });
+  };
+
+  restoreSelectedLessonVersion = () => {
+    const selected = this.selectedLessonVersion;
+    if (!selected) return;
+    const hydratedBundle = this.applyProjectBundle(selected.bundle);
+    this.currentLessonTitle = selected.title;
+    this.currentLessonVersion = selected.version;
+    this.lessonBaseline = {
+      ...selected,
+      bundle: JSON.parse(JSON.stringify(hydratedBundle)),
+    };
+    this.pendingLessonCommit = null;
+    this.setState({ showLessonHistory: false, showLessonCommit: false } as any);
+    Actions.add_console_entries(
+      `已還原到 v${selected.version}；下次確認儲存會從此版本建立分支。`,
+      constants.console_entry_type.GDBGUI_OUTPUT
+    );
+  };
+
+  closeLessonHistory = () => {
+    this.lessonHistoryRequest++;
+    this.setState({ showLessonHistory: false } as any);
+  };
+
   openLessonLibrary = () => {
     // 教案庫換到主頁了；/lessons 還在但只是一個轉址，直接打 / 省一趟往返。
     window.location.href = "/";
@@ -1357,6 +1495,16 @@ class SourceCode extends React.Component<{}, State> {
                 style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
                 存到我的帳號
               </button>
+              {this.currentLessonId !== null && this.currentLessonIsMine && (
+                <button
+                  onClick={this.openLessonHistory}
+                  data-testid="lesson-history-open"
+                  className="btn btn-default btn-sm"
+                  title="檢視自己的教案版本歷史"
+                  style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                  版本歷史
+                </button>
+              )}
               <button
                 onClick={this.openLessonLibrary}
                 data-testid="open-lesson-library"
@@ -1390,6 +1538,17 @@ class SourceCode extends React.Component<{}, State> {
               candidate={this.pendingLessonCommit}
               onConfirm={this.confirmLessonCommit}
               onCancel={this.cancelLessonCommit}
+            />
+          )}
+          {(this.state as any).showLessonHistory && this.lessonHistoryHeadVersion !== null && (
+            <LessonHistoryDialog
+              versions={this.lessonVersionSummaries}
+              currentVersion={this.lessonHistoryHeadVersion}
+              selected={this.selectedLessonVersion}
+              parent={this.selectedLessonVersionParent}
+              onSelect={this.selectLessonVersion}
+              onRestore={this.restoreSelectedLessonVersion}
+              onClose={this.closeLessonHistory}
             />
           )}
           <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", overflow: 'hidden' }}>
