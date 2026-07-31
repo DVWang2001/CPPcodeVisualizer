@@ -95,15 +95,12 @@ test("lays out a single-parent branch with the current HEAD", () => {
   const graph = layoutVersionGraph(versions, 5);
 
   expect(graph.nodes.map(node => node.version)).toEqual([5, 4, 3, 2, 1]);
-  expect(graph.edges).toEqual(
-    expect.arrayContaining([
-      { from: 2, to: 1 },
-      { from: 3, to: 2 },
-      { from: 4, to: 3 },
-      { from: 5, to: 3 }
-    ])
-  );
-  expect(graph.edges).toHaveLength(4);
+  expect(graph.edges).toEqual([
+    { from: 1, to: 2 },
+    { from: 2, to: 3 },
+    { from: 3, to: 4 },
+    { from: 3, to: 5 }
+  ]);
   expect(graph.laneCount).toBeGreaterThanOrEqual(2);
   expect(graph.nodes.filter(node => node.isHead).map(node => node.version)).toEqual([5]);
 });

@@ -82,7 +82,7 @@ export function layoutVersionGraph(
     const siblings = children.get(summary.parentVersion) || [];
     siblings.push(summary.version);
     children.set(summary.parentVersion, siblings);
-    edges.push({ from: summary.version, to: summary.parentVersion });
+    edges.push({ from: summary.parentVersion, to: summary.version });
   });
   children.forEach(siblings => siblings.sort((a, b) => b - a));
 
@@ -119,7 +119,7 @@ export function layoutVersionGraph(
         lane: laneByVersion.get(summary.version)!,
         isHead: summary.version === headVersion
       })),
-    edges: edges.sort((a, b) => b.from - a.from),
+    edges: edges.sort((a, b) => a.from - b.from || a.to - b.to),
     laneCount: nextLane
   };
 }
