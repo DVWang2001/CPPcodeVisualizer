@@ -1622,6 +1622,38 @@ def _lesson_payload():
     return (title, bundle_json), None
 
 
+def _optional_parent_version():
+    """讀取 owner PUT 的可選父版本；payload 已由 _lesson_payload 驗過。"""
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or "parent_version" not in body:
+        return None
+    parent_version = body["parent_version"]
+    if (
+        isinstance(parent_version, bool)
+        or not isinstance(parent_version, int)
+        or parent_version <= 0
+    ):
+        raise db.LessonRejected("parent version must be a positive integer")
+    return parent_version
+
+
+def _version_payload(row, include_bundle=True):
+    """將版本資料列轉為 API 回應；損壞快照由呼叫端視為不存在。"""
+    payload = {
+        "version": int(row["version"]),
+        "parent_version": (
+            int(row["parent_version"])
+            if row["parent_version"] is not None
+            else None
+        ),
+        "title": row["title"],
+        "created_at": row["created_at"],
+    }
+    if include_bundle:
+        payload["bundle"] = json.loads(row["bundle_json"])
+    return payload
+
+
 @blueprint.route("/api/lessons", methods=["POST"])
 @authenticate
 def create_lesson():
@@ -1632,12 +1664,19 @@ def create_lesson():
         return error
     title, bundle_json = fields
     try:
-        lesson_id = db.create_lesson(user_id, title, bundle_json)
+        result = db.create_lesson_with_version(user_id, title, bundle_json)
     except db.LessonQuotaExceeded as exc:
         return _quota_response(exc)
     except db.LessonRejected:
         return jsonify({"message": LESSON_INVALID_MESSAGE}), 400
-    return jsonify({"id": lesson_id, "forked": False}), 201
+    return jsonify(
+        {
+            "id": result.lesson_id,
+            "forked": False,
+            "version": result.version,
+            "changed": result.changed,
+        }
+    ), 201
 
 
 @blueprint.route("/api/lessons/<int:lesson_id>", methods=["PUT"])
@@ -1661,15 +1700,33 @@ def update_lesson(lesson_id: int):
 
     try:
         if int(existing["user_id"]) == user_id:
-            if not db.update_lesson_owned_by(lesson_id, user_id, title, bundle_json):
+            parent_version = _optional_parent_version()
+            result = db.update_lesson_owned_by(
+                lesson_id, user_id, title, bundle_json, parent_version
+            )
+            if result is None:
                 return _lesson_not_found()
-            return jsonify({"id": lesson_id, "forked": False})
-        new_id = db.create_lesson(user_id, title, bundle_json)
+            return jsonify(
+                {
+                    "id": result.lesson_id,
+                    "forked": False,
+                    "version": result.version,
+                    "changed": result.changed,
+                }
+            )
+        result = db.create_lesson_with_version(user_id, title, bundle_json)
     except db.LessonQuotaExceeded as exc:
         return _quota_response(exc)
     except db.LessonRejected:
         return jsonify({"message": LESSON_INVALID_MESSAGE}), 400
-    return jsonify({"id": new_id, "forked": True}), 201
+    return jsonify(
+        {
+            "id": result.lesson_id,
+            "forked": True,
+            "version": result.version,
+            "changed": result.changed,
+        }
+    ), 201
 
 
 @blueprint.route("/api/lessons/<int:lesson_id>", methods=["DELETE"])
@@ -1709,8 +1766,58 @@ def get_lesson(lesson_id: int):
             "author_display_name": row["display_name"],
             "updated_at": row["updated_at"],
             "is_mine": current_user_id() == int(row["user_id"]),
+            "current_version": int(row["current_version"]),
         }
     )
+
+
+@blueprint.route("/api/lessons/<int:lesson_id>/versions", methods=["GET"])
+@authenticate
+def get_lesson_versions(lesson_id: int):
+    """只列出目前登入擁有者的版本摘要。"""
+    rows = db.lesson_versions_owned_by(lesson_id, _lesson_author())
+    if not rows:
+        return _lesson_not_found()
+    return jsonify(
+        {
+            "versions": [_version_payload(row, include_bundle=False) for row in rows],
+            "current_version": int(rows[0]["version"]),
+        }
+    )
+
+
+@blueprint.route("/api/lessons/<int:lesson_id>/versions/<int:version>", methods=["GET"])
+@authenticate
+def get_lesson_version(lesson_id: int, version: int):
+    """只取得目前登入擁有者的一份完整快照。"""
+    row = db.lesson_version_owned_by(lesson_id, _lesson_author(), version)
+    if row is None:
+        return _lesson_not_found()
+    try:
+        return jsonify(_version_payload(row))
+    except ValueError:
+        logger.warning("[lessons] version %s of lesson %s holds unparsable json", version, lesson_id)
+        return _lesson_not_found()
+
+
+@blueprint.route("/api/lessons/<int:lesson_id>/versions/<int:version>/diff", methods=["GET"])
+@authenticate
+def get_lesson_version_diff(lesson_id: int, version: int):
+    """只取得目前登入擁有者的快照與它的父快照。"""
+    rows = db.lesson_version_diff_owned_by(lesson_id, _lesson_author(), version)
+    if rows is None:
+        return _lesson_not_found()
+    snapshot, parent = rows
+    try:
+        return jsonify(
+            {
+                "version": _version_payload(snapshot),
+                "parent": _version_payload(parent) if parent is not None else None,
+            }
+        )
+    except ValueError:
+        logger.warning("[lessons] version %s of lesson %s holds unparsable json", version, lesson_id)
+        return _lesson_not_found()
 
 
 @blueprint.route("/api/lessons/<int:lesson_id>/tags", methods=["POST"])

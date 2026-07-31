@@ -13,6 +13,7 @@
 
 import json
 from contextlib import closing
+from unittest.mock import ANY
 
 import pytest
 
@@ -286,6 +287,153 @@ def test_version_read_helpers_expose_history_only_to_the_owner(alice, bob):
 
 
 # ---------------------------------------------------------------------------
+# 2b. 版本歷史 API
+# ---------------------------------------------------------------------------
+
+
+def test_lesson_api_exposes_current_version_and_owner_write_metadata(alice):
+    """少了版本 metadata，前端無法確認提交或選擇下一版的父節點。"""
+    created = _post_lesson(alice, title="v1", bundle=_bundle("// one"))
+    assert created.status_code == 201
+    lesson_id = created.get_json()["id"]
+    assert created.get_json() == {
+        "id": lesson_id,
+        "forked": False,
+        "version": 1,
+        "changed": True,
+    }
+
+    lesson = alice.http.get(f"/api/lessons/{lesson_id}")
+    assert lesson.status_code == 200
+    assert lesson.get_json()["current_version"] == 1
+
+    updated = _put_lesson(alice, lesson_id, title="v2", bundle=_bundle("// two"))
+    assert updated.status_code == 200
+    assert updated.get_json() == {
+        "id": lesson_id,
+        "forked": False,
+        "version": 2,
+        "changed": True,
+    }
+
+
+def test_owner_can_choose_an_old_parent_version_when_saving(alice):
+    """若 route 丟掉 parent_version，從舊版還原後會錯接到目前 HEAD。"""
+    lesson_id = _create(alice, title="v1", bundle=_bundle("// one"))
+    assert _put_lesson(alice, lesson_id, title="v2", bundle=_bundle("// two")).status_code == 200
+
+    response = _put_lesson(
+        alice,
+        lesson_id,
+        title="v3 branch",
+        bundle=_bundle("// three"),
+        extra={"parent_version": 1},
+    )
+    assert response.status_code == 200
+    assert response.get_json()["version"] == 3
+
+    versions = alice.http.get(f"/api/lessons/{lesson_id}/versions")
+    assert versions.status_code == 200
+    assert [(item["version"], item["parent_version"]) for item in versions.get_json()["versions"]] == [
+        (3, 1),
+        (2, 1),
+        (1, None),
+    ]
+
+
+@pytest.mark.parametrize("parent_version", [True, "1", 0, -1, 99])
+def test_owner_route_rejects_an_invalid_parent_version(alice, parent_version):
+    """型別寬鬆會把 bool 或不存在的父節點寫進歷史樹。"""
+    lesson_id = _create(alice)
+    response = _put_lesson(alice, lesson_id, extra={"parent_version": parent_version})
+    assert response.status_code == 400
+
+
+def test_saving_an_unchanged_public_lesson_creates_an_independent_v1(alice, bob):
+    """fork 不能因為內容未變而被 owner 的 no-op 邏輯吞掉。"""
+    original_bundle = _bundle("// original")
+    lesson_id = _create(bob, title="原教案", bundle=original_bundle)
+
+    response = _put_lesson(
+        alice,
+        lesson_id,
+        title="原教案",
+        bundle=original_bundle,
+        extra={"parent_version": True},
+    )
+    assert response.status_code == 201
+    payload = response.get_json()
+    assert payload["id"] != lesson_id
+    assert payload["forked"] is True
+    assert payload["version"] == 1
+    assert payload["changed"] is True
+
+    history = alice.http.get(f"/api/lessons/{payload['id']}/versions")
+    assert history.status_code == 200
+    assert [(item["version"], item["parent_version"]) for item in history.get_json()["versions"]] == [
+        (1, None)
+    ]
+
+
+def test_owner_can_read_version_list_snapshot_and_parent_diff(alice):
+    """少了任一快照形狀，版本樹或 Monaco diff 都不能顯示真實內容。"""
+    lesson_id = _create(alice, title="v1", bundle=_bundle("// one"))
+    assert _put_lesson(alice, lesson_id, title="v2", bundle=_bundle("// two")).status_code == 200
+
+    versions = alice.http.get(f"/api/lessons/{lesson_id}/versions")
+    assert versions.status_code == 200
+    assert versions.get_json() == {
+        "current_version": 2,
+        "versions": [
+            {"version": 2, "parent_version": 1, "title": "v2", "created_at": ANY},
+            {"version": 1, "parent_version": None, "title": "v1", "created_at": ANY},
+        ],
+    }
+
+    snapshot = alice.http.get(f"/api/lessons/{lesson_id}/versions/2")
+    assert snapshot.status_code == 200
+    assert snapshot.get_json() == {
+        "version": 2,
+        "parent_version": 1,
+        "title": "v2",
+        "bundle": _bundle("// two"),
+        "created_at": ANY,
+    }
+
+    diff = alice.http.get(f"/api/lessons/{lesson_id}/versions/2/diff")
+    assert diff.status_code == 200
+    assert diff.get_json() == {
+        "version": snapshot.get_json(),
+        "parent": {
+            "version": 1,
+            "parent_version": None,
+            "title": "v1",
+            "bundle": _bundle("// one"),
+            "created_at": ANY,
+        },
+    }
+
+    root_diff = alice.http.get(f"/api/lessons/{lesson_id}/versions/1/diff")
+    assert root_diff.status_code == 200
+    assert root_diff.get_json()["parent"] is None
+
+
+def test_non_owner_cannot_read_any_version_endpoint(alice, bob):
+    """只要 history endpoint 漏做 owner gate，就會洩漏原作者的教案歷程。"""
+    lesson_id = _create(bob)
+    routes = (
+        f"/api/lessons/{lesson_id}/versions",
+        f"/api/lessons/{lesson_id}/versions/1",
+        f"/api/lessons/{lesson_id}/versions/1/diff",
+    )
+    for route in routes:
+        theirs = alice.http.get(route)
+        missing = alice.http.get(route.replace(str(lesson_id), "99999999", 1))
+        assert theirs.status_code == missing.status_code == 404
+        assert theirs.get_json() == missing.get_json()
+
+
+# ---------------------------------------------------------------------------
 # 3. 刪除
 # ---------------------------------------------------------------------------
 
@@ -529,6 +677,9 @@ def test_the_new_routes_are_covered_by_the_site_wide_login_gate(flask_app):
         "http_routes.update_lesson",
         "http_routes.delete_lesson",
         "http_routes.get_lesson",
+        "http_routes.get_lesson_versions",
+        "http_routes.get_lesson_version",
+        "http_routes.get_lesson_version_diff",
         "http_routes.lesson_library",
         "http_routes.lesson_library_legacy",
     }, endpoints
@@ -548,6 +699,9 @@ def test_an_anonymous_visitor_is_refused_by_every_lesson_route(flask_app, alice)
         ("PUT", f"/api/lessons/{lesson_id}"),
         ("DELETE", f"/api/lessons/{lesson_id}"),
         ("GET", f"/api/lessons/{lesson_id}"),
+        ("GET", f"/api/lessons/{lesson_id}/versions"),
+        ("GET", f"/api/lessons/{lesson_id}/versions/1"),
+        ("GET", f"/api/lessons/{lesson_id}/versions/1/diff"),
         ("GET", "/lessons"),
     ]
     for method, url in calls:
