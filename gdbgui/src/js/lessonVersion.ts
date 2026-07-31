@@ -1,9 +1,12 @@
+import { QuizSpec } from "./quizSchema";
+
 export type LessonBundle = {
   version: string;
   fullname_to_render: string;
   source_code: string;
   breakpoints?: any[];
   program_input?: string;
+  quiz?: QuizSpec | null;
   [key: string]: any;
 };
 
