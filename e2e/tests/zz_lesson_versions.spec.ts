@@ -17,7 +17,8 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
   const titleV3 = `版本三 ${stamp}`;
   const sourceV1 = "// v1\n//@guide: first\nint main() { return 0; }\n";
   const sourceV2 = "// v2\n//@guide: revised\nint main() { return 1; }\n";
-  const sourceV3 = "// v3 branch\n//@guide: restored then branched\nint main() { return 3; }\n";
+  const sourceV3 =
+    "// v3 branch\n//@guide: restored then branched\nint main() { return 3; }\n";
 
   const created = await page.request.post("/api/lessons", {
     headers: { "x-csrftoken": token, "Content-Type": "application/json" },
@@ -106,17 +107,32 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
     await expect(page.getByTestId("lesson-history-dialog")).toBeVisible();
     await expect(page.getByTestId("lesson-version-node-1")).toBeVisible();
     await expect(page.getByTestId("lesson-version-node-2")).toBeVisible();
-    await expect(page.getByText("HEAD", { exact: true })).toBeVisible();
+    await expect(
+      page.getByTestId("lesson-version-node-2").getByText("HEAD", { exact: true })
+    ).toBeVisible();
+    await expect(page.getByText(titleV2, { exact: true })).toBeVisible();
 
+    const v1Diff = `**/api/lessons/${lessonId}/versions/1/diff`;
+    await page.route(v1Diff, route => route.fulfill({ status: 500, body: "{}" }));
+    await page.getByTestId("lesson-version-node-1").click();
+    await expect(page.getByTestId("lesson-version-restore")).toBeDisabled();
+    await page.unroute(v1Diff);
     await page.getByTestId("lesson-version-node-1").click();
     await expect(page.getByText(titleV1, { exact: true })).toBeVisible();
     await page.getByTestId("lesson-version-restore").click();
     await expect(page.getByTestId("lesson-history-dialog")).toHaveCount(0);
     await expect
-      .poll(async () => (await page.evaluate(() => (window as any).monaco.editor.getModels()[0]?.getValue())))
+      .poll(
+        async () =>
+          await page.evaluate(() =>
+            (window as any).monaco.editor.getModels()[0]?.getValue()
+          )
+      )
       .toBe(sourceV1);
 
-    const restoredWithoutSaving = await page.request.get(`/api/lessons/${lessonId}/versions`);
+    const restoredWithoutSaving = await page.request.get(
+      `/api/lessons/${lessonId}/versions`
+    );
     expect(await restoredWithoutSaving.json()).toMatchObject({ current_version: 2 });
 
     await page.evaluate(source => {
@@ -143,6 +159,64 @@ test("owner reviews, cancels, then confirms a title and annotation revision", as
           { version: 1, parent_version: null, title: titleV1 }
         ])
       });
+  } finally {
+    await page.request.delete(`/api/lessons/${lessonId}`, {
+      headers: { "x-csrftoken": token }
+    });
+  }
+});
+
+test("restoring an empty-source snapshot clears newer editor code", async ({ page }) => {
+  await ensureLoggedIn(page);
+  const token = await csrfToken(page);
+  const stamp = Date.now();
+  const titleV1 = `空白版本 ${stamp}`;
+  const titleV2 = `有程式碼版本 ${stamp}`;
+  const sourceV2 = "int main() { return 2; }\n";
+  const created = await page.request.post("/api/lessons", {
+    headers: { "x-csrftoken": token, "Content-Type": "application/json" },
+    data: {
+      title: titleV1,
+      bundle: {
+        version: "2.0",
+        fullname_to_render: "main.cpp",
+        source_code: "",
+        breakpoints: [],
+        program_input: ""
+      }
+    }
+  });
+  expect(created.status()).toBe(201);
+  const lessonId = (await created.json()).id;
+
+  try {
+    await page.goto(`/edit?lesson=${lessonId}`);
+    await page.waitForFunction(
+      () => (window as any).monaco?.editor?.getModels()?.length > 0
+    );
+    const editorInput = page.locator(".monaco-editor textarea.inputarea").first();
+    await editorInput.click();
+    await page.keyboard.press("Control+A");
+    await page.keyboard.insertText(sourceV2);
+    page.once("dialog", dialog => dialog.accept(titleV2));
+    await page.getByTestId("save-lesson-to-account").click();
+    await page.getByTestId("lesson-commit-confirm").click();
+    await expect
+      .poll(async () => {
+        const current = await page.request.get(`/api/lessons/${lessonId}`);
+        return current.json();
+      })
+      .toMatchObject({ current_version: 2, bundle: { source_code: sourceV2 } });
+
+    await page.getByTestId("lesson-history-open").click();
+    await page.getByTestId("lesson-version-node-1").click();
+    await expect(page.getByText(titleV1, { exact: true })).toBeVisible();
+    await page.getByTestId("lesson-version-restore").click();
+    await expect
+      .poll(async () =>
+        page.evaluate(() => (window as any).monaco.editor.getModels()[0]?.getValue())
+      )
+      .toBe("");
   } finally {
     await page.request.delete(`/api/lessons/${lessonId}`, {
       headers: { "x-csrftoken": token }

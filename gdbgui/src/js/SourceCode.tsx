@@ -999,49 +999,47 @@ class SourceCode extends React.Component<{}, State> {
         // so the imported source text becomes the single source of truth. Projects
         // already exported in the new format (no line_data) pass through unchanged.
         const v2 = normalizeBundle(projectData);
-        const mergedSource: string = v2.source_code || projectData.source_code || "";
+        const mergedSource = v2.source_code;
 
-        if (mergedSource) {
-          if (this.editorInstance) {
-            this.editorInstance.setValue(mergedSource);
-            // 強制下次 Start 一定重新編譯（不論程式碼內容是否與上次相同）
-            (window as any).last_compiled_code = null;
-          } else {
-            // Monaco 尚未掛載（FILE_MISSING / NONE_AVAILABLE 狀態）
-            //
-            // 交棒給 handleEditorDidMount。少了這一行，/?lesson= 在暖快取下會
-            // 靜默失敗：bundle 已經收到、也寫進了下面的 cache 與 localStorage，
-            // 但 Monaco 早一步用預設值建好 model，之後沒有任何東西再回頭去讀。
-            // 冷載入時 Monaco 慢、教案先落地，所以看起來是間歇性的——實際上
-            // 只取決於 fetch 與 Monaco 掛載誰先到。
-            (global_variable as any).__pending_source_code = mergedSource;
+        if (this.editorInstance) {
+          this.editorInstance.setValue(mergedSource);
+          // 強制下次 Start 一定重新編譯（不論程式碼內容是否與上次相同）
+          (window as any).last_compiled_code = null;
+        } else {
+          // Monaco 尚未掛載（FILE_MISSING / NONE_AVAILABLE 狀態）
+          //
+          // 交棒給 handleEditorDidMount。少了這一行，/?lesson= 在暖快取下會
+          // 靜默失敗：bundle 已經收到、也寫進了下面的 cache 與 localStorage，
+          // 但 Monaco 早一步用預設值建好 model，之後沒有任何東西再回頭去讀。
+          // 冷載入時 Monaco 慢、教案先落地，所以看起來是間歇性的——實際上
+          // 只取決於 fetch 與 Monaco 掛載誰先到。
+          (global_variable as any).__pending_source_code = mergedSource;
 
-            // 將 source_code 直接注入 FileOps cache，讓 Monaco 立刻顯示
-            const lines = mergedSource.split("\n");
-            const source_code_obj: any = {};
-            lines.forEach((line: string, idx: number) => {
-              source_code_obj[idx + 1] = escapeHtml(line);
-            });
-            const numLines = lines.length;
-            // 用現有 fullname 或建立一個合成名稱
-            const syntheticFullname = this.state.fullname_to_render || "imported_code.cpp";
-            FileOps.add_source_file_to_cache(syntheticFullname, source_code_obj, Date.now() / 1000, numLines);
-            store.set("fullname_to_render", syntheticFullname);
-            store.set("source_code_state", constants.source_code_states.SOURCE_CACHED);
-            store.set("source_code_selection_state", constants.source_code_selection_states.USER_SELECTION);
-            // 存入 localStorage，讓 click_run_button 的 fallback 也能找到
-            localStorage.setItem("gdbgui_editor_code_" + syntheticFullname, mergedSource);
-            // 清除 last_compiled_code，避免 Run 誤判「程式碼未變」而跳過重新 compile
-            (window as any).last_compiled_code = null;
-          }
-          // 把 import 進來的程式碼存進 localStorage 的 fallback 鏈：
-          // get_monaco_value 在 Monaco 重新 mount 時會先查 gdbgui_last_edited_filename，
-          // 若不存此處，Monaco 重 mount 後會撈回舊檔案，導致 Run 時跑舊程式碼。
-          const _importKey = "__imported__";
-          localStorage.setItem("gdbgui_editor_code_" + _importKey, mergedSource);
-          localStorage.setItem("gdbgui_editor_filename_" + _importKey, _importKey);
-          localStorage.setItem("gdbgui_last_edited_filename", _importKey);
+          // 將 source_code 直接注入 FileOps cache，讓 Monaco 立刻顯示
+          const lines = mergedSource.split("\n");
+          const source_code_obj: any = {};
+          lines.forEach((line: string, idx: number) => {
+            source_code_obj[idx + 1] = escapeHtml(line);
+          });
+          const numLines = lines.length;
+          // 用現有 fullname 或建立一個合成名稱
+          const syntheticFullname = this.state.fullname_to_render || "imported_code.cpp";
+          FileOps.add_source_file_to_cache(syntheticFullname, source_code_obj, Date.now() / 1000, numLines);
+          store.set("fullname_to_render", syntheticFullname);
+          store.set("source_code_state", constants.source_code_states.SOURCE_CACHED);
+          store.set("source_code_selection_state", constants.source_code_selection_states.USER_SELECTION);
+          // 存入 localStorage，讓 click_run_button 的 fallback 也能找到
+          localStorage.setItem("gdbgui_editor_code_" + syntheticFullname, mergedSource);
+          // 清除 last_compiled_code，避免 Run 誤判「程式碼未變」而跳過重新 compile
+          (window as any).last_compiled_code = null;
         }
+        // 把 import 進來的程式碼存進 localStorage 的 fallback 鏈：
+        // get_monaco_value 在 Monaco 重新 mount 時會先查 gdbgui_last_edited_filename，
+        // 若不存此處，Monaco 重 mount 後會撈回舊檔案，導致 Run 時跑舊程式碼。
+        const _importKey = "__imported__";
+        localStorage.setItem("gdbgui_editor_code_" + _importKey, mergedSource);
+        localStorage.setItem("gdbgui_editor_filename_" + _importKey, _importKey);
+        localStorage.setItem("gdbgui_last_edited_filename", _importKey);
 
         // refreshAnnotationGlobals() will also run via onDidChangeModelContent once
         // Monaco processes the setValue() above; call it directly too so
@@ -1099,7 +1097,7 @@ class SourceCode extends React.Component<{}, State> {
         return {
           version: "2.0",
           fullname_to_render: "",
-          source_code: mergedSource || this.editorInstance?.getValue?.() || "",
+          source_code: mergedSource,
           breakpoints,
           program_input: programInput,
         };
@@ -1357,6 +1355,9 @@ class SourceCode extends React.Component<{}, State> {
     if (this.currentLessonId === null || !this.currentLessonIsMine) return;
     const lessonId = this.currentLessonId;
     const request = ++this.lessonHistoryRequest;
+    this.selectedLessonVersion = null;
+    this.selectedLessonVersionParent = null;
+    this.setState({} as any);
     fetch(`/api/lessons/${lessonId}/versions/${version}/diff`, {
       credentials: "same-origin"
     })
