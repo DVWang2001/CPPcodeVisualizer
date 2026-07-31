@@ -12,6 +12,7 @@
 """
 
 import json
+from contextlib import closing
 
 import pytest
 
@@ -170,11 +171,118 @@ def test_the_where_clause_is_the_real_check_not_the_route_branch(alice, bob):
     lesson_id = _create(bob, title="bob 的")
     before = db.lesson_by_id(lesson_id)
 
-    assert db.update_lesson_owned_by(lesson_id, alice.user_id, "偷改", "{}") is False
+    assert db.update_lesson_owned_by(lesson_id, alice.user_id, "偷改", "{}") is None
 
     after = db.lesson_by_id(lesson_id)
     assert after["title"] == before["title"]
     assert after["bundle_json"] == before["bundle_json"]
+
+
+# ---------------------------------------------------------------------------
+# 2a. 資料層版本歷史
+# ---------------------------------------------------------------------------
+
+
+def _versions_for(lesson_id):
+    with closing(db.connect()) as conn:
+        return list(
+            conn.execute(
+                "SELECT v.version, parent.version AS parent_version, v.title, v.bundle_json "
+                "FROM lesson_versions v "
+                "LEFT JOIN lesson_versions parent ON parent.id = v.parent_version_id "
+                "WHERE v.lesson_id = ? ORDER BY v.version",
+                (lesson_id,),
+            )
+        )
+
+
+def test_a_created_lesson_starts_with_a_v1_snapshot(alice):
+    """少了初始快照，任何教案都不能成為可還原的歷史根節點。"""
+    assert hasattr(db, "create_lesson_with_version")
+    result = db.create_lesson_with_version(alice.user_id, "v1", "{\"source_code\":\"one\"}")
+
+    assert (result.version, result.changed) == (1, True)
+    assert [tuple(row) for row in _versions_for(result.lesson_id)] == [
+        (1, None, "v1", '{"source_code":"one"}')
+    ]
+    assert db.lesson_by_id(result.lesson_id)["current_version"] == 1
+
+
+def test_owner_update_creates_a_child_snapshot_and_old_parent_can_branch(alice):
+    """還原後再存必須指回指定舊版，不能改寫既有 v2。"""
+    assert hasattr(db, "create_lesson_with_version")
+    created = db.create_lesson_with_version(alice.user_id, "v1", "{\"source_code\":\"one\"}")
+    second = db.update_lesson_owned_by(
+        created.lesson_id, alice.user_id, "v2", '{"source_code":"two"}'
+    )
+    third = db.update_lesson_owned_by(
+        created.lesson_id, alice.user_id, "從 v1 分支", '{"source_code":"three"}', parent_version=1
+    )
+
+    assert (second.version, second.changed) == (2, True)
+    assert (third.version, third.changed) == (3, True)
+    assert [tuple(row) for row in _versions_for(created.lesson_id)] == [
+        (1, None, "v1", '{"source_code":"one"}'),
+        (2, 1, "v2", '{"source_code":"two"}'),
+        (3, 1, "從 v1 分支", '{"source_code":"three"}'),
+    ]
+    assert db.lesson_by_id(created.lesson_id)["current_version"] == 3
+
+
+@pytest.mark.parametrize("parent_version", [True, 0, -1, 99])
+def test_invalid_parent_version_is_rejected(alice, parent_version):
+    """bool、非正數與不存在版本都不可變成歷史父節點。"""
+    assert hasattr(db, "create_lesson_with_version")
+    created = db.create_lesson_with_version(alice.user_id, "v1", "{}")
+
+    with pytest.raises(db.LessonRejected):
+        db.update_lesson_owned_by(
+            created.lesson_id, alice.user_id, "壞父節點", "{\"source_code\":\"x\"}", parent_version
+        )
+
+
+def test_parent_version_from_another_lesson_is_rejected(alice):
+    """別篇教案的 v2 不能拿來當這篇只有 v1 的父節點。"""
+    assert hasattr(db, "create_lesson_with_version")
+    target = db.create_lesson_with_version(alice.user_id, "目標 v1", "{}")
+    other = db.create_lesson_with_version(alice.user_id, "別篇 v1", "{}")
+    db.update_lesson_owned_by(other.lesson_id, alice.user_id, "別篇 v2", '{"source_code":"two"}')
+
+    with pytest.raises(db.LessonRejected):
+        db.update_lesson_owned_by(
+            target.lesson_id, alice.user_id, "錯誤跨篇", '{"source_code":"x"}', parent_version=2
+        )
+
+
+def test_same_content_owner_save_returns_unchanged_without_a_new_snapshot(alice):
+    """無內容變更還新增版本會浪費額度，也會製造假歷史。"""
+    assert hasattr(db, "create_lesson_with_version")
+    created = db.create_lesson_with_version(alice.user_id, "不變", '{"source_code":"same"}')
+
+    result = db.update_lesson_owned_by(
+        created.lesson_id, alice.user_id, "不變", '{"source_code":"same"}'
+    )
+
+    assert (result.version, result.changed) == (1, False)
+    assert len(_versions_for(created.lesson_id)) == 1
+
+
+def test_version_read_helpers_expose_history_only_to_the_owner(alice, bob):
+    """history API 若只靠路由過濾，日後新增入口就可能把別人的版本洩出來。"""
+    assert hasattr(db, "lesson_versions_owned_by")
+    created = db.create_lesson_with_version(alice.user_id, "v1", '{"source_code":"one"}')
+    db.update_lesson_owned_by(created.lesson_id, alice.user_id, "v2", '{"source_code":"two"}')
+
+    rows = db.lesson_versions_owned_by(created.lesson_id, alice.user_id)
+    snapshot = db.lesson_version_owned_by(created.lesson_id, alice.user_id, 2)
+    diff = db.lesson_version_diff_owned_by(created.lesson_id, alice.user_id, 2)
+
+    assert [(row["version"], row["parent_version"]) for row in rows] == [(2, 1), (1, None)]
+    assert (snapshot["version"], snapshot["title"]) == (2, "v2")
+    assert (diff[0]["version"], diff[1]["version"]) == (2, 1)
+    assert db.lesson_versions_owned_by(created.lesson_id, bob.user_id) == []
+    assert db.lesson_version_owned_by(created.lesson_id, bob.user_id, 2) is None
+    assert db.lesson_version_diff_owned_by(created.lesson_id, bob.user_id, 2) is None
 
 
 # ---------------------------------------------------------------------------

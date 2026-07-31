@@ -38,6 +38,7 @@ import secrets
 import sqlite3
 import stat
 from contextlib import closing
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -420,7 +421,10 @@ MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024
 #: **不會把頁面還給作業系統**（除非 VACUUM），所以用檔案大小會導致「使用者
 #: 刪掉教案之後仍然存不了東西」——一個使用者無法自救的死結。位元組總和會
 #: 隨刪除下降，代價是低估了索引開銷；用大額度的安全邊際吸收那個誤差。
-_USED_BYTES_SQL = "SELECT COALESCE(SUM(LENGTH(CAST(bundle_json AS BLOB))), 0) FROM lessons"
+_USED_BYTES_SQL = (
+    "SELECT COALESCE(SUM(LENGTH(CAST(v.bundle_json AS BLOB))), 0) "
+    "FROM lesson_versions v JOIN lessons l ON l.id = v.lesson_id"
+)
 
 #: 教案庫頁每頁筆數。
 LESSONS_PER_PAGE = 10
@@ -448,41 +452,29 @@ class LessonQuotaExceeded(LessonRejected):
         self.limit = limit
 
 
-def _check_quotas(conn, user_id: int, new_bytes: int, replacing_lesson_id=None) -> None:
+@dataclass(frozen=True)
+class LessonWriteResult:
+    lesson_id: int
+    version: int
+    changed: bool
+
+
+def _check_quotas(conn, user_id: int, added_bytes: int) -> None:
     """在同一個交易裡檢查個人與全站配額。
 
-    replacing_lesson_id 不是 None 時扣掉那一列的現有大小——更新一篇教案要算的
-    是**差額**，不是新版的完整大小。否則一個接近配額的使用者連「把教案改短」
-    都會被拒絕，那顯然是錯的。
-
-    fork（把別人的教案存成自己的）走的是新增路徑，所以整篇都算在 fork 的人
-    頭上，這是對的：那確實是一份新的資料。
+    用量是所有不可變快照的 bundle 總和。一個真的變更會新增一份完整快照，
+    所以必須加上它的完整大小；沒有變更的儲存不會呼叫這個函式。
     """
-    old_bytes = 0
-    if replacing_lesson_id is not None:
-        row = conn.execute(
-            "SELECT LENGTH(CAST(bundle_json AS BLOB)) FROM lessons WHERE id = ? AND user_id = ?",
-            (replacing_lesson_id, user_id),
-        ).fetchone()
-        if row is not None:
-            old_bytes = int(row[0])
-
-    delta = new_bytes - old_bytes
-    if delta <= 0:
-        return  # 沒有變大就一定不會突破任何上限
-
     user_used = int(
-        conn.execute(
-            _USED_BYTES_SQL + " WHERE user_id = ?", (user_id,)
-        ).fetchone()[0]
+        conn.execute(_USED_BYTES_SQL + " WHERE l.user_id = ?", (user_id,)).fetchone()[0]
     )
-    if user_used + delta > MAX_USER_BYTES:
+    if user_used + added_bytes > MAX_USER_BYTES:
         raise LessonQuotaExceeded(
             "user storage quota exceeded", used=user_used, limit=MAX_USER_BYTES
         )
 
     total_used = int(conn.execute(_USED_BYTES_SQL).fetchone()[0])
-    if total_used + delta > MAX_TOTAL_BYTES:
+    if total_used + added_bytes > MAX_TOTAL_BYTES:
         raise LessonQuotaExceeded(
             "site storage quota exceeded", used=total_used, limit=MAX_TOTAL_BYTES
         )
@@ -521,27 +513,43 @@ def _validated_lesson(title, bundle_json):
 
 
 def create_lesson(user_id: int, title: str, bundle_json: str) -> int:
-    """新增一篇教案，回傳它的 id。
+    """新增一篇教案，回傳它的 id（相容舊呼叫端）。"""
+    return create_lesson_with_version(user_id, title, bundle_json).lesson_id
 
-    user_id 由呼叫端從 session 取得（http_util.current_user_id），永遠不是
-    請求本體裡的欄位。
-    """
+
+def create_lesson_with_version(
+    user_id: int, title: str, bundle_json: str
+) -> LessonWriteResult:
+    """新增一篇教案與它不可變的 v1 快照。"""
     user_id = _require_user_id(user_id)
     title, bundle_json = _validated_lesson(title, bundle_json)
     now = _now()
-    new_bytes = len(bundle_json.encode("utf-8"))
+    added_bytes = len(bundle_json.encode("utf-8"))
     with closing(connect()) as conn:
-        # BEGIN IMMEDIATE：檢查與寫入必須在同一個寫入交易裡，否則兩個同時
-        # 送出的儲存請求會各自讀到「還沒滿」然後都寫進去。
         conn.execute("BEGIN IMMEDIATE")
-        _check_quotas(conn, user_id, new_bytes)
-        cursor = conn.execute(
-            "INSERT INTO lessons (user_id, title, bundle_json, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (user_id, title, bundle_json, now, now),
-        )
-        conn.commit()
-        return int(cursor.lastrowid)
+        try:
+            _check_quotas(conn, user_id, added_bytes)
+            lesson = conn.execute(
+                "INSERT INTO lessons (user_id, title, bundle_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (user_id, title, bundle_json, now, now),
+            )
+            lesson_id = int(lesson.lastrowid)
+            version = conn.execute(
+                "INSERT INTO lesson_versions "
+                "(lesson_id, version, parent_version_id, title, bundle_json, created_at) "
+                "VALUES (?, 1, NULL, ?, ?, ?)",
+                (lesson_id, title, bundle_json, now),
+            )
+            conn.execute(
+                "INSERT INTO lesson_current_versions (lesson_id, version_id) VALUES (?, ?)",
+                (lesson_id, int(version.lastrowid)),
+            )
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+    return LessonWriteResult(lesson_id=lesson_id, version=1, changed=True)
 
 
 def lesson_by_id(lesson_id: int) -> Optional[sqlite3.Row]:
@@ -553,39 +561,163 @@ def lesson_by_id(lesson_id: int) -> Optional[sqlite3.Row]:
     with closing(connect()) as conn:
         return conn.execute(
             "SELECT l.id, l.user_id, l.title, l.bundle_json, l.created_at, "
-            "       l.updated_at, u.username, u.display_name "
+            "       l.updated_at, u.username, u.display_name, v.version AS current_version "
             "FROM lessons l JOIN users u ON u.id = l.user_id "
+            "LEFT JOIN lesson_current_versions cv ON cv.lesson_id = l.id "
+            "LEFT JOIN lesson_versions v ON v.id = cv.version_id "
             "WHERE l.id = ?",
             (lesson_id,),
         ).fetchone()
 
 
 def update_lesson_owned_by(
-    lesson_id: int, user_id: int, title: str, bundle_json: str
-) -> bool:
-    """只更新「這個 id 而且屬於這個 user」的那一列，回傳有沒有真的改到。
+    lesson_id: int,
+    user_id: int,
+    title: str,
+    bundle_json: str,
+    parent_version: Optional[int] = None,
+) -> Optional[LessonWriteResult]:
+    """為擁有者新增一份快照，或在內容不變時回傳目前版本。
 
-    `AND user_id = ?` 才是授權本身。呼叫端（http_routes）在此之前還會自己看
-    一次擁有權以決定要更新還是要另存副本，但那是**行為**分支；這裡的 WHERE
-    是最後一道，少了它，那個分支寫錯就會直接覆寫別人的教案。
+    所有寫入都在同一個 `BEGIN IMMEDIATE` 交易內，所以版本號與用量都不會被
+    併發儲存穿透。指定舊版為父節點會保留現有分支並建立新的 child；不會改寫
+    任一歷史列。
     """
     user_id = _require_user_id(user_id)
     lesson_id = _require_lesson_id(lesson_id)
     if lesson_id is None:
-        return False
+        return None
     title, bundle_json = _validated_lesson(title, bundle_json)
-    new_bytes = len(bundle_json.encode("utf-8"))
+    added_bytes = len(bundle_json.encode("utf-8"))
     with closing(connect()) as conn:
         conn.execute("BEGIN IMMEDIATE")
-        # 只算差額：把教案改短或改成一樣大的人，不該因為接近配額而被擋。
-        _check_quotas(conn, user_id, new_bytes, replacing_lesson_id=lesson_id)
-        cursor = conn.execute(
-            "UPDATE lessons SET title = ?, bundle_json = ?, updated_at = ? "
-            "WHERE id = ? AND user_id = ?",
-            (title, bundle_json, _now(), lesson_id, user_id),
+        try:
+            current = conn.execute(
+                "SELECT l.title, l.bundle_json, v.id AS version_id, v.version "
+                "FROM lessons l "
+                "JOIN lesson_current_versions cv ON cv.lesson_id = l.id "
+                "JOIN lesson_versions v ON v.id = cv.version_id "
+                "WHERE l.id = ? AND l.user_id = ?",
+                (lesson_id, user_id),
+            ).fetchone()
+            if current is None:
+                conn.commit()
+                return None
+
+            if parent_version is None:
+                parent_id = int(current["version_id"])
+            else:
+                if (
+                    isinstance(parent_version, bool)
+                    or not isinstance(parent_version, int)
+                    or parent_version <= 0
+                ):
+                    raise LessonRejected("parent version must be a positive integer")
+                parent = conn.execute(
+                    "SELECT id FROM lesson_versions WHERE lesson_id = ? AND version = ?",
+                    (lesson_id, parent_version),
+                ).fetchone()
+                if parent is None:
+                    raise LessonRejected("parent version does not belong to this lesson")
+                parent_id = int(parent["id"])
+
+            current_version = int(current["version"])
+            if title == current["title"] and bundle_json == current["bundle_json"]:
+                conn.commit()
+                return LessonWriteResult(lesson_id, current_version, changed=False)
+
+            _check_quotas(conn, user_id, added_bytes)
+            next_version = int(
+                conn.execute(
+                    "SELECT COALESCE(MAX(version), 0) + 1 FROM lesson_versions "
+                    "WHERE lesson_id = ?",
+                    (lesson_id,),
+                ).fetchone()[0]
+            )
+            now = _now()
+            version = conn.execute(
+                "INSERT INTO lesson_versions "
+                "(lesson_id, version, parent_version_id, title, bundle_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (lesson_id, next_version, parent_id, title, bundle_json, now),
+            )
+            version_id = int(version.lastrowid)
+            conn.execute(
+                "UPDATE lessons SET title = ?, bundle_json = ?, updated_at = ? WHERE id = ?",
+                (title, bundle_json, now, lesson_id),
+            )
+            conn.execute(
+                "INSERT INTO lesson_current_versions (lesson_id, version_id) VALUES (?, ?) "
+                "ON CONFLICT(lesson_id) DO UPDATE SET version_id = excluded.version_id",
+                (lesson_id, version_id),
+            )
+            conn.commit()
+            return LessonWriteResult(lesson_id, next_version, changed=True)
+        except BaseException:
+            conn.rollback()
+            raise
+
+
+def lesson_versions_owned_by(lesson_id: int, user_id: int) -> List[sqlite3.Row]:
+    """某個擁有者的全部版本，最新版在前；不是擁有者時回傳空清單。"""
+    user_id = _require_user_id(user_id)
+    lesson_id = _require_lesson_id(lesson_id)
+    if lesson_id is None:
+        return []
+    with closing(connect()) as conn:
+        return list(
+            conn.execute(
+                "SELECT v.version, p.version AS parent_version, v.title, v.bundle_json, "
+                "       v.created_at "
+                "FROM lesson_versions v "
+                "JOIN lessons l ON l.id = v.lesson_id "
+                "LEFT JOIN lesson_versions p ON p.id = v.parent_version_id "
+                "WHERE v.lesson_id = ? AND l.user_id = ? "
+                "ORDER BY v.version DESC",
+                (lesson_id, user_id),
+            )
         )
-        conn.commit()
-        return cursor.rowcount == 1
+
+
+def lesson_version_owned_by(
+    lesson_id: int, user_id: int, version: int
+) -> Optional[sqlite3.Row]:
+    """某個擁有者的一個版本；缺失與非擁有者都是 None。"""
+    user_id = _require_user_id(user_id)
+    lesson_id = _require_lesson_id(lesson_id)
+    if (
+        lesson_id is None
+        or isinstance(version, bool)
+        or not isinstance(version, int)
+        or version <= 0
+    ):
+        return None
+    with closing(connect()) as conn:
+        return conn.execute(
+            "SELECT v.version, p.version AS parent_version, v.title, v.bundle_json, "
+            "       v.created_at "
+            "FROM lesson_versions v "
+            "JOIN lessons l ON l.id = v.lesson_id "
+            "LEFT JOIN lesson_versions p ON p.id = v.parent_version_id "
+            "WHERE v.lesson_id = ? AND l.user_id = ? AND v.version = ?",
+            (lesson_id, user_id, version),
+        ).fetchone()
+
+
+def lesson_version_diff_owned_by(
+    lesson_id: int, user_id: int, version: int
+) -> Optional[tuple]:
+    """版本與其父版本，兩者都只在呼叫者是擁有者時才回傳。"""
+    snapshot = lesson_version_owned_by(lesson_id, user_id, version)
+    if snapshot is None:
+        return None
+    parent_version = snapshot["parent_version"]
+    parent = (
+        lesson_version_owned_by(lesson_id, user_id, int(parent_version))
+        if parent_version is not None
+        else None
+    )
+    return snapshot, parent
 
 
 def delete_lesson_owned_by(lesson_id: int, user_id: int) -> bool:

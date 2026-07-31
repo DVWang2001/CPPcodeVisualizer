@@ -9,13 +9,16 @@
 1. **使用者永遠能自救。** 配額用盡時刪掉舊教案就能再存——否則就是一個使用者
    無法脫離的死結。這也是為什麼用量以 bundle 位元組總和衡量，而不是 SQLite
    檔案大小（刪除後檔案不會縮小，除非 VACUUM）。
-2. **更新只算差額。** 接近配額的人把教案改短、或改成一樣大，都不該被拒絕。
+2. **每次改動都算完整快照。** 歷史版本要留下來，所以每次提交都會增加新版
+   bundle 的完整位元組數；不變的提交不建立快照，也不增加用量。
 3. **fork 算在 fork 的人頭上**，不是原作者。
 4. 全站上限觸發時只擋新增，讀取與登入不受影響。
 
 per-user 與全站的上限用 monkeypatch 調小來測——真的塞 20 MB 只是讓測試變慢，
 不會多驗證到任何東西。
 """
+
+from contextlib import closing
 
 import pytest
 
@@ -109,32 +112,48 @@ def test_a_user_at_quota_can_delete_and_save_again(flask_app, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 更新算差額
+# 更新保留完整歷史快照
 # ---------------------------------------------------------------------------
 
 
-def test_shrinking_a_lesson_is_allowed_even_when_at_quota(flask_app, monkeypatch):
-    monkeypatch.setattr(db, "MAX_USER_BYTES", 3000)
+def test_each_changed_update_charges_a_full_new_snapshot(flask_app, monkeypatch):
+    """若錯把更新當差額，第三次同尺寸提交會錯誤地通過。"""
+    monkeypatch.setattr(db, "MAX_USER_BYTES", 2500)
     uid = register_user(flask_app, display_name="quota_g").user_id
-    lid = db.create_lesson(uid, "大的", _bundle_of_size(2900))
-    assert db.update_lesson_owned_by(lid, uid, "改小了", _bundle_of_size(500)) is True
+    lid = db.create_lesson(uid, "v1", _bundle_of_size(1000))
+
+    second = db.update_lesson_owned_by(lid, uid, "v2", _bundle_of_size(1000))
+    assert hasattr(second, "version")
+    assert second.version == 2
+    with pytest.raises(db.LessonQuotaExceeded) as exc:
+        db.update_lesson_owned_by(lid, uid, "v3", _bundle_of_size(1000))
+    assert exc.value.used == 2000
 
 
-def test_rewriting_a_lesson_at_the_same_size_is_allowed_at_quota(flask_app, monkeypatch):
-    """更新若算完整大小而不是差額，這條會失敗——那正是要防的錯誤。"""
-    monkeypatch.setattr(db, "MAX_USER_BYTES", 3000)
+def test_an_unchanged_save_does_not_consume_another_snapshot(flask_app, monkeypatch):
+    monkeypatch.setattr(db, "MAX_USER_BYTES", 1500)
     uid = register_user(flask_app, display_name="quota_h").user_id
-    lid = db.create_lesson(uid, "填滿配額", _bundle_of_size(2900))
-    assert db.update_lesson_owned_by(lid, uid, "一樣大", _bundle_of_size(2900)) is True
+    bundle = _bundle_of_size(1000)
+    lid = db.create_lesson(uid, "不變", bundle)
+
+    result = db.update_lesson_owned_by(lid, uid, "不變", bundle)
+    assert hasattr(result, "changed")
+    assert result.changed is False
+    with closing(db.connect()) as conn:
+        used = conn.execute(db._USED_BYTES_SQL + " WHERE l.user_id = ?", (uid,)).fetchone()[0]
+    assert used == 1000
 
 
-def test_growing_a_lesson_past_quota_is_still_refused(flask_app, monkeypatch):
-    monkeypatch.setattr(db, "MAX_USER_BYTES", 3000)
+def test_deleting_a_lesson_frees_every_historical_snapshot(flask_app, monkeypatch):
+    monkeypatch.setattr(db, "MAX_USER_BYTES", 2500)
     uid = register_user(flask_app, display_name="quota_i").user_id
-    lid = db.create_lesson(uid, "小的", _bundle_of_size(500))
-    db.create_lesson(uid, "另一篇", _bundle_of_size(2000))
+    lid = db.create_lesson(uid, "v1", _bundle_of_size(1000))
+    db.update_lesson_owned_by(lid, uid, "v2", _bundle_of_size(1000))
     with pytest.raises(db.LessonQuotaExceeded):
-        db.update_lesson_owned_by(lid, uid, "撐大", _bundle_of_size(1500))
+        db.create_lesson(uid, "還差一點", _bundle_of_size(1000))
+
+    assert db.delete_lesson_owned_by(lid, uid) is True
+    assert db.create_lesson(uid, "刪完又存得下", _bundle_of_size(2000))
 
 
 # ---------------------------------------------------------------------------
