@@ -21,6 +21,8 @@ import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
 import { lineIdentifiers } from "./lineIdentifiers";
 import { parseForHeader, segRange } from "./forHeader";
 import LessonGenPanel from "./LessonGenPanel";
+import LessonCommitDialog from "./LessonCommitDialog";
+import { hasSnapshotChanges, LessonBundle, LessonSnapshot } from "./lessonVersion";
 
 type State = any;
 
@@ -50,6 +52,7 @@ class SourceCode extends React.Component<{}, State> {
         candidates: string[];
       },
       showLessonGen: false,
+      showLessonCommit: false,
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
@@ -1089,13 +1092,23 @@ class SourceCode extends React.Component<{}, State> {
   // Import JSON / Export JSON（本機檔案）保留不動——備份與離線交換仍然有用。
   // 底下這兩顆是另一條路：存進自己的帳號、從教案庫開啟別人的。
   //
-  // 擁有權完全由伺服器決定（session 裡的 user_id）。前端這裡送出的 lesson id
-  // 只是「要更新哪一篇」，不是「這篇算誰的」——PUT 到別人的教案時伺服器會在
-  // 呼叫者名下建立一份副本，所以下面不需要、也不應該自己判斷「這篇是不是我的」。
+  // 擁有權仍由伺服器決定；前端的 is_mine 只用來決定是否先顯示差異確認。
 
   //: 目前這份內容對應到伺服器上的哪一篇教案（沒有就是還沒存過）。
   currentLessonId: number | null = null;
   currentLessonTitle: string | null = null;
+  currentLessonIsMine = false;
+  currentLessonVersion: number | null = null;
+  lessonBaseline: LessonSnapshot | null = null;
+  pendingLessonCommit: { title: string; bundle: LessonBundle } | null = null;
+
+  lessonSnapshot = (title: string, bundle: LessonBundle, version: number): LessonSnapshot => ({
+    title,
+    bundle: JSON.parse(JSON.stringify(bundle)),
+    version,
+    parentVersion: null,
+    createdAt: "",
+  });
 
   lessonIdFromUrl = (): number | null => {
     try {
@@ -1116,7 +1129,19 @@ class SourceCode extends React.Component<{}, State> {
       .then((payload) => {
         this.currentLessonId = payload.id;
         this.currentLessonTitle = payload.title;
-        this.applyProjectBundle(payload.bundle || {});
+        this.currentLessonIsMine = Boolean(payload.is_mine);
+        this.currentLessonVersion = Number.isInteger(payload.current_version)
+          ? payload.current_version
+          : null;
+        const bundle = payload.bundle || {};
+        if (this.currentLessonVersion !== null) {
+          this.lessonBaseline = this.lessonSnapshot(
+            payload.title,
+            bundle,
+            this.currentLessonVersion
+          );
+        }
+        this.applyProjectBundle(bundle);
         Actions.add_console_entries(
           `已載入教案「${payload.title}」（作者：${payload.author_display_name}）。` +
             (payload.is_mine ? "" : " 儲存時會存成你自己的一份副本。"),
@@ -1141,7 +1166,32 @@ class SourceCode extends React.Component<{}, State> {
       return;
     }
 
+    const candidate = { title: trimmed, bundle: this.buildProjectBundle() as LessonBundle };
+    if (this.currentLessonId !== null && this.currentLessonIsMine && this.lessonBaseline) {
+      if (!hasSnapshotChanges(this.lessonBaseline, candidate)) {
+        Actions.add_console_entries(
+          "教案沒有變更，沒有建立新版本。",
+          constants.console_entry_type.GDBGUI_OUTPUT
+        );
+        return;
+      }
+      this.pendingLessonCommit = candidate;
+      this.setState({ showLessonCommit: true } as any);
+      return;
+    }
+
+    this.persistLesson(candidate);
+  };
+
+  persistLesson = (
+    candidate: { title: string; bundle: LessonBundle },
+    parentVersion?: number
+  ) => {
     const isUpdate = this.currentLessonId !== null;
+    const body: any = { title: candidate.title, bundle: candidate.bundle };
+    if (isUpdate && this.currentLessonIsMine && parentVersion !== undefined) {
+      body.parent_version = parentVersion;
+    }
     fetch(isUpdate ? `/api/lessons/${this.currentLessonId}` : "/api/lessons", {
       method: isUpdate ? "PUT" : "POST",
       credentials: "same-origin",
@@ -1149,7 +1199,7 @@ class SourceCode extends React.Component<{}, State> {
         "Content-Type": "application/json",
         "x-csrftoken": (window as any).initial_data?.csrf_token || "",
       },
-      body: JSON.stringify({ title: trimmed, bundle: this.buildProjectBundle() }),
+      body: JSON.stringify(body),
     })
       .then((response) =>
         response
@@ -1164,17 +1214,42 @@ class SourceCode extends React.Component<{}, State> {
       )
       .then((payload: any) => {
         this.currentLessonId = payload.id;
-        this.currentLessonTitle = trimmed;
+        this.currentLessonTitle = candidate.title;
+        this.currentLessonIsMine = true;
+        this.currentLessonVersion = Number.isInteger(payload.version)
+          ? payload.version
+          : this.currentLessonVersion || 1;
+        this.lessonBaseline = this.lessonSnapshot(
+          candidate.title,
+          candidate.bundle,
+          this.currentLessonVersion
+        );
+        this.pendingLessonCommit = null;
+        this.setState({ showLessonCommit: false } as any);
         Actions.add_console_entries(
           payload.forked
-            ? `這篇教案不是你的，已在你名下另存一份「${trimmed}」（原作者的版本沒有被更動）。`
-            : `教案「${trimmed}」已儲存到你的帳號。`,
+            ? `這篇教案不是你的，已在你名下另存一份「${candidate.title}」（原作者的版本沒有被更動）。`
+            : `教案「${candidate.title}」已儲存到你的帳號。`,
           constants.console_entry_type.GDBGUI_OUTPUT
         );
       })
       .catch((err: any) => {
         window.alert(err && err.message ? err.message : "儲存失敗。");
       });
+  };
+
+  confirmLessonCommit = () => {
+    const candidate = this.pendingLessonCommit;
+    const parentVersion = this.currentLessonVersion;
+    if (!candidate || parentVersion === null) return;
+    this.pendingLessonCommit = null;
+    this.setState({ showLessonCommit: false } as any);
+    this.persistLesson(candidate, parentVersion);
+  };
+
+  cancelLessonCommit = () => {
+    this.pendingLessonCommit = null;
+    this.setState({ showLessonCommit: false } as any);
   };
 
   openLessonLibrary = () => {
@@ -1291,6 +1366,14 @@ class SourceCode extends React.Component<{}, State> {
                 this.setState({ showLessonGen: false } as any);
               }}
               onClose={() => this.setState({ showLessonGen: false } as any)}
+            />
+          )}
+          {(this.state as any).showLessonCommit && this.lessonBaseline && this.pendingLessonCommit && (
+            <LessonCommitDialog
+              baseline={this.lessonBaseline}
+              candidate={this.pendingLessonCommit}
+              onConfirm={this.confirmLessonCommit}
+              onCancel={this.cancelLessonCommit}
             />
           )}
           <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", overflow: 'hidden' }}>

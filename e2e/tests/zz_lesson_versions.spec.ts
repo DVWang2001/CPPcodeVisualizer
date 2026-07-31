@@ -1,0 +1,82 @@
+/** The owner must review every changed lesson snapshot before it becomes a version. */
+import { test, expect, Page } from "@playwright/test";
+import { ensureLoggedIn } from "./helpers";
+
+async function csrfToken(page: Page): Promise<string> {
+  return page.evaluate(() => (window as any).initial_data.csrf_token);
+}
+
+test("owner reviews, cancels, then confirms a title and annotation revision", async ({
+  page
+}) => {
+  await ensureLoggedIn(page);
+  const token = await csrfToken(page);
+  const stamp = Date.now();
+  const titleV1 = `版本一 ${stamp}`;
+  const titleV2 = `版本二 ${stamp}`;
+  const sourceV1 = "// v1\n//@guide: first\nint main() { return 0; }\n";
+  const sourceV2 = "// v2\n//@guide: revised\nint main() { return 1; }\n";
+
+  const created = await page.request.post("/api/lessons", {
+    headers: { "x-csrftoken": token, "Content-Type": "application/json" },
+    data: {
+      title: titleV1,
+      bundle: {
+        version: "2.0",
+        fullname_to_render: "main.cpp",
+        source_code: sourceV1,
+        breakpoints: [],
+        program_input: ""
+      }
+    }
+  });
+  expect(created.status()).toBe(201);
+  const lessonId = (await created.json()).id;
+
+  try {
+    await page.goto(`/edit?lesson=${lessonId}`);
+    await page.waitForFunction(
+      () => (window as any).monaco?.editor?.getModels()?.length > 0
+    );
+    await page.waitForFunction(
+      source => (window as any).monaco.editor.getModels()[0]?.getValue() === source,
+      sourceV1
+    );
+    await page.evaluate(
+      source => (window as any).monaco.editor.getModels()[0].setValue(source),
+      sourceV2
+    );
+
+    page.once("dialog", dialog => dialog.accept(titleV2));
+    await page.getByTestId("save-lesson-to-account").click();
+    await expect(page.getByTestId("lesson-commit-dialog")).toBeVisible();
+    await page.getByTestId("lesson-commit-cancel").click();
+
+    const cancelled = await page.request.get(`/api/lessons/${lessonId}`);
+    expect(cancelled.status()).toBe(200);
+    expect(await cancelled.json()).toMatchObject({
+      title: titleV1,
+      current_version: 1,
+      bundle: { source_code: sourceV1 }
+    });
+
+    page.once("dialog", dialog => dialog.accept(titleV2));
+    await page.getByTestId("save-lesson-to-account").click();
+    await page.getByTestId("lesson-commit-confirm").click();
+
+    await expect
+      .poll(async () => {
+        const current = await page.request.get(`/api/lessons/${lessonId}`);
+        return current.json();
+      })
+      .toMatchObject({
+        title: titleV2,
+        current_version: 2,
+        bundle: { source_code: sourceV2 }
+      });
+  } finally {
+    await page.request.delete(`/api/lessons/${lessonId}`, {
+      headers: { "x-csrftoken": token }
+    });
+  }
+});
