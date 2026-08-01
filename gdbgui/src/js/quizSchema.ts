@@ -1,5 +1,6 @@
 import {
   normalizedSourceLine,
+  makeSourceTrigger,
   resolveSourceTrigger,
   sourceBasename,
   triggerMatchesFrame
@@ -140,6 +141,104 @@ function parseQuestion(raw: any, index: number, errors: string[]): QuizQuestion 
 
 export function cloneQuiz(quiz: QuizSpec | null): QuizSpec | null {
   return quiz === null ? null : JSON.parse(JSON.stringify(quiz));
+}
+
+let authoringIdCounter = 0;
+
+function authoringId(prefix: string): string {
+  authoringIdCounter += 1;
+  try {
+    const values = new Uint32Array(2);
+    if (typeof window !== "undefined" && window.crypto && window.crypto.getRandomValues) {
+      window.crypto.getRandomValues(values);
+      return `${prefix}_${values[0].toString(36)}${values[1].toString(36)}_${authoringIdCounter}`;
+    }
+  } catch (_) {}
+  return `${prefix}_${Date.now().toString(36)}_${authoringIdCounter}`;
+}
+
+export function emptyQuiz(): QuizSpec {
+  return { schema_version: 1, questions: [] };
+}
+
+export function addQuestion(quiz: QuizSpec): QuizSpec {
+  const copy = cloneQuiz(quiz)!;
+  if (copy.questions.length >= 30) return copy;
+  const firstOption = authoringId("option");
+  copy.questions.push({
+    id: authoringId("question"),
+    prompt: "",
+    options: [
+      { id: firstOption, text: "" },
+      { id: authoringId("option"), text: "" }
+    ],
+    correct_option_id: firstOption,
+    explanation: "",
+    trigger: {
+      kind: "source_line",
+      source_file: "",
+      line: 0,
+      anchor: { line_text: "", before_text: "", after_text: "" }
+    }
+  });
+  return copy;
+}
+
+export function removeQuestion(quiz: QuizSpec, questionId: string): QuizSpec {
+  const copy = cloneQuiz(quiz)!;
+  copy.questions = copy.questions.filter(question => question.id !== questionId);
+  return copy;
+}
+
+export function addOption(quiz: QuizSpec, questionId: string): QuizSpec {
+  const copy = cloneQuiz(quiz)!;
+  const question = copy.questions.find(value => value.id === questionId);
+  if (!question || question.options.length >= 6) return copy;
+  question.options.push({ id: authoringId("option"), text: "" });
+  return copy;
+}
+
+export function removeOption(
+  quiz: QuizSpec,
+  questionId: string,
+  optionId: string
+): QuizSpec {
+  const copy = cloneQuiz(quiz)!;
+  const question = copy.questions.find(value => value.id === questionId);
+  if (!question || question.options.length <= 2) return copy;
+  question.options = question.options.filter(option => option.id !== optionId);
+  if (!question.options.some(option => option.id === question.correct_option_id)) {
+    question.correct_option_id = question.options[0].id;
+  }
+  return copy;
+}
+
+export function moveQuestion(
+  quiz: QuizSpec,
+  questionId: string,
+  direction: -1 | 1
+): QuizSpec {
+  const copy = cloneQuiz(quiz)!;
+  const index = copy.questions.findIndex(question => question.id === questionId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= copy.questions.length) return copy;
+  const moved = copy.questions.splice(index, 1)[0];
+  copy.questions.splice(target, 0, moved);
+  return copy;
+}
+
+export function bindQuestion(
+  quiz: QuizSpec,
+  questionId: string,
+  sourceCode: string,
+  sourceFile: string,
+  line: number
+): QuizSpec {
+  const copy = cloneQuiz(quiz)!;
+  const question = copy.questions.find(value => value.id === questionId);
+  if (!question) return copy;
+  question.trigger = makeSourceTrigger(sourceCode, sourceFile, line);
+  return copy;
 }
 
 export function validateQuiz(raw: unknown, sourceCode: string, sourceFile?: string): QuizValidation {

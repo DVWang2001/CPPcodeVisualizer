@@ -23,6 +23,8 @@ import { parseForHeader, segRange } from "./forHeader";
 import LessonGenPanel from "./LessonGenPanel";
 import LessonCommitDialog from "./LessonCommitDialog";
 import LessonHistoryDialog from "./LessonHistoryDialog";
+import QuizAuthoringDialog from "./QuizAuthoringDialog";
+import { cloneQuiz, QuizSpec, validateQuiz } from "./quizSchema";
 import {
   hasSnapshotChanges,
   LessonBundle,
@@ -61,6 +63,7 @@ class SourceCode extends React.Component<{}, State> {
       showLessonGen: false,
       showLessonCommit: false,
       showLessonHistory: false,
+      showQuizAuthoring: false,
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
@@ -899,14 +902,20 @@ class SourceCode extends React.Component<{}, State> {
     const source_code = this.editorInstance ? this.editorInstance.getValue() : "";
     const programInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
     const breakpoints = store.get("breakpoints") || [];
+    const sourceFile =
+      this.state.fullname_to_render ||
+      (this.lessonBundleTemplate && this.lessonBundleTemplate.fullname_to_render) ||
+      "";
 
-    return {
+    const bundle: LessonBundle = {
       version: "2.0",
-      fullname_to_render: this.state.fullname_to_render || "",
+      fullname_to_render: sourceFile || (this.lessonQuizDraft ? "imported_code.cpp" : ""),
       source_code: source_code,
       breakpoints: breakpoints,
       program_input: programInput,
     };
+    if (this.lessonQuizDraft) bundle.quiz = cloneQuiz(this.lessonQuizDraft);
+    return bundle;
   };
 
   exportProject = () => {
@@ -1001,6 +1010,29 @@ class SourceCode extends React.Component<{}, State> {
         // already exported in the new format (no line_data) pass through unchanged.
         const v2 = normalizeBundle(projectData);
         const mergedSource = v2.source_code;
+        const quizValidation = validateQuiz(
+          projectData && projectData.quiz,
+          mergedSource,
+          v2.fullname_to_render || "imported_code.cpp"
+        );
+        this.lessonQuizErrors = quizValidation.errors;
+        this.lessonQuizDraft = quizValidation.quiz;
+        if (
+          quizValidation.errors.length > 0 &&
+          projectData &&
+          projectData.quiz &&
+          quizValidation.errors.every(error =>
+            /錨點|來源檔案|同一程式碼行/.test(error)
+          )
+        ) {
+          this.lessonQuizDraft = cloneQuiz(projectData.quiz as QuizSpec);
+        }
+        if (quizValidation.errors.length > 0) {
+          Actions.add_console_entries(
+            `課堂題目需要修正：${quizValidation.errors.join(" ")}`,
+            constants.console_entry_type.STD_ERR
+          );
+        }
 
         if (this.editorInstance) {
           this.editorInstance.setValue(mergedSource);
@@ -1097,7 +1129,7 @@ class SourceCode extends React.Component<{}, State> {
         store.set("edit_mode", true);
         return {
           version: "2.0",
-          fullname_to_render: "",
+          fullname_to_render: v2.fullname_to_render || currentFullname,
           source_code: mergedSource,
           breakpoints,
           program_input: programInput,
@@ -1119,6 +1151,8 @@ class SourceCode extends React.Component<{}, State> {
   selectedLessonParentVersion: number | null = null;
   lessonBaseline: LessonSnapshot | null = null;
   lessonBundleTemplate: LessonBundle | null = null;
+  lessonQuizDraft: QuizSpec | null = null;
+  lessonQuizErrors: string[] = [];
   pendingLessonCommit: { title: string; bundle: LessonBundle } | null = null;
   lessonVersionSummaries: VersionSummary[] = [];
   lessonHistoryHeadVersion: number | null = null;
@@ -1227,6 +1261,22 @@ class SourceCode extends React.Component<{}, State> {
   };
 
   saveLessonToAccount = () => {
+    if (this.lessonQuizDraft) {
+      const checked = validateQuiz(
+        this.lessonQuizDraft,
+        this.editorInstance?.getValue?.() || "",
+        this.state.fullname_to_render ||
+          (this.lessonBundleTemplate && this.lessonBundleTemplate.fullname_to_render) ||
+          "imported_code.cpp"
+      );
+      this.lessonQuizErrors = checked.errors;
+      if (checked.quiz) this.lessonQuizDraft = checked.quiz;
+    }
+    if (this.lessonQuizErrors.length > 0) {
+      window.alert(`課堂題目需要修正後才能儲存：\n${this.lessonQuizErrors.join("\n")}`);
+      this.setState({ showQuizAuthoring: true } as any);
+      return;
+    }
     const suggested = this.currentLessonTitle || "我的教案";
     const title = window.prompt("教案標題", suggested);
     if (title === null) return;
@@ -1516,6 +1566,14 @@ class SourceCode extends React.Component<{}, State> {
               {/* Import/Export JSON 讀寫本機檔案（備份與離線交換）；底下兩顆是
                   帳號那條路：存進伺服器、以及瀏覽別人的教案。 */}
               <button
+                onClick={() => this.setState({ showQuizAuthoring: true } as any)}
+                data-testid="quiz-authoring-open"
+                className="btn btn-default btn-sm"
+                title="編輯播放時自動出現的課堂單選題"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                課堂題目
+              </button>
+              <button
                 onClick={this.saveLessonToAccount}
                 data-testid="save-lesson-to-account"
                 className="btn btn-default btn-sm"
@@ -1558,6 +1616,31 @@ class SourceCode extends React.Component<{}, State> {
                 this.setState({ showLessonGen: false } as any);
               }}
               onClose={() => this.setState({ showLessonGen: false } as any)}
+            />
+          )}
+          {(this.state as any).showQuizAuthoring && (
+            <QuizAuthoringDialog
+              quiz={this.lessonQuizDraft}
+              sourceCode={this.editorInstance?.getValue?.() || value}
+              sourceFile={
+                this.state.fullname_to_render ||
+                (this.lessonBundleTemplate && this.lessonBundleTemplate.fullname_to_render) ||
+                "imported_code.cpp"
+              }
+              getCursorLine={() =>
+                Number(this.editorInstance?.getPosition?.()?.lineNumber) || 0
+              }
+              onSave={quiz => {
+                this.lessonQuizDraft = cloneQuiz(quiz);
+                this.lessonQuizErrors = [];
+                const template = this.lessonBundleTemplate || this.buildProjectBundle();
+                this.lessonBundleTemplate = {
+                  ...template,
+                  quiz: cloneQuiz(quiz)
+                };
+                this.setState({ showQuizAuthoring: false } as any);
+              }}
+              onClose={() => this.setState({ showQuizAuthoring: false } as any)}
             />
           )}
           {(this.state as any).showLessonCommit && this.lessonBaseline && this.pendingLessonCommit && (

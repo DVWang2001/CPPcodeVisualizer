@@ -67,6 +67,37 @@ test("detects program input and breakpoint changes", () => {
   ).toBe(true);
 });
 
+test("detects a lesson quiz edit as a new version change", () => {
+  const quiz = {
+    schema_version: 1 as 1,
+    questions: [
+      {
+        id: "q1",
+        prompt: "原題目",
+        options: [{ id: "a", text: "0" }, { id: "b", text: "1" }],
+        correct_option_id: "b",
+        explanation: "解說",
+        trigger: {
+          kind: "source_line" as "source_line",
+          source_file: "main.cpp",
+          line: 1,
+          anchor: { line_text: "int main() { return 0; }", before_text: "", after_text: "" }
+        }
+      }
+    ]
+  };
+  const original = snapshot({ bundle: bundle({ quiz }) });
+  const changed = JSON.parse(JSON.stringify(quiz));
+  changed.questions[0].prompt = "修改後題目";
+
+  expect(
+    hasSnapshotChanges(original, {
+      title: original.title,
+      bundle: bundle({ quiz: changed })
+    })
+  ).toBe(true);
+});
+
 test("ignores recursively reordered object keys", () => {
   const original = snapshot({
     bundle: bundle({
