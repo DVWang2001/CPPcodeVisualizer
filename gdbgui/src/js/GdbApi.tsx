@@ -14,6 +14,7 @@ import io from "socket.io-client";
 import { global_variable } from "./global_variable";
 import { buildGhostFromSnapshots } from "./ghostTree";
 import { isFastForwarding } from "./fastForward";
+import { isQuizPlaybackBlocked } from "./lessonQuizRuntime";
 
 /** Parse GCC/Clang stderr into structured error objects. */
 function _parseCompileErrors(stderr: string): any[] {
@@ -667,6 +668,7 @@ const GdbApi = {
     );
   },
   click_continue_button: function (reverse = false) {
+    if (isQuizPlaybackBlocked(store)) return;
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-continue" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
@@ -680,6 +682,7 @@ const GdbApi = {
   // 沒有人排下一個命令，播放會卡死。所以被虛步消耗掉的那一次要自己排接續。
   // 手動點擊不排接續（使用者自己按下一步）。
   click_next_button: function (reverse = false, opts: { autoplay?: boolean } = {}) {
+    if (isQuizPlaybackBlocked(store)) return;
     // 快轉期間完全繞過 for 虛步：否則每個 for 行要多花一個虛步（多一次 dwell），
     // B 段高亮還會在無聲快轉中閃爍。
     if (!reverse && !store.get("debug_in_reverse") && !isFastForwarding()) {
@@ -711,12 +714,14 @@ const GdbApi = {
     );
   },
   click_step_button: function (reverse = false) {
+    if (isQuizPlaybackBlocked(store)) return;
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-step" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
   },
   click_return_button: function () {
+    if (isQuizPlaybackBlocked(store)) return;
     // Modified: Previously ran `-exec-return` and `Actions.inferior_program_paused();`
     // which caused a race condition and React UI crashes (black screen) because `paused`
     // was forcefully triggered before GDB replied. Now uses the proper Step Out
@@ -1012,9 +1017,11 @@ GdbApi.socket = socket;
 
 // 自動播放指令執行器：由 VisualizerHelper 在 TTS 結束後呼叫
 (window as any).gdbgui_execute_autoplay_command = (command: string) => {
+  if (isQuizPlaybackBlocked(store)) return;
   // 快轉時零延遲：GDB round trip 本身就是這個模式唯一的成本，不再額外等停頓
   const delay: number = isFastForwarding() ? 0 : ((window as any).gdbgui_autoplay_delay ?? 600);
   setTimeout(async () => {
+    if (isQuizPlaybackBlocked(store)) return;
     // 再次確認自動播放仍啟用（使用者可能在 TTS 播放中途關閉）
     if (!store.get("autoplay_enabled")) return;
     // 若目前處於暫停狀態，儲存指令等待恢復後執行
@@ -1025,6 +1032,7 @@ GdbApi.socket = socket;
     // 等待 BST 插入比對動畫完成，再繼續執行 GDB 指令
     const barrier = (window as any).gdbgui_bst_anim_done as Promise<void> | null | undefined;
     if (barrier) await barrier;
+    if (isQuizPlaybackBlocked(store)) return;
     // 動畫結束後再次確認狀態（使用者可能在動畫期間關閉 autoplay 或暫停）
     if (!store.get("autoplay_enabled")) return;
     if (store.get("autoplay_paused")) {

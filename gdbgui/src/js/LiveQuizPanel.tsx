@@ -1,0 +1,279 @@
+import * as React from "react";
+import { store } from "statorgfc";
+import {
+  closeLiveQuestion,
+  connectTeacherQuizSocket,
+  createLiveSession,
+  endLiveSession,
+  getLiveSession,
+  LiveQuizStats,
+  triggerLiveQuestion
+} from "./liveQuizClient";
+import { lessonQuizRuntime, LiveQuizSession, RuntimeState } from "./lessonQuizRuntime";
+import { QuizSpec } from "./quizSchema";
+
+type Props = {
+  lessonId: number;
+  quiz: QuizSpec;
+  onClose: () => void;
+};
+
+const STORAGE_KEY = "gdbgui_live_quiz_session_id";
+const ink = "#17233b";
+const muted = "#667085";
+const amber = "#e9a319";
+
+function storedSessionId(): number | null {
+  try {
+    const value = Number(sessionStorage.getItem(STORAGE_KEY));
+    return Number.isInteger(value) && value > 0 ? value : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function rememberSession(id: number | null) {
+  try {
+    if (id === null) sessionStorage.removeItem(STORAGE_KEY);
+    else sessionStorage.setItem(STORAGE_KEY, String(id));
+  } catch (_) {}
+}
+
+function latestQuestion(session: LiveQuizSession | null): any {
+  if (!session) return null;
+  if (session.active_question) return session.active_question;
+  const opened = session.questions.filter(question => question.opened_at);
+  return opened.length ? opened[opened.length - 1] : null;
+}
+
+export default function LiveQuizPanel({ lessonId, quiz, onClose }: Props) {
+  const [session, setSession] = React.useState<LiveQuizSession | null>(null);
+  const [stats, setStats] = React.useState<LiveQuizStats | null>(null);
+  const [runtimeState, setRuntimeState] = React.useState<RuntimeState>(
+    lessonQuizRuntime.state()
+  );
+  const [busy, setBusy] = React.useState(false);
+  const [connected, setConnected] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const disconnectRef = React.useRef<(() => void) | null>(null);
+  const urlRef = React.useRef<HTMLInputElement | null>(null);
+
+  const connect = (initial: LiveQuizSession) => {
+    setSession(initial);
+    setError(null);
+    rememberSession(initial.id);
+    lessonQuizRuntime.activate(initial, quiz, {
+      trigger: triggerLiveQuestion,
+      setGate: value => store.set("quiz_playback_gate", value),
+      onChange: next => {
+        setRuntimeState(next);
+        if (next.session) setSession(next.session);
+      }
+    });
+    if (disconnectRef.current) disconnectRef.current();
+    disconnectRef.current = connectTeacherQuizSocket(initial.id, {
+      onState: next => {
+        setSession(next);
+        lessonQuizRuntime.syncSession(next);
+      },
+      onStats: setStats,
+      onConnection: setConnected
+    });
+  };
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const remembered = storedSessionId();
+    if (remembered !== null) {
+      getLiveSession(remembered)
+        .then(existing => {
+          if (cancelled) return;
+          if (existing.lesson_id !== lessonId) {
+            rememberSession(null);
+            return;
+          }
+          connect(existing);
+        })
+        .catch(() => rememberSession(null));
+    }
+    return () => {
+      cancelled = true;
+      if (disconnectRef.current) disconnectRef.current();
+      lessonQuizRuntime.deactivate();
+    };
+  }, [lessonId]);
+
+  const start = () => {
+    setBusy(true);
+    setError(null);
+    createLiveSession(lessonId)
+      .then(connect)
+      .catch(reason => setError(reason.message || "無法開始課堂。"))
+      .then(() => setBusy(false));
+  };
+
+  const closeQuestion = () => {
+    const question = session && session.active_question;
+    if (!session || !question) return;
+    setBusy(true);
+    closeLiveQuestion(session.id, question.id)
+      .then(updated => {
+        setSession(updated);
+        setStats(null);
+        lessonQuizRuntime.questionClosed(updated);
+      })
+      .catch(reason => setError(reason.message || "無法關閉題目。"))
+      .then(() => setBusy(false));
+  };
+
+  const end = () => {
+    if (!session) return;
+    setBusy(true);
+    endLiveSession(session.id)
+      .then(ended => {
+        lessonQuizRuntime.deactivate();
+        if (disconnectRef.current) disconnectRef.current();
+        disconnectRef.current = null;
+        rememberSession(null);
+        setConnected(false);
+        setSession(ended);
+        setStats(null);
+      })
+      .catch(reason => setError(reason.message || "無法結束課堂。"))
+      .then(() => setBusy(false));
+  };
+
+  const copyUrl = () => {
+    const url = session && session.join_url;
+    if (!url) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).catch(() => undefined);
+      return;
+    }
+    if (urlRef.current) {
+      urlRef.current.select();
+      document.execCommand("copy");
+    }
+  };
+
+  if (!session) {
+    return (
+      <section style={{ padding: "14px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px" }}>
+          <div>
+            <strong style={{ color: ink }}>即時課堂</strong>
+            <div style={{ color: muted, fontSize: "12px" }}>開始後顯示 QR；播放停在綁定行時自動開題。</div>
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" className="btn btn-default btn-sm" onClick={onClose}>取消</button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={start}>
+              {busy ? "正在開始…" : "開始即時課堂"}
+            </button>
+          </div>
+        </div>
+        {error && <div role="alert" style={{ color: "#a61b1b", marginTop: "8px" }}>{error}</div>}
+      </section>
+    );
+  }
+
+  if (session.state === "ended") {
+    return (
+      <section style={{ padding: "14px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc" }}>
+        <strong style={{ color: ink }}>本次課堂已結束</strong>
+        <span style={{ color: muted, marginLeft: "10px" }}>匿名題目統計已保留，學生資料已清除。</span>
+        <button type="button" className="btn btn-default btn-sm" style={{ float: "right" }} onClick={onClose}>關閉</button>
+      </section>
+    );
+  }
+
+  const question = latestQuestion(session);
+  const counts = (stats && stats.option_counts) || (question && question.option_counts) || {};
+  const answerCount = (stats && stats.answer_count) || (question && question.answer_count) || 0;
+  const correctCount = (stats && stats.correct_count) || (question && question.correct_count) || 0;
+
+  return (
+    <section
+      aria-label="即時課堂控制"
+      style={{ padding: "16px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc", color: ink }}
+    >
+      <div style={{ display: "grid", gridTemplateColumns: "160px minmax(240px, 1fr) minmax(260px, 1.3fr)", gap: "18px" }}>
+        <div>
+          <img
+            src={session.qr_url}
+            alt="學生加入課堂的 QR Code"
+            style={{ display: "block", width: "150px", height: "150px", background: "#fff", border: "1px solid #d8dee9" }}
+          />
+          <div style={{ marginTop: "7px", fontSize: "12px", color: connected ? "#237a3b" : "#a65f00" }}>
+            {connected ? "● 即時連線中" : "● 重新連線中"}
+          </div>
+        </div>
+
+        <div>
+          <div style={{ color: muted, fontSize: "12px" }}>學生加入連結</div>
+          <div style={{ display: "flex", gap: "6px", margin: "5px 0 14px" }}>
+            <input ref={urlRef} className="form-control input-sm" readOnly value={session.join_url || ""} />
+            <button type="button" className="btn btn-default btn-sm" onClick={copyUrl}>複製</button>
+          </div>
+          <div style={{ fontSize: "26px", fontWeight: 700 }}>{session.joined_count || 0}</div>
+          <div style={{ color: muted, fontSize: "12px" }}>位學生已加入</div>
+          {question && (
+            <code style={{ display: "inline-block", marginTop: "14px", padding: "5px 8px", color: ink, background: "#fff7df", border: "1px solid #f2d38b" }}>
+              {question.source_file} · L{question.line}
+            </code>
+          )}
+        </div>
+
+        <div style={{ borderLeft: `4px solid ${amber}`, paddingLeft: "16px" }}>
+          {question ? (
+            <React.Fragment>
+              <strong>{question.prompt}</strong>
+              <div style={{ display: "flex", gap: "18px", margin: "8px 0", color: muted }}>
+                <span>已作答 {answerCount}</span>
+                <span>答對 {correctCount}</span>
+              </div>
+              {(question.options || []).map((option: any) => {
+                const value = Number(counts[option.id]) || 0;
+                const width = answerCount ? Math.round((value / answerCount) * 100) : 0;
+                return (
+                  <div key={option.id} style={{ marginBottom: "7px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
+                      <span>{option.text}</span><span>{value}</span>
+                    </div>
+                    <div style={{ height: "6px", background: "#e6eaf0" }}>
+                      <div style={{ width: `${width}%`, height: "100%", background: "#4676b8" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </React.Fragment>
+          ) : (
+            <div style={{ color: muted, padding: "24px 0" }}>等待播放到下一個題目綁定行。</div>
+          )}
+
+          {(runtimeState.error || error) && (
+            <div role="alert" style={{ color: "#a61b1b", marginTop: "8px" }}>
+              {runtimeState.error || error}
+              {runtimeState.error && (
+                <button type="button" className="btn btn-default btn-xs" style={{ marginLeft: "8px" }} onClick={() => lessonQuizRuntime.retryTrigger()}>
+                  重試
+                </button>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" }}>
+            <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={end}>結束課堂</button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={busy || !session.active_question}
+              onClick={closeQuestion}
+            >
+              結束作答並繼續
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}

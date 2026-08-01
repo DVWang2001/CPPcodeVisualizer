@@ -10,6 +10,7 @@ import VisualizerHelper from "./VisualizerHelper";
 import Visualizer from "./Visualizer";
 import { parseForHeader, decideForSegment } from "./forHeader";
 import { decideFastState, getFastForward, disarmFastForward } from "./fastForward";
+import { lessonQuizRuntime } from "./lessonQuizRuntime";
 void React; // using jsx implicity uses React
 
 // ── for 迴圈三段式單步：每個真正的 GDB 停駐點重算一次 ──────────
@@ -86,6 +87,7 @@ const Actions = {
     // 保留字幕，讓使用者看到目前播放到哪句話
   },
   inferior_program_starting: function () {
+    lessonQuizRuntime.clearGate();
     Actions.stop_tts();
     // 執行代數：只有真正重新執行才遞增。ContainerVisualizer 的輪詢用它判斷
     // 「該把 plugin 狀態清掉了」，而不能用 inferior_program === "running"
@@ -144,6 +146,11 @@ const Actions = {
     }
     // for 迴圈三段式單步：每次真正停下來都重算一次目前段落（A 或 C，或 null）
     recompute_for_sub_step(frame);
+    const quizMatched = lessonQuizRuntime.onGdbPause(frame);
+    if (quizMatched) {
+      Actions.stop_tts();
+      store.set("autoplay_pending_command", null);
+    }
     // 讀取指導，如果存在指導並且當前的frame有line這個資訊
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
     VisualizerHelper.processing_guide(frame.line, frame.func);
@@ -152,7 +159,7 @@ const Actions = {
     VisualizerHelper.detect_container_op(frame.line, frame.func);
     // 播放 TTS 語音
     // @ts-expect-error
-    VisualizerHelper.play_tts(frame.line, frame.func);
+    if (!quizMatched) VisualizerHelper.play_tts(frame.line, frame.func);
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'addr' does not exist on type '{}'.
     store.set("current_assembly_address", frame.addr);
     store.set("source_code_infinite_scrolling", false);
@@ -160,6 +167,7 @@ const Actions = {
     Actions.refresh_state_for_gdb_pause();
   },
   inferior_program_exited: function () {
+    lessonQuizRuntime.clearGate();
     Actions.stop_tts();
     // 程式結束就沒有停駐點能解除快轉了，一律在這裡收掉
     disarmFastForward();

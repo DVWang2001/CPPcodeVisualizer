@@ -12,3 +12,18 @@
 
 // Ensure global_variable.js can initialise its window-backed singleton.
 (window as any).gdbgui_global_variable = (window as any).gdbgui_global_variable || {};
+(global as any).debug = false;
+(window as any).initial_data = (window as any).initial_data || {
+    csrf_token: "test-csrf",
+    gdbpid: null,
+    gdb_command: null,
+    remap_sources: {},
+    themes: ["light"],
+    gdbgui_version: "test"
+};
+(global as any).initial_data = (window as any).initial_data;
+
+// The production webpack build supplies synthetic default interop. ts-jest's
+// CommonJS override does not, while a few legacy modules still import React as default.
+const ReactModule = require("react");
+if (!ReactModule.default) ReactModule.default = ReactModule;

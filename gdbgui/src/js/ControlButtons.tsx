@@ -4,6 +4,7 @@ import Actions from "./Actions";
 import GdbApi from "./GdbApi";
 import constants from "./constants";
 import { store } from "statorgfc";
+import { lessonQuizRuntime } from "./lessonQuizRuntime";
 
 type State = any;
 
@@ -12,7 +13,7 @@ class ControlButtons extends React.Component<{}, State> {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
-    store.connectComponentState(this, ["gdb_pid", "reverse_supported", "autoplay_enabled", "autoplay_paused", "edit_mode", "inferior_program", "tts_speed"]);
+    store.connectComponentState(this, ["gdb_pid", "reverse_supported", "autoplay_enabled", "autoplay_paused", "edit_mode", "inferior_program", "tts_speed", "quiz_playback_gate"]);
   }
   render() {
     let btn_class = "btn btn-default btn-sm";
@@ -38,6 +39,7 @@ class ControlButtons extends React.Component<{}, State> {
             (this.state.reverse_supported ? ". shift + c for reverse." : "")
           }
           className={btn_class}
+          disabled={this.state.quiz_playback_gate}
         >
           <span className="glyphicon glyphicon-play" />
         </button>
@@ -67,6 +69,8 @@ class ControlButtons extends React.Component<{}, State> {
             (this.state.reverse_supported ? ". shift + n for reverse." : "")
           }
           className={btn_class}
+          disabled={this.state.quiz_playback_gate}
+          disabled={this.state.quiz_playback_gate}
         >
           <span className="glyphicon glyphicon-step-forward" />
         </button>
@@ -90,6 +94,7 @@ class ControlButtons extends React.Component<{}, State> {
           type="button"
           title="Step out of current function keyboard shortcut: u or up arrow"
           className={btn_class}
+          disabled={this.state.quiz_playback_gate}
         >
           <span className="glyphicon glyphicon-arrow-up" />
         </button>
@@ -98,6 +103,7 @@ class ControlButtons extends React.Component<{}, State> {
           onClick={() => {
             const enteringEditMode = !this.state.edit_mode;
             if (enteringEditMode) {
+              lessonQuizRuntime.deactivate();
               // 切回編輯模式時，先終止 inferior（被偵錯的程式）
               const inf = this.state.inferior_program;
               if (inf === "running" || inf === "paused") {

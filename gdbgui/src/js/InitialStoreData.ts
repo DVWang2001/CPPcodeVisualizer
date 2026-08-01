@@ -45,6 +45,7 @@ const initial_store_data = {
   autoplay_enabled: true, // 自動播放模式：TTS 結束後自動執行對應的 GDB 步驟指令
   autoplay_paused: false, // 暫停自動播放：保留進度，下次恢復時從該步驟繼續
   autoplay_pending_command: null as string | null, // 暫停時儲存的待執行指令
+  quiz_playback_gate: false, // 題目開放時阻止 next/step/continue 與自動播放越過題目
   tts_speed: 1.0, // TTS 播放速度（0.5x ~ 2.0x）
   container_font_size: 1.1, // 容器視覺化的字體大小（em），可在 Settings 或 layout 調整
   monaco_font_size: 14, // Monaco 編輯器字體大小（px），可在 Settings 調整

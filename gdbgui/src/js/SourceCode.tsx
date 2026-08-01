@@ -24,6 +24,7 @@ import LessonGenPanel from "./LessonGenPanel";
 import LessonCommitDialog from "./LessonCommitDialog";
 import LessonHistoryDialog from "./LessonHistoryDialog";
 import QuizAuthoringDialog from "./QuizAuthoringDialog";
+import LiveQuizPanel from "./LiveQuizPanel";
 import { cloneQuiz, QuizSpec, validateQuiz } from "./quizSchema";
 import {
   hasSnapshotChanges,
@@ -64,6 +65,13 @@ class SourceCode extends React.Component<{}, State> {
       showLessonCommit: false,
       showLessonHistory: false,
       showQuizAuthoring: false,
+      showLiveQuiz: (() => {
+        try {
+          return Boolean(sessionStorage.getItem("gdbgui_live_quiz_session_id"));
+        } catch (_) {
+          return false;
+        }
+      })(),
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
@@ -1573,6 +1581,19 @@ class SourceCode extends React.Component<{}, State> {
                 style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
                 課堂題目
               </button>
+              {this.currentLessonId !== null &&
+                this.currentLessonIsMine &&
+                this.lessonQuizDraft &&
+                this.lessonQuizDraft.questions.length > 0 && (
+                  <button
+                    onClick={() => this.setState({ showLiveQuiz: true } as any)}
+                    data-testid="live-quiz-open"
+                    className="btn btn-default btn-sm"
+                    title="顯示 QR 並開始播放時自動出題"
+                    style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                    即時課堂
+                  </button>
+                )}
               <button
                 onClick={this.saveLessonToAccount}
                 data-testid="save-lesson-to-account"
@@ -1643,6 +1664,17 @@ class SourceCode extends React.Component<{}, State> {
               onClose={() => this.setState({ showQuizAuthoring: false } as any)}
             />
           )}
+          {(this.state as any).showLiveQuiz &&
+            this.currentLessonId !== null &&
+            this.currentLessonIsMine &&
+            this.lessonQuizDraft &&
+            this.lessonQuizDraft.questions.length > 0 && (
+              <LiveQuizPanel
+                lessonId={this.currentLessonId}
+                quiz={this.lessonQuizDraft}
+                onClose={() => this.setState({ showLiveQuiz: false } as any)}
+              />
+            )}
           {(this.state as any).showLessonCommit && this.lessonBaseline && this.pendingLessonCommit && (
             <LessonCommitDialog
               baseline={this.lessonBaseline}
