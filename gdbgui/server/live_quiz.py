@@ -936,7 +936,7 @@ def _latest_question(state):
 
 
 def emit_teacher_state(session_id):
-    if _socketio is None:
+    if _socketio is None or _socketio.server is None:
         return
     row = _invitation_row(session_id)
     if row is None:
@@ -962,7 +962,7 @@ def emit_teacher_state(session_id):
 
 
 def emit_student_state(credential_hash):
-    if _socketio is None:
+    if _socketio is None or _socketio.server is None:
         return
     state = guest_state(credential_hash)
     if state is not None:
@@ -975,7 +975,7 @@ def emit_student_state(credential_hash):
 
 
 def emit_student_states(session_id):
-    if _socketio is None:
+    if _socketio is None or _socketio.server is None:
         return
     with closing(db.connect()) as conn:
         credentials = [
@@ -1000,7 +1000,7 @@ def _participant_ids(session_id):
 
 
 def _emit_ended(participant_ids):
-    if _socketio is None:
+    if _socketio is None or _socketio.server is None:
         return
     for participant_id in participant_ids:
         _socketio.emit(
