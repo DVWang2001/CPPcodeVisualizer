@@ -6,9 +6,7 @@
     <title>{{ session_title }}｜課堂問答</title>
   </head>
   <body>
-    <main id="quiz-app" aria-live="polite">
-      <h1>{{ session_title }}</h1>
-    </main>
+    <div id="quiz-app"><noscript>請啟用 JavaScript 以加入課堂。</noscript></div>
     <script>window.initial_quiz_data = {{ initial_data | tojson }};</script>
     <script src="{{ url_for('static', filename='js/studentQuiz.js') }}"></script>
   </body>
