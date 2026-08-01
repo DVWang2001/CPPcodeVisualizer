@@ -178,10 +178,25 @@ test('student scans rendered QR and answers when playback reaches the bound line
     await expect(studentPage.getByText('✓ 答對了')).toBeVisible();
     await expect(studentPage.getByText('程式已執行到指定行。')).toBeVisible();
     await expect(teacherPage.locator('#next_button')).toBeEnabled();
+    let releaseRestore!: () => void;
+    let markRestoreStarted!: () => void;
+    const restoreStarted = new Promise<void>(resolve => { markRestoreStarted = resolve; });
+    const lessonRoute = `**/api/lessons/${lessonId}`;
+    await teacherPage.route(lessonRoute, async route => {
+      if (route.request().method() === 'GET') {
+        markRestoreStarted();
+        await new Promise<void>(resolve => { releaseRestore = resolve; });
+      }
+      await route.continue();
+    });
     await teacherPage.getByRole('button', { name: '結束課堂' }).click();
+    await restoreStarted;
+    await expect(teacherPage.getByRole('button', { name: '關閉' })).toBeDisabled();
+    releaseRestore();
     await expect.poll(() => teacherPage.evaluate(() =>
       (window as any).monaco.editor.getModels()[0].getValue()
     )).toBe(`// v2\n${SOURCE}`);
+    await teacherPage.unroute(lessonRoute);
     await expect(teacherPage.getByTestId('save-lesson-to-account')).toBeEnabled();
     await expect(teacherPage.getByText('本次課堂已結束')).toBeVisible();
     await teacherPage.evaluate(id => {

@@ -70,6 +70,7 @@ export default function LiveQuizPanel({
   const [error, setError] = React.useState<string | null>(null);
   const disconnectRef = React.useRef<(() => void) | null>(null);
   const endedRef = React.useRef(false);
+  const restorationRef = React.useRef<Promise<void> | null>(null);
   const urlRef = React.useRef<HTMLInputElement | null>(null);
 
   const restoreLatest = (): Promise<void> => {
@@ -82,8 +83,14 @@ export default function LiveQuizPanel({
       .then(() => setBusy(false));
   };
 
+  const startRestore = (): Promise<void> => {
+    const restoration = Promise.resolve().then(restoreLatest);
+    restorationRef.current = restoration;
+    return restoration;
+  };
+
   const finishEnded = (ended: LiveQuizSession): Promise<void> => {
-    if (endedRef.current) return Promise.resolve();
+    if (restorationRef.current) return restorationRef.current;
     endedRef.current = true;
     lessonQuizRuntime.deactivate();
     if (disconnectRef.current) disconnectRef.current();
@@ -92,7 +99,7 @@ export default function LiveQuizPanel({
     setConnected(false);
     setSession(ended);
     setStats(null);
-    return restoreLatest();
+    return startRestore();
   };
 
   const connect = (initial: LiveQuizSession): Promise<void> => {
@@ -111,6 +118,7 @@ export default function LiveQuizPanel({
         if (current === null) return;
         if (current.state === "ended") return finishEnded(current);
         endedRef.current = false;
+        restorationRef.current = null;
         setSession(current);
         setError(null);
         lessonQuizRuntime.activate(current, {
@@ -271,7 +279,7 @@ export default function LiveQuizPanel({
         <span style={{ color: muted, marginLeft: "10px" }}>匿名題目統計已保留，學生資料已清除。</span>
         <span style={{ float: "right", display: "flex", gap: "8px" }}>
           {error && <span role="alert" style={{ color: "#a61b1b" }}>{error}</span>}
-          {error && <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={restoreLatest}>重試載入</button>}
+          {error && <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={startRestore}>重試載入</button>}
           <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={onClose}>關閉</button>
         </span>
       </section>
