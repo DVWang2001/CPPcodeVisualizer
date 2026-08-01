@@ -4,7 +4,7 @@
   {# Jinja 的 autoescape 是開著的。title、display_name、標籤名都是使用者輸入，
      一律靠它轉義；這一頁沒有任何 |safe，也沒有任何使用者字串被插進 <script>
      或 HTML 屬性裡——底下那段 JS 只讀 data-lesson-id（整數）。 #}
-  <style>.card { --card-width: 42rem; }</style>
+  <style>.card { --card-width: 74rem; }</style>
 
   {# 目前的篩選條件，用來組「加上／拿掉一個標籤」的連結。 #}
   {% macro tag_url(name, on) -%}
@@ -13,14 +13,19 @@
     {{ url_for('http_routes.lesson_library', q=q or None, tag=final or None) }}
   {%- endmacro %}
 
-  <h1>教案庫</h1>
-  <p class="lede">
-    {% if q or selected_tags %}
-      <span class="count" data-testid="lesson-browse-total">{{ total }}</span> 篇符合條件
-    {% else %}
-      共 <span class="count" data-testid="lesson-browse-total">{{ total }}</span> 篇教案，最近更新的在前。
-    {% endif %}
-  </p>
+  <div class="library-heading">
+    <div>
+      <h1>教案庫</h1>
+      <p class="lede">
+        {% if q or selected_tags %}
+          <span class="count" data-testid="lesson-browse-total">{{ total }}</span> 篇符合條件
+        {% else %}
+          共 <span class="count" data-testid="lesson-browse-total">{{ total }}</span> 篇教案，最近更新的在前。
+        {% endif %}
+      </p>
+    </div>
+    <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
+  </div>
 
   <form class="search-form" method="get" action="{{ url_for('http_routes.lesson_library') }}">
     {# 已選的標籤跟著送出去，否則打字會把標籤篩選清掉。 #}
@@ -51,11 +56,14 @@
     </p>
   {% endif %}
 
+  <div class="library-columns" aria-hidden="true" data-testid="lesson-browse-columns">
+    <span>#</span><span>教案</span><span>作者</span><span>更新</span><span></span>
+  </div>
   {% if lessons %}
     <ul class="listing" data-testid="lesson-browse-list">
       {% for lesson in lessons %}
         {% set mine = current_user_id is not none and lesson["user_id"] == current_user_id %}
-        <li class="row" data-testid="lesson-browse-item">
+        <li class="row lesson-row" data-testid="lesson-browse-item">
           {# 行號槽。琥珀色中斷點圓點＝這一篇是你的：沿用 app 的規則
              「顏色代表狀態，不代表類別」。 #}
           <span class="gutter" aria-hidden="true">
@@ -66,21 +74,21 @@
                href="{{ url_for('http_routes.gdbgui', lesson=lesson['id']) }}"
                data-testid="lesson-browse-title">{{ lesson["title"] }}</a>
             <span class="row-meta">
-              <a href="{{ url_for('auth.profile', username=lesson['username']) }}"
-                 data-testid="lesson-browse-author">{{ lesson["display_name"] }}</a>
-              <time datetime="{{ lesson['updated_at'] }}">{{ lesson["updated_at"] }}</time>
               {% for name in lesson_tags.get(lesson["id"], []) %}
                 <a class="tag {% if name in selected_tags %}on{% endif %}"
                    href="{{ tag_url(name, name in selected_tags) }}"
                    data-testid="lesson-browse-tag">{{ name }}</a>
               {% endfor %}
-              {% if mine %}
-                <button type="button" class="lesson-delete"
-                        data-lesson-id="{{ lesson['id'] }}"
-                        data-testid="lesson-delete">刪除</button>
-              {% endif %}
             </span>
           </span>
+          <span class="row-author"><a href="{{ url_for('auth.profile', username=lesson['username']) }}"
+             data-testid="lesson-browse-author">{{ lesson["display_name"] }}</a></span>
+          <time class="row-updated" datetime="{{ lesson['updated_at'] }}">{{ lesson["updated_at"] }}</time>
+          {% if mine %}
+            <span class="row-actions"><button type="button" class="lesson-delete"
+                    data-lesson-id="{{ lesson['id'] }}"
+                    data-testid="lesson-delete">刪除</button></span>
+          {% endif %}
         </li>
       {% endfor %}
     </ul>
@@ -108,11 +116,6 @@
            data-testid="lesson-browse-next">下一頁 →</a>
       {% endif %}
     </span>
-  </p>
-
-  <p class="nav">
-    <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
-    <a href="{{ url_for('auth.logout') }}">登出</a>
   </p>
 
   {# csrf_token 是伺服器產生的 hex，經由 data- 屬性交給下面的腳本讀取。
