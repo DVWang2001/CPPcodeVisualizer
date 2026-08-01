@@ -84,11 +84,11 @@
           <span class="row-author"><a href="{{ url_for('auth.profile', username=lesson['username']) }}"
              data-testid="lesson-browse-author">{{ lesson["display_name"] }}</a></span>
           <time class="row-updated" datetime="{{ lesson['updated_at'] }}">{{ lesson["updated_at"] }}</time>
-          {% if mine %}
-            <span class="row-actions"><button type="button" class="lesson-delete"
+          <span class="row-actions">
+            {% if mine %}<button type="button" class="lesson-delete"
                     data-lesson-id="{{ lesson['id'] }}"
-                    data-testid="lesson-delete">刪除</button></span>
-          {% endif %}
+                    data-testid="lesson-delete">刪除</button>{% endif %}
+          </span>
         </li>
       {% endfor %}
     </ul>

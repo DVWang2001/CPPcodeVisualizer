@@ -45,6 +45,12 @@ test('a maximum-length tag does not overflow a phone workbench row', async ({ br
     await page.goto('/');
     await expect(page.getByTestId('lesson-browse-tag').filter({ hasText: '測'.repeat(24) })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const headingX = await page.locator('[data-testid="lesson-browse-columns"] > span')
+      .evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().left)));
+    const rowX = await page.locator('[data-testid="lesson-browse-item"]').first().locator(':scope > *')
+      .evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().left)));
+    expect(rowX).toEqual(headingX);
   } finally {
     await page.request.delete(`/api/lessons/${id}`, { headers: { 'x-csrftoken': token } });
     await context.close();
