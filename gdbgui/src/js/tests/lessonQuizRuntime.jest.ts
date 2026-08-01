@@ -1,5 +1,4 @@
 import { isQuizPlaybackBlocked, lessonQuizRuntime } from "../lessonQuizRuntime";
-import { QuizSpec } from "../quizSchema";
 import Actions from "../Actions";
 import GdbApi from "../GdbApi";
 import VisualizerHelper from "../VisualizerHelper";
@@ -12,29 +11,16 @@ jest.mock("../SourceCode", () => ({
 }));
 jest.mock("../process_gdb_response", () => ({ __esModule: true, default: jest.fn() }));
 
-const quiz: QuizSpec = {
-  schema_version: 1,
-  questions: [
-    {
-      id: "q1",
-      prompt: "i 是多少？",
-      options: [{ id: "a", text: "0" }, { id: "b", text: "1" }],
-      correct_option_id: "b",
-      explanation: "i++ 會遞增。",
-      trigger: {
-        kind: "source_line",
-        source_file: "main.cpp",
-        line: 3,
-        anchor: { line_text: "i++;", before_text: "int i = 0;", after_text: "return i;" }
-      }
-    }
-  ]
-};
-
 const session = () => ({
   id: 7,
   state: "lobby",
-  questions: [{ id: "q1", state: "ready" }],
+  questions: [{
+    id: "q1",
+    state: "ready",
+    source_file: "main.cpp",
+    line: 3,
+    anchor: { line_text: "i++;", before_text: "int i = 0;", after_text: "return i;" }
+  }],
   active_question: null
 });
 
@@ -65,7 +51,7 @@ test("opens the gate synchronously before trigger promise settles", () => {
   const deferred = pendingPromise<any>();
   const setGate = jest.fn();
   const trigger = jest.fn(() => deferred.promise);
-  lessonQuizRuntime.activate(session(), quiz, { trigger, setGate });
+  lessonQuizRuntime.activate(session(), { trigger, setGate });
 
   expect(lessonQuizRuntime.onGdbPause({ fullname: "/tmp/main.cpp", line: "3" })).toBe(true);
   expect(setGate).toHaveBeenLastCalledWith(true);
@@ -79,7 +65,7 @@ test("failed trigger keeps the gate and exposes retry", async () => {
     .fn()
     .mockRejectedValueOnce(new Error("offline"))
     .mockResolvedValueOnce({ ...session(), questions: [{ id: "q1", state: "open" }] });
-  lessonQuizRuntime.activate(session(), quiz, { trigger, setGate });
+  lessonQuizRuntime.activate(session(), { trigger, setGate });
   setGate.mockClear();
   lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 });
   await Promise.resolve();
@@ -93,7 +79,7 @@ test("failed trigger keeps the gate and exposes retry", async () => {
 
 test("only a successful close or deactivation clears the playback gate", () => {
   const setGate = jest.fn();
-  lessonQuizRuntime.activate(session(), quiz, {
+  lessonQuizRuntime.activate(session(), {
     trigger: jest.fn(() => Promise.resolve(session())),
     setGate
   });
@@ -113,7 +99,7 @@ test("only a successful close or deactivation clears the playback gate", () => {
 
 test("restart clears a stuck gate without abandoning the live session", () => {
   const setGate = jest.fn();
-  lessonQuizRuntime.activate(session(), quiz, {
+  lessonQuizRuntime.activate(session(), {
     trigger: jest.fn(() => new Promise<any>(() => undefined)),
     setGate
   });
@@ -134,7 +120,6 @@ test("recovering an open question restores the playback gate", () => {
       active_question: { id: "q1", state: "open" },
       questions: [{ id: "q1", state: "open" }]
     },
-    quiz,
     { trigger: jest.fn(), setGate }
   );
 
@@ -148,6 +133,16 @@ test("recovering an open question restores the playback gate", () => {
   });
   expect(setGate).toHaveBeenLastCalledWith(false);
   expect(lessonQuizRuntime.state().blocked).toBe(false);
+});
+
+test("recovery derives triggers from the immutable session snapshot", () => {
+  const setGate = jest.fn();
+  const trigger = jest.fn(() => Promise.resolve(session()));
+
+  lessonQuizRuntime.activate(session(), { trigger, setGate });
+
+  expect(lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 })).toBe(true);
+  expect(trigger).toHaveBeenCalledWith(7, "q1", "main.cpp", 3);
 });
 
 test("gate helper treats only an explicit true store value as blocked", () => {

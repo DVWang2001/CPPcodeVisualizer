@@ -1712,7 +1712,6 @@ class SourceCode extends React.Component<{}, State> {
             this.lessonQuizDraft.questions.length > 0 && (
               <LiveQuizPanel
                 lessonId={this.currentLessonId}
-                quiz={this.lessonQuizDraft}
                 startError={this.liveQuizStartError}
                 onClose={() => this.setState({ showLiveQuiz: false } as any)}
               />

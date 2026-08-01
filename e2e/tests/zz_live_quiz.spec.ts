@@ -142,6 +142,19 @@ test('student scans rendered QR and answers when playback reaches the bound line
     await liveButton.click();
     await teacherPage.getByRole('button', { name: '開始即時課堂' }).click();
 
+    const loaded = await (await teacherPage.request.get(`/api/lessons/${lessonId}`)).json();
+    loaded.bundle.source_code = `// v2\n${loaded.bundle.source_code}`;
+    loaded.bundle.quiz.questions[0].id = 'q2';
+    const updated = await teacherPage.request.put(`/api/lessons/${lessonId}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-csrftoken': await csrfToken(teacherPage),
+      },
+      data: { title: 'QR 即時作答 E2E v2', bundle: loaded.bundle, parent_version: 1 },
+    });
+    expect(updated.status()).toBe(200);
+    await teacherPage.reload();
+
     const decodedUrl = await decodeQrPixels(
       teacherPage.locator("img[alt='學生加入課堂的 QR Code']")
     );

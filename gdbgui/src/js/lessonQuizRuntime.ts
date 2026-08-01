@@ -1,4 +1,4 @@
-import { QuizQuestion, QuizSpec } from "./quizSchema";
+import { QuizTrigger } from "./quizSchema";
 import { SourceFrame, triggerMatchesFrame } from "./quizTrigger";
 
 export type LiveQuizSession = {
@@ -20,6 +20,8 @@ type RuntimeCallbacks = {
   onChange?: (state: RuntimeState) => void;
 };
 
+type RuntimeQuestion = { id: string; trigger: QuizTrigger };
+
 export type RuntimeState = {
   active: boolean;
   blocked: boolean;
@@ -29,11 +31,11 @@ export type RuntimeState = {
 };
 
 let activeSession: LiveQuizSession | null = null;
-let activeQuiz: QuizSpec | null = null;
+let activeQuestions: RuntimeQuestion[] = [];
 let callbacks: RuntimeCallbacks | null = null;
 let blocked = false;
 let inFlightQuestionId: string | null = null;
-let failedQuestion: QuizQuestion | null = null;
+let failedQuestion: RuntimeQuestion | null = null;
 let error: string | null = null;
 let generation = 0;
 const triggered = new Set<string>();
@@ -59,7 +61,19 @@ function sessionIsBlocked(session: LiveQuizSession): boolean {
   );
 }
 
-function openQuestion(question: QuizQuestion): boolean {
+function questionsFromSession(session: LiveQuizSession): RuntimeQuestion[] {
+  return session.questions.map(question => ({
+    id: question.id,
+    trigger: {
+      kind: "source_line",
+      source_file: question.source_file,
+      line: question.line,
+      anchor: question.anchor
+    }
+  }));
+}
+
+function openQuestion(question: RuntimeQuestion): boolean {
   if (!activeSession || !callbacks || inFlightQuestionId) return false;
   const currentGeneration = generation;
   const sessionId = activeSession.id;
@@ -101,12 +115,11 @@ export function isQuizPlaybackBlocked(storeLike: { get: (key: string) => any }):
 export const lessonQuizRuntime = {
   activate(
     session: LiveQuizSession,
-    quiz: QuizSpec,
     nextCallbacks: RuntimeCallbacks
   ) {
     this.deactivate();
     activeSession = session;
-    activeQuiz = quiz;
+    activeQuestions = questionsFromSession(session);
     callbacks = nextCallbacks;
     blocked = sessionIsBlocked(session);
     callbacks.setGate(blocked);
@@ -117,7 +130,7 @@ export const lessonQuizRuntime = {
     generation += 1;
     if (callbacks) callbacks.setGate(false);
     activeSession = null;
-    activeQuiz = null;
+    activeQuestions = [];
     callbacks = null;
     blocked = false;
     inFlightQuestionId = null;
@@ -127,8 +140,8 @@ export const lessonQuizRuntime = {
   },
 
   onGdbPause(frame: SourceFrame): boolean {
-    if (!activeSession || !activeQuiz || !callbacks || blocked) return false;
-    const question = activeQuiz.questions.find(candidate => {
+    if (!activeSession || !callbacks || blocked) return false;
+    const question = activeQuestions.find(candidate => {
       const serverQuestion = activeSession!.questions.find(value => value.id === candidate.id);
       return (
         serverQuestion &&

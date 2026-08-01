@@ -10,11 +10,9 @@ import {
   triggerLiveQuestion
 } from "./liveQuizClient";
 import { lessonQuizRuntime, LiveQuizSession, RuntimeState } from "./lessonQuizRuntime";
-import { QuizSpec } from "./quizSchema";
 
 type Props = {
   lessonId: number;
-  quiz: QuizSpec;
   startError: () => string | null;
   onClose: () => void;
 };
@@ -47,7 +45,7 @@ function latestQuestion(session: LiveQuizSession | null): any {
   return opened.length ? opened[opened.length - 1] : null;
 }
 
-export default function LiveQuizPanel({ lessonId, quiz, startError, onClose }: Props) {
+export default function LiveQuizPanel({ lessonId, startError, onClose }: Props) {
   const [session, setSession] = React.useState<LiveQuizSession | null>(null);
   const [stats, setStats] = React.useState<LiveQuizStats | null>(null);
   const [runtimeState, setRuntimeState] = React.useState<RuntimeState>(
@@ -63,7 +61,7 @@ export default function LiveQuizPanel({ lessonId, quiz, startError, onClose }: P
     setSession(initial);
     setError(null);
     rememberSession(initial.id);
-    lessonQuizRuntime.activate(initial, quiz, {
+    lessonQuizRuntime.activate(initial, {
       trigger: triggerLiveQuestion,
       setGate: value => store.set("quiz_playback_gate", value),
       onChange: next => {
