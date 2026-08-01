@@ -29,7 +29,7 @@ async function loginAndOpenQuizLesson(page: Page): Promise<number> {
         version: '2.0',
         fullname_to_render: 'e2e_containers.cpp',
         source_code: SOURCE,
-        breakpoints: [],
+        breakpoints: [{ line: '26', enabled: 'y', is_normal_breakpoint: true }],
         program_input: '',
         quiz: {
           schema_version: 1,
