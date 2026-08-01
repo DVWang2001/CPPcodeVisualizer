@@ -1262,9 +1262,15 @@ class SourceCode extends React.Component<{}, State> {
       });
   };
 
-  finishLiveQuiz = () => {
-    this.setLiveQuizVersionLock(false);
-    if (this.currentLessonId !== null) this.loadLessonFromServer(this.currentLessonId);
+  finishLiveQuiz = (): Promise<void> => {
+    if (this.currentLessonId === null) {
+      this.setLiveQuizVersionLock(false);
+      return Promise.resolve();
+    }
+    return this.loadLessonFromServer(this.currentLessonId).then(loaded => {
+      if (!loaded) throw new Error("無法載回最新教案版本。");
+      this.setLiveQuizVersionLock(false);
+    });
   };
 
   lessonSnapshotFromApi = (payload: any): LessonSnapshot | null => {
@@ -1316,8 +1322,8 @@ class SourceCode extends React.Component<{}, State> {
     }
   };
 
-  loadLessonFromServer = (lessonId: number) => {
-    fetch(`/api/lessons/${lessonId}`, { credentials: "same-origin" })
+  loadLessonFromServer = (lessonId: number): Promise<boolean> => {
+    return fetch(`/api/lessons/${lessonId}`, { credentials: "same-origin" })
       .then((response) =>
         response.ok ? response.json() : Promise.reject(new Error("load failed"))
       )
@@ -1348,12 +1354,14 @@ class SourceCode extends React.Component<{}, State> {
             (payload.is_mine ? "" : " 儲存時會存成你自己的一份副本。"),
           constants.console_entry_type.GDBGUI_OUTPUT
         );
+        return true;
       })
       .catch(() => {
         Actions.add_console_entries(
           "無法載入教案。",
           constants.console_entry_type.STD_ERR
         );
+        return false;
       });
   };
 

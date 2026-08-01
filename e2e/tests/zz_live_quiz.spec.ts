@@ -133,6 +133,13 @@ test('student scans rendered QR and answers when playback reaches the bound line
     await expect(liveButton).toBeEnabled();
     await liveButton.click();
     await teacherPage.getByRole('button', { name: '開始即時課堂' }).click();
+    await teacherPage.waitForFunction(() =>
+      Number(sessionStorage.getItem('gdbgui_live_quiz_session_id')) > 0
+    );
+    const sessionId = await teacherPage.evaluate(() =>
+      Number(sessionStorage.getItem('gdbgui_live_quiz_session_id'))
+    );
+    expect(sessionId).toBeGreaterThan(0);
 
     const loaded = await (await teacherPage.request.get(`/api/lessons/${lessonId}`)).json();
     loaded.bundle.source_code = `// v2\n${loaded.bundle.source_code}`;
@@ -176,6 +183,19 @@ test('student scans rendered QR and answers when playback reaches the bound line
       (window as any).monaco.editor.getModels()[0].getValue()
     )).toBe(`// v2\n${SOURCE}`);
     await expect(teacherPage.getByTestId('save-lesson-to-account')).toBeEnabled();
+    await expect(teacherPage.getByText('本次課堂已結束')).toBeVisible();
+    await teacherPage.evaluate(id => {
+      sessionStorage.setItem('gdbgui_live_quiz_session_id', String(id));
+    }, sessionId);
+    await teacherPage.reload();
+    await expect(teacherPage.getByText('先前的課堂已結束，可開始新的課堂。')).toBeVisible();
+    await expect(teacherPage.getByTestId('save-lesson-to-account')).toBeEnabled();
+    await expect.poll(() => teacherPage.evaluate(() =>
+      sessionStorage.getItem('gdbgui_live_quiz_session_id')
+    )).toBe(null);
+    await expect.poll(() => teacherPage.evaluate(() =>
+      (window as any).monaco.editor.getModels()[0].getValue()
+    )).toBe(`// v2\n${SOURCE}`);
   } finally {
     if (lessonId !== null) {
       await teacherPage.request.delete(`/api/lessons/${lessonId}`, {

@@ -15,7 +15,7 @@ type Props = {
   lessonId: number;
   startError: () => string | null;
   prepareVersion: (version: number) => Promise<void>;
-  onSessionEnded: () => void;
+  onSessionEnded: () => Promise<void>;
   onClose: () => void;
 };
 
@@ -47,6 +47,12 @@ function latestQuestion(session: LiveQuizSession | null): any {
   return opened.length ? opened[opened.length - 1] : null;
 }
 
+const endedSession = (session: LiveQuizSession): LiveQuizSession => ({
+  ...session,
+  state: "ended",
+  active_question: null
+});
+
 export default function LiveQuizPanel({
   lessonId,
   startError,
@@ -63,31 +69,84 @@ export default function LiveQuizPanel({
   const [connected, setConnected] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const disconnectRef = React.useRef<(() => void) | null>(null);
+  const endedRef = React.useRef(false);
   const urlRef = React.useRef<HTMLInputElement | null>(null);
 
-  const connect = (initial: LiveQuizSession): Promise<void> =>
-    prepareVersion(initial.lesson_version).then(() => {
-      setSession(initial);
-      setError(null);
-      rememberSession(initial.id);
-      lessonQuizRuntime.activate(initial, {
-        trigger: triggerLiveQuestion,
-        setGate: value => store.set("quiz_playback_gate", value),
-        onChange: next => {
-          setRuntimeState(next);
-          if (next.session) setSession(next.session);
-        }
+  const restoreLatest = (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    return onSessionEnded()
+      .catch(reason => {
+        setError(reason.message || "無法載回最新教案版本，請重試。");
+      })
+      .then(() => setBusy(false));
+  };
+
+  const finishEnded = (ended: LiveQuizSession): Promise<void> => {
+    if (endedRef.current) return Promise.resolve();
+    endedRef.current = true;
+    lessonQuizRuntime.deactivate();
+    if (disconnectRef.current) disconnectRef.current();
+    disconnectRef.current = null;
+    rememberSession(null);
+    setConnected(false);
+    setSession(ended);
+    setStats(null);
+    return restoreLatest();
+  };
+
+  const connect = (initial: LiveQuizSession): Promise<void> => {
+    rememberSession(initial.id);
+    if (initial.state === "ended") return finishEnded(initial);
+    return prepareVersion(initial.lesson_version)
+      .then(() =>
+        getLiveSession(initial.id).catch(reason => {
+          if (reason.status === 404) {
+            return finishEnded(endedSession(initial)).then(() => null);
+          }
+          throw reason;
+        })
+      )
+      .then(current => {
+        if (current === null) return;
+        if (current.state === "ended") return finishEnded(current);
+        endedRef.current = false;
+        setSession(current);
+        setError(null);
+        lessonQuizRuntime.activate(current, {
+          trigger: triggerLiveQuestion,
+          setGate: value => store.set("quiz_playback_gate", value),
+          onChange: next => {
+            setRuntimeState(next);
+            if (next.session) setSession(next.session);
+          }
+        });
+        if (disconnectRef.current) disconnectRef.current();
+        disconnectRef.current = connectTeacherQuizSocket(current.id, {
+          onState: next => {
+            if (next.state === "ended") {
+              finishEnded(next);
+              return;
+            }
+            setSession(next);
+            lessonQuizRuntime.syncSession(next);
+          },
+          onStats: setStats,
+          onConnection: value => {
+            setConnected(value);
+            if (!value && !endedRef.current) {
+              getLiveSession(current.id)
+                .then(next => {
+                  if (next.state === "ended") finishEnded(next);
+                })
+                .catch(reason => {
+                  if (reason.status === 404) finishEnded(endedSession(current));
+                });
+            }
+          }
+        });
       });
-      if (disconnectRef.current) disconnectRef.current();
-      disconnectRef.current = connectTeacherQuizSocket(initial.id, {
-        onState: next => {
-          setSession(next);
-          lessonQuizRuntime.syncSession(next);
-        },
-        onStats: setStats,
-        onConnection: setConnected
-      });
-    });
+  };
 
   React.useEffect(() => {
     let cancelled = false;
@@ -104,7 +163,14 @@ export default function LiveQuizPanel({
           return connect(existing);
         })
         .catch(reason => {
-          if (!cancelled) setError(reason.message || "無法恢復課堂。");
+          if (!cancelled) {
+            if (reason.status === 404) rememberSession(null);
+            setError(
+              reason.status === 404
+                ? "先前的課堂已結束，可開始新的課堂。"
+                : reason.message || "無法恢復課堂。"
+            );
+          }
         })
         .then(() => {
           if (!cancelled) setBusy(false);
@@ -122,7 +188,15 @@ export default function LiveQuizPanel({
     if (blocked) return setError(blocked);
     setBusy(true);
     setError(null);
-    createLiveSession(lessonId)
+    const remembered = storedSessionId();
+    const sessionRequest = remembered === null
+      ? createLiveSession(lessonId)
+      : getLiveSession(remembered).then(existing => {
+          if (existing.lesson_id === lessonId) return existing;
+          rememberSession(null);
+          return createLiveSession(lessonId);
+        });
+    sessionRequest
       .then(connect)
       .catch(reason => setError(reason.message || "無法開始課堂。"))
       .then(() => setBusy(false));
@@ -146,16 +220,7 @@ export default function LiveQuizPanel({
     if (!session) return;
     setBusy(true);
     endLiveSession(session.id)
-      .then(ended => {
-        lessonQuizRuntime.deactivate();
-        if (disconnectRef.current) disconnectRef.current();
-        disconnectRef.current = null;
-        rememberSession(null);
-        setConnected(false);
-        setSession(ended);
-        setStats(null);
-        onSessionEnded();
-      })
+      .then(finishEnded)
       .catch(reason => setError(reason.message || "無法結束課堂。"))
       .then(() => setBusy(false));
   };
@@ -204,7 +269,11 @@ export default function LiveQuizPanel({
       <section style={{ padding: "14px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc" }}>
         <strong style={{ color: ink }}>本次課堂已結束</strong>
         <span style={{ color: muted, marginLeft: "10px" }}>匿名題目統計已保留，學生資料已清除。</span>
-        <button type="button" className="btn btn-default btn-sm" style={{ float: "right" }} onClick={onClose}>關閉</button>
+        <span style={{ float: "right", display: "flex", gap: "8px" }}>
+          {error && <span role="alert" style={{ color: "#a61b1b" }}>{error}</span>}
+          {error && <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={restoreLatest}>重試載入</button>}
+          <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={onClose}>關閉</button>
+        </span>
       </section>
     );
   }

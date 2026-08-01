@@ -29,7 +29,11 @@ async function request(
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || payload.message || "課堂連線失敗。");
+  if (!response.ok) {
+    const error: any = new Error(payload.error || payload.message || "課堂連線失敗。");
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
