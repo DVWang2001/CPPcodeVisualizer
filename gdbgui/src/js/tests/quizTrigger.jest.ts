@@ -63,5 +63,6 @@ test("uses Windows case-insensitive basename semantics only for Windows paths", 
   const trigger = makeSourceTrigger(original, "C:\\lesson\\MAIN.cpp", 3);
 
   expect(triggerMatchesFrame(trigger, { fullname: "D:\\run\\main.cpp", line: 3 })).toBe(true);
+  expect(triggerMatchesFrame(trigger, { fullname: "D:/run/main.cpp", line: 3 })).toBe(true);
   expect(triggerMatchesFrame(trigger, { fullname: "/tmp/main.cpp", line: 3 })).toBe(false);
 });

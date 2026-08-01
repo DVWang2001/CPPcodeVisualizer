@@ -5,7 +5,6 @@ export type StudentQuizStatus =
   | "answered"
   | "closed"
   | "ended"
-  | "reconnecting"
   | "error";
 
 export type StudentQuizResult = {
@@ -32,6 +31,7 @@ export type StudentQuizState = {
   session_id: number | null;
   active_question: StudentQuizQuestion | null;
   selected_option_id: string | null;
+  reconnecting: boolean;
   message: string | null;
 };
 
@@ -44,6 +44,7 @@ export function initialStudentState(sessionTitle: string): StudentQuizState {
     session_id: null,
     active_question: null,
     selected_option_id: null,
+    reconnecting: false,
     message: null
   };
 }
@@ -73,6 +74,7 @@ export function reduceStudentState(
     nickname: text(snapshot.nickname),
     participant_id: positiveInteger(snapshot.participant_id),
     session_id: positiveInteger(snapshot.session_id),
+    reconnecting: false,
     message: null
   };
   const raw = snapshot.active_question;
@@ -132,9 +134,7 @@ export function markSubmitted(
 export function markReconnecting(state: StudentQuizState): StudentQuizState {
   return {
     ...state,
-    status: "reconnecting",
-    active_question: null,
-    selected_option_id: null,
+    reconnecting: true,
     message: null
   };
 }
@@ -146,6 +146,7 @@ export function markStudentError(
   return {
     ...state,
     status: "error",
+    reconnecting: false,
     active_question: null,
     selected_option_id: null,
     message

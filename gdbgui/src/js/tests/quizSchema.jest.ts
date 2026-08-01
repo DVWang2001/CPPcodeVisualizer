@@ -52,6 +52,8 @@ test("missing quiz is valid but malformed roots and unknown fields are rejected"
 
 test.each([
   [question({ prompt: "" }), "題幹"],
+  [question({ id: "q/1" }), "題目 ID"],
+  [question({ id: ".." }), "題目 ID"],
   [question({ prompt: "x".repeat(501) }), "題幹"],
   [question({ options: [{ id: "a", text: "0" }] }), "選項"],
   [question({ options: [{ id: "a", text: "0" }, { id: "a", text: "1" }] }), "選項 ID"],

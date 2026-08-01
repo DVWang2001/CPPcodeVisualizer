@@ -15,6 +15,7 @@ import { QuizSpec } from "./quizSchema";
 type Props = {
   lessonId: number;
   quiz: QuizSpec;
+  startError: () => string | null;
   onClose: () => void;
 };
 
@@ -46,7 +47,7 @@ function latestQuestion(session: LiveQuizSession | null): any {
   return opened.length ? opened[opened.length - 1] : null;
 }
 
-export default function LiveQuizPanel({ lessonId, quiz, onClose }: Props) {
+export default function LiveQuizPanel({ lessonId, quiz, startError, onClose }: Props) {
   const [session, setSession] = React.useState<LiveQuizSession | null>(null);
   const [stats, setStats] = React.useState<LiveQuizStats | null>(null);
   const [runtimeState, setRuntimeState] = React.useState<RuntimeState>(
@@ -104,6 +105,8 @@ export default function LiveQuizPanel({ lessonId, quiz, onClose }: Props) {
   }, [lessonId]);
 
   const start = () => {
+    const blocked = startError();
+    if (blocked) return setError(blocked);
     setBusy(true);
     setError(null);
     createLiveSession(lessonId)
@@ -157,6 +160,7 @@ export default function LiveQuizPanel({ lessonId, quiz, onClose }: Props) {
   };
 
   if (!session) {
+    const blocked = startError();
     return (
       <section style={{ padding: "14px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px" }}>
@@ -166,7 +170,12 @@ export default function LiveQuizPanel({ lessonId, quiz, onClose }: Props) {
           </div>
           <div style={{ display: "flex", gap: "8px" }}>
             <button type="button" className="btn btn-default btn-sm" onClick={onClose}>取消</button>
-            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={start}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={busy || Boolean(blocked)}
+              title={blocked || undefined}
+              onClick={start}>
               {busy ? "正在開始…" : "開始即時課堂"}
             </button>
           </div>

@@ -379,6 +379,13 @@ class SourceCode extends React.Component<{}, State> {
     editor.onDidChangeModelContent((e: any) => {
       shiftBreakpointsOnLineChange(e.changes);
       updateLineCount();
+      const lessonDirty = Boolean(
+        this.lessonBaseline && editor.getValue() !== this.lessonBaseline.bundle.source_code
+      );
+      if (lessonDirty !== this.liveQuizContentDirty) {
+        this.liveQuizContentDirty = lessonDirty;
+        this.setState({} as any);
+      }
       this.refreshAnnotationGlobals();
       this.refreshDirectiveDecorations();
       if (saveTimeout) clearTimeout(saveTimeout);
@@ -1167,6 +1174,7 @@ class SourceCode extends React.Component<{}, State> {
   selectedLessonVersion: LessonSnapshot | null = null;
   selectedLessonVersionParent: LessonSnapshot | null = null;
   lessonHistoryRequest = 0;
+  liveQuizContentDirty = false;
 
   lessonSnapshot = (title: string, bundle: LessonBundle, version: number): LessonSnapshot => ({
     title,
@@ -1178,6 +1186,35 @@ class SourceCode extends React.Component<{}, State> {
 
   lessonBundleForSave = (): LessonBundle =>
     mergeLessonBundle(this.lessonBundleTemplate, this.buildProjectBundle() as LessonBundle);
+
+  liveQuizStartError = (): string | null => {
+    if (!this.lessonBaseline || !this.currentLessonTitle) return "教案仍在載入，請稍後再開始。";
+    const bundle = this.lessonBundleForSave();
+    const checked = validateQuiz(
+      this.lessonQuizDraft,
+      bundle.source_code,
+      bundle.fullname_to_render || "imported_code.cpp"
+    );
+    if (checked.errors.length) return `課堂題目需要修正：\n${checked.errors.join("\n")}`;
+    const sessionBundle = (value: LessonBundle): LessonBundle => ({
+      version: value.version,
+      fullname_to_render: value.fullname_to_render,
+      source_code: value.source_code,
+      quiz: value.quiz || null,
+    });
+    return hasSnapshotChanges(
+      { ...this.lessonBaseline, bundle: sessionBundle(this.lessonBaseline.bundle) },
+      { title: this.currentLessonTitle, bundle: sessionBundle(bundle) }
+    )
+      ? "請先儲存目前的教案修改，再開始即時課堂。"
+      : null;
+  };
+
+  openLiveQuiz = () => {
+    const error = this.liveQuizStartError();
+    if (error) return window.alert(error);
+    this.setState({ showLiveQuiz: true } as any);
+  };
 
   lessonSnapshotFromApi = (payload: any): LessonSnapshot | null => {
     if (
@@ -1253,6 +1290,7 @@ class SourceCode extends React.Component<{}, State> {
             version
           );
         }
+        this.liveQuizContentDirty = false;
         this.setState({} as any);
         Actions.add_console_entries(
           `已載入教案「${payload.title}」（作者：${payload.author_display_name}）。` +
@@ -1364,6 +1402,7 @@ class SourceCode extends React.Component<{}, State> {
           this.currentLessonVersion
         );
         this.lessonBundleTemplate = JSON.parse(JSON.stringify(candidate.bundle));
+        this.liveQuizContentDirty = false;
         this.selectedLessonParentVersion = null;
         this.pendingLessonCommit = null;
         this.setState({ showLessonCommit: false } as any);
@@ -1539,6 +1578,7 @@ class SourceCode extends React.Component<{}, State> {
       const theme = this.state.current_theme === 'dark' ? 'vs-dark' : 'light';
       const monacoFontSize: number = (this.state as any).monaco_font_size || 14;
       const LINE_HEIGHT = Math.round(monacoFontSize * 1.5);
+      const liveQuizStartError = this.liveQuizStartError();
 
       return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", position: "relative" }}>
@@ -1586,10 +1626,11 @@ class SourceCode extends React.Component<{}, State> {
                 this.lessonQuizDraft &&
                 this.lessonQuizDraft.questions.length > 0 && (
                   <button
-                    onClick={() => this.setState({ showLiveQuiz: true } as any)}
+                    onClick={this.openLiveQuiz}
                     data-testid="live-quiz-open"
                     className="btn btn-default btn-sm"
-                    title="顯示 QR 並開始播放時自動出題"
+                    disabled={Boolean(liveQuizStartError)}
+                    title={liveQuizStartError || "顯示 QR 並開始播放時自動出題"}
                     style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
                     即時課堂
                   </button>
@@ -1672,6 +1713,7 @@ class SourceCode extends React.Component<{}, State> {
               <LiveQuizPanel
                 lessonId={this.currentLessonId}
                 quiz={this.lessonQuizDraft}
+                startError={this.liveQuizStartError}
                 onClose={() => this.setState({ showLiveQuiz: false } as any)}
               />
             )}

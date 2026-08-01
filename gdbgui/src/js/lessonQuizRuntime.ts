@@ -52,6 +52,13 @@ function changed() {
   if (callbacks && callbacks.onChange) callbacks.onChange(snapshot());
 }
 
+function sessionIsBlocked(session: LiveQuizSession): boolean {
+  return Boolean(
+    session.active_question?.state === "open" ||
+    session.questions.some(question => question.state === "open")
+  );
+}
+
 function openQuestion(question: QuizQuestion): boolean {
   if (!activeSession || !callbacks || inFlightQuestionId) return false;
   const currentGeneration = generation;
@@ -101,7 +108,8 @@ export const lessonQuizRuntime = {
     activeSession = session;
     activeQuiz = quiz;
     callbacks = nextCallbacks;
-    callbacks.setGate(false);
+    blocked = sessionIsBlocked(session);
+    callbacks.setGate(blocked);
     changed();
   },
 
@@ -149,6 +157,16 @@ export const lessonQuizRuntime = {
   syncSession(session: LiveQuizSession) {
     if (!activeSession || session.id !== activeSession.id) return;
     activeSession = session;
+    const nextBlocked = sessionIsBlocked(session);
+    if (blocked !== nextBlocked && callbacks) {
+      blocked = nextBlocked;
+      if (!blocked) {
+        inFlightQuestionId = null;
+        failedQuestion = null;
+        error = null;
+      }
+      callbacks.setGate(blocked);
+    }
     changed();
   },
 

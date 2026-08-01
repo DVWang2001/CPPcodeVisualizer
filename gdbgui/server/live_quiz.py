@@ -5,6 +5,7 @@ import ipaddress
 import re
 import secrets
 from contextlib import closing
+from datetime import datetime, timezone
 from hashlib import sha256
 from io import BytesIO
 from typing import Optional
@@ -13,7 +14,7 @@ from urllib.parse import urlsplit
 import qrcode
 from flask import Blueprint, current_app, jsonify, render_template, request, url_for
 from flask_socketio import emit, join_room
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from itsdangerous import BadSignature, URLSafeSerializer
 from qrcode.image.svg import SvgPathImage
 
 from . import db
@@ -25,6 +26,7 @@ MAX_PROMPT_LENGTH = 500
 MAX_OPTION_LENGTH = 200
 MAX_EXPLANATION_LENGTH = 1000
 MAX_NICKNAME_LENGTH = 50
+QUESTION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 QUIZ_KEYS = frozenset(("schema_version", "questions"))
 QUESTION_KEYS = frozenset(
@@ -80,7 +82,12 @@ def _same_file(left, right):
     left_name, right_name = _basename(left), _basename(right)
     if not left_name or not right_name:
         return False
-    if "\\" in left or "\\" in right:
+    if (
+        "\\" in left
+        or "\\" in right
+        or re.match(r"^[A-Za-z]:[\\/]", left)
+        or re.match(r"^[A-Za-z]:[\\/]", right)
+    ):
         return left_name.casefold() == right_name.casefold()
     return left_name == right_name
 
@@ -142,6 +149,8 @@ def validate_quiz_bundle(bundle: object) -> Optional[dict]:
         label = f"第 {index + 1} 題"
         question = _exact_dict(value, QUESTION_KEYS, label)
         question_id = _text(question["id"], f"{label} ID", 1, db.MAX_BUNDLE_BYTES)
+        if not QUESTION_ID_PATTERN.fullmatch(question_id):
+            raise QuizRejected("題目 ID 只能使用英文字母、數字、底線與連字號。")
         if question_id in question_ids:
             raise QuizRejected("題目 ID 必須不重複。")
         question_ids.add(question_id)
@@ -681,6 +690,7 @@ def validated_mobile_base_url(value):
         or not hostname
         or parsed.username is not None
         or parsed.password is not None
+        or parsed.path not in ("", "/")
         or parsed.query
         or parsed.fragment
         or hostname == "localhost"
@@ -692,7 +702,7 @@ def validated_mobile_base_url(value):
 
 
 def _serializer():
-    return URLSafeTimedSerializer(current_app.secret_key, salt=TOKEN_SALT)
+    return URLSafeSerializer(current_app.secret_key, salt=TOKEN_SALT)
 
 
 def _invitation_row(session_id, owner_id=None):
@@ -707,9 +717,11 @@ def make_join_token(session_row):
 
 
 def load_join_token(token, max_age=GUEST_MAX_AGE):
+    if not isinstance(token, str) or not token:
+        return None
     try:
-        payload = _serializer().loads(token, max_age=max_age)
-    except (BadSignature, SignatureExpired):
+        payload = _serializer().loads(token)
+    except BadSignature:
         return None
     if not isinstance(payload, dict):
         return None
@@ -718,11 +730,22 @@ def load_join_token(token, max_age=GUEST_MAX_AGE):
         return None
     with closing(db.connect()) as conn:
         found = conn.execute(
-            "SELECT id FROM live_quiz_sessions "
+            "SELECT id, created_at FROM live_quiz_sessions "
             "WHERE id=? AND join_nonce=? AND state='lobby'",
             (session_id, nonce),
         ).fetchone()
-    return int(found["id"]) if found is not None else None
+    if found is None:
+        return None
+    try:
+        created_at = datetime.fromisoformat(found["created_at"])
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - created_at).total_seconds()
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(max_age, (int, float)) or age < 0 or age > max_age:
+        return None
+    return int(found["id"])
 
 
 def _join_url(row):
@@ -808,11 +831,16 @@ def close_question_route(session_id, question_key):
 
 @blueprint.post("/api/live-quiz/sessions/<int:session_id>/end")
 def end_session_route(session_id):
-    participant_ids = _participant_ids(session_id)
+    row = _invitation_row(session_id, current_user_id())
+    participant_credentials = _participant_credentials(session_id)
     ended = end_session(session_id, current_user_id())
     if ended is not None:
         emit_teacher_state(session_id)
-        _emit_ended(participant_ids)
+        _emit_ended(participant_credentials)
+        if _socketio is not None and _socketio.server is not None and row is not None:
+            _socketio.close_room(
+                _teacher_room(row["join_nonce"]), namespace="/lesson_quiz"
+            )
     return jsonify(ended) if ended is not None else _error("找不到課堂。", 404)
 
 
@@ -922,12 +950,12 @@ def guest_answer():
         return _error(str(exc), 400)
 
 
-def _teacher_room(session_id):
-    return f"lesson_quiz:{session_id}:teacher"
+def _teacher_room(join_nonce):
+    return f"lesson_quiz:teacher:{join_nonce}"
 
 
-def _participant_room(participant_id):
-    return f"lesson_quiz:participant:{participant_id}"
+def _participant_room(credential_hash):
+    return f"lesson_quiz:participant:{credential_hash}"
 
 
 def _latest_question(state):
@@ -945,7 +973,7 @@ def emit_teacher_state(session_id):
     state = _teacher_payload(session_id, owner_id) or session_owned_by(session_id, owner_id)
     if state is None:
         return
-    room = _teacher_room(session_id)
+    room = _teacher_room(row["join_nonce"])
     _socketio.emit("quiz:teacher-state", state, room=room, namespace="/lesson_quiz")
     question = state["active_question"] or _latest_question(state)
     if question is not None:
@@ -972,7 +1000,7 @@ def emit_student_state(credential_hash):
         _socketio.emit(
             "quiz:student-state",
             state,
-            room=_participant_room(state["participant_id"]),
+            room=_participant_room(credential_hash),
             namespace="/lesson_quiz",
         )
 
@@ -992,26 +1020,29 @@ def emit_student_states(session_id):
         emit_student_state(credential_hash)
 
 
-def _participant_ids(session_id):
+def _participant_credentials(session_id):
     with closing(db.connect()) as conn:
         return [
-            int(row["id"])
+            row["credential_hash"]
             for row in conn.execute(
-                "SELECT id FROM live_quiz_participants WHERE session_id=?", (session_id,)
+                "SELECT credential_hash FROM live_quiz_participants WHERE session_id=?",
+                (session_id,),
             )
         ]
 
 
-def _emit_ended(participant_ids):
+def _emit_ended(participant_credentials):
     if _socketio is None or _socketio.server is None:
         return
-    for participant_id in participant_ids:
+    for credential_hash in participant_credentials:
+        room = _participant_room(credential_hash)
         _socketio.emit(
             "quiz:student-state",
             {"state": "ended"},
-            room=_participant_room(participant_id),
+            room=room,
             namespace="/lesson_quiz",
         )
+        _socketio.close_room(room, namespace="/lesson_quiz")
 
 
 def register_socket_handlers(socketio):
@@ -1027,10 +1058,12 @@ def register_socket_handlers(socketio):
             return False
         auth = auth if isinstance(auth, dict) else {}
         if auth.get("role") == "teacher":
-            state = _teacher_payload(auth.get("session_id"), current_user_id())
-            if state is None or state["state"] != "lobby":
+            owner_id = current_user_id()
+            row = _invitation_row(auth.get("session_id"), owner_id)
+            state = _teacher_payload(auth.get("session_id"), owner_id)
+            if row is None or state is None or state["state"] != "lobby":
                 return False
-            join_room(_teacher_room(state["id"]))
+            join_room(_teacher_room(row["join_nonce"]))
             emit("quiz:teacher-state", state)
             question = state["active_question"] or _latest_question(state)
             if question is not None:
@@ -1047,9 +1080,10 @@ def register_socket_handlers(socketio):
                 )
             return True
 
-        state = guest_state(_cookie_hash())
+        credential_hash = _cookie_hash()
+        state = guest_state(credential_hash)
         if state is None:
             return False
-        join_room(_participant_room(state["participant_id"]))
+        join_room(_participant_room(credential_hash))
         emit("quiz:student-state", state)
         return True

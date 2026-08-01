@@ -84,7 +84,8 @@ export function triggerMatchesFrame(trigger: QuizTrigger, frame: SourceFrame): b
   const expected = sourceBasename(trigger.source_file);
   const actual = sourceBasename(framePath);
   if (!expected || !actual) return false;
-  return trigger.source_file.indexOf("\\") >= 0 || framePath.indexOf("\\") >= 0
+  const windowsPath = (path: string) => /(^[A-Za-z]:[\\/])|\\/.test(path);
+  return windowsPath(trigger.source_file) || windowsPath(framePath)
     ? expected.toLowerCase() === actual.toLowerCase()
     : expected === actual;
 }

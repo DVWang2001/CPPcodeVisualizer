@@ -127,7 +127,19 @@ test('student scans rendered QR and answers when playback reaches the bound line
 
   try {
     lessonId = await loginAndOpenQuizLesson(teacherPage);
-    await teacherPage.getByTestId('live-quiz-open').click();
+    const liveButton = teacherPage.getByTestId('live-quiz-open');
+    const savedSource = await teacherPage.evaluate(() =>
+      (window as any).monaco.editor.getModels()[0].getValue()
+    );
+    await teacherPage.evaluate((source) => {
+      (window as any).monaco.editor.getModels()[0].setValue(`${source}// 尚未儲存`);
+    }, savedSource);
+    await expect(liveButton).toBeDisabled();
+    await teacherPage.evaluate((source) => {
+      (window as any).monaco.editor.getModels()[0].setValue(source);
+    }, savedSource);
+    await expect(liveButton).toBeEnabled();
+    await liveButton.click();
     await teacherPage.getByRole('button', { name: '開始即時課堂' }).click();
 
     const decodedUrl = await decodeQrPixels(

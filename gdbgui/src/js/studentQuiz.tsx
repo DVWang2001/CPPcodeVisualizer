@@ -40,6 +40,11 @@ const submitAnswer = (questionId: string, optionId: string) =>
 
 function statusText(state: StudentQuizState, submitting: boolean): string {
   if (submitting) return "正在送出答案…";
+  if (state.reconnecting) {
+    return state.status === "open"
+      ? "即時連線中斷，仍可透過網頁送出答案。"
+      : "連線中斷，正在重新連線…";
+  }
   switch (state.status) {
     case "joining": return "輸入暱稱後加入課堂。";
     case "waiting": return "已加入，請等待老師播放到題目。";
@@ -47,7 +52,6 @@ function statusText(state: StudentQuizState, submitting: boolean): string {
     case "answered": return "已收到答案，請等待老師關題。";
     case "closed": return "老師已關題，請查看結果。";
     case "ended": return "本次課堂已結束。";
-    case "reconnecting": return "連線中斷，正在重新連線…";
     case "error": return state.message || "課堂連線失敗。";
   }
 }

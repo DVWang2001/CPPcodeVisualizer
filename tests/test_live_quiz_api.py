@@ -3,6 +3,7 @@
 import json
 from contextlib import closing
 from hashlib import sha256
+from time import sleep
 from urllib.parse import urlsplit
 
 import pytest
@@ -84,6 +85,7 @@ def test_public_and_csrf_exempt_endpoint_lists_are_exact():
         "http://[::1]:5000",
         "http://10.0.0.2:notaport",
         "ftp://10.0.0.2/x",
+        "http://10.0.0.2:5000/base",
         "http://10.0.0.2/x?q=1",
         "http://user:pass@10.0.0.2:5000",
     ],
@@ -124,6 +126,19 @@ def test_qr_is_owner_only_no_store_svg_and_join_page_contains_no_question(api_co
     assert "i 是多少" not in html
     assert "correct_option_id" not in html
     assert "source_code" not in html
+
+
+def test_join_url_and_qr_stay_stable_for_the_session(api_context):
+    _, author, _, lesson_id = api_context
+    created = _create(author, lesson_id).get_json()
+    session_path = f"/api/live-quiz/sessions/{created['id']}"
+    first_qr = author.http.get(urlsplit(created["qr_url"]).path).data
+    sleep(1.1)
+    second = author.http.get(session_path).get_json()
+    second_qr = author.http.get(urlsplit(second["qr_url"]).path).data
+
+    assert second["join_url"] == created["join_url"]
+    assert second_qr == first_qr
 
 
 def test_guest_join_sets_http_only_cookie_and_database_keeps_only_its_hash(api_context):
@@ -227,3 +242,25 @@ def test_tampered_nonce_and_ended_session_tokens_fail_closed(api_context):
     )
     assert ended.status_code == 200
     assert anonymous.get(f"/join/{newer_token}").status_code == 404
+
+
+def test_join_token_expires_from_the_session_creation_time(api_context):
+    app, author, _, lesson_id = api_context
+    response = _create(author, lesson_id)
+    created = response.get_json()
+    token = _join_token(response)
+    with closing(db.connect()) as conn:
+        conn.execute(
+            "UPDATE live_quiz_sessions SET created_at='2000-01-01T00:00:00+00:00' WHERE id=?",
+            (created["id"],),
+        )
+        conn.commit()
+
+    assert app.test_client().get(f"/join/{token}").status_code == 404
+
+
+@pytest.mark.parametrize("token", [123, {}, []])
+def test_guest_join_rejects_non_string_tokens_without_a_server_error(api_context, token):
+    app, _, _, _ = api_context
+    _, joined = _guest_join(app, token)
+    assert joined.status_code == 404

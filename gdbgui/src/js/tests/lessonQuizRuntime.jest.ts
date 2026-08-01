@@ -126,6 +126,30 @@ test("restart clears a stuck gate without abandoning the live session", () => {
   expect(lessonQuizRuntime.state().active).toBe(true);
 });
 
+test("recovering an open question restores the playback gate", () => {
+  const setGate = jest.fn();
+  lessonQuizRuntime.activate(
+    {
+      ...session(),
+      active_question: { id: "q1", state: "open" },
+      questions: [{ id: "q1", state: "open" }]
+    },
+    quiz,
+    { trigger: jest.fn(), setGate }
+  );
+
+  expect(setGate).toHaveBeenLastCalledWith(true);
+  expect(lessonQuizRuntime.state().blocked).toBe(true);
+
+  lessonQuizRuntime.syncSession({
+    ...session(),
+    active_question: null,
+    questions: [{ id: "q1", state: "closed" }]
+  });
+  expect(setGate).toHaveBeenLastCalledWith(false);
+  expect(lessonQuizRuntime.state().blocked).toBe(false);
+});
+
 test("gate helper treats only an explicit true store value as blocked", () => {
   expect(isQuizPlaybackBlocked({ get: () => true })).toBe(true);
   expect(isQuizPlaybackBlocked({ get: () => false })).toBe(false);

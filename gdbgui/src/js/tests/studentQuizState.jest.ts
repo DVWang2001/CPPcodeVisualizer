@@ -76,11 +76,12 @@ test("waiting, closed and ended are derived from complete server snapshots", () 
   expect(ended).toMatchObject({ status: "ended", active_question: null });
 });
 
-test("reconnecting keeps no stale result and waits for a fresh snapshot", () => {
-  const closed = reduceStudentState(initialStudentState("迴圈課堂"), closedSnapshot());
-  const reconnecting = markReconnecting(closed);
+test("socket loss keeps an HTTP-loaded open question answerable", () => {
+  const open = reduceStudentState(initialStudentState("迴圈課堂"), openSnapshot());
+  const reconnecting = markReconnecting(open);
 
-  expect(reconnecting.status).toBe("reconnecting");
-  expect(reconnecting.active_question).toBeNull();
+  expect(reconnecting.status).toBe("open");
+  expect(reconnecting.active_question!.id).toBe("q2");
   expect(reconnecting.selected_option_id).toBeNull();
+  expect(reconnecting.reconnecting).toBe(true);
 });

@@ -114,6 +114,17 @@ def test_bundle_validation_relocates_a_unique_anchor_and_rejects_unknown_fields(
     with pytest.raises(live_quiz.QuizRejected, match="未知欄位"):
         live_quiz.validate_quiz_bundle(bundle)
 
+    for unsafe_id in ("q/1", ".."):
+        bundle = valid_bundle()
+        bundle["quiz"]["questions"][0]["id"] = unsafe_id
+        with pytest.raises(live_quiz.QuizRejected, match="題目 ID"):
+            live_quiz.validate_quiz_bundle(bundle)
+
+
+def test_windows_drive_paths_match_case_insensitively_with_either_separator():
+    assert live_quiz._same_file("C:/lesson/MAIN.cpp", "D:/run/main.cpp")
+    assert not live_quiz._same_file("/tmp/MAIN.cpp", "/tmp/main.cpp")
+
 
 def test_lesson_write_rejects_malformed_quiz_and_persists_relocated_anchor(quiz_owner):
     malformed = valid_bundle()

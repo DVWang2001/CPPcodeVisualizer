@@ -37,6 +37,7 @@ const QUESTION_KEYS = [
 const OPTION_KEYS = ["id", "text"];
 const TRIGGER_KEYS = ["kind", "source_file", "line", "anchor"];
 const ANCHOR_KEYS = ["line_text", "before_text", "after_text"];
+const QUESTION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 const isRecord = (value: any): value is { [key: string]: any } =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -104,6 +105,9 @@ function parseQuestion(raw: any, index: number, errors: string[]): QuizQuestion 
   const prompt = trimmed(raw.prompt, 1, 500);
   const explanation = trimmed(raw.explanation, 0, 1000);
   if (!id) errors.push(`${label}的題目 ID 不可空白。`);
+  else if (!QUESTION_ID_PATTERN.test(id)) {
+    errors.push(`${label}的題目 ID 只能使用英文字母、數字、底線與連字號。`);
+  }
   if (prompt === null) errors.push(`${label}題幹需為 1 至 500 字。`);
   if (explanation === null) errors.push(`${label}解說不可超過 1,000 字。`);
 
