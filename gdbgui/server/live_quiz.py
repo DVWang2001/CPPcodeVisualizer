@@ -12,11 +12,12 @@ from urllib.parse import urlsplit
 
 import qrcode
 from flask import Blueprint, current_app, jsonify, render_template, request, url_for
+from flask_socketio import emit, join_room
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from qrcode.image.svg import SvgPathImage
 
 from . import db
-from .http_util import current_user_id
+from .http_util import current_user_id, is_cross_origin
 
 
 MAX_QUESTIONS = 30
@@ -38,6 +39,7 @@ GUEST_MAX_AGE = 8 * 60 * 60
 TOKEN_SALT = "gdbgui-live-quiz-join-v1"
 
 blueprint = Blueprint("live_quiz", __name__)
+_socketio = None
 
 
 class QuizRejected(ValueError):
@@ -780,6 +782,8 @@ def trigger_question_route(session_id, question_key):
         )
         if updated is None:
             return _error("找不到課堂或題目。", 404)
+        emit_teacher_state(session_id)
+        emit_student_states(session_id)
         return jsonify(_teacher_payload(session_id, current_user_id()))
     except QuizConflict as exc:
         return _error(str(exc), 409)
@@ -795,6 +799,8 @@ def close_question_route(session_id, question_key):
         updated = close_question(session_id, current_user_id(), question_key)
         if updated is None:
             return _error("找不到課堂或題目。", 404)
+        emit_teacher_state(session_id)
+        emit_student_states(session_id)
         return jsonify(_teacher_payload(session_id, current_user_id()))
     except QuizConflict as exc:
         return _error(str(exc), 409)
@@ -802,7 +808,11 @@ def close_question_route(session_id, question_key):
 
 @blueprint.post("/api/live-quiz/sessions/<int:session_id>/end")
 def end_session_route(session_id):
+    participant_ids = _participant_ids(session_id)
     ended = end_session(session_id, current_user_id())
+    if ended is not None:
+        emit_teacher_state(session_id)
+        _emit_ended(participant_ids)
     return jsonify(ended) if ended is not None else _error("找不到課堂。", 404)
 
 
@@ -832,7 +842,10 @@ def join_page(token):
 
 
 def _cookie_hash():
-    credential = request.cookies.get(GUEST_COOKIE)
+    return hash_guest_cookie(request.cookies.get(GUEST_COOKIE))
+
+
+def hash_guest_cookie(credential):
     if not isinstance(credential, str) or not credential:
         return None
     return sha256(credential.encode("utf-8")).hexdigest()
@@ -862,7 +875,10 @@ def guest_join():
             credential_hash = sha256(credential.encode("utf-8")).hexdigest()
 
         join_session(session_id, body["nickname"], credential_hash)
-        response = jsonify(guest_state(credential_hash))
+        state = guest_state(credential_hash)
+        if state is None:
+            return _error("課堂不存在或已結束。", 409)
+        response = jsonify(state)
         response.set_cookie(
             GUEST_COOKIE,
             credential,
@@ -872,6 +888,7 @@ def guest_join():
             samesite="Lax",
             path="/",
         )
+        emit_teacher_state(session_id)
         return response
     except QuizConflict as exc:
         return _error(str(exc), 409)
@@ -893,8 +910,143 @@ def guest_answer():
     try:
         body = _request_fields(("question_id", "option_id"))
         answer_question(credential_hash, body["question_id"], body["option_id"])
-        return jsonify(guest_state(credential_hash))
+        state = guest_state(credential_hash)
+        if state is None:
+            return _error("課堂不存在或已結束。", 409)
+        emit_teacher_state(state["session_id"])
+        emit_student_state(credential_hash)
+        return jsonify(state)
     except QuizConflict as exc:
         return _error(str(exc), 409)
     except QuizRejected as exc:
         return _error(str(exc), 400)
+
+
+def _teacher_room(session_id):
+    return f"lesson_quiz:{session_id}:teacher"
+
+
+def _participant_room(participant_id):
+    return f"lesson_quiz:participant:{participant_id}"
+
+
+def _latest_question(state):
+    opened = [question for question in state["questions"] if question["opened_at"]]
+    return max(opened, key=lambda question: question["opened_at"]) if opened else None
+
+
+def emit_teacher_state(session_id):
+    if _socketio is None:
+        return
+    row = _invitation_row(session_id)
+    if row is None:
+        return
+    state = session_owned_by(session_id, int(row["owner_user_id"]))
+    room = _teacher_room(session_id)
+    _socketio.emit("quiz:teacher-state", state, room=room, namespace="/lesson_quiz")
+    question = state["active_question"] or _latest_question(state)
+    if question is not None:
+        _socketio.emit(
+            "quiz:stats",
+            {
+                "joined_count": state["joined_count"],
+                "question_id": question["id"],
+                "state": question["state"],
+                "answer_count": question["answer_count"],
+                "correct_count": question["correct_count"],
+                "option_counts": question["option_counts"],
+            },
+            room=room,
+            namespace="/lesson_quiz",
+        )
+
+
+def emit_student_state(credential_hash):
+    if _socketio is None:
+        return
+    state = guest_state(credential_hash)
+    if state is not None:
+        _socketio.emit(
+            "quiz:student-state",
+            state,
+            room=_participant_room(state["participant_id"]),
+            namespace="/lesson_quiz",
+        )
+
+
+def emit_student_states(session_id):
+    if _socketio is None:
+        return
+    with closing(db.connect()) as conn:
+        credentials = [
+            row["credential_hash"]
+            for row in conn.execute(
+                "SELECT credential_hash FROM live_quiz_participants WHERE session_id=?",
+                (session_id,),
+            )
+        ]
+    for credential_hash in credentials:
+        emit_student_state(credential_hash)
+
+
+def _participant_ids(session_id):
+    with closing(db.connect()) as conn:
+        return [
+            int(row["id"])
+            for row in conn.execute(
+                "SELECT id FROM live_quiz_participants WHERE session_id=?", (session_id,)
+            )
+        ]
+
+
+def _emit_ended(participant_ids):
+    if _socketio is None:
+        return
+    for participant_id in participant_ids:
+        _socketio.emit(
+            "quiz:student-state",
+            {"state": "ended"},
+            room=_participant_room(participant_id),
+            namespace="/lesson_quiz",
+        )
+
+
+def register_socket_handlers(socketio):
+    global _socketio
+    _socketio = socketio
+    if getattr(socketio, "_live_quiz_handlers_registered", False):
+        return
+    socketio._live_quiz_handlers_registered = True
+
+    @socketio.on("connect", namespace="/lesson_quiz")
+    def connect_live_quiz(auth=None):
+        if is_cross_origin(request):
+            return False
+        auth = auth if isinstance(auth, dict) else {}
+        if auth.get("role") == "teacher":
+            state = session_owned_by(auth.get("session_id"), current_user_id())
+            if state is None or state["state"] != "lobby":
+                return False
+            join_room(_teacher_room(state["id"]))
+            emit("quiz:teacher-state", state)
+            question = state["active_question"] or _latest_question(state)
+            if question is not None:
+                emit(
+                    "quiz:stats",
+                    {
+                        "joined_count": state["joined_count"],
+                        "question_id": question["id"],
+                        "state": question["state"],
+                        "answer_count": question["answer_count"],
+                        "correct_count": question["correct_count"],
+                        "option_counts": question["option_counts"],
+                    },
+                )
+            return True
+
+        state = guest_state(_cookie_hash())
+        if state is None:
+            return False
+        join_room(_participant_room(state["participant_id"]))
+        emit("quiz:student-state", state)
+        return True

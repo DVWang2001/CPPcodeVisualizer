@@ -109,6 +109,7 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("GDBGUI_SECURE_COOKIES") ==
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 socketio = SocketIO(manage_session=False)
+live_quiz.register_socket_handlers(socketio)
 
 
 @app.before_request
