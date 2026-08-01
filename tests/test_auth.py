@@ -271,6 +271,13 @@ def test_short_passwords_are_rejected(flask_app):
     assert auth.PASSWORD_TOO_SHORT_MESSAGE in response.data.decode()
 
 
+def test_registration_page_suggests_a_disposable_password(flask_app):
+    client = flask_app.test_client()
+    body = client.get("/register").data.decode()
+    assert "請使用垃圾密碼註冊" in body
+    assert "garbage1" in body
+
+
 def test_registration_is_open_to_anyone(flask_app):
     """公開註冊是設計決定（首次部署不需要 bootstrap 流程）。"""
     before = db.user_count()
