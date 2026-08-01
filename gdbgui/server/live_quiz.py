@@ -1,12 +1,22 @@
 """Persistent live-quiz state and strict lesson quiz validation."""
 
 import json
+import ipaddress
 import re
 import secrets
 from contextlib import closing
+from hashlib import sha256
+from io import BytesIO
 from typing import Optional
+from urllib.parse import urlsplit
+
+import qrcode
+from flask import Blueprint, current_app, jsonify, render_template, request, url_for
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from qrcode.image.svg import SvgPathImage
 
 from . import db
+from .http_util import current_user_id
 
 
 MAX_QUESTIONS = 30
@@ -23,6 +33,11 @@ OPTION_KEYS = frozenset(("id", "text"))
 TRIGGER_KEYS = frozenset(("kind", "source_file", "line", "anchor"))
 ANCHOR_KEYS = frozenset(("line_text", "before_text", "after_text"))
 CREDENTIAL_HASH_RE = re.compile(r"\A[0-9a-f]{64}\Z")
+GUEST_COOKIE = "gdbgui_quiz_guest"
+GUEST_MAX_AGE = 8 * 60 * 60
+TOKEN_SALT = "gdbgui-live-quiz-join-v1"
+
+blueprint = Blueprint("live_quiz", __name__)
 
 
 class QuizRejected(ValueError):
@@ -643,3 +658,243 @@ def guest_state(credential_hash: str) -> Optional[dict]:
             "state": "active",
             "active_question": active,
         }
+
+
+def validated_mobile_base_url(value):
+    """Return a public/LAN HTTP origin suitable for a phone-scannable join URL."""
+    if not isinstance(value, str) or not value:
+        raise QuizRejected("尚未設定手機可連線網址。")
+    try:
+        parsed = urlsplit(value)
+        parsed.port  # Force validation of malformed ports.
+    except ValueError:
+        raise QuizRejected("手機連線網址必須是可連線的 HTTP(S) 網址。")
+    try:
+        address = ipaddress.ip_address(parsed.hostname or "")
+    except ValueError:
+        address = None
+    hostname = (parsed.hostname or "").casefold()
+    if (
+        parsed.scheme not in ("http", "https")
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or hostname == "localhost"
+        or hostname.endswith(".localhost")
+        or (address is not None and (address.is_loopback or address.is_unspecified))
+    ):
+        raise QuizRejected("手機連線網址必須是可連線的 HTTP(S) 網址。")
+    return value.rstrip("/")
+
+
+def _serializer():
+    return URLSafeTimedSerializer(current_app.secret_key, salt=TOKEN_SALT)
+
+
+def _invitation_row(session_id, owner_id=None):
+    with closing(db.connect()) as conn:
+        return _session_row(conn, session_id, owner_id)
+
+
+def make_join_token(session_row):
+    return _serializer().dumps(
+        {"session_id": int(session_row["id"]), "join_nonce": session_row["join_nonce"]}
+    )
+
+
+def load_join_token(token, max_age=GUEST_MAX_AGE):
+    try:
+        payload = _serializer().loads(token, max_age=max_age)
+    except (BadSignature, SignatureExpired):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    session_id, nonce = payload.get("session_id"), payload.get("join_nonce")
+    if not _valid_id(session_id) or not isinstance(nonce, str) or not nonce:
+        return None
+    with closing(db.connect()) as conn:
+        found = conn.execute(
+            "SELECT id FROM live_quiz_sessions "
+            "WHERE id=? AND join_nonce=? AND state='lobby'",
+            (session_id, nonce),
+        ).fetchone()
+    return int(found["id"]) if found is not None else None
+
+
+def _join_url(row):
+    base = validated_mobile_base_url(current_app.config.get("MOBILE_JOIN_BASE_URL"))
+    return base + url_for("live_quiz.join_page", token=make_join_token(row))
+
+
+def _teacher_payload(session_id, owner_id):
+    row = _invitation_row(session_id, owner_id)
+    if row is None or row["state"] != "lobby":
+        return None
+    payload = session_owned_by(session_id, owner_id)
+    payload["join_url"] = _join_url(row)
+    payload["qr_url"] = url_for("live_quiz.qr_image", session_id=session_id)
+    return payload
+
+
+def _request_fields(keys, label="請求"):
+    return _exact_dict(request.get_json(silent=True), frozenset(keys), label)
+
+
+def _error(message, status):
+    return jsonify({"error": message}), status
+
+
+@blueprint.post("/api/live-quiz/sessions")
+def create_session_route():
+    try:
+        body = _request_fields(("lesson_id",))
+        validated_mobile_base_url(current_app.config.get("MOBILE_JOIN_BASE_URL"))
+        created = create_session(current_user_id(), body["lesson_id"])
+        if created is None:
+            return _error("找不到教案。", 404)
+        return jsonify(_teacher_payload(created["id"], current_user_id())), 201
+    except QuizRejected as exc:
+        return _error(str(exc), 400)
+
+
+@blueprint.get("/api/live-quiz/sessions/<int:session_id>")
+def teacher_state(session_id):
+    payload = _teacher_payload(session_id, current_user_id())
+    return jsonify(payload) if payload is not None else _error("找不到課堂。", 404)
+
+
+@blueprint.post(
+    "/api/live-quiz/sessions/<int:session_id>/questions/<question_key>/trigger"
+)
+def trigger_question_route(session_id, question_key):
+    try:
+        body = _request_fields(("source_file", "line"))
+        updated = trigger_question(
+            session_id,
+            current_user_id(),
+            question_key,
+            body["source_file"],
+            body["line"],
+        )
+        if updated is None:
+            return _error("找不到課堂或題目。", 404)
+        return jsonify(_teacher_payload(session_id, current_user_id()))
+    except QuizConflict as exc:
+        return _error(str(exc), 409)
+    except QuizRejected as exc:
+        return _error(str(exc), 400)
+
+
+@blueprint.post(
+    "/api/live-quiz/sessions/<int:session_id>/questions/<question_key>/close"
+)
+def close_question_route(session_id, question_key):
+    try:
+        updated = close_question(session_id, current_user_id(), question_key)
+        if updated is None:
+            return _error("找不到課堂或題目。", 404)
+        return jsonify(_teacher_payload(session_id, current_user_id()))
+    except QuizConflict as exc:
+        return _error(str(exc), 409)
+
+
+@blueprint.post("/api/live-quiz/sessions/<int:session_id>/end")
+def end_session_route(session_id):
+    ended = end_session(session_id, current_user_id())
+    return jsonify(ended) if ended is not None else _error("找不到課堂。", 404)
+
+
+@blueprint.get("/api/live-quiz/sessions/<int:session_id>/qr.svg")
+def qr_image(session_id):
+    row = _invitation_row(session_id, current_user_id())
+    if row is None or row["state"] != "lobby":
+        return _error("找不到課堂。", 404)
+    output = BytesIO()
+    qrcode.make(_join_url(row), image_factory=SvgPathImage).save(output)
+    response = current_app.response_class(output.getvalue(), mimetype="image/svg+xml")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@blueprint.get("/join/<token>")
+def join_page(token):
+    session_id = load_join_token(token)
+    row = _invitation_row(session_id) if session_id is not None else None
+    if row is None:
+        return _error("課堂不存在或已結束。", 404)
+    return render_template(
+        "quiz_join.html",
+        session_title=row["title"],
+        initial_data={"token": token, "session_title": row["title"]},
+    )
+
+
+def _cookie_hash():
+    credential = request.cookies.get(GUEST_COOKIE)
+    if not isinstance(credential, str) or not credential:
+        return None
+    return sha256(credential.encode("utf-8")).hexdigest()
+
+
+@blueprint.post("/api/live-quiz/guest/join")
+def guest_join():
+    try:
+        body = _request_fields(("token", "nickname"))
+        session_id = load_join_token(body["token"])
+        if session_id is None:
+            return _error("課堂不存在或已結束。", 404)
+
+        credential = request.cookies.get(GUEST_COOKIE)
+        credential_hash = _cookie_hash()
+        if credential_hash is not None:
+            with closing(db.connect()) as conn:
+                same_session = conn.execute(
+                    "SELECT 1 FROM live_quiz_participants "
+                    "WHERE credential_hash=? AND session_id=?",
+                    (credential_hash, session_id),
+                ).fetchone()
+            if same_session is None:
+                credential = credential_hash = None
+        if credential_hash is None:
+            credential = secrets.token_urlsafe(32)
+            credential_hash = sha256(credential.encode("utf-8")).hexdigest()
+
+        join_session(session_id, body["nickname"], credential_hash)
+        response = jsonify(guest_state(credential_hash))
+        response.set_cookie(
+            GUEST_COOKIE,
+            credential,
+            max_age=GUEST_MAX_AGE,
+            httponly=True,
+            secure=bool(current_app.config.get("SESSION_COOKIE_SECURE")),
+            samesite="Lax",
+            path="/",
+        )
+        return response
+    except QuizConflict as exc:
+        return _error(str(exc), 409)
+    except QuizRejected as exc:
+        return _error(str(exc), 400)
+
+
+@blueprint.get("/api/live-quiz/guest/state")
+def guest_state_route():
+    state = guest_state(_cookie_hash())
+    return jsonify(state) if state is not None else _error("找不到參與者。", 404)
+
+
+@blueprint.post("/api/live-quiz/guest/answers")
+def guest_answer():
+    credential_hash = _cookie_hash()
+    if credential_hash is None:
+        return _error("找不到參與者。", 404)
+    try:
+        body = _request_fields(("question_id", "option_id"))
+        answer_question(credential_hash, body["question_id"], body["option_id"])
+        return jsonify(guest_state(credential_hash))
+    except QuizConflict as exc:
+        return _error(str(exc), 409)
+    except QuizRejected as exc:
+        return _error(str(exc), 400)

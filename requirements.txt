@@ -45,6 +45,8 @@ python-engineio==4.12.2
     # via python-socketio
 python-socketio==5.13.0
     # via flask-socketio
+qrcode==8.2
+    # via -r requirements.in
 simple-websocket==1.1.0
     # via python-engineio
 werkzeug==3.1.3

@@ -24,9 +24,19 @@ PUBLIC_ENDPOINTS = frozenset(
         "auth.login",
         "auth.register",
         "auth.logout",
+        "live_quiz.join_page",
+        "live_quiz.guest_join",
+        "live_quiz.guest_state_route",
+        "live_quiz.guest_answer",
         # Flask 內建的靜態檔案路由。登入頁自己要用到 CSS/favicon。
         "static",
     }
+)
+
+# Guest writes have no login session and therefore no session CSRF token. They remain
+# same-origin checked globally and authenticate with a signed token or HttpOnly cookie.
+CSRF_EXEMPT_ENDPOINTS = frozenset(
+    {"live_quiz.guest_join", "live_quiz.guest_answer"}
 )
 
 

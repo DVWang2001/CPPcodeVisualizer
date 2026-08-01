@@ -39,10 +39,10 @@ except Exception:
 from flask_compress import Compress  # type: ignore
 from flask_socketio import SocketIO, emit  # type: ignore
 
-from . import auth, db
+from . import auth, db, live_quiz
 from .constants import DEFAULT_GDB_EXECUTABLE, STATIC_DIR, TEMPLATE_DIR
 from .http_routes import blueprint
-from .http_util import is_cross_origin, owner_key, require_login
+from .http_util import CSRF_EXEMPT_ENDPOINTS, is_cross_origin, owner_key, require_login
 from .sandbox import jail_manager
 from .sessionmanager import SessionManager, DebugSession
 
@@ -54,12 +54,14 @@ Compress(
 )  # add gzip compression to Flask. see https://github.com/libwilliam/flask-compress
 app.register_blueprint(blueprint)
 app.register_blueprint(auth.blueprint)
+app.register_blueprint(live_quiz.blueprint)
 app.config["initial_binary_and_args"] = []
 app.config["gdb_path"] = DEFAULT_GDB_EXECUTABLE
 app.config["gdb_command"] = None
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["project_home"] = None
 app.config["remap_sources"] = {}
+app.config["MOBILE_JOIN_BASE_URL"] = os.environ.get("MOBILE_JOIN_BASE_URL", "")
 # 每個 session 的 scratch 目錄放在這底下。有隔離時是 container-local 的
 # SCRATCH_ROOT（刻意不掛共用 volume：user namespace 的 uid 對映會讓
 # namespace 內外的檔案所有權不一致）；沒有隔離的本機開發才退回 uploads/。
@@ -116,6 +118,8 @@ def csrf_protect_all_post_and_cross_origin_requests():
     if is_cross_origin(request):
         logger.warning("Received cross origin request. Aborting")
         abort(403)
+    if request.endpoint in CSRF_EXEMPT_ENDPOINTS:
+        return success
     # DELETE 加進來的理由與 POST/PUT 完全一樣：它會改變伺服器狀態
     # （/api/lessons/<id> 是硬刪除）。跨站的 DELETE 目前還被另外兩層擋著
     # （SameSite=Lax 不帶 cookie、上面的 is_cross_origin 會 403），但一個

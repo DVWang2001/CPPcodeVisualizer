@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ session_title }}｜課堂問答</title>
+  </head>
+  <body>
+    <main id="quiz-app" aria-live="polite">
+      <h1>{{ session_title }}</h1>
+    </main>
+    <script>window.initial_quiz_data = {{ initial_data | tojson }};</script>
+    <script src="{{ url_for('static', filename='js/studentQuiz.js') }}"></script>
+  </body>
+</html>

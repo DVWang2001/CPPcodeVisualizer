@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from gdbgui.server.http_util import PUBLIC_ENDPOINTS
+from gdbgui.server.http_util import CSRF_EXEMPT_ENDPOINTS, PUBLIC_ENDPOINTS
 
 
 #: 這些方法瀏覽器/werkzeug 會自動補上，不代表一條真正的入口。
@@ -135,7 +135,7 @@ def test_unknown_paths_are_refused_too(flask_app):
 # ---------------------------------------------------------------------------
 
 
-def test_the_exempt_list_is_exactly_the_login_flow(flask_app):
+def test_the_exempt_list_is_exactly_the_login_and_live_quiz_guest_flow(flask_app):
     """白名單改動必須是有意識的。
 
     這是一條刻意的「變更偵測」測試：PUBLIC_ENDPOINTS 是全站唯一的豁免清單，
@@ -143,7 +143,19 @@ def test_the_exempt_list_is_exactly_the_login_flow(flask_app):
     看過並改掉，而不是靜靜地生效。
     """
     assert PUBLIC_ENDPOINTS == frozenset(
-        {"auth.login", "auth.register", "auth.logout", "static"}
+        {
+            "auth.login",
+            "auth.register",
+            "auth.logout",
+            "static",
+            "live_quiz.join_page",
+            "live_quiz.guest_join",
+            "live_quiz.guest_state_route",
+            "live_quiz.guest_answer",
+        }
+    )
+    assert CSRF_EXEMPT_ENDPOINTS == frozenset(
+        {"live_quiz.guest_join", "live_quiz.guest_answer"}
     )
 
 
