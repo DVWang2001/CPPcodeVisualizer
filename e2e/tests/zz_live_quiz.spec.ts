@@ -182,10 +182,16 @@ test('student scans rendered QR and answers when playback reaches the bound line
     let markRestoreStarted!: () => void;
     const restoreStarted = new Promise<void>(resolve => { markRestoreStarted = resolve; });
     const lessonRoute = `**/api/lessons/${lessonId}`;
+    let restoreAttempts = 0;
     await teacherPage.route(lessonRoute, async route => {
       if (route.request().method() === 'GET') {
         markRestoreStarted();
-        await new Promise<void>(resolve => { releaseRestore = resolve; });
+        restoreAttempts += 1;
+        if (restoreAttempts === 1) {
+          await new Promise<void>(resolve => { releaseRestore = resolve; });
+          await route.fulfill({ status: 500, body: '{"error":"temporary"}' });
+          return;
+        }
       }
       await route.continue();
     });
@@ -193,6 +199,9 @@ test('student scans rendered QR and answers when playback reaches the bound line
     await restoreStarted;
     await expect(teacherPage.getByRole('button', { name: '關閉' })).toBeDisabled();
     releaseRestore();
+    await expect(teacherPage.getByRole('button', { name: '重試載入' })).toBeVisible();
+    await expect(teacherPage.getByRole('button', { name: '關閉' })).toBeDisabled();
+    await teacherPage.getByRole('button', { name: '重試載入' }).click();
     await expect.poll(() => teacherPage.evaluate(() =>
       (window as any).monaco.editor.getModels()[0].getValue()
     )).toBe(`// v2\n${SOURCE}`);

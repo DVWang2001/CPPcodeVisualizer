@@ -280,7 +280,7 @@ export default function LiveQuizPanel({
         <span style={{ float: "right", display: "flex", gap: "8px" }}>
           {error && <span role="alert" style={{ color: "#a61b1b" }}>{error}</span>}
           {error && <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={startRestore}>重試載入</button>}
-          <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={onClose}>關閉</button>
+          <button type="button" className="btn btn-default btn-sm" disabled={busy || !!error} onClick={onClose}>關閉</button>
         </span>
       </section>
     );
