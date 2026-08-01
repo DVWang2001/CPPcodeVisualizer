@@ -14,6 +14,8 @@ import { lessonQuizRuntime, LiveQuizSession, RuntimeState } from "./lessonQuizRu
 type Props = {
   lessonId: number;
   startError: () => string | null;
+  prepareVersion: (version: number) => Promise<void>;
+  onSessionEnded: () => void;
   onClose: () => void;
 };
 
@@ -45,7 +47,13 @@ function latestQuestion(session: LiveQuizSession | null): any {
   return opened.length ? opened[opened.length - 1] : null;
 }
 
-export default function LiveQuizPanel({ lessonId, startError, onClose }: Props) {
+export default function LiveQuizPanel({
+  lessonId,
+  startError,
+  prepareVersion,
+  onSessionEnded,
+  onClose
+}: Props) {
   const [session, setSession] = React.useState<LiveQuizSession | null>(null);
   const [stats, setStats] = React.useState<LiveQuizStats | null>(null);
   const [runtimeState, setRuntimeState] = React.useState<RuntimeState>(
@@ -57,33 +65,35 @@ export default function LiveQuizPanel({ lessonId, startError, onClose }: Props) 
   const disconnectRef = React.useRef<(() => void) | null>(null);
   const urlRef = React.useRef<HTMLInputElement | null>(null);
 
-  const connect = (initial: LiveQuizSession) => {
-    setSession(initial);
-    setError(null);
-    rememberSession(initial.id);
-    lessonQuizRuntime.activate(initial, {
-      trigger: triggerLiveQuestion,
-      setGate: value => store.set("quiz_playback_gate", value),
-      onChange: next => {
-        setRuntimeState(next);
-        if (next.session) setSession(next.session);
-      }
+  const connect = (initial: LiveQuizSession): Promise<void> =>
+    prepareVersion(initial.lesson_version).then(() => {
+      setSession(initial);
+      setError(null);
+      rememberSession(initial.id);
+      lessonQuizRuntime.activate(initial, {
+        trigger: triggerLiveQuestion,
+        setGate: value => store.set("quiz_playback_gate", value),
+        onChange: next => {
+          setRuntimeState(next);
+          if (next.session) setSession(next.session);
+        }
+      });
+      if (disconnectRef.current) disconnectRef.current();
+      disconnectRef.current = connectTeacherQuizSocket(initial.id, {
+        onState: next => {
+          setSession(next);
+          lessonQuizRuntime.syncSession(next);
+        },
+        onStats: setStats,
+        onConnection: setConnected
+      });
     });
-    if (disconnectRef.current) disconnectRef.current();
-    disconnectRef.current = connectTeacherQuizSocket(initial.id, {
-      onState: next => {
-        setSession(next);
-        lessonQuizRuntime.syncSession(next);
-      },
-      onStats: setStats,
-      onConnection: setConnected
-    });
-  };
 
   React.useEffect(() => {
     let cancelled = false;
     const remembered = storedSessionId();
     if (remembered !== null) {
+      setBusy(true);
       getLiveSession(remembered)
         .then(existing => {
           if (cancelled) return;
@@ -91,9 +101,14 @@ export default function LiveQuizPanel({ lessonId, startError, onClose }: Props) 
             rememberSession(null);
             return;
           }
-          connect(existing);
+          return connect(existing);
         })
-        .catch(() => rememberSession(null));
+        .catch(reason => {
+          if (!cancelled) setError(reason.message || "無法恢復課堂。");
+        })
+        .then(() => {
+          if (!cancelled) setBusy(false);
+        });
     }
     return () => {
       cancelled = true;
@@ -139,6 +154,7 @@ export default function LiveQuizPanel({ lessonId, startError, onClose }: Props) 
         setConnected(false);
         setSession(ended);
         setStats(null);
+        onSessionEnded();
       })
       .catch(reason => setError(reason.message || "無法結束課堂。"))
       .then(() => setBusy(false));
@@ -167,7 +183,7 @@ export default function LiveQuizPanel({ lessonId, startError, onClose }: Props) 
             <div style={{ color: muted, fontSize: "12px" }}>開始後顯示 QR；播放停在綁定行時自動開題。</div>
           </div>
           <div style={{ display: "flex", gap: "8px" }}>
-            <button type="button" className="btn btn-default btn-sm" onClick={onClose}>取消</button>
+            <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={onClose}>取消</button>
             <button
               type="button"
               className="btn btn-primary btn-sm"

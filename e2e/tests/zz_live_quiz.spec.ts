@@ -93,14 +93,6 @@ async function decodeQrPixels(qr: Locator): Promise<string> {
 }
 
 async function runTeacherToBoundLine(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    (window as any).gdbgui_get_editor_value = () => '';
-    (window as any).gdbgui_get_editor_filename = () => null;
-    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-      const key = localStorage.key(index);
-      if (key && key.startsWith('gdbgui_editor_code_')) localStorage.removeItem(key);
-    }
-  });
   await page.click('#run_button');
   await page.waitForFunction(
     () => Number((window as any).store?.get('paused_on_frame')?.line) === 26,
@@ -154,6 +146,10 @@ test('student scans rendered QR and answers when playback reaches the bound line
     });
     expect(updated.status()).toBe(200);
     await teacherPage.reload();
+    await expect.poll(() => teacherPage.evaluate(() =>
+      (window as any).monaco.editor.getModels()[0].getValue()
+    )).toBe(SOURCE);
+    await expect(teacherPage.getByTestId('save-lesson-to-account')).toBeDisabled();
 
     const decodedUrl = await decodeQrPixels(
       teacherPage.locator("img[alt='學生加入課堂的 QR Code']")
@@ -175,6 +171,11 @@ test('student scans rendered QR and answers when playback reaches the bound line
     await expect(studentPage.getByText('✓ 答對了')).toBeVisible();
     await expect(studentPage.getByText('程式已執行到指定行。')).toBeVisible();
     await expect(teacherPage.locator('#next_button')).toBeEnabled();
+    await teacherPage.getByRole('button', { name: '結束課堂' }).click();
+    await expect.poll(() => teacherPage.evaluate(() =>
+      (window as any).monaco.editor.getModels()[0].getValue()
+    )).toBe(`// v2\n${SOURCE}`);
+    await expect(teacherPage.getByTestId('save-lesson-to-account')).toBeEnabled();
   } finally {
     if (lessonId !== null) {
       await teacherPage.request.delete(`/api/lessons/${lessonId}`, {

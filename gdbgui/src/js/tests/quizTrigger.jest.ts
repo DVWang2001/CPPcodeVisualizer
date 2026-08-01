@@ -66,3 +66,10 @@ test("uses Windows case-insensitive basename semantics only for Windows paths", 
   expect(triggerMatchesFrame(trigger, { fullname: "D:/run/main.cpp", line: 3 })).toBe(true);
   expect(triggerMatchesFrame(trigger, { fullname: "/tmp/main.cpp", line: 3 })).toBe(false);
 });
+
+test("matches the fixed sandbox main-file alias used for compiled editor source", () => {
+  const trigger = makeSourceTrigger(original, "e2e_containers.cpp", 3);
+
+  expect(triggerMatchesFrame(trigger, { fullname: "/workspace/main.cpp", line: 3 })).toBe(true);
+  expect(triggerMatchesFrame(trigger, { fullname: "/tmp/main.cpp", line: 3 })).toBe(false);
+});

@@ -749,6 +749,7 @@ class SourceCode extends React.Component<{}, State> {
 
   /** Open the inline view-zone panel for a line, pre-filled from that line's //@ annotation. */
   openLinePanel = (lineNum: number) => {
+    if (this.liveQuizVersionLock) return;
     if (!this.editorInstance || !this.monaco) return;
     this.closeLinePanel();
     const model = this.editorInstance.getModel();
@@ -786,6 +787,7 @@ class SourceCode extends React.Component<{}, State> {
   /** Save the panel's draft by upserting the line's //@ comment directly in Monaco.
    *  onDidChangeModelContent then refreshes globals + autosave automatically. */
   saveLinePanel = () => {
+    if (this.liveQuizVersionLock) return;
     const p = this.state.linePanel; if (!p || !this.editorInstance || !this.monaco) return;
     const d = p.draft;
     const annotation = {
@@ -1175,6 +1177,7 @@ class SourceCode extends React.Component<{}, State> {
   selectedLessonVersionParent: LessonSnapshot | null = null;
   lessonHistoryRequest = 0;
   liveQuizContentDirty = false;
+  liveQuizVersionLock = false;
 
   lessonSnapshot = (title: string, bundle: LessonBundle, version: number): LessonSnapshot => ({
     title,
@@ -1188,6 +1191,7 @@ class SourceCode extends React.Component<{}, State> {
     mergeLessonBundle(this.lessonBundleTemplate, this.buildProjectBundle() as LessonBundle);
 
   liveQuizStartError = (): string | null => {
+    if (this.liveQuizVersionLock) return null;
     if (!this.lessonBaseline || !this.currentLessonTitle) return "教案仍在載入，請稍後再開始。";
     const bundle = this.lessonBundleForSave();
     const checked = validateQuiz(
@@ -1214,6 +1218,53 @@ class SourceCode extends React.Component<{}, State> {
     const error = this.liveQuizStartError();
     if (error) return window.alert(error);
     this.setState({ showLiveQuiz: true } as any);
+  };
+
+  setLiveQuizVersionLock = (locked: boolean) => {
+    this.liveQuizVersionLock = locked;
+    if (locked) {
+      this.closeLinePanel();
+      store.set("edit_mode", false);
+    }
+    if (this.editorInstance) {
+      const readOnly = locked || !this.state.edit_mode;
+      this.editorInstance.updateOptions({
+        readOnly,
+        extraEditorClassName: readOnly ? "gdbgui-readonly-editor" : "",
+      });
+    }
+    this.setState({
+      showLessonGen: false,
+      showQuizAuthoring: false,
+      showLessonCommit: false,
+      showLessonHistory: false,
+    } as any);
+  };
+
+  prepareLiveQuizVersion = (version: number): Promise<void> => {
+    if (this.currentLessonId === null || !Number.isInteger(version) || version <= 0) {
+      return Promise.reject(new Error("課堂版本無效，無法開始。"));
+    }
+    return fetch(`/api/lessons/${this.currentLessonId}/versions/${version}`, {
+      credentials: "same-origin"
+    })
+      .then(response =>
+        response.ok ? response.json() : Promise.reject(new Error("無法載入課堂版本。"))
+      )
+      .then(payload => {
+        const snapshot = this.lessonSnapshotFromApi(payload);
+        if (!snapshot || snapshot.version !== version) {
+          throw new Error("課堂版本資料無效。");
+        }
+        const hydratedBundle = this.applyProjectBundle(snapshot.bundle);
+        this.lessonBundleTemplate = mergeLessonBundle(snapshot.bundle, hydratedBundle);
+        this.setLiveQuizVersionLock(true);
+      });
+  };
+
+  finishLiveQuiz = () => {
+    this.setLiveQuizVersionLock(false);
+    if (this.currentLessonId !== null) this.loadLessonFromServer(this.currentLessonId);
   };
 
   lessonSnapshotFromApi = (payload: any): LessonSnapshot | null => {
@@ -1587,6 +1638,7 @@ class SourceCode extends React.Component<{}, State> {
             <div>
               <button
                 onClick={() => this.setState({ showLessonGen: !(this.state as any).showLessonGen } as any)}
+                disabled={this.liveQuizVersionLock}
                 className="btn btn-default btn-sm"
                 title="用 AI 模型為目前程式碼生成 //@ 教案註解"
                 style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
@@ -1594,6 +1646,7 @@ class SourceCode extends React.Component<{}, State> {
               </button>
               <button
                 onClick={this.triggerImport}
+                disabled={this.liveQuizVersionLock}
                 className="btn btn-default btn-sm"
                 style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
                 Import JSON
@@ -1615,6 +1668,7 @@ class SourceCode extends React.Component<{}, State> {
                   帳號那條路：存進伺服器、以及瀏覽別人的教案。 */}
               <button
                 onClick={() => this.setState({ showQuizAuthoring: true } as any)}
+                disabled={this.liveQuizVersionLock}
                 data-testid="quiz-authoring-open"
                 className="btn btn-default btn-sm"
                 title="編輯播放時自動出現的課堂單選題"
@@ -1637,6 +1691,7 @@ class SourceCode extends React.Component<{}, State> {
                 )}
               <button
                 onClick={this.saveLessonToAccount}
+                disabled={this.liveQuizVersionLock}
                 data-testid="save-lesson-to-account"
                 className="btn btn-default btn-sm"
                 title="把目前的程式碼與斷點存成你帳號底下的一篇教案"
@@ -1646,6 +1701,7 @@ class SourceCode extends React.Component<{}, State> {
               {this.currentLessonId !== null && this.currentLessonIsMine && (
                 <button
                   onClick={this.openLessonHistory}
+                  disabled={this.liveQuizVersionLock}
                   data-testid="lesson-history-open"
                   className="btn btn-default btn-sm"
                   title="檢視自己的教案版本歷史"
@@ -1713,6 +1769,8 @@ class SourceCode extends React.Component<{}, State> {
               <LiveQuizPanel
                 lessonId={this.currentLessonId}
                 startError={this.liveQuizStartError}
+                prepareVersion={this.prepareLiveQuizVersion}
+                onSessionEnded={this.finishLiveQuiz}
                 onClose={() => this.setState({ showLiveQuiz: false } as any)}
               />
             )}
@@ -1746,8 +1804,8 @@ class SourceCode extends React.Component<{}, State> {
                   this.handleEditorDidMount(getValue, editor);
                 }}
                 options={{
-                  readOnly: !this.state.edit_mode,
-                  extraEditorClassName: this.state.edit_mode ? '' : 'gdbgui-readonly-editor',
+                  readOnly: this.liveQuizVersionLock || !this.state.edit_mode,
+                  extraEditorClassName: this.liveQuizVersionLock || !this.state.edit_mode ? 'gdbgui-readonly-editor' : '',
                   glyphMargin: true,
                   lineNumbers: 'on',
                   scrollBeyondLastLine: false,
@@ -1791,8 +1849,8 @@ class SourceCode extends React.Component<{}, State> {
     // Sync Monaco readOnly / cursor class when edit_mode changes
     if (prevState.edit_mode !== this.state.edit_mode && this.editorInstance) {
       this.editorInstance.updateOptions({
-        readOnly: !this.state.edit_mode,
-        extraEditorClassName: this.state.edit_mode ? '' : 'gdbgui-readonly-editor',
+        readOnly: this.liveQuizVersionLock || !this.state.edit_mode,
+        extraEditorClassName: this.liveQuizVersionLock || !this.state.edit_mode ? 'gdbgui-readonly-editor' : '',
       });
     }
 
