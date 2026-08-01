@@ -140,9 +140,16 @@ test('student scans rendered QR and answers when playback reaches the bound line
     await joinStudent(studentPage, decodedUrl, '小明');
     await runTeacherToBoundLine(teacherPage);
     await expect(studentPage.getByRole('heading', { name: 'i 是多少？' })).toBeVisible();
+    for (const id of ['continue_button', 'next_button', 'step_button', 'return_button']) {
+      await expect(teacherPage.locator(`#${id}`)).toBeDisabled();
+    }
     await studentPage.getByLabel('1', { exact: true }).check();
     await studentPage.getByRole('button', { name: '送出答案' }).click();
     await expect(teacherPage.getByText('答對 1')).toBeVisible();
+    await teacherPage.getByRole('button', { name: '結束作答並繼續' }).click();
+    await expect(studentPage.getByText('✓ 答對了')).toBeVisible();
+    await expect(studentPage.getByText('程式已執行到指定行。')).toBeVisible();
+    await expect(teacherPage.locator('#next_button')).toBeEnabled();
   } finally {
     if (lessonId !== null) {
       await teacherPage.request.delete(`/api/lessons/${lessonId}`, {

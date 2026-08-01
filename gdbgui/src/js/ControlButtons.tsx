@@ -70,7 +70,6 @@ class ControlButtons extends React.Component<{}, State> {
           }
           className={btn_class}
           disabled={this.state.quiz_playback_gate}
-          disabled={this.state.quiz_playback_gate}
         >
           <span className="glyphicon glyphicon-step-forward" />
         </button>
@@ -84,6 +83,7 @@ class ControlButtons extends React.Component<{}, State> {
             (this.state.reverse_supported ? ". shift + s for reverse." : "")
           }
           className={btn_class}
+          disabled={this.state.quiz_playback_gate}
         >
           <span className="glyphicon glyphicon-arrow-down" />
         </button>

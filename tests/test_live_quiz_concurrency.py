@@ -2,6 +2,7 @@
 
 import json
 from concurrent.futures import ThreadPoolExecutor
+from time import monotonic
 
 from gdbgui.server import db, live_quiz
 from .conftest import register_user
@@ -21,15 +22,18 @@ def test_sixty_students_are_counted_exactly(flask_app):
         live_quiz.join_session(session["id"], f"學生{index}", guest_hash)
         credentials.append(guest_hash)
 
+    started = monotonic()
     with ThreadPoolExecutor(max_workers=20) as pool:
         results = list(
             pool.map(lambda value: live_quiz.answer_question(value, "q1", "b"), credentials)
         )
+    elapsed = monotonic() - started
 
     question = live_quiz.session_owned_by(session["id"], owner.user_id)["questions"][0]
     assert sum(result["inserted"] for result in results) == 60
     assert question["answer_count"] == question["correct_count"] == 60
     assert question["option_counts"] == {"a": 0, "b": 60}
+    assert elapsed < 3
 
 
 def test_parallel_retries_from_one_student_count_once(flask_app):
