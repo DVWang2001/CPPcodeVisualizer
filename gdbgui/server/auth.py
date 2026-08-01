@@ -39,6 +39,13 @@ logger = logging.getLogger(__name__)
 blueprint = Blueprint("auth", __name__, template_folder=str(TEMPLATE_DIR))
 
 
+@blueprint.app_context_processor
+def navigation_context():
+    user_id = current_user_id()
+    user = db.user_by_id(user_id) if user_id is not None else None
+    return {"navigation_user": user}
+
+
 #: 3–32 字元，小寫英數加底線/連字號，頭尾必須是英數。
 #: 它同時是個人檔案的網址（/u/<username>），所以不能含 `/`、`.`、`%` 之類會
 #: 改變路徑意義的字元；一律轉小寫則讓 UNIQUE 約束等於「不會有兩個看起來一樣

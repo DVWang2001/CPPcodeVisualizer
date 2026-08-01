@@ -116,6 +116,16 @@ def test_the_root_renders_the_browse_ui(flask_app):
     assert b"lesson-browse-list" in response.data or b"lesson-browse-empty" in response.data
 
 
+def test_the_root_links_to_the_logged_in_users_profile(flask_app):
+    user = register_user(flask_app, display_name="nav_owner")
+
+    response = user.http.get("/")
+    body = response.data.decode("utf-8")
+
+    assert 'data-testid="account-nav-profile"' in body
+    assert f'href="/u/{user.username}"' in body
+
+
 def test_browse_renders_only_the_capped_query_and_tags(flask_app):
     """The route must not preserve filters the database has already ignored."""
     user = register_user(flask_app, display_name="rt_caps")

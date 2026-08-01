@@ -51,6 +51,14 @@
         -webkit-font-smoothing: antialiased;
       }
 
+      body.app-shell { display: block; padding: 0 1rem 2rem; }
+      .site-header { width: min(74rem, 100%); margin: 0 auto; }
+      .site-nav { display: flex; align-items: center; gap: 0.9rem; min-height: 3.75rem; }
+      .site-nav-spacer { flex: 1; }
+      .site-brand { color: var(--ink); font-family: var(--font-display); font-weight: 650; text-decoration: none; }
+      .site-account { font-family: var(--font-mono); }
+      body.app-shell .card { margin: 1.25rem auto 0; }
+
       .card {
         width: min(var(--card-width, 26rem), 100%);
         background: var(--surface);
@@ -307,9 +315,27 @@
       @media (prefers-reduced-motion: reduce) {
         * { transition: none !important; }
       }
+
+      @media (max-width: 640px) {
+        .site-nav { flex-wrap: wrap; }
+        .site-brand { order: -1; }
+      }
     </style>
   </head>
-  <body>
+  <body{% if navigation_user %} class="app-shell"{% endif %}>
+    {% if navigation_user %}
+      <header class="site-header" data-testid="site-header">
+        <nav class="site-nav" aria-label="主要導覽">
+          <a class="site-brand" href="{{ url_for('http_routes.lesson_library') }}">教案庫</a>
+          <span class="site-nav-spacer"></span>
+          <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
+          <a class="site-account"
+             href="{{ url_for('auth.profile', username=navigation_user['username']) }}"
+             data-testid="account-nav-profile">@{{ navigation_user["username"] }}</a>
+          <a href="{{ url_for('auth.logout') }}">登出</a>
+        </nav>
+      </header>
+    {% endif %}
     <main class="card">
       {% block body %}{% endblock %}
     </main>
