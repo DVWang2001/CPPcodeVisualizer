@@ -941,7 +941,10 @@ def emit_teacher_state(session_id):
     row = _invitation_row(session_id)
     if row is None:
         return
-    state = session_owned_by(session_id, int(row["owner_user_id"]))
+    owner_id = int(row["owner_user_id"])
+    state = _teacher_payload(session_id, owner_id) or session_owned_by(session_id, owner_id)
+    if state is None:
+        return
     room = _teacher_room(session_id)
     _socketio.emit("quiz:teacher-state", state, room=room, namespace="/lesson_quiz")
     question = state["active_question"] or _latest_question(state)
@@ -1024,7 +1027,7 @@ def register_socket_handlers(socketio):
             return False
         auth = auth if isinstance(auth, dict) else {}
         if auth.get("role") == "teacher":
-            state = session_owned_by(auth.get("session_id"), current_user_id())
+            state = _teacher_payload(auth.get("session_id"), current_user_id())
             if state is None or state["state"] != "lobby":
                 return False
             join_room(_teacher_room(state["id"]))

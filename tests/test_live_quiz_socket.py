@@ -61,6 +61,8 @@ def test_teacher_socket_requires_session_owner_and_sends_complete_state(socket_c
     states = _event(owner_socket, "quiz:teacher-state")
     assert states[-1]["id"] == created["id"]
     assert states[-1]["title"] == "Socket 課堂"
+    assert states[-1]["join_url"] == created["join_url"]
+    assert states[-1]["qr_url"] == created["qr_url"]
 
     owner_socket.disconnect(namespace="/lesson_quiz")
 
