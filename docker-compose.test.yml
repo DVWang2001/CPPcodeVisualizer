@@ -16,6 +16,11 @@ services:
       timeout: 5s
       retries: 15
       start_period: 10s
+    environment:
+      - MOBILE_JOIN_BASE_URL=http://app:5000
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./seccomp/gdbgui.json
     networks:
       - test-net
 

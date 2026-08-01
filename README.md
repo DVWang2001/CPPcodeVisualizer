@@ -30,10 +30,16 @@ Built on top of [gdbgui](https://github.com/cs01/gdbgui), CPPcodeVisualizer adds
 ```bash
 git clone -b Develop https://github.com/DVWang2001/CPPcodeVisualizer.git
 cd CPPcodeVisualizer
-docker-compose up
+# Replace this example with the teacher computer's LAN IPv4 address.
+export MOBILE_JOIN_BASE_URL=http://192.168.1.20:5000
+docker compose up
 ```
 
 Open **http://localhost:5000** in your browser. No local GDB or compiler installation required.
+
+若要使用手機 QR 即時作答，請先依下方「[QR 即時作答的區網設定](#qr-即時作答的區網設定)」設定
+`MOBILE_JOIN_BASE_URL`；正式的 Compose 設定會要求這個值，避免產生手機無法開啟的
+`localhost` QR Code。
 
 ---
 
@@ -45,6 +51,29 @@ Open **http://localhost:5000** in your browser. No local GDB or compiler install
 2. The source code, breakpoints, guide annotations, and TTS scripts are loaded automatically.
 3. Click **Run** — the debugger steps through the program, animating each container and reading the narration aloud.
 4. You can also drive the debugger manually; guide text and visualizations update at every breakpoint hit.
+
+### QR 即時作答的區網設定
+
+1. 讓伺服器監聽並發佈在 `0.0.0.0:5000`。本專案的 Docker Compose 已發佈
+   `5000:5000`。
+2. 查出教師電腦的區網 IPv4（Windows 可執行 `ipconfig`），再設定手機能連到的網址；
+   實體手機絕對不要使用 `localhost`：
+
+   ```powershell
+   $env:MOBILE_JOIN_BASE_URL="http://192.168.1.20:5000"
+   docker compose up --build
+   ```
+
+   Linux/macOS 可用 `export MOBILE_JOIN_BASE_URL=http://192.168.1.20:5000`。
+3. 在 Windows Defender 防火牆的「私人網路」允許 TCP 5000 輸入連線，並先用手機瀏覽器
+   開啟上一步的網址確認可達。
+4. 教師電腦與手機必須位於可互通的同一個 Wi-Fi/VLAN。訪客 Wi-Fi 常啟用 client
+   isolation（用戶端隔離），這會阻止手機連到教師電腦，需改用沒有隔離的網路。
+5. 僅測 Android Emulator 時，可暫設 `http://10.0.2.2:5000`，再到
+   **Extended controls → Camera → Virtual scene images** 匯入 QR 的 PNG/JPEG；
+   `10.0.2.2` 不能提供實體手機使用。
+6. 上課前把設定改回區網網址，並用一支實體手機實際掃描一次。確認能加入、播放到綁定行後
+   收到題目、作答、關題後看到結果、重新整理仍可恢復狀態，且結束課堂後連結失效。
 
 ### Authoring a lesson
 

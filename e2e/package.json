@@ -1,0 +1,9 @@
+{
+  "name": "e2e",
+  "private": true,
+  "version": "1.0.0",
+  "devDependencies": {
+    "@playwright/test": "1.44.0",
+    "jsqr": "1.4.0"
+  }
+}

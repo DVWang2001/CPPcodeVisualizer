@@ -190,6 +190,10 @@ export default function LiveQuizPanel({ lessonId, quiz, onClose }: Props) {
   const counts = (stats && stats.option_counts) || (question && question.option_counts) || {};
   const answerCount = (stats && stats.answer_count) || (question && question.answer_count) || 0;
   const correctCount = (stats && stats.correct_count) || (question && question.correct_count) || 0;
+  let joinHost = "";
+  try {
+    joinHost = new URL(session.join_url || "").host;
+  } catch (_) {}
 
   return (
     <section
@@ -205,6 +209,10 @@ export default function LiveQuizPanel({ lessonId, quiz, onClose }: Props) {
           />
           <div style={{ marginTop: "7px", fontSize: "12px", color: connected ? "#237a3b" : "#a65f00" }}>
             {connected ? "● 即時連線中" : "● 重新連線中"}
+          </div>
+          <div style={{ marginTop: "7px", fontSize: "12px", color: muted }}>
+            <div>連線主機：{joinHost}</div>
+            <div>請用一支非教師手機測試</div>
           </div>
         </div>
 

@@ -35,6 +35,8 @@ services:
       # 全域併發上限（架構 ⑤）：200 個帳號的尖峰若無上限，一堂課就能耗盡主機資源。
       - GDBGUI_MAX_SESSIONS=24
       - GDBGUI_SESSION_IDLE_SECONDS=3600
+      # 必須是學生手機可直接連線的網址；localhost 只會指向學生自己的手機。
+      - MOBILE_JOIN_BASE_URL=${MOBILE_JOIN_BASE_URL:?Set MOBILE_JOIN_BASE_URL to a phone-reachable URL such as http://192.168.1.20:5000}
       # AI 功能（explain_error / generate_lesson）的伺服器端金鑰：從宿主機環境變數帶入
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
       - LESSON_AI_API_KEY=${LESSON_AI_API_KEY:-}
