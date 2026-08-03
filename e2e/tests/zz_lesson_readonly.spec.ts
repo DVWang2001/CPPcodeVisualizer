@@ -101,3 +101,46 @@ test('別人的教案：題目只能看，指導註解不提供編輯入口', as
   await expect(page.locator('.gdbgui-annot-edit-glyph')).toBeHidden();
   await reader.close();
 });
+
+test('存到我的帳號會複製一份，並且看得出來已經換到自己的副本上', async ({ browser }) => {
+  test.setTimeout(180_000);
+
+  const owner = await browser.newContext();
+  const ownerPage = await owner.newPage();
+  const id = await seedLesson(ownerPage);
+  await owner.close();
+
+  const reader = await browser.newContext();
+  const page = await reader.newPage();
+
+  const alerts: string[] = [];
+  page.on('dialog', async (d) => {
+    if (d.type() === 'prompt') return d.accept('我的副本');
+    alerts.push(d.message());
+    await d.dismiss();
+  });
+
+  await register(page, 'fk');
+  await openEditor(page, `/edit?lesson=${id}`);
+
+  // 別人的教案：即時課堂按鈕不在
+  await expect(page.getByTestId('live-quiz-open')).toHaveCount(0);
+
+  await page.getByTestId('save-lesson-to-account').click();
+  await page.waitForTimeout(4000);
+
+  // fork 之後：按鈕解鎖、網址換成新的那一篇、而且有講清楚發生了什麼事
+  await expect(page.getByTestId('live-quiz-open')).toBeVisible();
+  expect(alerts.join('\n'), 'fork 必須明確告知，不能只寫進可能收合的 console').toMatch(
+    /另存一份/
+  );
+  const lessonParam = new URL(page.url()).searchParams.get('lesson');
+  expect(lessonParam, '網址要指向自己的副本，而不是原作者那篇').not.toBe(String(id));
+  expect(Number(lessonParam)).toBeGreaterThan(0);
+
+  // 換到自己的副本之後，指導註解的 ✎ 也回來了
+  await page.mouse.move(400, 300);
+  await page.waitForTimeout(800);
+  await expect(page.locator('.gdbgui-annot-edit-glyph')).toBeVisible();
+  await reader.close();
+});

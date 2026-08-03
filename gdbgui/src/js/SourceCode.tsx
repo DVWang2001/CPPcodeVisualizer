@@ -1497,12 +1497,30 @@ class SourceCode extends React.Component<{}, State> {
         this.selectedLessonParentVersion = null;
         this.pendingLessonCommit = null;
         this.setState({ showLessonCommit: false } as any);
-        Actions.add_console_entries(
-          payload.forked
-            ? `這篇教案不是你的，已在你名下另存一份「${candidate.title}」（原作者的版本沒有被更動）。`
-            : `教案「${candidate.title}」已儲存到你的帳號。`,
-          constants.console_entry_type.GDBGUI_OUTPUT
-        );
+
+        // 網址跟著換成實際儲存的那一篇。
+        //
+        // fork 之後畫面上完全看不出差別——內容一樣、標題一樣、網址還指著原作者
+        // 那篇。使用者會以為根本沒存。換掉網址之後「我現在在自己的副本上」變成
+        // 自明的，重新整理也不會又回到原作者那篇。第一次儲存新教案同理。
+        try {
+          const url = new URL(window.location.href);
+          if (payload.id && url.searchParams.get("lesson") !== String(payload.id)) {
+            url.searchParams.set("lesson", String(payload.id));
+            window.history.replaceState({}, "", url.toString());
+          }
+        } catch {
+          // 網址更新只是輔助，失敗不該影響已經成功的儲存。
+        }
+
+        const message = payload.forked
+          ? `這篇教案不是你的，已在你名下另存一份「${candidate.title}」（原作者的版本沒有被更動）。\n\n` +
+            `你現在編輯的是自己的副本，可以改指導、改題目、開即時課堂。`
+          : `教案「${candidate.title}」已儲存到你的帳號。`;
+        Actions.add_console_entries(message, constants.console_entry_type.GDBGUI_OUTPUT);
+        // console 面板可能是收合的。fork 是「你換到另一篇教案上了」的狀態改變，
+        // 不講清楚使用者會以為沒存；一般儲存沒有這個問題，就不打擾。
+        if (payload.forked) window.alert(message);
       })
       .catch((err: any) => {
         window.alert(err && err.message ? err.message : "儲存失敗。");
