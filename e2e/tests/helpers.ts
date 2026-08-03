@@ -1,4 +1,26 @@
+import { readFileSync } from 'fs';
+import * as path from 'path';
 import { Page, expect } from '@playwright/test';
+
+/**
+ * A real teaching lesson from examples/, not a stub.
+ *
+ * Specs used to seed `source_code: 'int main(){}'`.  Two costs: a spec that
+ * claims to exercise the lesson pipeline never saw a bundle shaped like one a
+ * user would actually save, and every lesson these specs leave behind on a
+ * long-lived database is junk nobody can open and learn anything from.
+ *
+ * Resolves to /examples inside the e2e container -- docker-compose.test.yml
+ * mounts ./examples there, two levels up from /e2e/tests.
+ */
+export function realLessonBundle(name = 'rec_sum'): any {
+    return JSON.parse(
+        readFileSync(
+            path.resolve(__dirname, `../../examples/cpp/${name}.gdbgui.json`),
+            'utf8'
+        )
+    );
+}
 
 const E2E_BP_LINE = 26;
 export const E2E_GUIDE = '{v} {a} {s} {l} {st} {q} {dq} {se} {ms} {m} {mm} {um}';
