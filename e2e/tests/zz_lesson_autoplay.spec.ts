@@ -18,8 +18,11 @@ import { test, expect, Page } from '@playwright/test';
 import { readFileSync } from 'fs';
 import * as path from 'path';
 
-/** 每篇最多等這麼久：每個停駐點都要唸完一段 TTS，真的很慢。 */
-const PLAY_TIMEOUT_MS = 150_000;
+/**
+ * 每篇最多等這麼久。每個停駐點都要唸完一整段 TTS（實測約 7 秒），遞迴教案有
+ * 三十幾個停駐點，所以這個上限必須寬。真正抓卡死的是下面的 STALL_MS，不是這個。
+ */
+const PLAY_TIMEOUT_MS = 360_000;
 /** 連續這麼久沒有任何新的停駐點，就判定播放已經死了。 */
 const STALL_MS = 30_000;
 

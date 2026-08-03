@@ -485,7 +485,15 @@ def read_and_forward_gdb_and_pty_output():
     while True:
         socketio.sleep(0.05)
         debug_sessions_to_remove = []
-        for debug_session, client_ids in manager.debug_session_to_client_ids.items():
+        # 對快照迭代，不要直接走 manager 的實時結構。
+        #
+        # SessionManager.disconnect_client 會對同一個 client_ids list 做 remove()，
+        # 而它跑在另一條 green thread 上。以前這裡直接走原 list：假設 list 是
+        # [已斷線的, 還活著的]，emit 完 index 0 的當下 disconnect 把它移除，list
+        # 變成長度 1，迴圈的下一個 index 1 已經越界 —— **還活著的 client 就被整個
+        # 跳過，而且不會丟出任何例外**。使用者看到的是播放毫無徵兆地卡死。
+        for debug_session, client_ids in list(manager.debug_session_to_client_ids.items()):
+            client_ids = list(client_ids)
             try:
                 try:
                     response = debug_session.pygdbmi_controller.get_gdb_response(
@@ -507,22 +515,33 @@ def read_and_forward_gdb_and_pty_output():
                     # 拿得到，而 /send_signal 需要伺服器端自己有一份紀錄
                     # （呼叫端不再被允許指定 pid）。
                     debug_session.observe_gdb_response(response)
+                    # 一則回應一個序號。以前這行在 per-client 迴圈裡，掛兩個
+                    # client 時每則回應會遞增兩次，兩邊各自收到跳號的序列。
+                    debug_session.packet_seq_num += 1
+                    payload = {
+                        "run_token": debug_session.run_token,
+                        "request_id": debug_session.last_request_id,
+                        "packet_seq_num": debug_session.packet_seq_num,
+                        "data": response,
+                    }
                     for client_id in client_ids:
                         logger.info(
                             "emiting message to websocket client id " + client_id
                         )
-                        debug_session.packet_seq_num += 1
-                        socketio.emit(
-                            "gdb_response",
-                            {
-                                "run_token": debug_session.run_token,
-                                "request_id": debug_session.last_request_id,
-                                "packet_seq_num": debug_session.packet_seq_num,
-                                "data": response,
-                            },
-                            namespace="/gdb_listener",
-                            room=client_id,
-                        )
+                        # 逐一隔離：一個 client 送失敗不該讓其他 client 收不到。
+                        try:
+                            socketio.emit(
+                                "gdb_response",
+                                payload,
+                                namespace="/gdb_listener",
+                                room=client_id,
+                            )
+                        except Exception:
+                            logger.warning(
+                                "emit to client %s failed, continuing: %s",
+                                client_id,
+                                traceback.format_exc(),
+                            )
                 else:
                     # there was no queued response from gdb, not a problem
                     pass
@@ -537,7 +556,10 @@ def read_and_forward_gdb_and_pty_output():
 
 def check_and_forward_pty_output() -> List[DebugSession]:
     debug_sessions_to_remove = []
-    for debug_session, client_ids in manager.debug_session_to_client_ids.items():
+    # 同樣對快照迭代：disconnect_client 會在另一條 green thread 上 remove()，
+    # 直接走原 list 會讓還活著的 client 被靜默跳過（見上面那個迴圈的說明）。
+    for debug_session, client_ids in list(manager.debug_session_to_client_ids.items()):
+        client_ids = list(client_ids)
         try:
             response = debug_session.pty_for_gdb.read()
             if response is not None:
