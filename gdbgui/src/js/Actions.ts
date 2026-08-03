@@ -11,6 +11,7 @@ import Visualizer from "./Visualizer";
 import { parseForHeader, decideForSegment } from "./forHeader";
 import { decideFastState, getFastForward, disarmFastForward } from "./fastForward";
 import { lessonQuizRuntime } from "./lessonQuizRuntime";
+import { clearStepWatchdog } from "./stepWatchdog";
 void React; // using jsx implicity uses React
 
 // ── for 迴圈三段式單步：每個真正的 GDB 停駐點重算一次 ──────────
@@ -123,6 +124,7 @@ const Actions = {
     store.set("inferior_program", constants.inferior_states.running);
   },
   inferior_program_paused: function (frame = {}) {
+    clearStepWatchdog();
     store.set("inferior_program", constants.inferior_states.paused);
     store.set(
       "source_code_selection_state",
@@ -167,6 +169,7 @@ const Actions = {
     Actions.refresh_state_for_gdb_pause();
   },
   inferior_program_exited: function () {
+    clearStepWatchdog();
     lessonQuizRuntime.clearGate();
     Actions.stop_tts();
     // 程式結束就沒有停駐點能解除快轉了，一律在這裡收掉

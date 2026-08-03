@@ -15,6 +15,30 @@ import { global_variable } from "./global_variable";
 import { buildGhostFromSnapshots } from "./ghostTree";
 import { isFastForwarding } from "./fastForward";
 import { isQuizPlaybackBlocked } from "./lessonQuizRuntime";
+import { armStepWatchdog } from "./stepWatchdog";
+
+/**
+ * 步進命令送出後掛上看門狗。逾時仍在 running 就是 GDB 卡死了（見 stepWatchdog.ts），
+ * 關掉自動播放並告知使用者，而不是讓整個介面靜默變磚。
+ */
+function watchStep(command: string) {
+  armStepWatchdog(command, {
+    isStillRunning: () =>
+      store.get("inferior_program") === constants.inferior_states.running,
+    onWedged: (cmd, seconds) => {
+      store.set("autoplay_enabled", false);
+      store.set("autoplay_pending_command", null);
+      const message =
+        `除錯器對「${cmd}」超過 ${seconds} 秒沒有回應，這個除錯階段已經無法繼續。\n\n` +
+        `自動播放已停止。請重新載入頁面或重新啟動除錯階段；\n` +
+        `若教案在 main 開頭就宣告 STL 容器，重跑很可能會再次卡在同一行。`;
+      // console 面板可能是收合的，光寫進去使用者不一定看得到——而這是「整個階段
+      // 已經死掉」的狀態，必須擋不掉。
+      Actions.add_console_entries(message, constants.console_entry_type.STD_ERR);
+      window.alert(message);
+    },
+  });
+}
 
 /** Parse GCC/Clang stderr into structured error objects. */
 function _parseCompileErrors(stderr: string): any[] {
@@ -709,6 +733,7 @@ const GdbApi = {
       }
     }
     Actions.inferior_program_resuming();
+    watchStep("下一步");
     GdbApi.run_gdb_command(
       "-exec-next" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
@@ -716,6 +741,7 @@ const GdbApi = {
   click_step_button: function (reverse = false) {
     if (isQuizPlaybackBlocked(store)) return;
     Actions.inferior_program_resuming();
+    watchStep("步入");
     GdbApi.run_gdb_command(
       "-exec-step" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
@@ -727,6 +753,7 @@ const GdbApi = {
     // was forcefully triggered before GDB replied. Now uses the proper Step Out
     // implementation `-exec-finish` which executes the rest of the frame.
     Actions.inferior_program_resuming();
+    watchStep("步出");
     GdbApi.run_gdb_command("-exec-finish");
   },
   click_next_instruction_button: function (reverse = false) {
