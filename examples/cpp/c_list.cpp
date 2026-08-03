@@ -1,0 +1,14 @@
+// 教案：list —— 雙向鏈結串列，節點之間用箭頭相連
+#include <iostream>
+#include <list>
+
+int main() {
+    std::list<int> lst;                    //@ @guide 空的 list：{lst} @tts [next] 先看一條空的節點鏈 @layout sidebar:45 open:container
+    lst.push_back(10);                     //@ @guide 目前的鏈：{lst} @tts [next] 接上第一個節點
+    lst.push_back(30);                     //@ @guide 接上第二個：{lst} @tts [next] 節點之間出現雙向箭頭
+    auto it = lst.begin();                 //@ @guide {lst}\n迭代器指向第一個節點 @tts [next] 拿一個迭代器指著頭節點
+    ++it;                                  //@ @guide {lst}\n迭代器往後移一格 @tts [next] 往後移一格，指到第二個節點
+    lst.insert(it, 20);                    //@ @guide 中間插入之後：{lst}\nlist 中間插入不需要搬移其他節點 @tts [next] 把 20 插進兩個節點中間，只改箭頭不搬資料
+    lst.pop_front();                       //@ @guide pop_front 之後：{lst} @tts [continue] 拿掉頭節點，教案播放完畢
+    return 0;
+}

@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "c_deque.cpp",
+  "source_code": "// 教案：deque —— 前後兩端都能 push / pop\n#include <iostream>\n#include <deque>\n\nint main() {\n    std::deque<int> d;                     //@ @guide 空的 deque：{d} @tts [next] 先看一個空的雙端佇列 @layout sidebar:45 open:container\n    d.push_back(2);                        //@ @guide push_back 之後：{d} @tts [next] 從後端放進 2\n    d.push_back(3);                        //@ @guide 再 push_back：{d} @tts [next] 後端再放一個 3\n    d.push_front(1);                       //@ @guide push_front 之後：{d}\\n1 插在最前面 @tts [next] 這次從前端放，1 排到最左邊\n    d.pop_back();                          //@ @guide pop_back 之後：{d} @tts [next] 後端拿掉一個\n    d.pop_front();                         //@ @guide pop_front 之後：{d}\\n兩端都能進出，這是 deque 和 vector 的差別 @tts [continue] 前端也拿掉一個，教案播放完畢\n    return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "6",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

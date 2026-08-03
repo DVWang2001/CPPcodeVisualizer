@@ -1,0 +1,107 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "c_live_quiz.cpp",
+  "source_code": "// 教案：QR 即時課堂 —— 播放到綁定的行會自動出題，學生掃 QR 用手機作答\n// 老師端：工具列「即時課堂」→ 畫面出現 QR → 按 Run 開始播放\n// 學生端：手機相機掃 QR → 輸入暱稱 → 題目自動跳出來 → 作答\n#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v = {3, 1, 4, 1, 5};  //@ @guide 資料：{v} @tts [next] 這是等一下要處理的五個數字 @layout sidebar:45 open:container\n    int sum = 0;                           //@ @guide sum 初始化為 {sum} @tts [next] 累加器歸零。第一題就綁在這一行\n    for (int i = 0; i < 5; ++i) {          //@ @guide 累加到第 {i} 個，目前 sum = {sum} @tts [next] 開始累加 | @2 [next] 一個一個加進去\n        sum = sum + v[i];                  //@ @guide sum = {sum} @tts [next] 加上 {v} 的第 {i} 格\n    }\n    int mx = v[0];                         //@ @guide 累加結束，sum = {sum}\\n接下來找最大值，先假設是第一個 @tts [next] 累加跑完了。第二題綁在這一行\n    for (int j = 1; j < 5; ++j) {          //@ @guide 找最大值，目前 mx = {mx} @tts [next] 換一輪，這次找最大的 | @2 [next] 比較下一個\n        if (v[j] > mx) {                   //@ @guide 比較 v[{j}] 和目前的 mx = {mx} @tts [next] 這一個比較大嗎 | @2 [next] 再比一次\n            mx = v[j];                     //@ @guide 更新 mx = {mx} @tts [next] 比較大，換它當最大值 | @2 [next] 又找到更大的\n        }\n    }\n    std::cout << sum << \" \" << mx << \"\\n\";  //@ @guide 總和 {sum}，最大值 {mx} @tts [next] 印出兩個答案。第三題綁在這一行\n    return 0;                              //@ @tts [continue] 教案播放完畢\n}\n",
+  "breakpoints": [
+    {
+      "line": "8",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": "",
+  "quiz": {
+    "schema_version": 1,
+    "questions": [
+      {
+        "id": "q1-sum-init",
+        "prompt": "迴圈還沒開始跑，此刻 sum 的值是多少？",
+        "options": [
+          {
+            "id": "a",
+            "text": "0"
+          },
+          {
+            "id": "b",
+            "text": "3"
+          },
+          {
+            "id": "c",
+            "text": "還沒有值，是垃圾值"
+          }
+        ],
+        "correct_option_id": "a",
+        "explanation": "sum 在宣告的同時就被初始化成 0，所以停在這一行時它已經是 0。",
+        "trigger": {
+          "kind": "source_line",
+          "source_file": "c_live_quiz.cpp",
+          "line": 9,
+          "anchor": {
+            "line_text": "int sum = 0;",
+            "before_text": "std::vector<int> v = {3, 1, 4, 1, 5};",
+            "after_text": "for (int i = 0; i < 5; ++i) {"
+          }
+        }
+      },
+      {
+        "id": "q2-sum-total",
+        "prompt": "累加迴圈剛跑完，sum 是多少？（資料是 3 1 4 1 5）",
+        "options": [
+          {
+            "id": "a",
+            "text": "13"
+          },
+          {
+            "id": "b",
+            "text": "14"
+          },
+          {
+            "id": "c",
+            "text": "5"
+          }
+        ],
+        "correct_option_id": "b",
+        "explanation": "3+1+4+1+5 = 14。把右側的 sum 展開就能直接對答案。",
+        "trigger": {
+          "kind": "source_line",
+          "source_file": "c_live_quiz.cpp",
+          "line": 13,
+          "anchor": {
+            "line_text": "int mx = v[0];",
+            "before_text": "}",
+            "after_text": "for (int j = 1; j < 5; ++j) {"
+          }
+        }
+      },
+      {
+        "id": "q3-max",
+        "prompt": "第二個迴圈找的是最大值，mx 最後會是多少？",
+        "options": [
+          {
+            "id": "a",
+            "text": "3"
+          },
+          {
+            "id": "b",
+            "text": "4"
+          },
+          {
+            "id": "c",
+            "text": "5"
+          }
+        ],
+        "correct_option_id": "c",
+        "explanation": "五個數字裡最大的是 5，所以 mx 收斂到 5。",
+        "trigger": {
+          "kind": "source_line",
+          "source_file": "c_live_quiz.cpp",
+          "line": 19,
+          "anchor": {
+            "line_text": "std::cout << sum << \" \" << mx << \"\\n\";",
+            "before_text": "}",
+            "after_text": "return 0;"
+          }
+        }
+      }
+    ]
+  }
+}

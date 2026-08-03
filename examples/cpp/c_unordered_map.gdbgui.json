@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "c_unordered_map.cpp",
+  "source_code": "// 教案：unordered_map —— 一樣是 key-value，但沒有排序保證\n#include <iostream>\n#include <string>\n#include <unordered_map>\n\nint main() {\n    std::unordered_map<std::string, int> u; //@ @guide 空的雜湊表：{u} @tts [next] 先看一張空的雜湊表 @layout sidebar:45 open:container\n    u[\"bob\"] = 90;                         //@ @guide 目前的雜湊表：{u} @tts [next] 放進第一組\n    u[\"alice\"] = 85;                       //@ @guide 加入 alice：{u}\\n和 map 不同，這裡的順序不保證是字典序 @tts [next] 注意它擺放的位置，和 map 那篇比一比\n    u[\"carol\"] = 78;                       //@ @guide 加入 carol：{u} @tts [continue] 再放一組，教案播放完畢\n    return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "7",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}
