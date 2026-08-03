@@ -24,6 +24,7 @@ import LessonGenPanel from "./LessonGenPanel";
 import LessonCommitDialog from "./LessonCommitDialog";
 import LessonHistoryDialog from "./LessonHistoryDialog";
 import QuizAuthoringDialog from "./QuizAuthoringDialog";
+import LessonSaveDialog from "./LessonSaveDialog";
 import LiveQuizPanel from "./LiveQuizPanel";
 import { cloneQuiz, QuizSpec, validateQuiz } from "./quizSchema";
 import {
@@ -1390,7 +1391,14 @@ class SourceCode extends React.Component<{}, State> {
       });
   };
 
-  saveLessonToAccount = () => {
+  /**
+   * 存檔前的阻擋理由，沒有就回 null。
+   *
+   * 以前這些各自用 window.alert 講，而瀏覽器可以把對話框整個關掉——關掉之後
+   * 使用者按了按鈕什麼都不會發生，也不知道為什麼。現在一律顯示在頁面內的
+   * 存檔對話框裡。
+   */
+  lessonSaveBlockedReason = (): string | null => {
     if (this.lessonQuizDraft) {
       const checked = validateQuiz(
         this.lessonQuizDraft,
@@ -1403,26 +1411,23 @@ class SourceCode extends React.Component<{}, State> {
       if (checked.quiz) this.lessonQuizDraft = checked.quiz;
     }
     if (this.lessonQuizErrors.length > 0) {
-      window.alert(`課堂題目需要修正後才能儲存：\n${this.lessonQuizErrors.join("\n")}`);
-      this.setState({ showQuizAuthoring: true } as any);
-      return;
+      return `課堂題目需要修正後才能儲存：\n${this.lessonQuizErrors.join("\n")}`;
     }
     // 開了編輯器直接按儲存 = 發布一篇 Hello World；教案庫裡大部分垃圾都是這樣來的。
     // ponytail: 只比對預設模板。不擋空白——空白教案是 lesson-version 明確支援的情況。
     if ((this.editorInstance?.getValue?.() || "").trim() === DEFAULT_TEMPLATE.trim()) {
-      window.alert("這還是預設的範例程式。請先寫下自己的程式碼，或從教案庫載入一篇教案，再儲存。");
-      return;
+      return "這還是預設的範例程式。請先寫下自己的程式碼，或從教案庫載入一篇教案，再儲存。";
     }
+    return null;
+  };
 
-    const suggested = this.currentLessonTitle || "我的教案";
-    const title = window.prompt("教案標題", suggested);
-    if (title === null) return;
-    const trimmed = title.trim();
-    if (!trimmed) {
-      window.alert("標題不可為空。");
-      return;
-    }
+  saveLessonToAccount = () => {
+    this.setState({ showLessonSave: true } as any);
+  };
 
+  /** 使用者在存檔對話框按下「儲存」。 */
+  confirmLessonSave = (trimmed: string) => {
+    this.setState({ showLessonSave: false } as any);
     const candidate = { title: trimmed, bundle: this.lessonBundleForSave() };
     if (this.currentLessonId !== null && this.currentLessonIsMine) {
       if (!this.lessonBaseline) {
@@ -1518,12 +1523,14 @@ class SourceCode extends React.Component<{}, State> {
             `你現在編輯的是自己的副本，可以改指導、改題目、開即時課堂。`
           : `教案「${candidate.title}」已儲存到你的帳號。`;
         Actions.add_console_entries(message, constants.console_entry_type.GDBGUI_OUTPUT);
-        // console 面板可能是收合的。fork 是「你換到另一篇教案上了」的狀態改變，
-        // 不講清楚使用者會以為沒存；一般儲存沒有這個問題，就不打擾。
-        if (payload.forked) window.alert(message);
+        // console 面板可能是收合的，而瀏覽器可以把 alert 整個關掉。存檔結果一律
+        // 顯示在頁面內。
+        this.setState({ lessonSaveNotice: { text: message, ok: true } } as any);
       })
       .catch((err: any) => {
-        window.alert(err && err.message ? err.message : "儲存失敗。");
+        const text = err && err.message ? err.message : "儲存失敗。";
+        Actions.add_console_entries(text, constants.console_entry_type.STD_ERR);
+        this.setState({ lessonSaveNotice: { text, ok: false } } as any);
       });
   };
 
@@ -1797,6 +1804,42 @@ class SourceCode extends React.Component<{}, State> {
               }}
               onClose={() => this.setState({ showLessonGen: false } as any)}
             />
+          )}
+          {(this.state as any).showLessonSave && (
+            <LessonSaveDialog
+              initialTitle={this.currentLessonTitle || "我的教案"}
+              blockedReason={this.lessonSaveBlockedReason()}
+              isFork={this.isReadOnlyLesson()}
+              onConfirm={this.confirmLessonSave}
+              onClose={() => this.setState({ showLessonSave: false } as any)}
+            />
+          )}
+          {(this.state as any).lessonSaveNotice && (
+            <div
+              data-testid="lesson-save-notice"
+              onClick={() => this.setState({ lessonSaveNotice: null } as any)}
+              title="點一下關閉"
+              style={{
+                position: "fixed",
+                right: "16px",
+                bottom: "16px",
+                zIndex: 2500,
+                maxWidth: "420px",
+                padding: "12px 16px",
+                cursor: "pointer",
+                whiteSpace: "pre-wrap",
+                fontSize: "13px",
+                color: "#17233b",
+                background: "#fff",
+                border: "1px solid #d8dee9",
+                borderLeft: `3px solid ${
+                  (this.state as any).lessonSaveNotice.ok ? "#2e7d32" : "#c0392b"
+                }`,
+                boxShadow: "0 10px 30px rgba(16,24,40,.18)",
+              }}
+            >
+              {(this.state as any).lessonSaveNotice.text}
+            </div>
           )}
           {(this.state as any).showQuizAuthoring && (
             <QuizAuthoringDialog

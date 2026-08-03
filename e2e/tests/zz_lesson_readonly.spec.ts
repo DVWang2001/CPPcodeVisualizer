@@ -40,13 +40,24 @@ async function cleanup(page: Page, token: string, ids: number[]): Promise<void> 
 /**
  * 編輯器頁面無條件掛了 onbeforeunload（GlobalEvents.ts），離開 /edit 一定會跳
  * 確認框。不 accept 的話瀏覽器會取消導覽（ERR_ABORTED）。
+ *
+ * 存檔流程本身已經不用瀏覽器對話框了（改成頁面內的 LessonSaveDialog），
+ * 這裡只剩 beforeunload 要處理。
  */
-function handleDialogs(page: Page, promptAnswer: string): void {
+function handleDialogs(page: Page): void {
   page.on('dialog', async (d) => {
-    if (d.type() === 'prompt') return d.accept(promptAnswer);
     if (d.type() === 'beforeunload') return d.accept();
     await d.dismiss();
   });
+}
+
+/** 走頁面內的存檔對話框：填標題、按儲存。 */
+async function saveAs(page: Page, title: string): Promise<void> {
+  await page.getByTestId('save-lesson-to-account').click();
+  await expect(page.getByTestId('lesson-save-dialog')).toBeVisible();
+  await page.getByTestId('lesson-save-title-input').fill(title);
+  await page.getByTestId('lesson-save-confirm').click();
+  await expect(page.getByTestId('lesson-save-notice')).toBeVisible({ timeout: 20_000 });
 }
 
 async function openEditor(page: Page, url: string): Promise<void> {
@@ -141,13 +152,7 @@ test('存到我的帳號會複製一份，並且看得出來已經換到自己�
   const page = await reader.newPage();
 
   const forkTitle = `副本測試 ${Date.now()}`;
-  const alerts: string[] = [];
-  page.on('dialog', async (d) => {
-    if (d.type() === 'prompt') return d.accept(forkTitle);
-    if (d.type() === 'beforeunload') return d.accept();
-    alerts.push(d.message());
-    await d.dismiss();
-  });
+  handleDialogs(page);
 
   await register(page, 'fk');
   await openEditor(page, `/edit?lesson=${id}`);
@@ -156,14 +161,14 @@ test('存到我的帳號會複製一份，並且看得出來已經換到自己�
   // 別人的教案：即時課堂按鈕不在
   await expect(page.getByTestId('live-quiz-open')).toHaveCount(0);
 
-  await page.getByTestId('save-lesson-to-account').click();
-  await page.waitForTimeout(4000);
+  await saveAs(page, forkTitle);
 
   // fork 之後：按鈕解鎖、網址換成新的那一篇、而且有講清楚發生了什麼事
   await expect(page.getByTestId('live-quiz-open')).toBeVisible();
-  expect(alerts.join('\n'), 'fork 必須明確告知，不能只寫進可能收合的 console').toMatch(
-    /另存一份/
-  );
+  await expect(
+    page.getByTestId('lesson-save-notice'),
+    'fork 必須在頁面內明確告知，不能只寫進可能收合的 console'
+  ).toContainText('另存一份');
   const lessonParam = new URL(page.url()).searchParams.get('lesson');
   expect(lessonParam, '網址要指向自己的副本，而不是原作者那篇').not.toBe(String(id));
   expect(Number(lessonParam)).toBeGreaterThan(0);
@@ -190,7 +195,7 @@ test('存到我的帳號之後，教案要出現在自己的個人檔案頁', as
   // 標題帶時間戳：跑在正式站上，固定字串會和先前留下的同名教案撞在一起，
   // 讓斷言變成 strict mode violation。
   const forkTitle = `個人檔案可見性測試 ${Date.now()}`;
-  handleDialogs(page, forkTitle);
+  handleDialogs(page);
 
   const username = await register(page, 'pf');
 
@@ -200,8 +205,7 @@ test('存到我的帳號之後，教案要出現在自己的個人檔案頁', as
 
   await openEditor(page, `/edit?lesson=${originalId}`);
   const token = await page.evaluate(() => (window as any).initial_data.csrf_token);
-  await page.getByTestId('save-lesson-to-account').click();
-  await page.waitForTimeout(4000);
+  await saveAs(page, forkTitle);
 
   const forkedId = Number(new URL(page.url()).searchParams.get('lesson'));
   expect(forkedId, 'fork 應該產生一個新的教案 id').not.toBe(originalId);
