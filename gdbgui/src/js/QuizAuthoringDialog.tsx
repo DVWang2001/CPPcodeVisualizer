@@ -20,6 +20,13 @@ type Props = {
   getCursorLine: () => number;
   onSave: (quiz: QuizSpec) => void;
   onClose: () => void;
+  /**
+   * 別人的教案：只能看，不能改。
+   *
+   * 題目只存在 bundle 裡，畫面上沒有別的地方看得到，所以不是把入口鎖掉，
+   * 而是做成唯讀檢視——想拿來教就先「存到我的帳號」複製一份。
+   */
+  readOnly?: boolean;
 };
 
 const colors = {
@@ -59,7 +66,8 @@ export default function QuizAuthoringDialog({
   sourceFile,
   getCursorLine,
   onSave,
-  onClose
+  onClose,
+  readOnly = false
 }: Props) {
   const [draft, setDraft] = React.useState<QuizSpec>(() => cloneQuiz(quiz) || emptyQuiz());
   const [bindingErrors, setBindingErrors] = React.useState<{ [id: string]: string }>({});
@@ -157,20 +165,51 @@ export default function QuizAuthoringDialog({
               課堂題目
             </h2>
             <div style={{ color: colors.muted, fontSize: "12px", marginTop: "3px" }}>
-              把單選題綁到播放時會停下的程式碼行 · {draft.questions.length}/30 題
+              {readOnly
+                ? `別人的教案，只能檢視 · 共 ${draft.questions.length} 題`
+                : `把單選題綁到播放時會停下的程式碼行 · ${draft.questions.length}/30 題`}
             </div>
           </div>
-          <button
-            type="button"
-            className="btn btn-default"
-            onClick={() => setDraft(addQuestion(draft))}
-            disabled={draft.questions.length >= 30}
-          >
-            ＋ 新增題目
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              className="btn btn-default"
+              onClick={() => setDraft(addQuestion(draft))}
+              disabled={draft.questions.length >= 30}
+            >
+              ＋ 新增題目
+            </button>
+          )}
         </header>
 
-        <div style={{ padding: "20px 22px", background: colors.paper }}>
+        {/* 用原生的 fieldset[disabled] 一次停用所有子孫控制項，不必逐一加
+            disabled——少 17 處手動掛載，也不會有人新增欄位時忘記跟上。 */}
+        <fieldset
+          disabled={readOnly}
+          style={{
+            border: 0,
+            margin: 0,
+            minWidth: 0,
+            padding: "20px 22px",
+            background: colors.paper
+          }}
+        >
+          {readOnly && (
+            <div
+              data-testid="quiz-authoring-readonly-notice"
+              style={{
+                marginBottom: "16px",
+                padding: "10px 14px",
+                border: `1px solid ${colors.line}`,
+                borderLeft: `3px solid ${colors.amber}`,
+                background: "#fff",
+                fontSize: "13px",
+                color: colors.ink
+              }}
+            >
+              這是別人的教案，題目無法修改。要拿來上課或改題，請先按「存到我的帳號」複製一份。
+            </div>
+          )}
           {draft.questions.length === 0 && (
             <div
               style={{
@@ -376,7 +415,7 @@ export default function QuizAuthoringDialog({
               {validation.errors.filter(error => error.indexOf("第 ") !== 0).join(" ")}
             </div>
           )}
-        </div>
+        </fieldset>
 
         <footer
           style={{
@@ -391,16 +430,18 @@ export default function QuizAuthoringDialog({
           }}
         >
           <button type="button" className="btn btn-default" onClick={onClose}>
-            取消
+            {readOnly ? "關閉" : "取消"}
           </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={save}
-            disabled={validation.errors.length > 0}
-          >
-            儲存題目
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={save}
+              disabled={validation.errors.length > 0}
+            >
+              儲存題目
+            </button>
+          )}
         </footer>
       </section>
     </div>

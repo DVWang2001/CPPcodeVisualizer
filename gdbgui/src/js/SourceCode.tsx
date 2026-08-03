@@ -161,6 +161,7 @@ class SourceCode extends React.Component<{}, State> {
   panelZoneId: string | null = null;
   panelDomNode: HTMLDivElement | null = null;
   annotWidget: any = null;
+  annotWidgetDom: HTMLElement | null = null;
   annotWidgetLine: number | null = null;
 
   // Column the ✎ widget anchors to on a line: at the `//@` start if present,
@@ -423,7 +424,13 @@ class SourceCode extends React.Component<{}, State> {
       // ✎ widget: reveal on ANY part of a line the mouse is over (content or gutter).
       // When the mouse is over the widget itself, target.position is null, so the
       // widget stays put on its line (and remains clickable).
-      if (pos && this.annotWidget && this.annotWidgetLine !== pos.lineNumber) {
+      // 別人的教案不顯示 ✎：留著會是一個點了沒反應的假入口。
+      // content widget 的 DOM 節點是常駐的，只把位置設 null 仍會留在 DOM 裡，
+      // 所以直接把節點藏掉，狀態才明確。
+      if (this.isReadOnlyLesson()) {
+        if (this.annotWidgetDom) this.annotWidgetDom.style.display = "none";
+      } else if (pos && this.annotWidget && this.annotWidgetLine !== pos.lineNumber) {
+        if (this.annotWidgetDom) this.annotWidgetDom.style.display = "";
         this.annotWidgetLine = pos.lineNumber;
         this.editorInstance.layoutContentWidget(this.annotWidget);
       }
@@ -451,6 +458,7 @@ class SourceCode extends React.Component<{}, State> {
     // hovered line; clicking it opens that line's annotation panel.
     {
       const dom = document.createElement("span");
+      this.annotWidgetDom = dom;
       dom.className = "gdbgui-annot-edit-glyph";
       dom.title = "編輯此行註釋 (guide / TTS / layout)";
       dom.style.pointerEvents = "auto";
@@ -752,8 +760,21 @@ class SourceCode extends React.Component<{}, State> {
   };
 
   /** Open the inline view-zone panel for a line, pre-filled from that line's //@ annotation. */
+  /**
+   * 目前載入的是別人的教案嗎？
+   *
+   * 只有「從教案庫載入、而且不是自己的」才算。currentLessonId 為 null 表示是
+   * 匯入或全新的工作區，那本來就該能編輯。存到自己的帳號（fork）之後
+   * currentLessonIsMine 會變 true，編輯就解鎖。
+   */
+  isReadOnlyLesson = (): boolean =>
+    this.currentLessonId !== null && !this.currentLessonIsMine;
+
   openLinePanel = (lineNum: number) => {
     if (this.liveQuizVersionLock) return;
+    // 別人的教案不提供 //@ 指導編輯。內容本來就以註解形式寫在原始碼裡看得見，
+    // 所以關掉編輯入口不會藏住任何資訊。
+    if (this.isReadOnlyLesson()) return;
     if (!this.editorInstance || !this.monaco) return;
     this.closeLinePanel();
     const model = this.editorInstance.getModel();
@@ -1690,7 +1711,11 @@ class SourceCode extends React.Component<{}, State> {
                 disabled={this.liveQuizVersionLock}
                 data-testid="quiz-authoring-open"
                 className="btn btn-default btn-sm"
-                title="編輯播放時自動出現的課堂單選題"
+                title={
+                  this.isReadOnlyLesson()
+                    ? "檢視這篇教案的課堂題目（別人的教案不能修改）"
+                    : "編輯播放時自動出現的課堂單選題"
+                }
                 style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
                 課堂題目
               </button>
@@ -1757,6 +1782,7 @@ class SourceCode extends React.Component<{}, State> {
           )}
           {(this.state as any).showQuizAuthoring && (
             <QuizAuthoringDialog
+              readOnly={this.isReadOnlyLesson()}
               quiz={this.lessonQuizDraft}
               sourceCode={this.editorInstance?.getValue?.() || value}
               sourceFile={
