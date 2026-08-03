@@ -36,6 +36,10 @@ import {
 
 type State = any;
 
+// 空白編輯器顯示的預設程式。存檔路徑也要看它，才擋得住「開了編輯器就按儲存」
+// 產出的一堆 Hello World 教案。
+const DEFAULT_TEMPLATE = `#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello, World!" << endl;\n    return 0;\n}\n`;
+
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -624,7 +628,7 @@ class SourceCode extends React.Component<{}, State> {
   };
 
   get_monaco_value(source_code_obj: any, num_lines: any) {
-    const defaultTemplate = `#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello, World!" << endl;\n    return 0;\n}\n`;
+    const defaultTemplate = DEFAULT_TEMPLATE;
     const fn = this.state.fullname_to_render;
     const isDefaultFile = !!(fn && fn.includes("default_hello_"));
 
@@ -1382,6 +1386,13 @@ class SourceCode extends React.Component<{}, State> {
       this.setState({ showQuizAuthoring: true } as any);
       return;
     }
+    // 開了編輯器直接按儲存 = 發布一篇 Hello World；教案庫裡大部分垃圾都是這樣來的。
+    // ponytail: 只比對預設模板。不擋空白——空白教案是 lesson-version 明確支援的情況。
+    if ((this.editorInstance?.getValue?.() || "").trim() === DEFAULT_TEMPLATE.trim()) {
+      window.alert("這還是預設的範例程式。請先寫下自己的程式碼，或從教案庫載入一篇教案，再儲存。");
+      return;
+    }
+
     const suggested = this.currentLessonTitle || "我的教案";
     const title = window.prompt("教案標題", suggested);
     if (title === null) return;
