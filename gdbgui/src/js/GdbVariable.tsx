@@ -12,6 +12,7 @@ import GdbApi from "./GdbApi";
 import CopyToClipboard from "./CopyToClipboard";
 import Actions from "./Actions";
 import { global_variable } from "./global_variable";
+import { looksUnconstructed } from "./containerGuard";
 
 /**
  * Simple object to manage fetching of child variables. Maintains a queue of parent expressions
@@ -675,7 +676,17 @@ class GdbVariable extends React.Component {
     obj.show_children_in_ui = true;
     // update store
     store.set("expressions", expressions);
-    if (obj.numchild && obj.children.length === 0) {
+    if (looksUnconstructed(obj.value)) {
+      // 尚未建構完成的容器：展開它會讓 GDB 陷入無限迴圈（見 containerGuard.ts）。
+      // 值本身照常顯示，只是不往下展開。
+      obj.show_children_in_ui = false;
+      store.set("expressions", expressions);
+      Actions.add_console_entries(
+        `「${obj.expression}」還沒有建構完成（${obj.value}），` +
+          `展開它會讓除錯器卡死，因此略過。往下執行一行之後就能正常展開。`,
+        constants.console_entry_type.STD_ERR
+      );
+    } else if (obj.numchild && obj.children.length === 0) {
       // need to fetch child data
       ChildVarFetcher.fetch_children(gdb_var_name, obj.expr_type);
     } else {
@@ -745,7 +756,13 @@ class GdbVariable extends React.Component {
         if (parseInt(changelist["has_more"]) === 1 && "name" in changelist) {
           // already retrieved children of obj, but more fields were added.
           // Re-fetch the object from gdb
-          ChildVarFetcher.fetch_children(changelist["name"], obj.expr_type);
+          //
+          // 同一道防線：每次步進都會走到這裡，尚未建構的容器在這條路徑上展開
+          // 一樣會卡死 GDB。這裡不寫 console——每個停駐點都寫會洗版。
+          const value = "value" in changelist ? changelist["value"] : obj.value;
+          if (!looksUnconstructed(value)) {
+            ChildVarFetcher.fetch_children(changelist["name"], obj.expr_type);
+          }
         }
         if ("new_children" in changelist) {
           let new_children = changelist.new_children.map((child_obj: any) =>
