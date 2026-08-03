@@ -13,13 +13,40 @@ const BUNDLE = JSON.parse(
   readFileSync(path.resolve(__dirname, '../../examples/cpp/c_live_quiz.gdbgui.json'), 'utf8')
 );
 
-async function register(page: Page, prefix: string): Promise<void> {
+async function register(page: Page, prefix: string): Promise<string> {
   const username = `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   await page.goto('/register');
   await page.fill('#username', username);
   await page.fill('#display_name', 'RO');
   await page.fill('#password', 'readonly-test-1234');
   await Promise.all([page.waitForURL(/\/(edit|u\/)/), page.click('#submit')]);
+  return username;
+}
+
+/**
+ * 這些測試跑在正式站上，所以自己收拾：把留下的教案刪掉。
+ *
+ * 不導覽——page.request 共用 cookie，從任何頁面都送得出去。以前這裡先
+ * goto('/edit') 拿 token，結果被編輯器的 beforeunload 攔成 ERR_ABORTED，
+ * 清理反而失敗、垃圾照樣留下。token 改由呼叫端在編輯器裡先取好。
+ */
+async function cleanup(page: Page, token: string, ids: number[]): Promise<void> {
+  for (const id of ids) {
+    if (!Number.isInteger(id) || id <= 0) continue;
+    await page.request.delete(`/api/lessons/${id}`, { headers: { 'x-csrftoken': token } });
+  }
+}
+
+/**
+ * 編輯器頁面無條件掛了 onbeforeunload（GlobalEvents.ts），離開 /edit 一定會跳
+ * 確認框。不 accept 的話瀏覽器會取消導覽（ERR_ABORTED）。
+ */
+function handleDialogs(page: Page, promptAnswer: string): void {
+  page.on('dialog', async (d) => {
+    if (d.type() === 'prompt') return d.accept(promptAnswer);
+    if (d.type() === 'beforeunload') return d.accept();
+    await d.dismiss();
+  });
 }
 
 async function openEditor(page: Page, url: string): Promise<void> {
@@ -113,15 +140,18 @@ test('存到我的帳號會複製一份，並且看得出來已經換到自己�
   const reader = await browser.newContext();
   const page = await reader.newPage();
 
+  const forkTitle = `副本測試 ${Date.now()}`;
   const alerts: string[] = [];
   page.on('dialog', async (d) => {
-    if (d.type() === 'prompt') return d.accept('我的副本');
+    if (d.type() === 'prompt') return d.accept(forkTitle);
+    if (d.type() === 'beforeunload') return d.accept();
     alerts.push(d.message());
     await d.dismiss();
   });
 
   await register(page, 'fk');
   await openEditor(page, `/edit?lesson=${id}`);
+  const token = await page.evaluate(() => (window as any).initial_data.csrf_token);
 
   // 別人的教案：即時課堂按鈕不在
   await expect(page.getByTestId('live-quiz-open')).toHaveCount(0);
@@ -142,5 +172,57 @@ test('存到我的帳號會複製一份，並且看得出來已經換到自己�
   await page.mouse.move(400, 300);
   await page.waitForTimeout(800);
   await expect(page.locator('.gdbgui-annot-edit-glyph')).toBeVisible();
+
+  await cleanup(page, token, [Number(lessonParam)]);
+  await reader.close();
+});
+
+test('存到我的帳號之後，教案要出現在自己的個人檔案頁', async ({ browser }) => {
+  test.setTimeout(180_000);
+
+  const owner = await browser.newContext();
+  const ownerPage = await owner.newPage();
+  const originalId = await seedLesson(ownerPage);
+  await owner.close();
+
+  const reader = await browser.newContext();
+  const page = await reader.newPage();
+  // 標題帶時間戳：跑在正式站上，固定字串會和先前留下的同名教案撞在一起，
+  // 讓斷言變成 strict mode violation。
+  const forkTitle = `個人檔案可見性測試 ${Date.now()}`;
+  handleDialogs(page, forkTitle);
+
+  const username = await register(page, 'pf');
+
+  // 存之前：個人檔案頁應該是空的
+  await page.goto(`/u/${username}`);
+  await expect(page.getByTestId('profile-lesson')).toHaveCount(0);
+
+  await openEditor(page, `/edit?lesson=${originalId}`);
+  const token = await page.evaluate(() => (window as any).initial_data.csrf_token);
+  await page.getByTestId('save-lesson-to-account').click();
+  await page.waitForTimeout(4000);
+
+  const forkedId = Number(new URL(page.url()).searchParams.get('lesson'));
+  expect(forkedId, 'fork 應該產生一個新的教案 id').not.toBe(originalId);
+
+  // 存之後：個人檔案頁要看得到它，而且連結指向那份副本
+  await page.goto(`/u/${username}`, { waitUntil: 'domcontentloaded' });
+  const rows = page.getByTestId('profile-lesson');
+  await expect(rows, '存到我的帳號之後，個人檔案頁必須看得到這篇教案').toHaveCount(1);
+  await expect(rows.first()).toContainText(forkTitle);
+  await expect(rows.first().locator('a.row-title')).toHaveAttribute(
+    'href',
+    new RegExp(`lesson=${forkedId}\\b`)
+  );
+
+  // 教案庫也要找得到。用搜尋而不是直接看首頁第一頁：首頁有分頁，
+  // 站上教案一多，新的那篇不保證落在第一頁。
+  await page.goto(`/?q=${encodeURIComponent(forkTitle)}`);
+  await expect(
+    page.getByTestId('lesson-browse-title').filter({ hasText: forkTitle })
+  ).toBeVisible();
+
+  await cleanup(page, token, [forkedId]);
   await reader.close();
 });
