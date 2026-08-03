@@ -129,7 +129,16 @@ const GdbApi = {
       if (packet && !Array.isArray(packet) && typeof packet === "object" && "data" in packet) {
         const expected = store.get("run_token");
         if (expected !== null && packet.run_token !== expected) {
-          // Stale response from a previous run — discard silently.
+          // Stale response from a previous run — discard.
+          //
+          // 不再靜默：run_token 是 debug session 層級的單一值，卻被最後一個
+          // 送命令的 client 覆寫（app.py 的 debug_session.run_token = client_token）。
+          // 同一個帳號掛著兩個 client 時，回應會被蓋上其中一個的章，另一個就把
+          // 完全合法的回應丟掉，畫面卡住卻沒有任何線索。
+          console.warn(
+            `[gdb_response] 丟棄回應：run_token 不符 (收到 ${packet.run_token} / 預期 ${expected})，` +
+              `request_id=${packet.request_id}`
+          );
           return;
         }
         response_array = packet.data;

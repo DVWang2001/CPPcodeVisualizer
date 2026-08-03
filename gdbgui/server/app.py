@@ -387,7 +387,16 @@ def run_gdb_command(message: Dict[str, str]):
         if client_token != expected_token:
             # 每次按下 start 時都會產生不同的雜湊值 (run_token)，
             # 若收到不同次編譯時舊的指令請求，直接忽略，避免讓使用者連線階段過期
-            logger.info(f"Ignoring stale command with token {client_token}, expected {expected_token}")
+            #
+            # warning 而非 info：丟棄命令對前端是完全靜默的——它會一直等到自己的
+            # 10 秒逾時（GdbApi.waiting_for_response），使用者只看到播放莫名卡住。
+            # 這件事發生時一定要在伺服器 log 看得見。
+            logger.warning(
+                "Dropped stale gdb command: token=%r expected=%r cmds=%r",
+                client_token,
+                expected_token,
+                message.get("cmd"),
+            )
             return
         debug_session.run_token = client_token
 
