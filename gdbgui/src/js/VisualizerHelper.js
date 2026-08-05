@@ -20,6 +20,7 @@ import {
   disarmFastForward,
   FAST_FORWARD_STEP_LIMIT,
 } from "./fastForward";
+import { buildJumpCommand } from "./fastForwardJump";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
@@ -413,27 +414,10 @@ class VisualizerHelper {
     const armed = getFastForward();
     if (!armed) return false;
 
-    // 展示到一半關掉自動播放＝要中止快轉；不然畫面會停在無聲狀態沒人推進
-    if (!store.get("autoplay_enabled")) {
-      console.warn("[fast] 自動播放已關閉，解除快轉");
-      disarmFastForward();
-      return false;
-    }
-
-    const decision = decideFastState(lineNum, VisualizerHelper._visit_count(lineNum), armed);
-    if (decision === "disarm") {
-      if (armed.steps > FAST_FORWARD_STEP_LIMIT) {
-        console.warn(`[fast] 已達 ${FAST_FORWARD_STEP_LIMIT} 步安全上限，強制解除快轉（第 ${armed.line} 行 @${armed.target} 可能永遠達不到）`);
-      }
-      disarmFastForward();
-      return false; // 落地：這一行照常唸自己的 TTS，行為等同 [next]
-    }
-
-    // hold：靜音步進。不設字幕、不進 TTS 播放清單，直接排下一步。
-    armed.steps++;
-    if (typeof window.gdbgui_execute_autoplay_command === 'function') {
-      window.gdbgui_execute_autoplay_command('next');
-    }
+    // 跳躍在途中。步進整段都發生在 GDB 行程內，正常情況這裡收不到任何停駐點，
+    // 但萬一有（例如使用者手動按了下一步），只能靜靜吃掉——絕不能自己再送
+    // 命令推進，那會讓執行位置跑過落地點，而落地點是回不去的。
+    console.warn(`[fast] 跳躍途中收到第 ${lineNum} 行的停駐點，已忽略`);
     return true;
   }
 
@@ -468,10 +452,17 @@ class VisualizerHelper {
       return false;
     }
 
-    console.log(`[fast] 武裝：第 ${lineNum} 行，目標第 ${target} 次造訪（目前第 ${visitCount} 次）`);
+    console.log(`[fast] 一次跳：第 ${lineNum} 行，目標第 ${target} 次造訪（目前第 ${visitCount} 次）`);
+    // armed 在這裡只當「跳躍進行中」的旗標：讓 anim 零延遲、讓途中萬一冒出來的
+    // 停駐點被 _fast_forward_pause 吃掉。真正的終止條件在 GDB 行程內。
     armFastForward(lineNum, target);
-    // 武裝當下這一次停駐也算快轉的一步，同樣靜音步進
-    return VisualizerHelper._fast_forward_pause(lineNum);
+    // 整段步進推進 GDB 內部：一次 round trip，中間過程不存在而非被藏起來。
+    // 落地後的容器/locals 由附帶的 refresh 命令帶回，呼叫圖由 blob 補齊
+    // （見 process_gdb_response 的 blob 攔截）。
+    GdbApi.run_command_and_refresh_state(
+      buildJumpCommand(lineNum, target - visitCount)
+    );
+    return true; // 這一次不播 TTS，落地那一次才播
   }
 
   static async play_tts(frame_line, funcName) {

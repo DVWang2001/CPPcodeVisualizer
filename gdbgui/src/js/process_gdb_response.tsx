@@ -18,6 +18,8 @@ import GdbVariable from "./GdbVariable";
 import Modal from "./GdbguiModal";
 import Actions from "./Actions";
 import { processFeatures } from "./processFeatures";
+import { extractJumpBlob, applyJumpBlob } from "./fastForwardJump";
+import { disarmFastForward } from "./fastForward";
 
 const process_gdb_response = function (response_array: any) {
   /**
@@ -296,6 +298,28 @@ const process_gdb_response = function (response_array: any) {
             }
           }
         } catch (_) {}
+        continue; // 不送到 console 顯示
+      }
+      // 攔截快轉 blob：一次跳沿途的所有堆疊與逐行計數都從這裡回來。
+      // 中間過程沒有任何停駐點送到前端，所以落地的 paused 事件也要自己補。
+      const _ff = extractJumpBlob(_pl);
+      if (_ff) {
+        const landing: any = applyJumpBlob(_ff);
+        if (!_ff.landed) {
+          // 撞上限或程式先結束了。狀態仍然是對的（走過的都灌進去了），
+          // 只是沒停在教案想要的位置——照常播落地那一行，不要靜默。
+          console.warn(`[fast] 未達目標就停下（${_ff.steps} 步），落地照常播放`);
+        }
+        disarmFastForward();
+        if (landing) {
+          store.set("call_graph_updated", Date.now());
+          Actions.inferior_program_paused({
+            fullname: landing.fullname || store.get("fullname_to_render"),
+            line: String(landing.line),
+            func: landing.func,
+            addr: landing.addr,
+          });
+        }
         continue; // 不送到 console 顯示
       }
       Actions.add_console_entries(

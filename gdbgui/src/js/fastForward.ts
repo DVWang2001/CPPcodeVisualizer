@@ -123,42 +123,32 @@ export function isFastForwarding(): boolean {
   return getFastForward() !== null;
 }
 
-// ── ④ 畫面凍結 ──────────────────────────────────────────────
-// 快轉的成本是 N 次 GDB round trip，消不掉；但「看得到中間過程」可以消掉。
-// 武裝期間把 #middle 藏起來，落地才一次現形，觀感就是一瞬間跳好。
-// 狀態累積完全照舊（容器、呼叫圖、造訪次數還是一步一步走），只是不畫。
+// ── ④ 跳躍中的保險絲 ────────────────────────────────────────
+// 武裝狀態現在只代表「一次跳在途中」（見 fastForwardJump.ts）：整段步進發生在
+// GDB 行程內，正常情況幾百毫秒內就會有 blob 回來解除。
 //
-// ponytail: 只凍結畫面，沒有減少工作量。若步數大到連凍結畫面都嫌久，
-// 下一步是在快轉期間跳過 graphics_instruction 的容器求值（呼叫圖標籤仍要留），
-// 那才是每一步真正的成本所在。
+// 但 blob 是唯一的解除來源——GDB 掛掉、命令送壞、輸出被截斷，armed 就會永遠卡著，
+// 而 armed 期間 _fast_forward_pause 會吃掉每一個停駐點，等於播放靜默死亡。
+// 所以武裝一定要有時限。逾時解除的後果只是「這次沒跳成功」，可以接受。
 
-/**
- * 凍結的保險絲。GDB 卡住時不會再有停駐點來解除快轉，畫面就永遠是空的，
- * 而使用者在展示現場沒有辦法自救——所以凍結本身也要有上限。
- */
-const FREEZE_TIMEOUT_MS = 20000;
-let _freezeTimer: ReturnType<typeof setTimeout> | null = null;
-
-/** 只碰 body 的 class，不碰 store：凍結不該引發任何 React 重繪。 */
-function freezePaint(frozen: boolean): void {
-  if (typeof document === "undefined" || !document.body) return;
-  document.body.classList.toggle("fast-forwarding", frozen);
-}
+const JUMP_TIMEOUT_MS = 20000;
+let _jumpTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function armFastForward(line: number, target: number): FastForwardState {
   const state: FastForwardState = { line, target, steps: 0 };
   (global_variable as any).__fast_forward = state;
-  freezePaint(true);
-  if (_freezeTimer) clearTimeout(_freezeTimer);
-  _freezeTimer = setTimeout(disarmFastForward, FREEZE_TIMEOUT_MS);
+  if (_jumpTimer) clearTimeout(_jumpTimer);
+  _jumpTimer = setTimeout(() => {
+    console.warn("[fast] 跳躍逾時，未收到 blob，解除武裝");
+    disarmFastForward();
+  }, JUMP_TIMEOUT_MS);
   return state;
 }
 
 export function disarmFastForward(): void {
   (global_variable as any).__fast_forward = null;
-  if (_freezeTimer) {
-    clearTimeout(_freezeTimer);
-    _freezeTimer = null;
+  if (_jumpTimer) {
+    clearTimeout(_jumpTimer);
+    _jumpTimer = null;
   }
-  freezePaint(false);
 }

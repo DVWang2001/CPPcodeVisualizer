@@ -154,23 +154,14 @@ describe("快轉全域狀態", () => {
     expect(getFastForward()).toBeNull();
   });
 
-  test("武裝時凍結畫面，解除時還原", () => {
-    expect(document.body.classList.contains("fast-forwarding")).toBe(false);
-    armFastForward(10, 4);
-    expect(document.body.classList.contains("fast-forwarding")).toBe(true);
-    disarmFastForward();
-    expect(document.body.classList.contains("fast-forwarding")).toBe(false);
-  });
-
-  test("GDB 卡住沒有停駐點時，凍結會自己逾時解除", () => {
+  test("blob 沒回來時武裝會自己逾時解除", () => {
     jest.useFakeTimers();
     try {
       armFastForward(10, 4);
-      expect(document.body.classList.contains("fast-forwarding")).toBe(true);
+      expect(isFastForwarding()).toBe(true);
       jest.advanceTimersByTime(20000);
-      // 沒有這條保險絲，畫面會永遠停在空白，現場沒辦法自救
+      // 沒有這條保險絲，armed 會永遠卡著，而 armed 期間每個停駐點都被吃掉
       expect(isFastForwarding()).toBe(false);
-      expect(document.body.classList.contains("fast-forwarding")).toBe(false);
     } finally {
       jest.useRealTimers();
     }
