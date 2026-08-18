@@ -33,7 +33,9 @@ services:
       # 隔離建立不起來就拒絕啟動／拒絕編譯，絕不默默降級成「所有人共用 root」。
       - GDBGUI_REQUIRE_ISOLATION=1
       # 全域併發上限（架構 ⑤）：200 個帳號的尖峰若無上限，一堂課就能耗盡主機資源。
-      - GDBGUI_MAX_SESSIONS=24
+      # 這個值綁定下面的 cpus——正式機目前只有 1 core，每個 session 都是一個真的
+      # GDB 行程在單步，開太多不是變慢而是全班一起卡死。主機升規格時兩個值一起調。
+      - GDBGUI_MAX_SESSIONS=4
       - GDBGUI_SESSION_IDLE_SECONDS=3600
       # 必須是學生手機可直接連線的網址；localhost 只會指向學生自己的手機。
       - MOBILE_JOIN_BASE_URL=${MOBILE_JOIN_BASE_URL:?Set MOBILE_JOIN_BASE_URL to a phone-reachable URL such as http://192.168.1.20:5000}
@@ -57,7 +59,10 @@ services:
     # sandbox/wrapper.sh 的 ulimit 負責。
     mem_limit: 3g
     pids_limit: 512
-    cpus: 2.0
+    # 不能超過主機實際核心數，否則 daemon 直接拒絕建立容器（"range of CPUs is from
+    # 0.01 to 1.00"）。正式機目前是 1 core，所以這裡就是 1.0——這個值是實際硬體的
+    # 描述，不是願望；換機器才改，別為了單一台機器加沒版控的 override 檔。
+    cpus: 1.0
 
 volumes:
   # 使用者資料庫 + SECRET_KEY。`docker compose down` 不會刪 named volume，
