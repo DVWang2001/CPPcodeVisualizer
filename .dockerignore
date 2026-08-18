@@ -9,7 +9,6 @@ e2e/Dockerfile
 
 # 論文與簡報素材，執行期用不到
 論文圖片集
-10個經典案例
 screenshots
 images
 *.pptx
