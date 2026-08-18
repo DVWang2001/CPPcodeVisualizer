@@ -52,6 +52,25 @@ app = Flask(__name__, template_folder=str(TEMPLATE_DIR), static_folder=str(STATI
 Compress(
     app
 )  # add gzip compression to Flask. see https://github.com/libwilliam/flask-compress
+
+
+def _static_max_age(filename):
+    """static/vendor/ 底下的東西可以無限期快取，其餘不行。
+
+    vendor/ 是釘死版本的第三方檔案（光 monaco-editor 就 13MB）。沒有 max-age 時
+    Flask 只給 ETag，瀏覽器每次開頁都要為每個檔案送一次條件式請求換一個 304——
+    位元組省下來了，但幾百次往返全打在單核機器的 Python 伺服器上，一個班同時進來
+    就是它在忙這個。這些檔案的內容永遠不會變，換版本等於換路徑。
+
+    app 自己的 JS 不能比照辦理：`main.js?_={{version}}` 的 version 只在發版時變，
+    重新 build 不變，長期快取會讓學生拿到舊的前端。
+    """
+    if filename and filename.startswith("vendor/"):
+        return 31536000  # 1 年，這是 Cache-Control 允許的實務上限
+    return None  # 其餘維持原本的 ETag 條件式請求
+
+
+app.get_send_file_max_age = _static_max_age
 app.register_blueprint(blueprint)
 app.register_blueprint(auth.blueprint)
 app.register_blueprint(live_quiz.blueprint)
