@@ -7,7 +7,7 @@ vendor/ 底下 15MB 的第三方檔案每次開頁都做條件式請求，是單
 
 
 def test_vendor_assets_are_cached_for_a_year(flask_app):
-    resp = flask_app.test_client().get("/static/vendor/js/socket.io.js")
+    resp = flask_app.test_client().get("/static/vendor/js/jquery.min.js")
 
     assert resp.status_code == 200
     assert "max-age=31536000" in resp.headers["Cache-Control"]
