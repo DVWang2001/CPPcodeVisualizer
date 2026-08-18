@@ -15,7 +15,9 @@ services:
     # 屬於資料庫（子專案 A），scratch 裡不該有任何需要保留的東西。
     tmpfs:
       # exec 是必要的：使用者編譯出來的程式就在這裡執行，Docker tmpfs 預設 noexec。
-      - /srv/gdbgui-scratch:exec,mode=0755,size=512m
+      # size 直接吃 RAM（tmpfs 沒有後備儲存），而且算進下面的 mem_limit。正式機
+      # 只有 1.9G，512m 等於先把四分之一的記憶體讓給暫存檔。
+      - /srv/gdbgui-scratch:exec,mode=0755,size=256m
     volumes:
       # 唯一的持久儲存：使用者資料庫與 Flask 的 SECRET_KEY。
       #
@@ -57,7 +59,10 @@ services:
     # CAP_SETGID，useradd/chown 需要 CAP_CHOWN，清理殘留行程需要 CAP_KILL。
     # 資源上限（架構 ⑤）。單一 session 的 CPU/記憶體/檔案上限另由
     # sandbox/wrapper.sh 的 ulimit 負責。
-    mem_limit: 3g
+    # 正式機實體記憶體 1.9G。上限設得比實體還大等於沒設——真正動手的會是主機的
+    # OOM killer，它挑的是「最肥的行程」而不是「越界的容器」，很可能連 sshd 一起
+    # 帶走。留約 700M 給主機與 docker daemon。含上面那 256m tmpfs 在內。
+    mem_limit: 1200m
     pids_limit: 512
     # 不能超過主機實際核心數，否則 daemon 直接拒絕建立容器（"range of CPUs is from
     # 0.01 to 1.00"）。正式機目前是 1 core，所以這裡就是 1.0——這個值是實際硬體的
