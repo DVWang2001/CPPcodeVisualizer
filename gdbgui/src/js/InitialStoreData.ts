@@ -19,7 +19,12 @@ const initial_store_data = {
   gdb_pid: undefined,
   // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'initial_data'.
   gdb_command: initial_data.gdb_command,
-  can_fetch_register_values: true, // set to false if using Rust and gdb v7.12.x (see https://github.com/cs01/gdbgui/issues/64)
+  // 這個 fork 把 Registers 面板從 UI 拿掉了（RightSidebar 只剩 import，沒有 render），
+  // 但 refresh_state_for_gdb_pause 還是每次暫停都送 -data-list-register-values x：
+  // 實測 114 個暫存器、9,456 bytes，每按一次單步一份，抓回來解析完沒有任何元件讀它。
+  // 上游預設 true 是因為它有暫存器面板；我們沒有，所以預設關掉。
+  // （原註解：set to false if using Rust and gdb v7.12.x，見 gdbgui#64）
+  can_fetch_register_values: false,
   show_settings: false,
 
   debug_in_reverse: false,
