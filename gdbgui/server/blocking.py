@@ -52,6 +52,7 @@ timeout 與逾時後的 kill 也還是由 `subprocess.run` 自己做，語意不
 import os
 import subprocess
 import sys
+import time
 
 from .sandbox import jail_manager
 
@@ -93,6 +94,24 @@ def call(fn, *args, **kwargs):
     from eventlet import tpool
 
     return tpool.execute(fn, *args, **kwargs)
+
+
+def sleep(seconds: float) -> None:
+    """睡一下，但把 hub 讓給別人。
+
+    有 eventlet hub 時用 `eventlet.sleep`：這個 greenlet 停住，其他請求與 GDB
+    輸出轉發照跑。用 `time.sleep` 會停住整個 OS 執行緒——在這個沒有 monkey_patch
+    的專案裡，那就是停住**所有**使用者。
+
+    沒有 hub 時（pytest）退回 `time.sleep`，語意相同。
+    """
+    if not eventlet_hub_running():
+        time.sleep(seconds)
+        return
+
+    import eventlet
+
+    eventlet.sleep(seconds)
 
 
 def run(argv, **kwargs) -> "subprocess.CompletedProcess":

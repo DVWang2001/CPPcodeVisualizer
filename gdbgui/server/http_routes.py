@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import html as _html
 import json
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 from werkzeug.utils import secure_filename
 
@@ -136,6 +138,79 @@ def _run_confined(jail, argv, **kwargs):
     （理由與量測見 blocking.py）。argv 沒有任何改變，confine() 的隔離照舊。
     """
     return blocking.run(jail_manager.confine(jail, list(argv)), **kwargs)
+
+
+# ── 編譯的併發控制與優先權 ──────────────────────────────────────────────────
+#
+# 編譯是這個服務唯一昂貴的動作。本機實測（1 vCPU / 1.9 GB）：
+#
+#   一次 g++            CPU 0.62 s，峰值 RSS 79 MB
+#   GDB 單步一次        CPU 0.015 s
+#
+# 也就是說「除錯」幾乎免費，成本全部集中在一堂課開始時所有人同時按「開始」的
+# 那一下。40 個學生就是 25 CPU 秒與 3.1 GB 的瞬間需求，而編譯路徑原本完全沒有
+# 節流：每個請求直接 spawn 一個 g++。
+#
+# 兩道措施，各自解決不同的問題：
+#
+#   1. BoundedSemaphore —— 框住**記憶體**峰值。峰值是「並行數 × 79 MB」，跟機器
+#      多大無關，所以這條在任何規格上都需要。
+#   2. nice -n 19 —— 保護**已經在除錯的人**。實測 4 個編譯同時跑時，單步延遲從
+#      17 ms 惡化到 77 ms；加上 nice 之後回到 15 ms，也就是完全感覺不到。
+#      （`chrt --batch` 一併測過：沒有效果，77 ms。SCHED_BATCH 只改搶佔粒度，
+#      不改 CFS 權重。）
+#
+#: 同時最多幾個 g++。編譯是純 CPU（0.62 CPU 秒 / 0.63 牆鐘秒，沒有 I/O 等待），
+#: 所以合理值就是核心數；再多只會一起變慢並且等比放大記憶體峰值。
+COMPILE_MAX_CONCURRENT = int(os.environ.get("GDBGUI_MAX_CONCURRENT_COMPILES") or 4)
+
+#: 排隊等不到名額就放棄。4 個名額、40 人、每次 0.62 秒 → 最壞約 6 秒，所以 60 秒
+#: 只有在真的出事時才會踩到（例如某個編譯卡住沒有被 timeout 收掉）。
+COMPILE_QUEUE_TIMEOUT_SECONDS = 60
+
+_compile_semaphore = threading.BoundedSemaphore(COMPILE_MAX_CONCURRENT)
+
+
+@contextlib.contextmanager
+def _compile_slot():
+    """排隊等一個編譯名額。
+
+    刻意跟上面 prerun 的 `acquire(blocking=False)` → 立刻回 busy **不一樣**：
+    一堂課 40 個人同時按「開始」是正常流量，不是攻擊，回 busy 等於叫學生自己
+    重試。prerun 那條規則防的是有人惡意連打，這條要服務的是尖峰。
+
+    為什麼是輪詢而不是 `acquire(blocking=True)`：這個專案沒有 monkey_patch
+    （理由見 blocking.py 檔頭），所以 threading 的鎖在 greenlet 裡是真的阻塞
+    OS 執行緒——一個人排隊就會停住所有人的請求與 GDB 輸出轉發。
+
+    為什麼也不放進 tpool 裡等：那會佔住執行緒池名額，40 個人排隊就把池子
+    （EVENTLET_THREADPOOL_SIZE = MAX_SESSIONS + 8）吃光，換成別的東西餓死。
+
+    排隊的 greenlet 只佔記憶體，不佔 CPU 也不佔執行緒。50 ms 的輪詢粒度對一次
+    620 ms 的編譯可以忽略。
+    """
+    deadline = time.monotonic() + COMPILE_QUEUE_TIMEOUT_SECONDS
+    while not _compile_semaphore.acquire(blocking=False):
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                "伺服器正忙（等待編譯逾時），請稍候再試一次"
+            )
+        blocking.sleep(0.05)
+    try:
+        yield
+    finally:
+        _compile_semaphore.release()
+
+
+def _run_compile(jail, argv, **kwargs):
+    """`_run_confined` 的編譯版：先排隊拿名額，再以最低優先權執行。
+
+    `nice` 走 PATH 解析，跟 argv[0] 的 `g++` 一樣（見 jail_manager 的 PATH 說明）。
+    調低自己的優先權不需要任何 capability——只有調高才需要 CAP_SYS_NICE——所以
+    這在降權後的 session 帳號裡照樣有效。
+    """
+    with _compile_slot():
+        return _run_confined(jail, ["nice", "-n", "19", *argv], **kwargs)
 
 
 # ── 以 session 帳號讀檔（/read_file、/get_last_modified_unix_sec）────────────
@@ -574,7 +649,7 @@ def upload():
             # choose compiler: prefer g++ for .cpp, gcc for .c (can be overridden via config)
             compiler = current_app.config.get("c_compiler") or ("g++" if ext != ".c" else "gcc")
             try:
-                res = _run_confined(
+                res = _run_compile(
                     jail,
                     [compiler, "-g", "-O0", "-no-pie", dest_path, "-o", exec_path],
                     capture_output=True,
@@ -721,7 +796,7 @@ def create_and_upload():
             compile_cmd += [str(_STUB_O)] + _WRAP_FLAGS
 
         try:
-            res = _run_confined(
+            res = _run_compile(
                 jail, compile_cmd,
                 capture_output=True,
                 text=True,
@@ -731,7 +806,7 @@ def create_and_upload():
                 # 若加入 stub 導致失敗（少數情況），降級重試（不含 stub 連結層）
                 if stub_available:
                     logger.warning("[sandbox] compile with stub failed, retrying without link-time stubs")
-                    res2 = _run_confined(
+                    res2 = _run_compile(
                         jail, [compiler, "-g", "-O0", "-no-pie", src_path, "-o", exec_path],
                         capture_output=True, text=True, timeout=30,
                     )
