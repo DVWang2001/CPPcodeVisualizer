@@ -1,0 +1,201 @@
+{
+  "version": "1.0",
+  "project_name": "gdbgui_project",
+  "source_code": "#include <iostream>\n#include <vector>\n#include <queue>\n#include <string>\nusing namespace std;\n// 0=通道  1=牆壁  2=最短路徑  3=BFS 已探索\n\n// ── BFS 尋找最短路徑 ─────────────────────────────────────────────\nbool solveMaze(vector<vector<int>>& maze) {\n    int rows = static_cast<int>(maze.size());\n    int cols = static_cast<int>(maze[0].size());\n    pair<int,int> start = {1, 0};\n    pair<int,int> end   = {rows-2, cols-1};\n\n    queue<pair<int,int>> q;\n    vector<vector<pair<int,int>>> prev(\n        rows, vector<pair<int,int>>(cols, {-1,-1}));\n    vector<vector<bool>> visited(rows, vector<bool>(cols, false));\n\n    q.push(start);\n    visited[start.first][start.second] = true;\n    maze[start.first][start.second] = 3;\n\n    const int dr[] = {-1, 0, 1, 0};\n    const int dc[] = { 0, 1, 0,-1};\n\n    bool found = false;\n    while (!q.empty() && !found) {\n        auto [r, c] = q.front(); q.pop();\n        if (r == end.first && c == end.second) {\n            found = true;\n        } else {\n            for (int d = 0; d < 4; d++) {\n                int nr = r + dr[d], nc = c + dc[d];\n                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols\n                    && maze[nr][nc] == 0 && !visited[nr][nc]) {\n                    visited[nr][nc] = true;\n                    prev[nr][nc] = {r, c};\n                    q.push({nr, nc});\n                    maze[nr][nc] = 3;                          // 標記已探索\n                }\n            }\n        }\n    }\n\n    if (found) {\n        int r = end.first, c = end.second;\n        while (r != start.first || c != start.second) {\n            maze[r][c] = 2;                      // 標記最短路徑\n            auto [pr, pc] = prev[r][c];\n            r = pr; c = pc;\n        }\n        maze[start.first][start.second] = 2;\n    }\n    return found;\n}\n\n// ── 列印迷宮 ──────────────────────────────────────────────────────\nvoid printMaze(const vector<vector<int>>& maze) {\n    for (const auto& row : maze) {\n        for (int cell : row)\n            cout << (cell==1 ? \"██\" : cell==2 ? \"◆◆\" : cell==3 ? \"··\" : \"  \");\n        cout << \"\\n\";\n    }\n}\n\nint main() {\n    int rows, cols;\n    cin >> rows >> cols;\n\n    vector<vector<int>> maze(rows, vector<int>(cols));\n    for (int i = 0; i < rows; i++) {\n        for (int j = 0; j < cols; j++) {\n            cin >> maze[i][j];\n        }\n    }\n\n    cout << \"\\n=== 原始迷宮 ===\\n\";\n    printMaze(maze);\n\n    bool solved = solveMaze(maze);\n\n    cout << \"\\n=== 解答（2=最短路徑  3=已探索）===\\n\";\n    printMaze(maze);\n    cout << (solved ? \"找到最短路徑！\\n\" : \"無解！\\n\");\n    return 0;\n}\n",
+  "line_data": {
+    "20": {
+      "guide": "[speed:1.7] [初始化佇列] q.push(start)，將入口座標 (1,0) 推入佇列\n{q}{maze}",
+      "tts": "[next] BFS 的靈魂是佇列（queue）——先進先出，確保按距離由近到遠探索。把入口座標（1, 0）推入佇列，作為第一個待探索節點。接著看初始化剩餘步驟。 | @2 [speed:2.0] [next] BFS 初始化，起點入列。",
+      "layout": "open:container maze:maze sidebar:20"
+    },
+    "21": {
+      "guide": "[speed:2.0] [已訪問標記] visited[1][0] = true，防止重複入列\n{q}{maze}",
+      "tts": "[continue] 標記起點為已訪問。visited 陣列確保每個格子最多只進入佇列一次，是 BFS 不陷入無限迴圈的關鍵。佇列目前有起點一個元素。 | @2 [next]"
+    },
+    "24": {
+      "guide": "[方向陣列] dr 上(-1)下(+1)，dc 左(-1)右(+1)，共四個探索方向",
+      "tts": "[next] dr 和 dc 定義了上、下、左、右四個方向的行列偏移量。BFS 從每個節點對這四個方向逐一嘗試，找出可以走的未訪問鄰居格子。 | @2 [next]"
+    },
+    "27": {
+      "guide": "[終點旗標] found = false，BFS 尚未找到出口",
+      "tts": "[next] found 旗標記錄 BFS 是否已找到出口。找到終點時設為 true，while 迴圈立即停止，避免繼續探索已知最短路徑之後的冗餘節點。 | @2 [next]"
+    },
+    "28": {
+      "guide": "[speed:1.7] [BFS主迴圈] while 佇列不空且未找到終點，持續波浪式探索\n{q}{maze}",
+      "tts": "[continue] 進入 BFS 主迴圈！每次從佇列前端取出當前座標，標記為已探索（藍色），再把四個方向未訪問的通道加入佇列。注意觀察右側 Container——BFS 如波浪一樣向外擴散，遇到分岔時會同時探索多個方向！ | @2 [speed:2.0] [continue] BFS 主迴圈開始，逐步展開。"
+    },
+    "40": {
+      "guide": "[speed:3.0] [BFS波浪] maze[r][c]=3，標記當前格為已探索（藍色）{maze} {q}",
+      "tts": "[continue]"
+    },
+    "46": {
+      "guide": "[speed:1.7] [路徑回溯] BFS 找到終點，沿 prev 陣列反向追蹤最短路徑\n{maze}",
+      "tts": "[continue] BFS 成功找到出口！觀察 Container——藍色格子是 BFS 探索過的所有分岔。注意有些分岔是死路，BFS 也探索了，但最終只有一條最短路徑。現在執行路徑回溯：從終點沿 prev 陣列追回起點，把每格標記為 2（金黃色）。 | @2 [speed:2.0] [continue] 路徑回溯，標記最短路徑。"
+    },
+    "55": {
+      "guide": "[speed:1.7] [完成！] 最短路徑已標記完畢，觀察 Container 中的金黃色路徑\n{maze}",
+      "tts": "路徑標記完成！觀察右側 Container：藍色是 BFS 探索過的格子，金黃色是最短路徑。這就是 BFS 解迷宮的完整結果！ | @2 [speed:2.0] [continue] 路徑完成。"
+    },
+    "68": {
+      "guide": "[speed:1.8] [main 開始] 讀取迷宮大小 rows、cols",
+      "tts": "[continue] 程式從標準輸入讀取迷宮大小。這個手工設計的 11×11 迷宮，有多個分岔路口，能清楚展示 BFS 如何同時探索多條路徑。迷宮讀取完成後，接下來用 BFS 廣度優先搜尋找出最短路徑。 | @2 [speed:2.0] [continue] 讀取迷宮大小。"
+    },
+    "69": {
+      "guide": "",
+      "tts": "[continue]"
+    },
+    "78": {
+      "guide": "[speed:1.8] [迷宮載入完成] 整數讀入完畢，11×11 地圖已建立，右側 Container 顯示完整迷宮\n{maze}",
+      "tts": "[continue] 迷宮讀取完成！每個格子的 0/1 整數直接讀入二維陣列，0 是通道，1 是牆壁。觀察右側 Container——這張手工設計的 11×11 迷宮有多個分岔路口，能清楚展示 BFS 如何同時探索多條路徑。接下來用 BFS 廣度優先搜尋找出最短路徑！ | @2 [speed:2.0] [continue] 迷宮載入完成。",
+      "layout": "open:container maze:maze sidebar:71"
+    },
+    "81": {
+      "guide": "[speed:1.7] [開始BFS] solveMaze(maze)，右側 Container 顯示完整迷宮 {maze}",
+      "tts": "[continue] 迷宮已準備好！右側 Container 顯示完整迷宮，黑色是牆壁，白色是通道。現在進入 solveMaze 函式，用廣度優先搜尋 BFS 找出入口到出口的最短路徑。BFS 的核心優勢：按距離層層向外展開，第一次抵達終點就保證是最短路徑，不需要窮舉所有可能路徑。讓我們進入函式，逐步看 BFS 如何初始化。 | @2 [speed:2.0] [continue] 進入 solveMaze，BFS 開始。",
+      "layout": "open:container maze:maze sidebar:20"
+    }
+  },
+  "program_input": "11 11\n1 1 1 1 1 1 1 1 1 1 1\n0 0 0 0 0 0 0 0 0 0 1\n1 1 1 0 1 1 1 0 1 1 1\n1 0 0 0 0 0 1 0 0 0 1\n1 0 1 1 1 0 1 1 1 0 1\n1 0 0 0 1 0 0 0 1 0 1\n1 1 1 0 1 1 1 0 1 0 1\n1 0 0 0 0 0 0 0 0 0 1\n1 0 1 1 1 1 1 1 1 1 1\n1 0 0 0 0 0 0 0 0 0 0\n1 1 1 1 1 1 1 1 1 1 1",
+  "breakpoints": [
+    {
+      "number": "11",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x00005b4c55cf0422",
+      "func": "solveMaze(std::vector<std::vector<int, std::allocator<int> >, std::allocator<std::vector<int, std::allocator<int> > > >&)",
+      "file": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "fullname": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "line": "20",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp:20",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp"
+    },
+    {
+      "number": "12",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x00005b4c55cf043b",
+      "func": "solveMaze(std::vector<std::vector<int, std::allocator<int> >, std::allocator<std::vector<int, std::allocator<int> > > >&)",
+      "file": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "fullname": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "line": "21",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp:21",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp"
+    },
+    {
+      "number": "13",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x00005b4c55cf078f",
+      "func": "solveMaze(std::vector<std::vector<int, std::allocator<int> >, std::allocator<std::vector<int, std::allocator<int> > > >&)",
+      "file": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "fullname": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "line": "40",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "52",
+      "original-location": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp:40",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp"
+    },
+    {
+      "number": "14",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x00005b4c55cf0809",
+      "func": "solveMaze(std::vector<std::vector<int, std::allocator<int> >, std::allocator<std::vector<int, std::allocator<int> > > >&)",
+      "file": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "fullname": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "line": "46",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp:46",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp"
+    },
+    {
+      "number": "15",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x00005b4c55cf091d",
+      "func": "solveMaze(std::vector<std::vector<int, std::allocator<int> >, std::allocator<std::vector<int, std::allocator<int> > > >&)",
+      "file": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "fullname": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "line": "55",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp:55",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp"
+    },
+    {
+      "number": "16",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x00005b4c55cf0b42",
+      "func": "main()",
+      "file": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "fullname": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "line": "69",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp:69",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp"
+    },
+    {
+      "number": "17",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x00005b4c55cf0c60",
+      "func": "main()",
+      "file": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "fullname": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp",
+      "line": "81",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp:81",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_014a31447b634aa392ab8892b6a1b251.cpp"
+    }
+  ]
+}

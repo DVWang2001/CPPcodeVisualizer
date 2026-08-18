@@ -1,0 +1,1 @@
+#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    int n = 6;\n    vector<int> sequence;\n    sequence.push_back(n);\n    while (n != 1) {\n        if (n % 2 == 0) {\n            n = n / 2;\n        } else {\n            n = 3 * n + 1;\n        }\n        sequence.push_back(n);\n    }\n    return 0;\n}

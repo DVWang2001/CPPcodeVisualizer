@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "project_name": "Broken Keyboard (deque)",
+  "source_code": "#include <iostream>\n#include <string>\n#include <deque>\nusing namespace std;\n\nint main() {\n    string s = \"[beijing]test\";\n    bool Home = false;\n    deque<string> Deque;\n    Deque.push_back(\"\");\n\n    for (auto& i : s) {\n        if (i == '[') {\n            Deque.push_front(\"\");\n            Home = true;\n        } else if (i == ']') {\n            Deque.push_back(\"\");\n            Home = false;\n        } else {\n            if (Home) {\n                Deque.front().push_back(i);\n            } else {\n                Deque.back().push_back(i);\n            }\n        }\n    }\n\n    for (auto& i : Deque) cout << i;\n    cout << endl;\n    return 0;\n}",
+  "line_data": {
+    "11": {
+      "guide": "[迴圈狀態] 當前字元: '{i}'\n容器狀態: {Deque}",
+      "tts": "處理下一個字元 '{i}'。 | @2 觀察 deque 的動態變化。"
+    },
+    "13": {
+      "guide": "[偵測到 '['] 準備執行 push_front(\"\")\n游標即將移至最前端",
+      "tts": "[continue] 偵測到開頭符號，準備在 deque 的最前面新增一個空的區塊。"
+    },
+    "17": {
+      "guide": "[偵測到 ']'] 準備執行 push_back(\"\")\n游標即將移至最後端",
+      "tts": "[continue] 偵測到結尾符號，準備在 deque 的最後面新增一個空的區塊。"
+    },
+    "22": {
+      "guide": "[Home模式] 準備將 '{i}' 加入最前區塊",
+      "tts": "[continue] 目前在 Home 模式，準備將字元 '{i}' 加入到第一個字串中。"
+    },
+    "25": {
+      "guide": "[一般模式] 準備將 '{i}' 加入最後區塊",
+      "tts": "[continue] 目前在一般模式，準備將字元 '{i}' 加入到最後一個字串中。"
+    }
+  },
+  "program_input": "",
+  "breakpoints": [
+    { "line": "11", "is_normal_breakpoint": true },
+    { "line": "13", "is_normal_breakpoint": true },
+    { "line": "17", "is_normal_breakpoint": true },
+    { "line": "22", "is_normal_breakpoint": true },
+    { "line": "25", "is_normal_breakpoint": true }
+  ]
+}

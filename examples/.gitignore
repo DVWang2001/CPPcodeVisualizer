@@ -2,3 +2,5 @@
 # 教案交付物：蓋過根目錄的 *.cpp / *.json 全域忽略
 !*.cpp
 !*.gdbgui.json
+!*.json
+!*.txt

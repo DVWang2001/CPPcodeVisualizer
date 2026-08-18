@@ -1,0 +1,109 @@
+{
+  "version": "1.0",
+  "project_name": "gdbgui_project",
+  "source_code": "#include <iostream>\nusing namespace std;\nint coin[] = {1,5,10,50};\nint number[] = {0,0,0,0};\nvoid recursive(int i,int n) {\n    if (i == 4) {\n        if (n == 0) {\n            printf(\"找到coin = [%d,%d,%d,%d]\\n\",number[0],number[1],number[2],number[3]);\n        }\n        return;\n    }\n    for (number[i] = 0; number[i] <= n/coin[i]; number[i]++) {\n        recursive(i+1,n-coin[i]*number[i]);\n    }\n}\nint main() {\n    int n; cin >> n;\n    recursive(0,n);\n}",
+  "line_data": {
+    "6": {
+      "guide": "",
+      "tts": "[continue]"
+    },
+    "7": {
+      "guide": "[i={i} 剩餘={n}#yellow] {coin} {number}",
+      "tts": "[next] i 等於四，四種硬幣都已分配完畢。現在檢查剩餘金額 {n} 是否為零，若為零代表找到一組有效的換零方式。",
+      "layout": "sidebar:45 open:callgraph"
+    },
+    "8": {
+      "guide": "[找到一種解！#green] {coin} {number}",
+      "tts": "找到一組換零方式！一元用 {number[0]} 枚，五元用 {number[1]} 枚，十元用 {number[2]} 枚，五十元用 {number[3]} 枚，合計恰好湊出目標金額。",
+      "layout": "sidebar:50 open:callgraph,locals"
+    },
+    "10": {
+      "guide": "[此路不通#red] 剩餘={n} {coin} {number}",
+      "tts": "[next] 剩餘金額 {n} 不為零，這組硬幣組合無法恰好湊出目標金額，返回上一層繼續嘗試其他組合。",
+      "layout": "sidebar:45 open:callgraph"
+    },
+    "12": {
+      "guide": "[coin={coin[i]} 枚={number[i]}#yellow] {coin} {number}",
+      "tts": "[next] 目前考慮面額 {coin[i]} 元的硬幣，已選用 {number[i]} 枚。迴圈從零枚逐步增加，上限為 {n} 除以 {coin[i]}，確保總額不超過剩餘金額。",
+      "layout": "sidebar:45 open:callgraph,locals"
+    },
+    "13": {
+      "guide": "[選{number[i]}枚{coin[i]}元#blue] {coin} {number}",
+      "tts": "[step-in] 選定 {number[i]} 枚 {coin[i]} 元硬幣。呼叫遞迴處理下一種硬幣，並將扣除後的剩餘金額傳入下一層。",
+      "layout": "sidebar:50 open:callgraph"
+    },
+    "17": {
+      "guide": "[讀取輸入#green]",
+      "tts": "[next] 程式從主函式開始執行。接下來讀取使用者輸入的換零總金額，儲存至變數 n。",
+      "layout": "sidebar:35 open:callgraph,locals"
+    },
+    "18": {
+      "guide": "[啟動遞迴 n={n}#green]",
+      "tts": "[step-in] 讀取到 n 等於 {n} 元。從索引零，也就是一元硬幣開始，呼叫 recursive 函式，以窮舉法找出所有可能的換零方式。",
+      "layout": "sidebar:40 open:callgraph,locals"
+    }
+  },
+  "program_input": "30",
+  "breakpoints": [
+    {
+      "number": "10",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x000055cd6b0192a9",
+      "func": "main()",
+      "file": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp",
+      "fullname": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp",
+      "line": "17",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp:17",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp"
+    },
+    {
+      "number": "11",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x000055cd6b0192bf",
+      "func": "main()",
+      "file": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp",
+      "fullname": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp",
+      "line": "18",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp:18",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp"
+    },
+    {
+      "number": "12",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x000055cd6b019197",
+      "func": "recursive(int, int)",
+      "file": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp",
+      "fullname": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp",
+      "line": "8",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "0",
+      "original-location": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp:8",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/d2fc42b3ab564b75ae0c1b113e0dca4c_pasted_e9b544d0f6aa4313b210ff54b0cb8ad2.cpp"
+    }
+  ]
+}

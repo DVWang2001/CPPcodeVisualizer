@@ -1,0 +1,100 @@
+{
+  "version": "1.0",
+  "project_name": "gdbgui_project",
+  "source_code": "#include <iostream>\n#include <vector>\nusing namespace std;\nint main() {\n    int rows = 2, cols = 3;\n    vector<vector<int>> matrix = {{1, 2, 3}, {4, 5, 6}};\n    vector<vector<int>> transposed(cols, vector<int>(rows));\n \n    for (int i = 0; i < rows; i++) {\n        for (int j = 0; j < cols; j++) {\n            transposed[j][i] = matrix[i][j];\n        }\n    }\n \n    return 0;\n}",
+  "line_data": {
+    "7": {
+      "guide": "[初始化] 2x3 矩陣\n{matrix}",
+      "tts": "[speed:1.5][continue][next] 我們建立一個 2x3 的原始矩陣。請觀察右側 Container 中二維陣列的排列方式。",
+      "layout": "sidebar:50 open:container"
+    },
+    "9": {
+      "guide": "[建立轉置矩陣] 預備一個 3x2 空間\n{transposed}",
+      "tts": "[speed:1.5][continue]接下來建立一個 3x2 的新矩陣來存放轉置後的結果。轉置矩陣的行[航]數會等於原矩陣的列數。",
+      "layout": "sidebar:50 open:container"
+    },
+    "11": {
+      "guide": "[轉置中] 將 matrix[{i}][{j}] 賦值給 transposed[{j}][{i}]\n{matrix[i][j]} -> {transposed[j][i]}\n{matrix}\n{transposed}",
+      "tts": "[speed:1.5][continue]核心操作：把第 {i} 行第 {j} 列的元素 {matrix[i][j]}，搬移到轉置矩陣的第 {j} 行第 {i} 列。 | @4 繼續搬移元素... | @6 即將完成。",
+      "layout": "sidebar:55 open:container,locals"
+    }
+  },
+  "program_input": "30",
+  "breakpoints": [
+    {
+      "number": "5",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "<PENDING>",
+      "pending": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp:70",
+      "times": "0",
+      "original-location": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp:70",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp",
+      "line": 70
+    },
+    {
+      "number": "6",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x00005ccfa90a3342",
+      "func": "main()",
+      "file": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp",
+      "fullname": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp",
+      "line": "7",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp:7",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp"
+    },
+    {
+      "number": "7",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x00005ccfa90a33a4",
+      "func": "main()",
+      "file": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp",
+      "fullname": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp",
+      "line": "9",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp:9",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp"
+    },
+    {
+      "number": "8",
+      "type": "breakpoint",
+      "disp": "keep",
+      "enabled": "y",
+      "addr": "0x00005ccfa90a33b6",
+      "func": "main()",
+      "file": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp",
+      "fullname": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp",
+      "line": "11",
+      "thread-groups": [
+        "i1"
+      ],
+      "times": "1",
+      "original-location": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp:11",
+      "is_parent_breakpoint": false,
+      "is_child_breakpoint": false,
+      "is_normal_breakpoint": true,
+      "fullname_to_display": "/app/gdbgui/server/uploads/aa8773c6e6684ea1a561313262320565_pasted_eb1038995d7f4a5980e9dd882988fb1a.cpp"
+    }
+  ]
+}

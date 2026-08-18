@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "project_name": "palindrome_tutorial",
+  "source_code": "#include <iostream>\n#include <string>\n#include <algorithm>\nusing namespace std;\n\nbool isPalindrome(string s) {\n    int left = 0;\n    int right = s.length() - 1;\n    \n    while (left < right) {\n        if (s[left] != s[right]) {\n            return false;\n        }\n        left++;\n        right--;\n    }\n    return true;\n}\n\nint main() {\n    string s;\n    while (cin >> s) {\n        if (isPalindrome(s)) cout << \"Yes\" << endl;\n        else cout << \"No\" << endl;\n    }\n    return 0;\n}",
+  "line_data": {
+    "10": {
+      "guide": "[雙指標檢查] left={left}, right={right}\n{s[left]} {s[right]} {s}",
+      "tts": "[next] 進入迴圈。目前我們使用雙指標法，一個從頭 (left={left})，一個從尾 (right={right})，向中間收縮比較。 | @2 繼續比較下一對字元。",
+      "layout": "sidebar:50 open:container"
+    },
+    "11": {
+      "guide": "[比對] '{s[left]}' == '{s[right]}' ?\n{s[left]} {s[right]}",
+      "tts": "[next] 檢查左邊字元 '{s[left]}' 是否等於右邊字元 '{s[right]}'。",
+      "layout": "sidebar:50 open:container"
+    },
+    "12": {
+      "guide": "[不相符] 回傳 false#red",
+      "tts": "[next] 字元不相符！這不是迴文，直接回傳 false。",
+      "layout": "sidebar:40 open:container"
+    },
+    "17": {
+      "guide": "[完成] 是迴文！#green",
+      "tts": "所有對應字元都相同，判定為迴文。回傳 true。",
+      "layout": "sidebar:45 open:container"
+    }
+  },
+  "program_input": "aba\nabccba\napple",
+  "breakpoints": [
+    { "line": "10", "is_normal_breakpoint": true },
+    { "line": "11", "is_normal_breakpoint": true }
+  ]
+}

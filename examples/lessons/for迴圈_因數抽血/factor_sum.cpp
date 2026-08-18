@@ -1,0 +1,1 @@
+#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    int n = 12;\n    int sum = 0;\n    vector<int> factors;\n    for (int i = 1; i <= n; i++) {\n        if (n % i == 0) {\n            sum += i;\n            factors.push_back(i);\n        }\n    }\n    return 0;\n}

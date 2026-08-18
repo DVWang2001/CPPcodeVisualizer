@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "project_name": "greedy_coin_change",
+  "source_code": "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    int amount = 63;\n    vector<int> coins = {25, 10, 5, 1};\n    vector<int> result;\n\n    for (int coin : coins) {\n        while (amount >= coin) {\n            amount -= coin;\n            result.push_back(coin);\n        }\n    }\n\n    return 0;\n}",
+  "line_data": {
+    "6": {
+      "guide": "[目標金額] amount = {amount}",
+      "tts": "[next] 假設我們要找零 63 元。貪婪演算法的核心是：每次都選用面額最大的硬幣。",
+      "layout": "sidebar:45 open:locals"
+    },
+    "7": {
+      "guide": "[可用硬幣] {coins}",
+      "tts": "[next] 目前擁有的面額有 25, 10, 5 與 1 元。",
+      "layout": "sidebar:45 open:container"
+    },
+    "10": {
+      "guide": "[檢查面額] 目前考慮 {coin} 元硬幣",
+      "tts": "[next] 看看剩下的 {amount} 元是否足夠支付一個 {coin} 元硬幣。",
+      "layout": "sidebar:50 open:container,locals"
+    },
+    "12": {
+      "guide": "[扣除金額] {amount} -> {amount - coin}\n[放入結果] result = {result}",
+      "tts": "[next] 足夠支付！扣掉 {coin} 元，並將這枚硬幣存入結果清單。 | @3 繼續扣除同面額硬幣...",
+      "layout": "sidebar:55 open:container,locals"
+    }
+  },
+  "program_input": "",
+  "breakpoints": [
+    { "line": "12", "is_normal_breakpoint": true }
+  ]
+}

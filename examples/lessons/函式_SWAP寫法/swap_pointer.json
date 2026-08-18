@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "project_name": "Function Swap (Pass by Pointer)",
+  "source_code": "#include <iostream>\nusing namespace std;\n\nvoid SWAP(int* a, int* b) {\n    int t = *a;\n    *a = *b;\n    *b = t;\n}\n\nint main() {\n    int x = 10, y = 20;\n    SWAP(&x, &y);\n    return 0;\n}",
+  "line_data": {
+    "12": {
+      "guide": "[主程式] 準備呼叫 SWAP 函式\nx = {x}, y = {y}",
+      "tts": "x 和 y 已經初始化。現在準備進入 SWAP 函式進行數值交換。"
+    },
+    "4": {
+      "guide": "[函式內] 準備執行 int t = *a\n暫存指標 a 所指向的值",
+      "tts": "進入函式。目前 a 指向的是 x (值為 {*a})。我們準備把這個值存入暫存變數 t。"
+    },
+    "5": {
+      "guide": "[交換中] 準備執行 *a = *b\n將 b 指向的值覆蓋到 a 的位址",
+      "tts": "[continue] 第一步完成。現在準備將指標 b 指向的值 {*b}，覆蓋到指標 a 所指向的空間。"
+    },
+    "6": {
+      "guide": "[交換中] 準備執行 *b = t\n將暫存值放回 b 的位址",
+      "tts": "[continue] 第二步完成。最後準備將暫存的原始值 t 放進指標 b 指向的空間。"
+    },
+    "13": {
+      "guide": "[完成交換] 返回主程式\nx = {x}, y = {y}",
+      "tts": "交換函式執行完畢。回到主程式，我們可以看到 x 和 y 的值已經成功互換了。"
+    }
+  },
+  "program_input": "",
+  "breakpoints": [
+    { "line": "12", "is_normal_breakpoint": true },
+    { "line": "4", "is_normal_breakpoint": true },
+    { "line": "5", "is_normal_breakpoint": true },
+    { "line": "6", "is_normal_breakpoint": true },
+    { "line": "13", "is_normal_breakpoint": true }
+  ]
+}

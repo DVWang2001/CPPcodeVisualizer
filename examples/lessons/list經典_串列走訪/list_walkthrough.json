@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "project_name": "list_tutorial",
+  "source_code": "#include <iostream>\n#include <list>\nusing namespace std;\n\nint main() {\n    list<int> mylist = {10, 20, 30};\n    \n    // 在開頭插入\n    mylist.push_front(5);\n    \n    // 在結尾插入\n    mylist.push_back(40);\n    \n    // 走訪並顯示\n    for (int x : mylist) {\n        cout << x << \" \";\n    }\n    cout << endl;\n    \n    return 0;\n}",
+  "line_data": {
+    "6": {
+      "guide": "[初始化] 建立含有 10, 20, 30 的 list\n{mylist}",
+      "tts": "[next] 我們先建立一個 list 容器，並初始化三個元素：10, 20, 30。在右側可以看到 list 的節點鏈結結構。",
+      "layout": "sidebar:50 open:container"
+    },
+    "9": {
+      "guide": "[push_front] 在開頭插入 5\n{mylist}",
+      "tts": "[next] 執行 push_front(5)，新節點 5 會被連接到串列的最前面。注意觀察節點的指標變化。",
+      "layout": "sidebar:50 open:container"
+    },
+    "12": {
+      "guide": "[push_back] 在結尾插入 40\n{mylist}",
+      "tts": "[next] 執行 push_back(40)，節點 40 會被掛載到串列的最後端。",
+      "layout": "sidebar:50 open:container"
+    },
+    "15": {
+      "guide": "[走訪] 當前元素 x = {x}\n{mylist}",
+      "tts": "開始走訪串列。目前疊代器指向的元素值是 {x}。 | @2 繼續走訪，目前是 {x}。 | @5 走訪即將結束。",
+      "layout": "sidebar:45 open:container,locals"
+    }
+  },
+  "program_input": "",
+  "breakpoints": [
+    { "line": "6", "is_normal_breakpoint": true },
+    { "line": "9", "is_normal_breakpoint": true },
+    { "line": "12", "is_normal_breakpoint": true },
+    { "line": "15", "is_normal_breakpoint": true }
+  ]
+}

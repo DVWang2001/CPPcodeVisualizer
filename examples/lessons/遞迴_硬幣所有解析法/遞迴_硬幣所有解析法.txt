@@ -1,0 +1,14 @@
+#include <iostream>
+using namespace std;
+int coin[] = {1,5,10,50};
+int number[] = {0,0,0,0};
+void recursive(int i,int n) {
+    if (i == 4) return;
+    for (number[i] = 0; number[i]*coin[i] <= n; number[i]++) {
+        recursive(i+1,n-coin[i]*number[i]);
+    }
+}
+int main() {
+    int n; cin >> n;
+    recursive(0,n);
+}

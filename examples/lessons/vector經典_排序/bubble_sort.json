@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "project_name": "Bubble Sort (Vector)",
+  "source_code": "#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\n\nvoid bubbleSort(vector<int>& arr) {\n    int n = arr.size();\n    for (int i = 0; i < n; i++) {\n        for (int j = 0; j < n - i - 1; j++) {\n            if (arr[j] > arr[j + 1]) {\n                swap(arr[j], arr[j + 1]);\n            }\n        }\n    }\n}\n\nint main() {\n    vector<int> arr = {5, 2, 9, 1};\n    bubbleSort(arr);\n    return 0;\n}",
+  "line_data": {
+    "9": {
+      "guide": "[內層迴圈] 準備處理索引 j = {j}\n陣列狀態: {arr}",
+      "tts": "內層迴圈，目前處理到索引 {j}。 | @2 目前陣列狀態為 {arr}。"
+    },
+    "10": {
+      "guide": "[比較中] 準備比較 {arr[j]} 與 {arr[j+1]}",
+      "tts": "[continue] 準備判斷左邊的 {arr[j]} 是否大於右邊的 {arr[j+1]}。"
+    },
+    "11": {
+      "guide": "[條件成立] 即將執行 Swap\n{arr[j]} 與 {arr[j+1]} 將互換位置",
+      "tts": "[continue] 發現順序不對，準備進行交換。"
+    }
+  },
+  "program_input": "",
+  "breakpoints": [
+    { "line": "9", "is_normal_breakpoint": true },
+    { "line": "10", "is_normal_breakpoint": true },
+    { "line": "11", "is_normal_breakpoint": true }
+  ]
+}

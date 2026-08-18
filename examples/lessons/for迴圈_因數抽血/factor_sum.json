@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "project_name": "Factor Sum (Visualizer)",
+  "source_code": "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    int n = 12;\n    int sum = 0;\n    vector<int> factors;\n    for (int i = 1; i <= n; i++) {\n        if (n % i == 0) {\n            sum += i;\n            factors.push_back(i);\n        }\n    }\n    return 0;\n}",
+  "line_data": {
+    "9": {
+      "guide": "### 變數追蹤表\n| 變數 | 數值 |\n| :--- | :--- |\n| 目標 n | {n} |\n| 當前 i | {i} |\n| 累積 sum | {sum} |\n\n[右側觀察] 已找到的因數清單: {factors}",
+      "tts": "我們要計算 {n} 的所有因數。目前處理到 i 等於 {i}，累積總和為 {sum}。 | @2 迴圈持續執行中，請觀察右側 Visualizer 視窗中 factors 容器的變化。 | @13 所有的因數都已找出並計算完畢。",
+      "layout": "sidebar:50 open:container"
+    },
+    "10": {
+      "guide": "### 判斷中...\n| 運算式 | 結果 |\n| :--- | :--- |\n| {n} % {i} == 0 | **{n%i==0 ? '成立' : '不成立'}** |",
+      "tts": "[continue] 正在判斷 {n} 是否能被 {i} 整除。",
+      "layout": "sidebar:50 open:container"
+    },
+    "12": {
+      "guide": "### 找到因數！\n| 新增因數 | 更新後總和 |\n| :--- | :--- |\n| {i} | {sum} |",
+      "tts": "[continue] 找到因數 {i} 了！將它加到總和中，並放入 factors 容器中記錄。",
+      "layout": "sidebar:50 open:container"
+    }
+  },
+  "program_input": "",
+  "breakpoints": [
+    { "line": "9", "is_normal_breakpoint": true },
+    { "line": "10", "is_normal_breakpoint": true },
+    { "line": "12", "is_normal_breakpoint": true }
+  ]
+}

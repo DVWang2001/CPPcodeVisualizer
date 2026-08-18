@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "project_name": "quicksort_tutorial",
+  "source_code": "#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\n\nint partition(vector<int>& arr, int low, int high) {\n    int pivot = arr[high];\n    int i = low - 1;\n    for (int j = low; j < high; j++) {\n        if (arr[j] < pivot) {\n            i++;\n            swap(arr[i], arr[j]);\n        }\n    }\n    swap(arr[i + 1], arr[high]);\n    return i + 1;\n}\n\nvoid quickSort(vector<int>& arr, int low, int high) {\n    if (low < high) {\n        int pi = partition(arr, low, high);\n        quickSort(arr, low, pi - 1);\n        quickSort(arr, pi + 1, high);\n    }\n}\n\nint main() {\n    vector<int> arr = {10, 7, 8, 9, 1, 5};\n    quickSort(arr, 0, arr.size() - 1);\n    for (int x : arr) cout << x << \" \";\n    cout << endl;\n    return 0;\n}",
+  "line_data": {
+    "7": {
+      "guide": "[Pivot] 選擇 {pivot} 作為基準點 (arr[high])\n{arr[high]}",
+      "tts": "[next] 快速排序的第一步：從目前的範圍中選一個基準點 Pivot，這裡我們選最右邊的元素 {pivot}。",
+      "layout": "sidebar:50 open:container"
+    },
+    "9": {
+      "guide": "[掃描] 目前檢查 arr[{j}]={arr[j]}\n{arr[j]}",
+      "tts": "[next] 開始掃描，比較目前元素 {arr[j]} 是否小於 Pivot。 | @3 繼續掃描...",
+      "layout": "sidebar:50 open:container"
+    },
+    "12": {
+      "guide": "[Swap] 將小於 Pivot 的元素移到左邊\n{arr[i]} {arr[j]}",
+      "tts": "[next] 因為 {arr[j]} 小於 Pivot，所以把它換到左側。 | @2 交換成功。",
+      "layout": "sidebar:50 open:container"
+    },
+    "14": {
+      "guide": "[定位 Pivot] 將 Pivot 放回正確位置\n{arr[i+1]} {arr[high]}",
+      "tts": "[next] 最後把 Pivot 換到它最終的位置。現在 Pivot 左邊的都比它小，右邊都比它大。",
+      "layout": "sidebar:55 open:container"
+    }
+  },
+  "program_input": "",
+  "breakpoints": [
+    { "line": "7", "is_normal_breakpoint": true },
+    { "line": "14", "is_normal_breakpoint": true }
+  ]
+}
