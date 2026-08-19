@@ -30,6 +30,7 @@ import { cloneQuiz, QuizSpec, validateQuiz } from "./quizSchema";
 import {
   hasSnapshotChanges,
   LessonBundle,
+  needsLessonVersionReload,
   LessonSnapshot,
   mergeLessonBundle,
   VersionSummary
@@ -1275,6 +1276,12 @@ class SourceCode extends React.Component<{}, State> {
   prepareLiveQuizVersion = (version: number): Promise<void> => {
     if (this.currentLessonId === null || !Number.isInteger(version) || version <= 0) {
       return Promise.reject(new Error("課堂版本無效，無法開始。"));
+    }
+    // 已經載著同一個版本就只上鎖，不重載。重載會換掉編輯器裡的原始碼與 binary，
+    // 若此時程式正在跑，下一步會得到 "The program is not being run."
+    if (!needsLessonVersionReload(this.currentLessonVersion, version, Boolean(this.lessonBaseline))) {
+      this.setLiveQuizVersionLock(true);
+      return Promise.resolve();
     }
     return fetch(`/api/lessons/${this.currentLessonId}/versions/${version}`, {
       credentials: "same-origin"

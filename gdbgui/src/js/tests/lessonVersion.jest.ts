@@ -178,3 +178,30 @@ test("skips missing or malformed parent edges without throwing", () => {
   expect(() => layoutVersionGraph(versions, 3)).not.toThrow();
   expect(layoutVersionGraph(versions, 3).edges).toEqual([]);
 });
+
+// ── 開課時要不要重載教案 ──────────────────────────────────────────────────
+//
+// 這個判斷存在的理由是一次線上事故：開課的副作用會重載教案（fetch 版本 →
+// applyProjectBundle），而當它發生在程式正在跑的時候，原始碼與 binary 會被從
+// inferior 底下抽掉，下一步就得到 "The program is not being run."
+//
+// 開課本身不需要改變編輯器裡的內容——只有在載著的版本跟課堂要鎖的版本不同時才需要。
+
+import { needsLessonVersionReload } from "../lessonVersion";
+
+test("載著的就是要鎖的版本 → 不重載", () => {
+  expect(needsLessonVersionReload(4, 4, true)).toBe(false);
+});
+
+test("版本不同 → 要重載", () => {
+  expect(needsLessonVersionReload(3, 4, true)).toBe(true);
+});
+
+test("還沒載入任何教案 → 要重載", () => {
+  expect(needsLessonVersionReload(null, 4, true)).toBe(true);
+});
+
+test("版本相同但沒有 baseline → 仍要重載", () => {
+  // 版本號對得上卻沒有快照，代表狀態不完整，跳過重載會讓後續拿不到 bundle
+  expect(needsLessonVersionReload(4, 4, false)).toBe(true);
+});

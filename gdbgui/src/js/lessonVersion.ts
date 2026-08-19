@@ -143,3 +143,22 @@ export function layoutVersionGraph(
     laneCount: nextLane
   };
 }
+
+/**
+ * 開課要鎖定某個版本時，需不需要把教案重載一次？
+ *
+ * 重載的副作用是換掉編輯器裡的原始碼（進而換掉 binary）。如果程式正在跑，那等於
+ * 把地板從 inferior 底下抽走，下一步會得到 "The program is not being run."
+ * ——這是實際發生過的回歸，不是假想。
+ *
+ * 開課本身不需要改變編輯器裡的內容，所以只有在「載著的版本跟要鎖的不同」或
+ * 「狀態不完整（沒有 baseline 快照）」時，才值得付重載的代價。
+ */
+export function needsLessonVersionReload(
+  loadedVersion: number | null,
+  wantedVersion: number,
+  hasBaseline: boolean
+): boolean {
+  if (!hasBaseline) return true;
+  return loadedVersion !== wantedVersion;
+}
