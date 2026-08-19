@@ -14,26 +14,41 @@ export type QuizTrigger = {
   line: number;
   anchor: QuizAnchor;
 };
-export type QuizQuestion = {
+export const MAX_CELLS_CEILING = 200;
+
+export type QuizTableSpec = { var_hint: string; max_cells: number };
+export type QuizBaseQuestion = {
   id: string;
   prompt: string;
-  options: QuizOption[];
-  correct_option_id: string;
   explanation: string;
   trigger: QuizTrigger;
 };
+export type QuizChoiceQuestion = QuizBaseQuestion & {
+  kind: "choice";
+  options: QuizOption[];
+  correct_option_id: string;
+};
+export type QuizTableQuestion = QuizBaseQuestion & {
+  kind: "table";
+  table_spec: QuizTableSpec;
+};
+type LegacyQuizChoiceQuestion = QuizBaseQuestion & {
+  kind?: undefined;
+  options: QuizOption[];
+  correct_option_id: string;
+};
+export type QuizQuestion =
+  | QuizChoiceQuestion
+  | QuizTableQuestion
+  | LegacyQuizChoiceQuestion;
 export type QuizSpec = { schema_version: 1; questions: QuizQuestion[] };
 export type QuizValidation = { quiz: QuizSpec | null; errors: string[] };
 
 const QUIZ_KEYS = ["schema_version", "questions"];
-const QUESTION_KEYS = [
-  "id",
-  "prompt",
-  "options",
-  "correct_option_id",
-  "explanation",
-  "trigger"
-];
+const COMMON_KEYS = ["id", "prompt", "explanation", "trigger"];
+const CHOICE_KEYS = [...COMMON_KEYS, "options", "correct_option_id"];
+const TABLE_KEYS = [...COMMON_KEYS, "kind", "table_spec"];
+const TABLE_SPEC_KEYS = ["var_hint", "max_cells"];
 const OPTION_KEYS = ["id", "text"];
 const TRIGGER_KEYS = ["kind", "source_file", "line", "anchor"];
 const ANCHOR_KEYS = ["line_text", "before_text", "after_text"];
@@ -99,7 +114,22 @@ function parseTrigger(raw: any, index: number, errors: string[]): QuizTrigger | 
 
 function parseQuestion(raw: any, index: number, errors: string[]): QuizQuestion | null {
   const label = `第 ${index + 1} 題`;
-  if (!exactKeys(raw, QUESTION_KEYS, label, errors)) return null;
+  if (!isRecord(raw)) {
+    errors.push(`${label}格式不正確。`);
+    return null;
+  }
+  const kind = "kind" in raw ? raw.kind : "choice";
+  if (kind !== "choice" && kind !== "table") {
+    errors.push(`${label}題型不正確。`);
+    return null;
+  }
+  const keys =
+    kind === "choice" && "kind" in raw
+      ? [...CHOICE_KEYS, "kind"]
+      : kind === "choice"
+      ? CHOICE_KEYS
+      : TABLE_KEYS;
+  if (!exactKeys(raw, keys, label, errors)) return null;
 
   const id = trimmed(raw.id, 1, Number.MAX_SAFE_INTEGER);
   const prompt = trimmed(raw.prompt, 1, 500);
@@ -112,34 +142,63 @@ function parseQuestion(raw: any, index: number, errors: string[]): QuizQuestion 
   if (explanation === null) errors.push(`${label}解說不可超過 1,000 字。`);
 
   const options: QuizOption[] = [];
-  if (!Array.isArray(raw.options) || raw.options.length < 2 || raw.options.length > 6) {
-    errors.push(`${label}選項需有 2 至 6 個。`);
+  const correct =
+    typeof raw.correct_option_id === "string" ? raw.correct_option_id.trim() : "";
+  const table_spec: QuizTableSpec = { var_hint: "", max_cells: 0 };
+  if (kind === "choice") {
+    if (!Array.isArray(raw.options) || raw.options.length < 2 || raw.options.length > 6) {
+      errors.push(`${label}選項需有 2 至 6 個。`);
+    } else {
+      const optionIds = new Set<string>();
+      raw.options.forEach((option: any, optionIndex: number) => {
+        if (!exactKeys(option, OPTION_KEYS, `${label}第 ${optionIndex + 1} 個選項`, errors)) return;
+        const optionId = trimmed(option.id, 1, Number.MAX_SAFE_INTEGER);
+        const text = trimmed(option.text, 1, 200);
+        if (!optionId || optionIds.has(optionId)) errors.push(`${label}的選項 ID 必須非空且不重複。`);
+        if (text === null) errors.push(`${label}每個選項需為 1 至 200 字。`);
+        if (optionId) optionIds.add(optionId);
+        options.push({ id: optionId || "", text: text || "" });
+      });
+    }
+    if (!correct || options.filter(option => option.id === correct).length !== 1) {
+      errors.push(`${label}正解必須對應一個選項。`);
+    }
   } else {
-    const optionIds = new Set<string>();
-    raw.options.forEach((option: any, optionIndex: number) => {
-      if (!exactKeys(option, OPTION_KEYS, `${label}第 ${optionIndex + 1} 個選項`, errors)) return;
-      const optionId = trimmed(option.id, 1, Number.MAX_SAFE_INTEGER);
-      const text = trimmed(option.text, 1, 200);
-      if (!optionId || optionIds.has(optionId)) errors.push(`${label}的選項 ID 必須非空且不重複。`);
-      if (text === null) errors.push(`${label}每個選項需為 1 至 200 字。`);
-      if (optionId) optionIds.add(optionId);
-      options.push({ id: optionId || "", text: text || "" });
-    });
-  }
-
-  const correct = typeof raw.correct_option_id === "string" ? raw.correct_option_id.trim() : "";
-  if (!correct || options.filter(option => option.id === correct).length !== 1) {
-    errors.push(`${label}正解必須對應一個選項。`);
+    const validTableSpec = exactKeys(
+      raw.table_spec,
+      TABLE_SPEC_KEYS,
+      `${label}表格設定`,
+      errors
+    );
+    const var_hint = validTableSpec ? trimmed(raw.table_spec.var_hint, 0, 128) : null;
+    if (var_hint === null) errors.push(`${label}變數提示不可超過 128 字。`);
+    if (!Number.isInteger(raw.table_spec && raw.table_spec.max_cells)) {
+      errors.push(`${label}格數上限必須是整數。`);
+    } else if (
+      raw.table_spec.max_cells < 1 ||
+      raw.table_spec.max_cells > MAX_CELLS_CEILING
+    ) {
+      errors.push(`${label}格數上限必須介於 1 與 ${MAX_CELLS_CEILING} 之間。`);
+    }
+    table_spec.var_hint = var_hint || "";
+    table_spec.max_cells = Number.isInteger(raw.table_spec && raw.table_spec.max_cells)
+      ? raw.table_spec.max_cells
+      : 0;
   }
   const trigger = parseTrigger(raw.trigger, index, errors);
   if (!trigger) return null;
-  return {
+  const base = {
     id: id || "",
     prompt: prompt || "",
-    options,
-    correct_option_id: correct,
     explanation: explanation || "",
     trigger
+  };
+  if (kind === "table") return { ...base, kind, table_spec };
+  return {
+    ...base,
+    kind,
+    options,
+    correct_option_id: correct
   };
 }
 
@@ -171,6 +230,7 @@ export function addQuestion(quiz: QuizSpec): QuizSpec {
   const firstOption = authoringId("option");
   copy.questions.push({
     id: authoringId("question"),
+    kind: "choice",
     prompt: "",
     options: [
       { id: firstOption, text: "" },
@@ -197,7 +257,7 @@ export function removeQuestion(quiz: QuizSpec, questionId: string): QuizSpec {
 export function addOption(quiz: QuizSpec, questionId: string): QuizSpec {
   const copy = cloneQuiz(quiz)!;
   const question = copy.questions.find(value => value.id === questionId);
-  if (!question || question.options.length >= 6) return copy;
+  if (!question || question.kind === "table" || question.options.length >= 6) return copy;
   question.options.push({ id: authoringId("option"), text: "" });
   return copy;
 }
@@ -209,7 +269,7 @@ export function removeOption(
 ): QuizSpec {
   const copy = cloneQuiz(quiz)!;
   const question = copy.questions.find(value => value.id === questionId);
-  if (!question || question.options.length <= 2) return copy;
+  if (!question || question.kind === "table" || question.options.length <= 2) return copy;
   question.options = question.options.filter(option => option.id !== optionId);
   if (!question.options.some(option => option.id === question.correct_option_id)) {
     question.correct_option_id = question.options[0].id;

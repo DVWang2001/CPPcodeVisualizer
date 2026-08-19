@@ -1,4 +1,4 @@
-import { cloneQuiz, QuizQuestion, QuizSpec, validateQuiz } from "../quizSchema";
+import { cloneQuiz, QuizChoiceQuestion, QuizQuestion, QuizSpec, validateQuiz } from "../quizSchema";
 
 const source = [
   "int main() {",
@@ -8,8 +8,9 @@ const source = [
   "}"
 ].join("\n");
 
-const question = (overrides: Partial<QuizQuestion> = {}): QuizQuestion => ({
+const question = (overrides: Partial<QuizChoiceQuestion> = {}): QuizChoiceQuestion => ({
   id: "q1",
+  kind: "choice",
   prompt: "i 是多少？",
   options: [{ id: "a", text: "0" }, { id: "b", text: "1" }],
   correct_option_id: "b",
@@ -25,6 +26,56 @@ const question = (overrides: Partial<QuizQuestion> = {}): QuizQuestion => ({
     }
   },
   ...overrides
+});
+
+test("沒有 kind 的舊題目視為單選題", () => {
+  const { quiz, errors } = validateQuiz({
+    schema_version: 1,
+    questions: [{
+      id: "c1",
+      prompt: "p",
+      explanation: "",
+      trigger: question().trigger,
+      options: [{ id: "a", text: "1" }, { id: "b", text: "2" }],
+      correct_option_id: "a"
+    }]
+  }, source, "main.cpp");
+
+  expect(errors).toEqual([]);
+  expect(quiz!.questions[0].kind).toBe("choice");
+});
+
+test("填表題被接受", () => {
+  const { quiz, errors } = validateQuiz({
+    schema_version: 1,
+    questions: [{
+      id: "t1",
+      kind: "table",
+      prompt: "p",
+      explanation: "",
+      trigger: question().trigger,
+      table_spec: { var_hint: "dp", max_cells: 200 }
+    }]
+  }, source, "main.cpp");
+
+  expect(errors).toEqual([]);
+  expect(quiz!.questions[0].kind).toBe("table");
+});
+
+test("max_cells 超過上限被拒絕", () => {
+  const { errors } = validateQuiz({
+    schema_version: 1,
+    questions: [{
+      id: "t1",
+      kind: "table",
+      prompt: "p",
+      explanation: "",
+      trigger: question().trigger,
+      table_spec: { var_hint: "dp", max_cells: 500 }
+    }]
+  }, source, "main.cpp");
+
+  expect(errors.length).toBeGreaterThan(0);
 });
 
 const quiz = (questions: QuizQuestion[] = [question()]): QuizSpec => ({
@@ -83,6 +134,6 @@ test("rejects an anchor that no longer resolves and clones without sharing neste
 
   const original = quiz();
   const copy = cloneQuiz(original)!;
-  copy.questions[0].options[0].text = "changed";
-  expect(original.questions[0].options[0].text).toBe("0");
+  (copy.questions[0] as QuizChoiceQuestion).options[0].text = "changed";
+  expect((original.questions[0] as QuizChoiceQuestion).options[0].text).toBe("0");
 });
