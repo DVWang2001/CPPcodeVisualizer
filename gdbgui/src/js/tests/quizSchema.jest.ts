@@ -62,6 +62,59 @@ test("填表題被接受", () => {
   expect(quiz!.questions[0].kind).toBe("table");
 });
 
+test("明寫 kind 的單選題被接受", () => {
+  const { errors, quiz } = validateQuiz({
+    schema_version: 1,
+    questions: [question()]
+  }, source, "main.cpp");
+
+  expect(errors).toEqual([]);
+  expect(quiz!.questions[0].kind).toBe("choice");
+});
+
+test("填表題混入單選欄位被拒絕", () => {
+  const { errors } = validateQuiz({
+    schema_version: 1,
+    questions: [{
+      id: "t1",
+      kind: "table",
+      prompt: "p",
+      explanation: "",
+      trigger: question().trigger,
+      table_spec: { var_hint: "dp", max_cells: 200 },
+      options: []
+    }]
+  }, source, "main.cpp");
+
+  expect(errors.join(" ")).toContain("未知欄位");
+});
+
+test.each([
+  [{ var_hint: "dp", max_cells: 200, extra: true }],
+  [{ var_hint: "dp" }],
+  [{ max_cells: 200 }],
+  [{ var_hint: "x".repeat(129), max_cells: 200 }],
+  [{ var_hint: "dp", max_cells: true }],
+  [{ var_hint: "dp", max_cells: NaN }],
+  [{ var_hint: "dp", max_cells: 1.5 }],
+  [{ var_hint: "dp", max_cells: 0 }],
+  [{ var_hint: "dp", max_cells: 201 }]
+])("填表設定不合法時被拒絕 %#", table_spec => {
+  const { errors } = validateQuiz({
+    schema_version: 1,
+    questions: [{
+      id: "t1",
+      kind: "table",
+      prompt: "p",
+      explanation: "",
+      trigger: question().trigger,
+      table_spec
+    }]
+  }, source, "main.cpp");
+
+  expect(errors.length).toBeGreaterThan(0);
+});
+
 test("max_cells 超過上限被拒絕", () => {
   const { errors } = validateQuiz({
     schema_version: 1,

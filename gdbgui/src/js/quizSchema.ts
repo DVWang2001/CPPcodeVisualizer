@@ -32,15 +32,7 @@ export type QuizTableQuestion = QuizBaseQuestion & {
   kind: "table";
   table_spec: QuizTableSpec;
 };
-type LegacyQuizChoiceQuestion = QuizBaseQuestion & {
-  kind?: undefined;
-  options: QuizOption[];
-  correct_option_id: string;
-};
-export type QuizQuestion =
-  | QuizChoiceQuestion
-  | QuizTableQuestion
-  | LegacyQuizChoiceQuestion;
+export type QuizQuestion = QuizChoiceQuestion | QuizTableQuestion;
 export type QuizSpec = { schema_version: 1; questions: QuizQuestion[] };
 export type QuizValidation = { quiz: QuizSpec | null; errors: string[] };
 
@@ -118,8 +110,12 @@ function parseQuestion(raw: any, index: number, errors: string[]): QuizQuestion 
     errors.push(`${label}格式不正確。`);
     return null;
   }
-  const kind = "kind" in raw ? raw.kind : "choice";
-  if (kind !== "choice" && kind !== "table") {
+  let kind: "choice" | "table";
+  if (!("kind" in raw)) {
+    kind = "choice";
+  } else if (raw.kind === "choice" || raw.kind === "table") {
+    kind = raw.kind;
+  } else {
     errors.push(`${label}題型不正確。`);
     return null;
   }

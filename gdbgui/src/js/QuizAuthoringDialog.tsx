@@ -90,7 +90,13 @@ export default function QuizAuthoringDialog({
     setDraft({
       ...draft,
       questions: draft.questions.map(question =>
-        question.id === id ? update({ ...question, options: question.options.map(o => ({ ...o })) }) : question
+        question.id === id
+          ? update(
+              question.kind === "choice"
+                ? { ...question, options: question.options.map(o => ({ ...o })) }
+                : { ...question, table_spec: { ...question.table_spec } }
+            )
+          : question
       )
     });
   };
@@ -321,6 +327,7 @@ export default function QuizAuthoringDialog({
                   </code>
                 </div>
 
+                {question.kind === "choice" && (
                 <fieldset style={{ border: 0, padding: 0, margin: "0 0 12px" }}>
                   <legend style={{ fontSize: "14px", marginBottom: "8px", border: 0 }}>
                     選項（點圓鈕指定正解）
@@ -336,10 +343,11 @@ export default function QuizAuthoringDialog({
                         aria-label={`選項 ${optionIndex + 1} 是正解`}
                         checked={question.correct_option_id === option.id}
                         onChange={() =>
-                          updateQuestion(question.id, value => ({
-                            ...value,
-                            correct_option_id: option.id
-                          }))
+                          updateQuestion(question.id, value =>
+                            value.kind === "choice"
+                              ? { ...value, correct_option_id: option.id }
+                              : value
+                          )
                         }
                       />
                       <input
@@ -347,12 +355,16 @@ export default function QuizAuthoringDialog({
                         aria-label={`${prefix}選項 ${optionIndex + 1}`}
                         value={option.text}
                         onChange={event =>
-                          updateQuestion(question.id, value => ({
-                            ...value,
-                            options: value.options.map(item =>
-                              item.id === option.id ? { ...item, text: event.target.value } : item
-                            )
-                          }))
+                          updateQuestion(question.id, value =>
+                            value.kind === "choice"
+                              ? {
+                                  ...value,
+                                  options: value.options.map(item =>
+                                    item.id === option.id ? { ...item, text: event.target.value } : item
+                                  )
+                                }
+                              : value
+                          )
                         }
                       />
                       <small style={{ minWidth: "48px", color: colors.muted }}>
@@ -377,6 +389,7 @@ export default function QuizAuthoringDialog({
                     ＋ 新增選項
                   </button>
                 </fieldset>
+                )}
 
                 <label htmlFor={`explanation-${question.id}`} style={{ width: "100%" }}>
                   <span style={{ display: "flex", justifyContent: "space-between" }}>

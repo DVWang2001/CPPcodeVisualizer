@@ -73,6 +73,7 @@ test("detects a lesson quiz edit as a new version change", () => {
     questions: [
       {
         id: "q1",
+        kind: "choice" as "choice",
         prompt: "原題目",
         options: [{ id: "a", text: "0" }, { id: "b", text: "1" }],
         correct_option_id: "b",

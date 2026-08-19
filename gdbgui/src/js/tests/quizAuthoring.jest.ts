@@ -15,6 +15,7 @@ const source = ["int main() {", "  int i = 0;", "  i++;", "  return i;", "}"].jo
 function question(id: string, line: number): QuizQuestion {
   return {
     id,
+    kind: "choice",
     prompt: `題目 ${id}`,
     options: [
       { id: `${id}a`, text: "0" },
