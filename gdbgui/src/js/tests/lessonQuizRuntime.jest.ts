@@ -149,6 +149,35 @@ test("an open socket snapshot clears a stale pending table selection", () => {
   expect(lessonQuizRuntime.state().blocked).toBe(true);
 });
 
+test("a different server-open question supersedes pending and its close releases the gate", () => {
+  const setGate = jest.fn();
+  const twoQuestions = {
+    ...tableSession(),
+    questions: [
+      tableSession().questions[0],
+      { ...session().questions[0], id: "q2", line: 4 }
+    ]
+  };
+  lessonQuizRuntime.activate(twoQuestions, { trigger: jest.fn(), setGate });
+  lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 });
+
+  lessonQuizRuntime.syncSession({
+    ...twoQuestions,
+    active_question: { ...twoQuestions.questions[1], state: "open" },
+    questions: [twoQuestions.questions[0], { ...twoQuestions.questions[1], state: "open" }]
+  });
+  expect(lessonQuizRuntime.state().pendingTable).toBeNull();
+  expect(lessonQuizRuntime.state().blocked).toBe(true);
+
+  lessonQuizRuntime.syncSession({
+    ...twoQuestions,
+    active_question: null,
+    questions: [twoQuestions.questions[0], { ...twoQuestions.questions[1], state: "closed" }]
+  });
+  expect(lessonQuizRuntime.state().blocked).toBe(false);
+  expect(setGate).toHaveBeenLastCalledWith(false);
+});
+
 test.each(["closed", "ended"])("a server %s snapshot releases a pending table gate", state => {
   const setGate = jest.fn();
   lessonQuizRuntime.activate(tableSession(), { trigger: jest.fn(), setGate });

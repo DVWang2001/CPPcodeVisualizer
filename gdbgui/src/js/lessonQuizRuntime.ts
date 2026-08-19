@@ -223,7 +223,7 @@ export const lessonQuizRuntime = {
     const pendingIsReady = Boolean(
       pendingQuestion && session.state !== "ended" && pendingServerQuestion?.state === "ready"
     );
-    if ((pendingQuestion && !pendingIsReady) || (serverBlocked && inFlightQuestionId)) {
+    if ((pendingQuestion && !pendingIsReady) || (serverBlocked && (pendingQuestion || inFlightQuestionId))) {
       if (inFlightQuestionId) generation += 1;
       pendingQuestion = null;
       pendingCapture = null;
