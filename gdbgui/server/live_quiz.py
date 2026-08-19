@@ -99,6 +99,25 @@ def validate_captured_table(raw: object, max_cells: int) -> dict:
     return {"rows": rows, "cols": cols, "values": normalized_values, **labels}
 
 
+def grade_table(answer, correct):
+    """回傳 (答對格數, 總格數)；只做 trim 後的字串比對。"""
+    right = sum(
+        answer[row_index][col_index].strip() == expected.strip()
+        for row_index, row in enumerate(correct)
+        for col_index, expected in enumerate(row)
+    )
+    return right, sum(len(row) for row in correct)
+
+
+def accumulate_cell_stats(stats, answer, correct):
+    """把答錯的格子在列優先一維 stats 上 +1。"""
+    cols = len(correct[0]) if correct else 0
+    for row_index, row in enumerate(correct):
+        for col_index, expected in enumerate(row):
+            if answer[row_index][col_index].strip() != expected.strip():
+                stats[row_index * cols + col_index] += 1
+
+
 def _exact_dict(value, keys, label, optional_keys=()):
     if not isinstance(value, dict):
         raise QuizRejected(f"{label}格式不正確。")
@@ -304,6 +323,40 @@ def _valid_id(value):
     )
 
 
+def student_question_payload(row) -> dict:
+    """送給學生的題目內容；正解只在 closed 之後出現。"""
+    payload = {
+        "id": row["question_key"],
+        "kind": row["kind"],
+        "prompt": row["prompt"],
+        "state": row["state"],
+        "source_file": row["source_file"],
+        "line": int(row["trigger_line"]),
+    }
+    closed = row["state"] == "closed"
+    if closed:
+        payload["explanation"] = row["explanation"]
+    if row["kind"] == "choice":
+        payload["options"] = json.loads(row["options_json"])
+        if closed:
+            payload["correct_option_id"] = row["correct_option_id"]
+        return payload
+
+    table = json.loads(row["correct_table_json"]) if row["correct_table_json"] else None
+    if table is not None:
+        payload.update(
+            {
+                "rows": table["rows"],
+                "cols": table["cols"],
+                "row_labels": table["row_labels"],
+                "col_labels": table["col_labels"],
+            }
+        )
+        if closed:
+            payload["correct_values"] = table["values"]
+    return payload
+
+
 def _question_payload(row):
     payload = {
         "id": row["question_key"],
@@ -324,6 +377,17 @@ def _question_payload(row):
     # 這三欄在資料庫裡是 NULL；無條件 json.loads 會直接 TypeError，開課即 500。
     if row["kind"] == "table":
         payload["table_spec"] = json.loads(row["table_spec_json"])
+        table = json.loads(row["correct_table_json"]) if row["correct_table_json"] else None
+        if table is not None:
+            payload.update(
+                {
+                    "rows": table["rows"],
+                    "cols": table["cols"],
+                    "row_labels": table["row_labels"],
+                    "col_labels": table["col_labels"],
+                    "cell_stats": json.loads(row["cell_stats_json"]),
+                }
+            )
     else:
         payload["options"] = json.loads(row["options_json"])
         payload["correct_option_id"] = row["correct_option_id"]
@@ -637,11 +701,14 @@ def join_session(session_id: int, nickname: str, credential_hash: str) -> dict:
 
 
 def _stats_from_row(row):
-    return {
+    stats = {
         "answer_count": int(row["answer_count"]),
         "correct_count": int(row["correct_count"]),
-        "option_counts": json.loads(row["option_counts_json"]),
     }
+    key = "cell_stats" if row["kind"] == "table" else "option_counts"
+    column = "cell_stats_json" if row["kind"] == "table" else "option_counts_json"
+    stats[key] = json.loads(row[column])
+    return stats
 
 
 def answer_question(credential_hash: str, question_key: str, option_id: str) -> dict:
@@ -665,6 +732,8 @@ def answer_question(credential_hash: str, question_key: str, option_id: str) -> 
             ).fetchone()
             if row is None:
                 raise QuizConflict("找不到可作答的題目。")
+            if row["kind"] != "choice":
+                raise QuizRejected("作答格式與題型不符。")
             existing = conn.execute(
                 "SELECT selected_option_id, is_correct FROM live_quiz_responses "
                 "WHERE participant_id=? AND question_id=?",
@@ -721,6 +790,92 @@ def answer_question(credential_hash: str, question_key: str, option_id: str) -> 
             raise
 
 
+def answer_table_question(credential_hash: str, question_key: str, answer) -> dict:
+    if not isinstance(credential_hash, str) or CREDENTIAL_HASH_RE.fullmatch(credential_hash) is None:
+        raise QuizRejected("裝置憑證格式不正確。")
+    if not isinstance(question_key, str) or not question_key:
+        raise QuizRejected("缺少題目 ID。")
+
+    with closing(db.connect()) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = conn.execute(
+                "SELECT p.id AS participant_id, s.state AS session_state, q.* "
+                "FROM live_quiz_participants p "
+                "JOIN live_quiz_sessions s ON s.id=p.session_id "
+                "JOIN live_quiz_questions q ON q.session_id=p.session_id "
+                "WHERE p.credential_hash=? AND q.question_key=?",
+                (credential_hash, question_key),
+            ).fetchone()
+            if row is None:
+                raise QuizConflict("找不到可作答的題目。")
+            if row["kind"] != "table":
+                raise QuizRejected("作答格式與題型不符。")
+            existing = conn.execute(
+                "SELECT answer_json, correct_cells, total_cells FROM live_quiz_responses "
+                "WHERE participant_id=? AND question_id=?",
+                (row["participant_id"], row["id"]),
+            ).fetchone()
+            if existing is not None:
+                conn.commit()
+                return {
+                    "inserted": False,
+                    "correct_cells": int(existing["correct_cells"]),
+                    "total_cells": int(existing["total_cells"]),
+                    "stats": _stats_from_row(row),
+                }
+            if row["session_state"] != "lobby" or row["state"] != "open":
+                raise QuizConflict("這一題目前未開放作答。")
+
+            correct = json.loads(row["correct_table_json"])
+            if not isinstance(answer, list) or len(answer) != correct["rows"]:
+                raise QuizRejected("作答的表格維度與題目不符。")
+            for line in answer:
+                if not isinstance(line, list) or len(line) != correct["cols"]:
+                    raise QuizRejected("作答的表格維度與題目不符。")
+                if any(not isinstance(cell, str) for cell in line):
+                    raise QuizRejected("表格內容必須是字串。")
+            answer = [[cell[:MAX_CELL_LENGTH] for cell in line] for line in answer]
+            right, total = grade_table(answer, correct["values"])
+            cell_stats = json.loads(row["cell_stats_json"])
+            accumulate_cell_stats(cell_stats, answer, correct["values"])
+            answer_count = int(row["answer_count"]) + 1
+            correct_count = int(row["correct_count"]) + int(right == total)
+
+            conn.execute(
+                "INSERT INTO live_quiz_responses "
+                "(participant_id, question_id, answered_at, answer_json, correct_cells, total_cells) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    row["participant_id"],
+                    row["id"],
+                    db._now(),
+                    json.dumps(answer, ensure_ascii=False),
+                    right,
+                    total,
+                ),
+            )
+            conn.execute(
+                "UPDATE live_quiz_questions SET answer_count=?, correct_count=?, "
+                "cell_stats_json=? WHERE id=?",
+                (answer_count, correct_count, json.dumps(cell_stats), row["id"]),
+            )
+            conn.commit()
+            return {
+                "inserted": True,
+                "correct_cells": right,
+                "total_cells": total,
+                "stats": {
+                    "answer_count": answer_count,
+                    "correct_count": correct_count,
+                    "cell_stats": cell_stats,
+                },
+            }
+        except BaseException:
+            conn.rollback()
+            raise
+
+
 def guest_state(credential_hash: str) -> Optional[dict]:
     if not isinstance(credential_hash, str) or CREDENTIAL_HASH_RE.fullmatch(credential_hash) is None:
         return None
@@ -735,7 +890,8 @@ def guest_state(credential_hash: str) -> Optional[dict]:
         if participant is None:
             return None
         question = conn.execute(
-            "SELECT q.*, r.selected_option_id, r.is_correct "
+            "SELECT q.*, r.selected_option_id, r.is_correct, r.answer_json, "
+            "r.correct_cells, r.total_cells "
             "FROM live_quiz_questions q "
             "LEFT JOIN live_quiz_responses r ON r.question_id=q.id AND r.participant_id=? "
             "WHERE q.session_id=? AND q.state IN ('open', 'closed') AND q.opened_at IS NOT NULL "
@@ -744,24 +900,38 @@ def guest_state(credential_hash: str) -> Optional[dict]:
         ).fetchone()
         active = None
         if question is not None:
-            active = {
-                "id": question["question_key"],
-                "prompt": question["prompt"],
-                "options": json.loads(question["options_json"]),
-                "source_file": question["source_file"],
-                "line": int(question["trigger_line"]),
-                "state": question["state"],
-                "selected_option_id": question["selected_option_id"],
-            }
-            if question["state"] == "closed":
+            active = student_question_payload(question)
+            if question["kind"] == "choice":
+                active["selected_option_id"] = question["selected_option_id"]
+            else:
+                active["answer"] = (
+                    json.loads(question["answer_json"])
+                    if question["answer_json"] is not None
+                    else None
+                )
+            if question["state"] == "closed" and question["kind"] == "choice":
                 active["result"] = {
                     "is_correct": (
                         bool(question["is_correct"])
                         if question["selected_option_id"] is not None
                         else None
                     ),
-                    "correct_option_id": question["correct_option_id"],
-                    "explanation": question["explanation"],
+                    "correct_option_id": active.pop("correct_option_id"),
+                    "explanation": active.pop("explanation"),
+                }
+            elif question["state"] == "closed":
+                active["result"] = {
+                    "correct_cells": (
+                        int(question["correct_cells"])
+                        if question["answer_json"] is not None
+                        else None
+                    ),
+                    "total_cells": (
+                        int(question["total_cells"])
+                        if question["answer_json"] is not None
+                        else None
+                    ),
+                    "explanation": active.pop("explanation"),
                 }
         return {
             "participant_id": int(participant["id"]),
@@ -1044,8 +1214,17 @@ def guest_answer():
     if credential_hash is None:
         return _error("找不到參與者。", 404)
     try:
-        body = _request_fields(("question_id", "option_id"))
-        answer_question(credential_hash, body["question_id"], body["option_id"])
+        body = _request_fields(
+            ("question_id",), optional_keys=("option_id", "answer")
+        )
+        has_option = "option_id" in body
+        has_table = "answer" in body
+        if has_option == has_table:
+            raise QuizRejected("作答必須且只能提供一種答案格式。")
+        if has_option:
+            answer_question(credential_hash, body["question_id"], body["option_id"])
+        else:
+            answer_table_question(credential_hash, body["question_id"], body["answer"])
         state = guest_state(credential_hash)
         if state is None:
             return _error("課堂不存在或已結束。", 409)
@@ -1071,6 +1250,19 @@ def _latest_question(state):
     return max(opened, key=lambda question: question["opened_at"]) if opened else None
 
 
+def _socket_stats_payload(state, question):
+    payload = {
+        "joined_count": state["joined_count"],
+        "question_id": question["id"],
+        "state": question["state"],
+        "answer_count": question["answer_count"],
+        "correct_count": question["correct_count"],
+    }
+    key = "cell_stats" if question["kind"] == "table" else "option_counts"
+    payload[key] = question[key]
+    return payload
+
+
 def emit_teacher_state(session_id):
     if _socketio is None or _socketio.server is None:
         return
@@ -1087,14 +1279,7 @@ def emit_teacher_state(session_id):
     if question is not None:
         _socketio.emit(
             "quiz:stats",
-            {
-                "joined_count": state["joined_count"],
-                "question_id": question["id"],
-                "state": question["state"],
-                "answer_count": question["answer_count"],
-                "correct_count": question["correct_count"],
-                "option_counts": question["option_counts"],
-            },
+            _socket_stats_payload(state, question),
             room=room,
             namespace="/lesson_quiz",
         )
@@ -1177,14 +1362,7 @@ def register_socket_handlers(socketio):
             if question is not None:
                 emit(
                     "quiz:stats",
-                    {
-                        "joined_count": state["joined_count"],
-                        "question_id": question["id"],
-                        "state": question["state"],
-                        "answer_count": question["answer_count"],
-                        "correct_count": question["correct_count"],
-                        "option_counts": question["option_counts"],
-                    },
+                    _socket_stats_payload(state, question),
                 )
             return True
 
