@@ -100,17 +100,17 @@ test("changing a cell saves the complete draft", () => {
   expect(loadDraft("table-1", 2, 2)).toEqual([["42", ""], ["", ""]]);
 });
 
-test("native mobile input survives the submitted transition", () => {
+test("submit reads a native mobile value even when React misses its input event", () => {
   const onSubmit = jest.fn();
   render({ onSubmit });
   const input = root.querySelector("input") as HTMLInputElement;
   input.value = "42";
 
-  act(() => Simulate.input(input));
   act(() => Simulate.click(root.querySelector("button")!));
   render({ submitted: true, onSubmit });
 
   expect(onSubmit).toHaveBeenCalledWith([["42", ""], ["", ""]]);
+  expect(loadDraft("table-1", 2, 2)).toEqual([["42", ""], ["", ""]]);
   expect((root.querySelector("input") as HTMLInputElement).value).toBe("42");
 });
 
@@ -124,9 +124,9 @@ test("Enter focuses the next cell in row-major order", () => {
   expect(document.activeElement).toBe(inputs[1]);
 });
 
-test("submitted grid disables every cell", () => {
+test("submitted grid is read-only without Android disabled-input rendering", () => {
   render({ submitted: true });
-  expect(Array.from(root.querySelectorAll("input")).every(input => input.disabled)).toBe(true);
+  expect(Array.from(root.querySelectorAll("input")).every(input => input.readOnly && !input.disabled)).toBe(true);
 });
 
 test("closed grid marks each owned answer as correct or wrong with readable hints", () => {

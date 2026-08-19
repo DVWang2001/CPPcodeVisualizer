@@ -85,8 +85,16 @@ async function fillTable(page: Page, values: string[][]): Promise<void> {
 test('two phones answer a captured DP table without leaking it before close', async ({ browser }) => {
   const teacher = await browser.newContext(devices['Desktop Chrome']);
   const teacherPage = await teacher.newPage();
-  const phoneA = await browser.newContext(devices['Pixel 5']);
-  const phoneB = await browser.newContext(devices['Pixel 5']);
+  const android14 = {
+    viewport: { width: 360, height: 820 },
+    screen: { width: 720, height: 1640 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+  };
+  const phoneA = await browser.newContext(android14);
+  const phoneB = await browser.newContext(android14);
   const studentA = await phoneA.newPage();
   const studentB = await phoneB.newPage();
   let lessonId: number | null = null;

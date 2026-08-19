@@ -175,7 +175,7 @@ button:focus-visible, input:focus-visible, .answer-option:focus-within { outline
   text-align: center;
 }
 
-.table-answer-grid input:disabled { opacity: 1; -webkit-text-fill-color: currentColor; }
+.table-answer-grid input:read-only { opacity: 1; -webkit-text-fill-color: var(--quiz-ink); }
 .table-answer-grid input.is-correct { border-color: var(--quiz-green); background: #edf8f0; }
 .table-answer-grid input.is-wrong { border-color: var(--quiz-red); background: #fff1f0; }
 

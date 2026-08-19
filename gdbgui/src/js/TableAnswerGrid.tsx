@@ -31,6 +31,16 @@ export default function TableAnswerGrid({ question, onSubmit, submitted }: Props
     values.current = next;
     saveDraft(question.id, next);
   };
+  const submit = () => {
+    const answer = Array.from({ length: question.rows }, (_, row) =>
+      Array.from({ length: question.cols }, (_, col) =>
+        inputs.current[row * question.cols + col]?.value || ""
+      )
+    );
+    values.current = answer;
+    saveDraft(question.id, answer);
+    onSubmit(answer);
+  };
 
   return (
     <div className="table-answer-scroll" style={{ overflow: "auto", maxHeight: "60vh" }}>
@@ -81,7 +91,7 @@ export default function TableAnswerGrid({ question, onSubmit, submitted }: Props
                       inputMode="numeric"
                       maxLength={32}
                       defaultValue={value}
-                      disabled={locked}
+                      readOnly={locked}
                       aria-label={`${question.row_labels[row]}，${question.col_labels[col]}${result ? `，${result}` : ""}`}
                       title={result || undefined}
                       onInput={event => change(row, col, event.currentTarget.value)}
@@ -100,7 +110,7 @@ export default function TableAnswerGrid({ question, onSubmit, submitted }: Props
         </tbody>
       </table>
       {!locked && (
-        <button type="button" className="primary-action" onClick={() => onSubmit(values.current)}>
+        <button type="button" className="primary-action" onClick={submit}>
           送出答案
         </button>
       )}
