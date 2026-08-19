@@ -278,7 +278,12 @@ export default function LiveQuizPanel({
             );
           },
           setGate: value => store.set("quiz_playback_gate", value),
-          resumeAutoplay: command => store.set("autoplay_pending_command", command),
+          // 把指令寫回 autoplay_pending_command 是不夠的：那個槽只有「使用者按恢復」
+          // 那條路徑會消費，沒有任何東西在輪詢它，所以收卷後畫面就是不動。
+          // 走 gdbgui_execute_autoplay_command 才是真的讓它跑起來，而且沿用它既有的
+          // 全部守衛：閘門是否已開、autoplay 是否仍啟用、目前是否暫停（暫停時它會
+          // 自己把指令放回槽裡等恢復）、以及動畫 barrier。
+          resumeAutoplay: command => (window as any).gdbgui_execute_autoplay_command?.(command),
           onChange: next => {
             setRuntimeState(next);
             if (next.session) setSession(next.session);

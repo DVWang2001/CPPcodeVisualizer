@@ -438,3 +438,30 @@ test("clearGate 丟棄寄放的指令", () => {
 
   expect(resumeAutoplay).not.toHaveBeenCalled();
 });
+
+test("開題時寄放的是 TTS 的續播指令，不是 store 裡那個空槽", () => {
+  // 自動播放是由 TTS 播完驅動的：_tts_autoplay_command 是「這段語音播完要做什麼」。
+  // Actions.stop_tts() 會把它清掉，所以開題那一刻真正被摧毀的是它。
+  // store 的 autoplay_pending_command 只有「暫停時」才會被寫入，題目觸發時是空的——
+  // 先前寄放那個槽等於什麼都沒寄放，收卷後畫面自然不動。
+  const resumeAutoplay = jest.fn();
+  lessonQuizRuntime.activate(session(), {
+    trigger: jest.fn(() => Promise.resolve(session())),
+    setGate: jest.fn(),
+    resumeAutoplay
+  });
+  (window as any)._gdbgui_tts_playing = { autoplayCommand: "next" };
+  store.set("autoplay_pending_command", null);
+
+  // inferior_program_paused 後段會走到 Memory.get_gdb_commands_from_state()，
+  // 那裡用瀏覽器全域的 lodash `_`，jest 環境沒有它。寄放發生在更前面（quizMatched
+  // 分支），所以吞掉那個環境性的例外不影響這條測試要驗的東西。
+  try {
+    Actions.inferior_program_paused({ fullname: "main.cpp", line: 3 } as any);
+  } catch (error) {
+    if (!String(error).includes("_ is not defined")) throw error;
+  }
+  lessonQuizRuntime.questionClosed(session());
+
+  expect(resumeAutoplay).toHaveBeenCalledWith("next");
+});

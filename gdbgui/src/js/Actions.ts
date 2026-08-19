@@ -165,10 +165,16 @@ const Actions = {
       else (global_variable as any).__latest_containers = new Map();
     }
     if (quizMatched) {
+      // 順序不能反：stop_tts() 會把 _tts_autoplay_command 清掉，而**那個**才是驅動
+      // 自動播放前進的東西——TTS 播完之後由它決定下一步做什麼。
+      //
+      // store 裡的 autoplay_pending_command 只有「使用者暫停時」才會被寫入，題目
+      // 觸發時它是空的。先前寄放它等於什麼都沒寄放，於是收卷後畫面就是不動。
+      const playing = (window as any)._gdbgui_tts_playing;
+      lessonQuizRuntime.stashAutoplay(
+        (playing && playing.autoplayCommand) || store.get("autoplay_pending_command")
+      );
       Actions.stop_tts();
-      // 這裡以前是直接清成 null，於是收卷後閘門開了也沒東西可以續播，教師看到的是
-      // 「收卷之後畫面就停在那裡」。改成寄放給 runtime，questionClosed 時交還。
-      lessonQuizRuntime.stashAutoplay(store.get("autoplay_pending_command"));
       store.set("autoplay_pending_command", null);
     }
     // 讀取指導，如果存在指導並且當前的frame有line這個資訊

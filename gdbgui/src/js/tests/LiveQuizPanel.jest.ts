@@ -467,3 +467,16 @@ test("restart 換課期間不把教案載回最新版本", async () => {
   expect(liveQuizClient.endLiveSession).toHaveBeenCalledWith(7);
   expect(onSessionEnded).not.toHaveBeenCalled();
 });
+
+test("收卷後真的把續播指令執行掉，而不是只放回槽裡", async () => {
+  // autoplay_pending_command 只有「使用者按恢復」那條路徑會消費，沒有人輪詢它。
+  // 只把指令寫回 store 的話，教師收卷後畫面就是不動——這是實際回報的症狀。
+  const execute = jest.fn();
+  (window as any).gdbgui_execute_autoplay_command = execute;
+  await mountPanel();
+
+  lessonQuizRuntime.stashAutoplay("next");
+  act(() => { lessonQuizRuntime.questionClosed(panelSession()); });
+
+  expect(execute).toHaveBeenCalledWith("next");
+});
