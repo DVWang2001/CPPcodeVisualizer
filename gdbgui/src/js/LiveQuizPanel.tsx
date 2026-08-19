@@ -173,6 +173,8 @@ export default function LiveQuizPanel({
   const [error, setError] = React.useState<string | null>(null);
   const disconnectRef = React.useRef<(() => void) | null>(null);
   const endedRef = React.useRef(false);
+  /** 正在把舊課堂換成新的：收課的收尾（載回最新教案）此時是有害的。 */
+  const restartingRef = React.useRef(false);
   const restorationRef = React.useRef<Promise<void> | null>(null);
   const urlRef = React.useRef<HTMLInputElement | null>(null);
   const containerClosedRef = React.useRef(false);
@@ -185,6 +187,10 @@ export default function LiveQuizPanel({
   };
 
   const restoreLatest = (): Promise<void> => {
+    // 換課途中不要載回最新版本：那會換掉編輯器裡的原始碼，而程式正在跑——換掉原始碼
+    // 等於換掉 binary，下一步就會得到 "The program is not being run."。
+    // 新課堂緊接著會用 prepareVersion 鎖定同一個版本，這裡什麼都不必做。
+    if (restartingRef.current) return Promise.resolve();
     setBusy(true);
     setError(null);
     return onSessionEnded()
@@ -386,6 +392,7 @@ export default function LiveQuizPanel({
   // 「這份教案沒有題目」就跳錯誤打斷它。
   const restartSession = React.useCallback((): Promise<void> => {
     if (startError()) return Promise.resolve();
+    restartingRef.current = true;
     setBusy(true);
     setError(null);
     const previous = sessionRef.current;
@@ -400,7 +407,10 @@ export default function LiveQuizPanel({
       .then(connect)
       .then(() => setShowQr(true))
       .catch(reason => setError(reason.message || "無法開始課堂。"))
-      .then(() => setBusy(false));
+      .then(() => {
+        restartingRef.current = false;
+        setBusy(false);
+      });
   }, [lessonId]);
 
   React.useEffect(() => {

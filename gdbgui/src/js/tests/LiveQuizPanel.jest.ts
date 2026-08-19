@@ -431,3 +431,39 @@ test("面板卸載後 restart 橋接不再存在", async () => {
 
   expect((window as any).gdbgui_live_quiz_restart).toBeUndefined();
 });
+
+test("restart 換課期間不把教案載回最新版本", async () => {
+  // 收課的正常收尾是 onSessionEnded() → loadLessonFromServer()，也就是把編輯器裡的
+  // 原始碼換掉。換課時那是有害的：程式正在跑，換掉原始碼等於換掉 binary，下一步會
+  // 得到 "The program is not being run."。新課堂馬上會鎖定同一個版本，不需要載回。
+  const onSessionEnded = jest.fn(() => Promise.resolve());
+  (liveQuizClient.getLiveSession as jest.Mock).mockResolvedValue(panelSession());
+  sessionStorage.setItem("gdbgui_live_quiz_session_id", "7");
+  await act(async () => {
+    ReactDOM.render(React.createElement(LiveQuizPanel, {
+      lessonId: 2,
+      startError: () => null,
+      prepareVersion: () => Promise.resolve(),
+      onSessionEnded,
+      onClose: jest.fn()
+    }), root);
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  });
+
+  // 真實情況下 endLiveSession 之後，伺服器會經 socket 推 ended 狀態進來，
+  // 那才是走到 finishEnded → restoreLatest → onSessionEnded 的那條路。
+  const socketArgs = (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls;
+  const handlers = socketArgs[socketArgs.length - 1][1];
+  (liveQuizClient.endLiveSession as jest.Mock).mockImplementation(() => {
+    handlers.onState({ ...panelSession(), state: "ended" });
+    return Promise.resolve({ ...panelSession(), state: "ended" });
+  });
+  (liveQuizClient.createLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), id: 8 });
+
+  await act(async () => {
+    await (window as any).gdbgui_live_quiz_restart();
+  });
+
+  expect(liveQuizClient.endLiveSession).toHaveBeenCalledWith(7);
+  expect(onSessionEnded).not.toHaveBeenCalled();
+});
