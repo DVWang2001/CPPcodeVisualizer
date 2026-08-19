@@ -67,18 +67,26 @@ async function join(page: Page, url: string, nickname: string): Promise<void> {
 async function fillTable(page: Page, values: string[][]): Promise<void> {
   for (let row = 0; row < values.length; row += 1) {
     for (let col = 0; col < values[row].length; col += 1) {
-      await page.getByLabel(`${row}，${col}`, { exact: true }).fill(values[row][col]);
+      const input = page.getByLabel(`${row}，${col}`, { exact: true });
+      await input.focus();
+      await page.keyboard.insertText(values[row][col]);
+      await expect(input).toHaveValue(values[row][col]);
     }
   }
   await page.getByRole('button', { name: '送出答案' }).click();
   await expect(page.getByText('已收到答案，請等待老師關題。')).toBeVisible();
+  for (let row = 0; row < values.length; row += 1) {
+    for (let col = 0; col < values[row].length; col += 1) {
+      await expect(page.getByLabel(`${row}，${col}`, { exact: true })).toHaveValue(values[row][col]);
+    }
+  }
 }
 
 test('two phones answer a captured DP table without leaking it before close', async ({ browser }) => {
   const teacher = await browser.newContext(devices['Desktop Chrome']);
   const teacherPage = await teacher.newPage();
-  const phoneA = await browser.newContext(devices['iPhone 13']);
-  const phoneB = await browser.newContext(devices['iPhone 13']);
+  const phoneA = await browser.newContext(devices['Pixel 5']);
+  const phoneB = await browser.newContext(devices['Pixel 5']);
   const studentA = await phoneA.newPage();
   const studentB = await phoneB.newPage();
   let lessonId: number | null = null;
@@ -87,27 +95,26 @@ test('two phones answer a captured DP table without leaking it before close', as
     lessonId = await createLesson(teacherPage);
     await teacherPage.goto(`/edit?lesson=${lessonId}`);
     await expect(teacherPage.getByTestId('live-quiz-open')).toBeVisible({ timeout: 15_000 });
-    await teacherPage.getByTestId('live-quiz-open').click();
-    await teacherPage.getByRole('button', { name: '開始即時課堂' }).click();
+    await setupGuide(teacherPage, '{dp}');
+    await teacherPage.click('#run_button');
     await teacherPage.waitForFunction(() =>
       Number(sessionStorage.getItem('gdbgui_live_quiz_session_id')) > 0
     );
-    const sessionId = await teacherPage.evaluate(() =>
-      Number(sessionStorage.getItem('gdbgui_live_quiz_session_id'))
-    );
-    const session = await (await teacherPage.request.get(`/api/live-quiz/sessions/${sessionId}`)).json();
-    await Promise.all([
-      join(studentA, session.join_url, '手機甲'),
-      join(studentB, session.join_url, '手機乙'),
-    ]);
-
-    await setupGuide(teacherPage, '{dp}');
-    await teacherPage.click('#run_button');
     await teacherPage.waitForFunction(
       () => Number((window as any).store?.get('paused_on_frame')?.line) === 26,
       null,
       { timeout: 30_000 }
     );
+    const sessionId = await teacherPage.evaluate(() =>
+      Number(sessionStorage.getItem('gdbgui_live_quiz_session_id'))
+    );
+    const session = await (await teacherPage.request.get(`/api/live-quiz/sessions/${sessionId}`)).json();
+    await teacherPage.getByRole('dialog', { name: '放大的加入 QR Code' })
+      .getByRole('button', { name: '關閉' }).click();
+    await Promise.all([
+      join(studentA, session.join_url, '手機甲'),
+      join(studentB, session.join_url, '手機乙'),
+    ]);
 
     const selector = teacherPage.getByLabel('正解容器');
     await expect(selector).toHaveValue('dp', { timeout: 20_000 });
@@ -121,6 +128,7 @@ test('two phones answer a captured DP table without leaking it before close', as
       const response = await student.request.get('/api/live-quiz/guest/state');
       expect(response.status()).toBe(200);
       const openState = await response.json();
+      expect(openState.active_question.answer).toBeNull();
       expect(openState.active_question).not.toHaveProperty('correct_values');
       const raw = JSON.stringify(openState);
       for (const value of ['11', '22', '33', '44']) expect(raw).not.toContain(`"${value}"`);

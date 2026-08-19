@@ -9,24 +9,27 @@ type Props = {
 };
 
 export default function TableAnswerGrid({ question, onSubmit, submitted }: Props) {
-  const [values, setValues] = React.useState<string[][]>(() =>
+  const values = React.useRef<string[][]>(
     question.answer || loadDraft(question.id, question.rows, question.cols)
   );
-  React.useEffect(() => {
-    if (question.answer) setValues(question.answer);
-  }, [question.answer]);
   const inputs = React.useRef<Array<HTMLInputElement | null>>([]);
+  React.useEffect(() => {
+    if (!question.answer) return;
+    values.current = question.answer;
+    question.answer.forEach((line, row) => line.forEach((value, col) => {
+      const input = inputs.current[row * question.cols + col];
+      if (input) input.value = value;
+    }));
+  }, [question.answer]);
   const locked = submitted || question.state === "closed";
   const showResults = question.state === "closed" && !!question.answer && !!question.correct_values;
-  const displayedValues = question.answer || values;
+  const displayedValues = showResults ? question.answer! : values.current;
 
   const change = (row: number, col: number, value: string) => {
-    setValues(previous => {
-      const next = previous.map(line => line.slice());
-      next[row][col] = value;
-      saveDraft(question.id, next);
-      return next;
-    });
+    const next = values.current.map(line => line.slice());
+    next[row][col] = value;
+    values.current = next;
+    saveDraft(question.id, next);
   };
 
   return (
@@ -77,11 +80,11 @@ export default function TableAnswerGrid({ question, onSubmit, submitted }: Props
                       className={showResults ? correct ? "is-correct" : "is-wrong" : ""}
                       inputMode="numeric"
                       maxLength={32}
-                      value={value}
+                      defaultValue={value}
                       disabled={locked}
                       aria-label={`${question.row_labels[row]}，${question.col_labels[col]}${result ? `，${result}` : ""}`}
                       title={result || undefined}
-                      onChange={event => change(row, col, event.target.value)}
+                      onInput={event => change(row, col, event.currentTarget.value)}
                       onKeyDown={event => {
                         if (event.key !== "Enter") return;
                         event.preventDefault();
@@ -97,7 +100,7 @@ export default function TableAnswerGrid({ question, onSubmit, submitted }: Props
         </tbody>
       </table>
       {!locked && (
-        <button type="button" className="primary-action" onClick={() => onSubmit(values)}>
+        <button type="button" className="primary-action" onClick={() => onSubmit(values.current)}>
           送出答案
         </button>
       )}

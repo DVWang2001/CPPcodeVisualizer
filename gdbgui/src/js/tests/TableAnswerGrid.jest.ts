@@ -35,13 +35,17 @@ afterEach(() => {
   root.remove();
 });
 
-function render(props: { question?: StudentQuizTableQuestion; submitted?: boolean } = {}) {
+function render(props: {
+  question?: StudentQuizTableQuestion;
+  submitted?: boolean;
+  onSubmit?: (values: string[][]) => void;
+} = {}) {
   act(() => {
     ReactDOM.render(
       React.createElement(TableAnswerGrid, {
         question: props.question || question(),
         submitted: props.submitted || false,
-        onSubmit: jest.fn()
+        onSubmit: props.onSubmit || jest.fn()
       }),
       root
     );
@@ -89,10 +93,25 @@ test("same grid instance replaces its draft with the server-owned answer", () =>
 test("changing a cell saves the complete draft", () => {
   render();
   const input = root.querySelector("input") as HTMLInputElement;
+  input.value = "42";
 
-  act(() => Simulate.change(input, { target: { value: "42" } } as any));
+  act(() => Simulate.input(input));
 
   expect(loadDraft("table-1", 2, 2)).toEqual([["42", ""], ["", ""]]);
+});
+
+test("native mobile input survives the submitted transition", () => {
+  const onSubmit = jest.fn();
+  render({ onSubmit });
+  const input = root.querySelector("input") as HTMLInputElement;
+  input.value = "42";
+
+  act(() => Simulate.input(input));
+  act(() => Simulate.click(root.querySelector("button")!));
+  render({ submitted: true, onSubmit });
+
+  expect(onSubmit).toHaveBeenCalledWith([["42", ""], ["", ""]]);
+  expect((root.querySelector("input") as HTMLInputElement).value).toBe("42");
 });
 
 test("Enter focuses the next cell in row-major order", () => {
