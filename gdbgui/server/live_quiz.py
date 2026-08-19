@@ -28,10 +28,15 @@ MAX_EXPLANATION_LENGTH = 1000
 MAX_NICKNAME_LENGTH = 50
 QUESTION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
+MAX_CELLS_CEILING = 200
+MAX_CELL_LENGTH = 32
+
 QUIZ_KEYS = frozenset(("schema_version", "questions"))
-QUESTION_KEYS = frozenset(
-    ("id", "prompt", "options", "correct_option_id", "explanation", "trigger")
-)
+#: 兩種題型共用的鍵。`kind` 允許缺席：既有教案沒有這個欄位，缺席時視為 choice。
+COMMON_QUESTION_KEYS = frozenset(("id", "prompt", "explanation", "trigger"))
+CHOICE_QUESTION_KEYS = COMMON_QUESTION_KEYS | {"options", "correct_option_id"}
+TABLE_QUESTION_KEYS = COMMON_QUESTION_KEYS | {"kind", "table_spec"}
+TABLE_SPEC_KEYS = frozenset(("var_hint", "max_cells"))
 OPTION_KEYS = frozenset(("id", "text"))
 TRIGGER_KEYS = frozenset(("kind", "source_file", "line", "anchor"))
 ANCHOR_KEYS = frozenset(("line_text", "before_text", "after_text"))
@@ -147,7 +152,16 @@ def validate_quiz_bundle(bundle: object) -> Optional[dict]:
     resolved_triggers = set()
     for index, value in enumerate(raw["questions"]):
         label = f"第 {index + 1} 題"
-        question = _exact_dict(value, QUESTION_KEYS, label)
+        if not isinstance(value, dict):
+            raise QuizRejected(f"{label}格式不正確。")
+        kind = value.get("kind", "choice")
+        if kind not in ("choice", "table"):
+            raise QuizRejected(f"{label}題型不正確。")
+        expected_keys = CHOICE_QUESTION_KEYS if kind == "choice" else TABLE_QUESTION_KEYS
+        if kind == "choice":
+            # 舊教案沒有 kind；新教案可以明寫 kind='choice'。兩者都要收。
+            expected_keys = expected_keys | {"kind"} if "kind" in value else expected_keys
+        question = _exact_dict(value, expected_keys, label)
         question_id = _text(question["id"], f"{label} ID", 1, db.MAX_BUNDLE_BYTES)
         if not QUESTION_ID_PATTERN.fullmatch(question_id):
             raise QuizRejected("題目 ID 只能使用英文字母、數字、底線與連字號。")
@@ -159,28 +173,39 @@ def validate_quiz_bundle(bundle: object) -> Optional[dict]:
             question["explanation"], f"{label}解說", 0, MAX_EXPLANATION_LENGTH
         )
 
-        if not isinstance(question["options"], list) or not 2 <= len(question["options"]) <= 6:
-            raise QuizRejected(f"{label}選項需有 2 至 6 個。")
-        options, option_ids = [], set()
-        for option_index, value in enumerate(question["options"]):
-            option = _exact_dict(value, OPTION_KEYS, f"{label}第 {option_index + 1} 個選項")
-            option_id = _text(option["id"], f"{label}選項 ID", 1, db.MAX_BUNDLE_BYTES)
-            if option_id in option_ids:
-                raise QuizRejected(f"{label}選項 ID 必須不重複。")
-            option_ids.add(option_id)
-            options.append(
-                {
-                    "id": option_id,
-                    "text": _text(
-                        option["text"], f"{label}選項", 1, MAX_OPTION_LENGTH
-                    ),
-                }
+        options, correct_option_id, table_spec = None, None, None
+        if kind == "choice":
+            if not isinstance(question["options"], list) or not 2 <= len(question["options"]) <= 6:
+                raise QuizRejected(f"{label}選項需有 2 至 6 個。")
+            options, option_ids = [], set()
+            for option_index, value in enumerate(question["options"]):
+                option = _exact_dict(value, OPTION_KEYS, f"{label}第 {option_index + 1} 個選項")
+                option_id = _text(option["id"], f"{label}選項 ID", 1, db.MAX_BUNDLE_BYTES)
+                if option_id in option_ids:
+                    raise QuizRejected(f"{label}選項 ID 必須不重複。")
+                option_ids.add(option_id)
+                options.append(
+                    {
+                        "id": option_id,
+                        "text": _text(
+                            option["text"], f"{label}選項", 1, MAX_OPTION_LENGTH
+                        ),
+                    }
+                )
+            correct_option_id = _text(
+                question["correct_option_id"], f"{label}正解", 1, db.MAX_BUNDLE_BYTES
             )
-        correct_option_id = _text(
-            question["correct_option_id"], f"{label}正解", 1, db.MAX_BUNDLE_BYTES
-        )
-        if correct_option_id not in option_ids:
-            raise QuizRejected(f"{label}正解必須對應一個選項。")
+            if correct_option_id not in option_ids:
+                raise QuizRejected(f"{label}正解必須對應一個選項。")
+        else:
+            spec = _exact_dict(question["table_spec"], TABLE_SPEC_KEYS, f"{label}表格設定")
+            var_hint = _text(spec["var_hint"], f"{label}變數提示", 0, 128)
+            max_cells = spec["max_cells"]
+            if isinstance(max_cells, bool) or not isinstance(max_cells, int):
+                raise QuizRejected(f"{label}格數上限必須是整數。")
+            if not 1 <= max_cells <= MAX_CELLS_CEILING:
+                raise QuizRejected(f"{label}格數上限必須介於 1 與 {MAX_CELLS_CEILING} 之間。")
+            table_spec = {"var_hint": var_hint, "max_cells": max_cells}
 
         trigger = _exact_dict(question["trigger"], TRIGGER_KEYS, f"{label}觸發器")
         if trigger["kind"] != "source_line":
@@ -213,16 +238,19 @@ def validate_quiz_bundle(bundle: object) -> Optional[dict]:
         if trigger_key in resolved_triggers:
             raise QuizRejected("同一程式碼行只能綁定一題。")
         resolved_triggers.add(trigger_key)
-        questions.append(
-            {
-                "id": question_id,
-                "prompt": prompt,
-                "options": options,
-                "correct_option_id": correct_option_id,
-                "explanation": explanation,
-                "trigger": resolved,
-            }
-        )
+        normalized = {
+            "id": question_id,
+            "kind": kind,
+            "prompt": prompt,
+            "explanation": explanation,
+            "trigger": resolved,
+        }
+        if kind == "choice":
+            normalized["options"] = options
+            normalized["correct_option_id"] = correct_option_id
+        else:
+            normalized["table_spec"] = table_spec
+        questions.append(normalized)
     return {"schema_version": 1, "questions": questions}
 
 
@@ -349,25 +377,27 @@ def create_session(owner_id: int, lesson_id: int) -> Optional[dict]:
             )
             session_id = int(session.lastrowid)
             for position, question in enumerate(quiz["questions"]):
-                option_counts = {option["id"]: 0 for option in question["options"]}
                 trigger = question["trigger"]
                 conn.execute(
                     "INSERT INTO live_quiz_questions "
-                    "(session_id, question_key, prompt, options_json, correct_option_id, "
-                    "explanation, source_file, trigger_line, trigger_anchor_json, position, "
-                    "state, option_counts_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?)",
+                    "(session_id, question_key, kind, prompt, explanation, source_file, "
+                    " trigger_line, trigger_anchor_json, position, state, "
+                    " options_json, correct_option_id, option_counts_json, table_spec_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?, ?)",
                     (
                         session_id,
                         question["id"],
+                        question["kind"],
                         question["prompt"],
-                        json.dumps(question["options"], ensure_ascii=False, separators=(",", ":")),
-                        question["correct_option_id"],
                         question["explanation"],
                         trigger["source_file"],
                         trigger["line"],
                         json.dumps(trigger["anchor"], ensure_ascii=False, separators=(",", ":")),
                         position,
-                        json.dumps(option_counts, ensure_ascii=False, separators=(",", ":")),
+                        json.dumps(question["options"], ensure_ascii=False, separators=(",", ":")) if question["kind"] == "choice" else None,
+                        question["correct_option_id"] if question["kind"] == "choice" else None,
+                        json.dumps({option["id"]: 0 for option in question["options"]}, ensure_ascii=False, separators=(",", ":")) if question["kind"] == "choice" else None,
+                        json.dumps(question["table_spec"], ensure_ascii=False, separators=(",", ":")) if question["kind"] == "table" else None,
                     ),
                 )
             conn.commit()
