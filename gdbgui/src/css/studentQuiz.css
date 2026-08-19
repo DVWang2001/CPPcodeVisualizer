@@ -169,9 +169,10 @@ button:focus-visible, input:focus-visible, .answer-option:focus-within { outline
   padding: 4px 2px;
   border: 2px solid transparent;
   border-radius: 0;
-  color: var(--quiz-ink);
+  color: #000;
+  -webkit-text-fill-color: #000;
   background: #fff;
-  font: 700 13px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font: 700 16px/1.2 monospace;
   text-align: center;
 }
 

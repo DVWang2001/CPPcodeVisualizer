@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
-import { act, Simulate } from "react-dom/test-utils";
+import { act } from "react-dom/test-utils";
 import TableAnswerGrid from "../TableAnswerGrid";
 import { StudentQuizTableQuestion } from "../studentQuizState";
 import { loadDraft, saveDraft } from "../tableDraft";
@@ -52,14 +52,16 @@ function render(props: {
   });
 }
 
-test("grid uses text-compatible numeric inputs inside its own sticky scroller", () => {
+test("grid uses a native number form inside its own sticky scroller", () => {
   render();
 
   const inputs = Array.from(root.querySelectorAll("input"));
   expect(inputs).toHaveLength(4);
-  expect(inputs[0].getAttribute("type")).toBeNull();
+  expect(root.querySelector("form.table-answer-form")).not.toBeNull();
+  expect(inputs[0].getAttribute("type")).toBe("number");
+  expect(inputs[0].getAttribute("step")).toBe("any");
+  expect(inputs[0].getAttribute("name")).toBe("cell-0-0");
   expect(inputs[0].getAttribute("inputmode")).toBe("numeric");
-  expect(inputs[0].getAttribute("maxlength")).toBe("32");
   expect(inputs[0].getAttribute("aria-label")).toContain("i=0");
   expect(inputs[0].getAttribute("aria-label")).toContain("j=0");
   expect((root.querySelector(".table-answer-scroll") as HTMLElement).style.overflow).toBe("auto");
@@ -95,18 +97,22 @@ test("changing a cell saves the complete draft", () => {
   const input = root.querySelector("input") as HTMLInputElement;
   input.value = "42";
 
-  act(() => Simulate.input(input));
+  act(() => { input.dispatchEvent(new Event("input", { bubbles: true })); });
 
   expect(loadDraft("table-1", 2, 2)).toEqual([["42", ""], ["", ""]]);
 });
 
-test("submit reads a native mobile value even when React misses its input event", () => {
+test("native form submits a mobile DOM value without a React input event", () => {
   const onSubmit = jest.fn();
   render({ onSubmit });
   const input = root.querySelector("input") as HTMLInputElement;
   input.value = "42";
 
-  act(() => Simulate.click(root.querySelector("button")!));
+  act(() => {
+    root.querySelector("form")!.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true })
+    );
+  });
   render({ submitted: true, onSubmit });
 
   expect(onSubmit).toHaveBeenCalledWith([["42", ""], ["", ""]]);
@@ -119,7 +125,9 @@ test("Enter focuses the next cell in row-major order", () => {
   const inputs = Array.from(root.querySelectorAll("input")) as HTMLInputElement[];
   inputs[0].focus();
 
-  act(() => Simulate.keyDown(inputs[0], { key: "Enter" } as any));
+  act(() => {
+    inputs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
 
   expect(document.activeElement).toBe(inputs[1]);
 });
