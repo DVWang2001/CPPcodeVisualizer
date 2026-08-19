@@ -128,16 +128,25 @@ button:focus-visible, input:focus-visible, .answer-option:focus-within { outline
   overscroll-behavior: contain;
 }
 
+/* 整張表要在一頁看完，不要橫向捲動。
+ *
+ * 原本是 width: max-content + 每格寫死 68px：8 欄的 DP 表就是 72 + 8×68 = 616px，
+ * 而手機約 360-390px，必然捲動。改成 table-layout: fixed + width: 100%，格子寬度
+ * 由欄數決定——8 欄在 360px 上每格約 40px，字級 13px 仍然讀得清楚。
+ *
+ * 下面的 min-width 是可讀性下限（每格 28px）。欄數多到連下限都塞不下時，表格會超出
+ * 容器寬度，外層的 .table-answer-scroll 仍然接手捲動——那時候捲動是唯一誠實的選擇，
+ * 硬塞只會讓每一格都看不清楚。 */
 .table-answer-grid {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  table-layout: fixed;
   border-spacing: 0;
   color: var(--quiz-ink);
 }
 
 .table-answer-grid th {
-  min-width: 68px;
-  padding: 8px 9px;
+  min-width: 28px;
+  padding: 5px 2px;
   border-right: 1px solid var(--quiz-line);
   border-bottom: 1px solid var(--quiz-line);
   color: var(--quiz-blue);
@@ -148,20 +157,21 @@ button:focus-visible, input:focus-visible, .answer-option:focus-within { outline
 }
 
 .table-answer-grid .table-answer-col { top: 0; z-index: 2; }
-.table-answer-grid .table-answer-row { left: 0; z-index: 1; }
-.table-answer-grid .table-answer-corner { top: 0; left: 0; z-index: 3; min-width: 72px; }
+.table-answer-grid .table-answer-row { left: 0; z-index: 1; width: 34px; min-width: 34px; }
+.table-answer-grid .table-answer-corner { top: 0; left: 0; z-index: 3; width: 34px; min-width: 34px; }
 
-.table-answer-grid td { padding: 3px; border-right: 1px solid var(--quiz-line); border-bottom: 1px solid var(--quiz-line); }
+.table-answer-grid td { padding: 2px; min-width: 28px; border-right: 1px solid var(--quiz-line); border-bottom: 1px solid var(--quiz-line); }
 
 .table-answer-grid input {
-  width: 68px;
-  min-height: 42px;
-  padding: 7px;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 2px;
   border: 2px solid transparent;
   border-radius: 0;
   color: var(--quiz-ink);
   background: #fff;
-  font: 700 15px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font: 700 13px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
   text-align: center;
 }
 
