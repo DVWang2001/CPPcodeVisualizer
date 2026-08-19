@@ -176,6 +176,9 @@ test("a different server-open question supersedes pending and its close releases
   });
   expect(lessonQuizRuntime.state().blocked).toBe(false);
   expect(setGate).toHaveBeenLastCalledWith(false);
+
+  expect(lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 })).toBe(true);
+  expect(lessonQuizRuntime.state().pendingTable!.questionId).toBe("q1");
 });
 
 test.each(["closed", "ended"])("a server %s snapshot releases a pending table gate", state => {

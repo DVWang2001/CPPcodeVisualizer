@@ -224,6 +224,7 @@ export const lessonQuizRuntime = {
       pendingQuestion && session.state !== "ended" && pendingServerQuestion?.state === "ready"
     );
     if ((pendingQuestion && !pendingIsReady) || (serverBlocked && (pendingQuestion || inFlightQuestionId))) {
+      if (pendingQuestion && pendingIsReady && serverBlocked) triggered.delete(pendingQuestion.id);
       if (inFlightQuestionId) generation += 1;
       pendingQuestion = null;
       pendingCapture = null;
