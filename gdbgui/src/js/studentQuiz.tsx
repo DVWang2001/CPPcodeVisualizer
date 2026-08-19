@@ -1,6 +1,7 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import io from "socket.io-client";
+import TableAnswerGrid from "./TableAnswerGrid";
 import {
   initialStudentState,
   markReconnecting,
@@ -9,6 +10,7 @@ import {
   reduceStudentState,
   StudentQuizState
 } from "./studentQuizState";
+import { clearDraft } from "./tableDraft";
 import "../css/studentQuiz.css";
 
 type InitialData = { token: string; session_title: string };
@@ -22,9 +24,14 @@ async function guestRequest(method: string, path: string, body?: any): Promise<a
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 404) throw new Error("本次課堂不存在、已結束或連結已失效。");
-    if (response.status === 409) throw new Error("目前無法作答，正在重新整理課堂狀態。");
-    throw new Error(payload.error || payload.message || "課堂連線失敗，請稍後重試。");
+    const message = response.status === 404
+      ? "本次課堂不存在、已結束或連結已失效。"
+      : response.status === 409
+        ? "目前無法作答，正在重新整理課堂狀態。"
+        : payload.error || payload.message || "課堂連線失敗，請稍後重試。";
+    const error = new Error(message) as Error & { status: number };
+    error.status = response.status;
+    throw error;
   }
   return payload;
 }
@@ -32,11 +39,34 @@ async function guestRequest(method: string, path: string, body?: any): Promise<a
 const joinSession = (token: string, nickname: string) =>
   guestRequest("POST", "/api/live-quiz/guest/join", { token, nickname });
 const getGuestState = () => guestRequest("GET", "/api/live-quiz/guest/state");
-const submitAnswer = (questionId: string, optionId: string) =>
+const submitChoiceAnswer = (questionId: string, optionId: string) =>
   guestRequest("POST", "/api/live-quiz/guest/answers", {
     question_id: questionId,
     option_id: optionId
   });
+
+export async function submitTableAnswer(
+  questionId: string,
+  answer: string[][],
+  applySnapshot: (snapshot: any) => void,
+  refresh?: () => Promise<any>
+): Promise<void> {
+  let snapshot: any;
+  try {
+    snapshot = await guestRequest("POST", "/api/live-quiz/guest/answers", {
+      question_id: questionId,
+      answer
+    });
+  } catch (reason) {
+    if ((reason as any).status === 409 && refresh) {
+      await refresh();
+      return;
+    }
+    throw reason;
+  }
+  applySnapshot(snapshot);
+  clearDraft(questionId);
+}
 
 function statusText(state: StudentQuizState, submitting: boolean): string {
   if (submitting) return "正在送出答案…";
@@ -48,7 +78,9 @@ function statusText(state: StudentQuizState, submitting: boolean): string {
   switch (state.status) {
     case "joining": return "輸入暱稱後加入課堂。";
     case "waiting": return "已加入，請等待老師播放到題目。";
-    case "open": return "題目已開放，請選擇一個答案。";
+    case "open": return state.active_question && state.active_question.kind === "table"
+      ? "題目已開放，請填完表格後送出。"
+      : "題目已開放，請選擇一個答案。";
     case "answered": return "已收到答案，請等待老師關題。";
     case "closed": return "老師已關題，請查看結果。";
     case "ended": return "本次課堂已結束。";
@@ -112,23 +144,34 @@ function StudentQuizApp({ data }: { data: InitialData }) {
       .then(() => setSubmitting(false));
   };
 
-  const answer = (event: React.FormEvent) => {
+  const answerChoice = (event: React.FormEvent) => {
     event.preventDefault();
     const question = state.active_question;
-    if (!question || !selected || state.status !== "open") return;
+    if (!question || question.kind !== "choice" || !selected || state.status !== "open") return;
     setSubmitting(true);
     setState(previous => markSubmitted(previous, selected));
-    submitAnswer(question.id, selected)
+    submitChoiceAnswer(question.id, selected)
       .then(applySnapshot)
       .catch(reason => {
-        if (reason.message.indexOf("重新整理") >= 0) refresh();
+        if (reason.status === 409) return refresh();
         else setState(previous => markStudentError(previous, reason.message));
       })
       .then(() => setSubmitting(false));
   };
 
+  const answerTable = (values: string[][]) => {
+    const question = state.active_question;
+    if (!question || question.kind !== "table" || state.status !== "open") return;
+    setSubmitting(true);
+    setState(previous => markSubmitted(previous));
+    submitTableAnswer(question.id, values, applySnapshot, refresh)
+      .catch(reason => {
+        setState(previous => markStudentError(previous, reason.message));
+      })
+      .then(() => setSubmitting(false));
+  };
+
   const question = state.active_question;
-  const result = question && question.result;
   const nicknameLength = Array.from(nickname.trim()).length;
 
   return (
@@ -165,47 +208,74 @@ function StudentQuizApp({ data }: { data: InitialData }) {
             <p>謝謝參與，這個加入連結已失效。</p>
           </div>
         ) : question ? (
-          <form onSubmit={answer}>
+          <div>
             <p className="source-ticket">
               <span aria-hidden="true" className="breakpoint-dot" />
               {question.source_file} · line {question.line}
             </p>
             <h2 className="question-prompt">{question.prompt}</h2>
-            <fieldset disabled={state.status !== "open" || submitting}>
-              <legend className="sr-only">請選擇一個答案</legend>
-              {question.options.map(option => {
-                const chosen = selected === option.id || state.selected_option_id === option.id;
-                const correct = state.status === "closed" && result?.correct_option_id === option.id;
-                return (
-                  <label
-                    key={option.id}
-                    className={`answer-option${chosen ? " selected" : ""}${correct ? " correct" : ""}`}
-                  >
-                    <input
-                      type="radio"
-                      name="answer"
-                      value={option.id}
-                      checked={chosen}
-                      onChange={() => setSelected(option.id)}
-                    />
-                    <span>{option.text}</span>
-                    {correct && <strong className="answer-mark">正解</strong>}
-                  </label>
-                );
-              })}
-            </fieldset>
-            {state.status === "open" && (
-              <button className="primary-action" disabled={!selected || submitting}>送出答案</button>
+            {question.kind === "choice" ? (
+              <form onSubmit={answerChoice}>
+                <fieldset disabled={state.status !== "open" || submitting}>
+                  <legend className="sr-only">請選擇一個答案</legend>
+                  {question.options.map(option => {
+                    const chosen = selected === option.id || state.selected_option_id === option.id;
+                    const correct = state.status === "closed" && question.result?.correct_option_id === option.id;
+                    return (
+                      <label
+                        key={option.id}
+                        className={`answer-option${chosen ? " selected" : ""}${correct ? " correct" : ""}`}
+                      >
+                        <input
+                          type="radio"
+                          name="answer"
+                          value={option.id}
+                          checked={chosen}
+                          onChange={() => setSelected(option.id)}
+                        />
+                        <span>{option.text}</span>
+                        {correct && <strong className="answer-mark">正解</strong>}
+                      </label>
+                    );
+                  })}
+                </fieldset>
+                {state.status === "open" && (
+                  <button className="primary-action" disabled={!selected || submitting}>送出答案</button>
+                )}
+                {state.status === "closed" && question.result && (
+                  <div className={`result-box ${question.result.is_correct ? "is-correct" : "is-wrong"}`}>
+                    <strong>
+                      {question.result.is_correct === true
+                        ? "✓ 答對了"
+                        : question.result.is_correct === false
+                          ? "✕ 還差一點"
+                          : "— 本題未作答"}
+                    </strong>
+                    {question.result.explanation && <p>{question.result.explanation}</p>}
+                  </div>
+                )}
+              </form>
+            ) : (
+              <>
+                <TableAnswerGrid
+                  key={question.id}
+                  question={question}
+                  onSubmit={answerTable}
+                  submitted={state.status !== "open" || submitting}
+                />
+                {state.status === "closed" && question.result && (
+                  <div className={`result-box ${question.result.correct_cells === question.result.total_cells ? "is-correct" : "is-wrong"}`}>
+                    <strong>
+                      {question.result.correct_cells === null
+                        ? "— 本題未作答"
+                        : `${question.result.correct_cells}/${question.result.total_cells} 格正確`}
+                    </strong>
+                    {question.result.explanation && <p>{question.result.explanation}</p>}
+                  </div>
+                )}
+              </>
             )}
-            {state.status === "closed" && result && (
-              <div className={`result-box ${result.is_correct ? "is-correct" : "is-wrong"}`}>
-                <strong>
-                  {result.is_correct === true ? "✓ 答對了" : result.is_correct === false ? "✕ 還差一點" : "— 本題未作答"}
-                </strong>
-                {result.explanation && <p>{result.explanation}</p>}
-              </div>
-            )}
-          </form>
+          </div>
         ) : (
           <div className="waiting-state" aria-hidden="true">
             <span className="waiting-cursor">▌</span>
