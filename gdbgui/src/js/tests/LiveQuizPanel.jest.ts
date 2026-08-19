@@ -404,3 +404,30 @@ test("a late successful trigger cannot hide the container after panel cleanup", 
 
   expect(close).toHaveBeenCalledTimes(1);
 });
+
+// ── restart 開新課堂 ──────────────────────────────────────────────────────
+//
+// 使用者選定的行為：每按一次「重新執行」就換一堂新課（新 session、新 QR）。
+// 已加入的學生會被踢出、必須重掃，所以開好之後要主動把 QR 放大層彈出來。
+
+test("restart 會結束舊課堂並建立新的", async () => {
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended" });
+  (liveQuizClient.createLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), id: 8 });
+
+  await act(async () => {
+    await (window as any).gdbgui_live_quiz_restart();
+  });
+
+  expect(liveQuizClient.endLiveSession).toHaveBeenCalledWith(7);
+  expect(liveQuizClient.createLiveSession).toHaveBeenCalledWith(2);
+});
+
+test("面板卸載後 restart 橋接不再存在", async () => {
+  await mountPanel();
+  expect(typeof (window as any).gdbgui_live_quiz_restart).toBe("function");
+
+  act(() => { ReactDOM.unmountComponentAtNode(root); });
+
+  expect((window as any).gdbgui_live_quiz_restart).toBeUndefined();
+});

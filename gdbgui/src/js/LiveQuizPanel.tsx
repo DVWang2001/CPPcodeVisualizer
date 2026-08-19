@@ -158,6 +158,12 @@ export default function LiveQuizPanel({
   onClose
 }: Props) {
   const [session, setSession] = React.useState<LiveQuizSession | null>(null);
+  // restartSession 由 window 橋接呼叫，不重新綁定，所以不能靠閉包讀 session——
+  // 那會永遠讀到掛載當下的值。用 ref 拿「現在」的 session。
+  const sessionRef = React.useRef<LiveQuizSession | null>(null);
+  sessionRef.current = session;
+  /** QR 放大層。開新課堂時自動打開，讓學生馬上重掃。 */
+  const [showQr, setShowQr] = React.useState(false);
   const [stats, setStats] = React.useState<LiveQuizStats | null>(null);
   const [runtimeState, setRuntimeState] = React.useState<RuntimeState>(
     lessonQuizRuntime.state()
@@ -370,6 +376,39 @@ export default function LiveQuizPanel({
       .catch(reason => setError(reason.message || "無法開始課堂。"))
       .then(() => setBusy(false));
   };
+
+  // 「重新執行」＝開一堂新的課堂。這是刻意選的行為：每按一次就換一個 session。
+  //
+  // 代價是已加入的學生會被踢出（他們的裝置憑證綁在舊 session 上），必須重掃 QR，
+  // 所以開好之後直接把 QR 放大層彈出來——否則全班要去側欄裡找那個小 QR。
+  //
+  // 教案不符開課資格時靜靜地什麼都不做：重新執行是除錯的基本動作，不該因為
+  // 「這份教案沒有題目」就跳錯誤打斷它。
+  const restartSession = React.useCallback((): Promise<void> => {
+    if (startError()) return Promise.resolve();
+    setBusy(true);
+    setError(null);
+    const previous = sessionRef.current;
+    const ended = previous
+      ? endLiveSession(previous.id).then(() => undefined, () => undefined)
+      : Promise.resolve();
+    return ended
+      .then(() => {
+        rememberSession(null); // 不沿用舊 session，這裡要的就是一堂新的
+        return createLiveSession(lessonId);
+      })
+      .then(connect)
+      .then(() => setShowQr(true))
+      .catch(reason => setError(reason.message || "無法開始課堂。"))
+      .then(() => setBusy(false));
+  }, [lessonId]);
+
+  React.useEffect(() => {
+    (window as any).gdbgui_live_quiz_restart = restartSession;
+    return () => {
+      (window as any).gdbgui_live_quiz_restart = undefined;
+    };
+  }, [restartSession]);
 
   const closeQuestion = () => {
     const question = session && session.active_question;

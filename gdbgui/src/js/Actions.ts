@@ -103,6 +103,9 @@ const Actions = {
     (window as any).gdbgui_reset_var_queue?.();
     // 清空 UML 物件圖狀態，否則重跑時面板會殘留上一次的物件框（中止在途輪詢 + 清 __latest_uml）
     (window as any).gdbgui_reset_uml_state?.();
+    // 重新執行＝開一堂新的即時課堂（勾選了才會有反應）。橋接的理由同上：
+    // LiveQuizPanel 才知道怎麼開課與收尾，Actions 不該認識它。
+    (window as any).gdbgui_live_quiz_restart?.();
     // 程式重新開始，重置每行的進入計數
     (global_variable as any).__line_visit_count = {};
     // 快轉綁在 __line_visit_count 上，計數歸零就必須解除（之後會再武裝一次）
