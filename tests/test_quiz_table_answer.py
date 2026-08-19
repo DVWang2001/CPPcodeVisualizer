@@ -24,6 +24,14 @@ def test_blank_cell_counts_as_wrong():
     assert live_quiz.grade_table([["", "1"]], [["0", "1"]]) == (1, 2)
 
 
+def test_blank_cell_is_wrong_even_when_the_correct_value_is_blank():
+    for blank in ("", "   "):
+        stats = [0]
+        assert live_quiz.grade_table([[blank]], [[""]]) == (0, 1)
+        live_quiz.accumulate_cell_stats(stats, [[blank]], [[""]])
+        assert stats == [1]
+
+
 def test_whitespace_is_trimmed_before_comparing():
     assert live_quiz.grade_table([[" 42 "]], [["42"]]) == (1, 1)
 

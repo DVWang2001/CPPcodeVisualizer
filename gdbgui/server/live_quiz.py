@@ -99,10 +99,15 @@ def validate_captured_table(raw: object, max_cells: int) -> dict:
     return {"rows": rows, "cols": cols, "values": normalized_values, **labels}
 
 
+def _table_cell_is_correct(given, expected):
+    given = given.strip()
+    return bool(given) and given == expected.strip()
+
+
 def grade_table(answer, correct):
-    """回傳 (答對格數, 總格數)；只做 trim 後的字串比對。"""
+    """回傳 (答對格數, 總格數)；trim 後的非空字串才可能答對。"""
     right = sum(
-        answer[row_index][col_index].strip() == expected.strip()
+        _table_cell_is_correct(answer[row_index][col_index], expected)
         for row_index, row in enumerate(correct)
         for col_index, expected in enumerate(row)
     )
@@ -114,7 +119,7 @@ def accumulate_cell_stats(stats, answer, correct):
     cols = len(correct[0]) if correct else 0
     for row_index, row in enumerate(correct):
         for col_index, expected in enumerate(row):
-            if answer[row_index][col_index].strip() != expected.strip():
+            if not _table_cell_is_correct(answer[row_index][col_index], expected):
                 stats[row_index * cols + col_index] += 1
 
 
