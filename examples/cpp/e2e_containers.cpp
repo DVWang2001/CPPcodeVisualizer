@@ -21,7 +21,7 @@ static void e2e_bp(
     const std::multiset<int>&              ms,
     const std::map<int, std::string>&      m,
     const std::multimap<int, std::string>& mm,
-    const std::unordered_map<int, int>&    um
+    const std::unordered_map<int, int>&    um, const std::vector<std::vector<int>>& dp
 ) {
     volatile int x = 0; (void)x;
 }
@@ -38,8 +38,8 @@ int main() {
     std::multiset<int>              ms = {2, 2, 4};
     std::map<int, std::string>      m  = {{1, "a"}, {2, "b"}};
     std::multimap<int, std::string> mm = {{1, "x"}, {1, "y"}};
-    std::unordered_map<int, int>    um = {{42, 99}};
+    std::unordered_map<int, int>    um = {{42, 99}}; std::vector<std::vector<int>> dp = {{11, 22}, {33, 44}};
 
-    e2e_bp(v, a, s, l, st, q, dq, se, ms, m, mm, um);
+    e2e_bp(v, a, s, l, st, q, dq, se, ms, m, mm, um, dp);
     return 0;
 }
