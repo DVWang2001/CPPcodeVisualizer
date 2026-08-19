@@ -156,6 +156,9 @@ const Actions = {
     }
     if (quizMatched) {
       Actions.stop_tts();
+      // 這裡以前是直接清成 null，於是收卷後閘門開了也沒東西可以續播，教師看到的是
+      // 「收卷之後畫面就停在那裡」。改成寄放給 runtime，questionClosed 時交還。
+      lessonQuizRuntime.stashAutoplay(store.get("autoplay_pending_command"));
       store.set("autoplay_pending_command", null);
     }
     // 讀取指導，如果存在指導並且當前的frame有line這個資訊

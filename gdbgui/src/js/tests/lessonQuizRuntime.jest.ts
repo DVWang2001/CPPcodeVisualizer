@@ -374,3 +374,67 @@ test("autoplay rechecks the gate after an animation barrier", async () => {
   expect(advance).not.toHaveBeenCalled();
   jest.useRealTimers();
 });
+
+// ── 收卷後自動續播 ────────────────────────────────────────────────────────
+//
+// 開題時排隊中的續播指令必須被「寄放」而不是丟掉。原本 Actions.ts 在 quizMatched
+// 時直接 store.set("autoplay_pending_command", null)，所以收卷後閘門雖然開了，
+// 卻已經沒有東西可以繼續播——教師的症狀是「收卷後畫面就停在那裡」。
+
+test("收卷時把開題前寄放的續播指令交還", () => {
+  const resumeAutoplay = jest.fn();
+  lessonQuizRuntime.activate(session(), {
+    trigger: jest.fn(() => Promise.resolve(session())),
+    setGate: jest.fn(),
+    resumeAutoplay
+  });
+
+  lessonQuizRuntime.stashAutoplay("next");
+  lessonQuizRuntime.questionClosed(session());
+
+  expect(resumeAutoplay).toHaveBeenCalledWith("next");
+});
+
+test("寄放的指令只交還一次", () => {
+  const resumeAutoplay = jest.fn();
+  lessonQuizRuntime.activate(session(), {
+    trigger: jest.fn(() => Promise.resolve(session())),
+    setGate: jest.fn(),
+    resumeAutoplay
+  });
+
+  lessonQuizRuntime.stashAutoplay("next");
+  lessonQuizRuntime.questionClosed(session());
+  lessonQuizRuntime.questionClosed(session());
+
+  // 第二次收卷不該重播上一題留下的指令
+  expect(resumeAutoplay).toHaveBeenCalledTimes(1);
+});
+
+test("沒有東西可續播時不呼叫 resumeAutoplay", () => {
+  const resumeAutoplay = jest.fn();
+  lessonQuizRuntime.activate(session(), {
+    trigger: jest.fn(() => Promise.resolve(session())),
+    setGate: jest.fn(),
+    resumeAutoplay
+  });
+
+  lessonQuizRuntime.questionClosed(session());
+
+  expect(resumeAutoplay).not.toHaveBeenCalled();
+});
+
+test("clearGate 丟棄寄放的指令", () => {
+  const resumeAutoplay = jest.fn();
+  lessonQuizRuntime.activate(session(), {
+    trigger: jest.fn(() => Promise.resolve(session())),
+    setGate: jest.fn(),
+    resumeAutoplay
+  });
+
+  lessonQuizRuntime.stashAutoplay("next");
+  lessonQuizRuntime.clearGate();       // 程式重跑／課堂結束
+  lessonQuizRuntime.questionClosed(session());
+
+  expect(resumeAutoplay).not.toHaveBeenCalled();
+});

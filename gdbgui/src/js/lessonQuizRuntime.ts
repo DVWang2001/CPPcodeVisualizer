@@ -19,6 +19,8 @@ type RuntimeCallbacks = {
     capture?: { table: CapturedTable; var_hint: string }
   ) => Promise<LiveQuizSession>;
   setGate: (blocked: boolean) => void;
+  /** 收卷後把開題前寄放的續播指令交還給播放器。沒有寄放就不會被呼叫。 */
+  resumeAutoplay?: (command: string) => void;
   onChange?: (state: RuntimeState) => void;
 };
 
@@ -55,6 +57,8 @@ let pendingQuestion: RuntimeQuestion | null = null;
 let pendingCapture: { table: CapturedTable; var_hint: string } | null = null;
 let error: string | null = null;
 let generation = 0;
+/** 開題前寄放的續播指令。開題會把它從播放器手上拿走，收卷時再交還。 */
+let stashedAutoplay: string | null = null;
 const triggered = new Set<string>();
 
 function snapshot(): RuntimeState {
@@ -168,6 +172,7 @@ export const lessonQuizRuntime = {
     pendingQuestion = null;
     pendingCapture = null;
     error = null;
+    stashedAutoplay = null;
     triggered.clear();
   },
 
@@ -208,6 +213,8 @@ export const lessonQuizRuntime = {
   clearGate() {
     generation += 1;
     blocked = false;
+    // 程式重跑或課堂結束：寄放的續播指令一律作廢，否則會在不相干的時機動起來。
+    stashedAutoplay = null;
     inFlightQuestionId = null;
     failedQuestion = null;
     pendingQuestion = null;
@@ -248,6 +255,11 @@ export const lessonQuizRuntime = {
     changed();
   },
 
+  /** 開題前把排隊中的續播指令寄放起來。只有播放過程中自動開出的題會走這裡。 */
+  stashAutoplay(command: string | null | undefined) {
+    stashedAutoplay = command || null;
+  },
+
   questionClosed(session: LiveQuizSession) {
     if (!activeSession || session.id !== activeSession.id || !callbacks) return;
     activeSession = session;
@@ -258,6 +270,11 @@ export const lessonQuizRuntime = {
     pendingCapture = null;
     error = null;
     callbacks.setGate(false);
+    // 閘門開了還不夠：開題時把排隊中的續播指令清掉了，不還回去的話播放就停在原地。
+    // take 語意——用一次就丟，否則下一次收卷會重播上一題留下的指令。
+    const resume = stashedAutoplay;
+    stashedAutoplay = null;
+    if (resume && callbacks.resumeAutoplay) callbacks.resumeAutoplay(resume);
     changed();
   },
 

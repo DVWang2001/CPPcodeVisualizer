@@ -266,6 +266,7 @@ export default function LiveQuizPanel({
             );
           },
           setGate: value => store.set("quiz_playback_gate", value),
+          resumeAutoplay: command => store.set("autoplay_pending_command", command),
           onChange: next => {
             setRuntimeState(next);
             if (next.session) setSession(next.session);
