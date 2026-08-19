@@ -240,7 +240,7 @@ export default function LiveQuizPanel({
                   if (reconciled) return reconciled;
                   throw reason;
                 }
-                if (reason.status === 400 || reason.status === 409) {
+                if (reason.status === 400) {
                   restoreHiddenContainer();
                   throw reason;
                 }
@@ -258,7 +258,6 @@ export default function LiveQuizPanel({
                     value => value.kind === "table" && value.state === "open"
                   );
                   if (question && question.state === "ready" && !tableOpen) {
-                    restoreHiddenContainer();
                     throw reason;
                   }
                   return latest;
@@ -528,7 +527,8 @@ export default function LiveQuizPanel({
             <div style={{ color: muted, padding: "24px 0" }}>等待播放到下一個題目綁定行。</div>
           )}
 
-          {runtimeState.pendingTable && runtimeState.inFlightQuestionId === null && (
+          {runtimeState.pendingTable && runtimeState.inFlightQuestionId === null &&
+            !(window as any).gdbgui_table_quiz_hides_container && (
             <TableTriggerConfirm
               key={runtimeState.pendingTable.questionId}
               pending={runtimeState.pendingTable}
@@ -550,7 +550,7 @@ export default function LiveQuizPanel({
                   style={{ marginLeft: "8px" }}
                   onClick={() => {
                     if (runtimeState.pendingTable) {
-                      containerClosedRef.current = closeQuizContainer();
+                      containerClosedRef.current = closeQuizContainer() || containerClosedRef.current;
                       if (!lessonQuizRuntime.retryTrigger()) restoreHiddenContainer();
                     } else lessonQuizRuntime.retryTrigger();
                   }}

@@ -276,6 +276,102 @@ test("a socket-open snapshot during statusless rejection reconciliation prevents
   expect((window as any).gdbgui_table_quiz_hides_container).toBe(true);
 });
 
+test("a statusless rejection reconciled as ready stays hidden and retryable until delayed open", async () => {
+  let rejectTrigger!: (reason: Error) => void;
+  const triggerPromise = new Promise<any>((_, reject) => { rejectTrigger = reject; });
+  const session = panelSession();
+  (liveQuizClient.triggerLiveQuestion as jest.Mock)
+    .mockReturnValueOnce(triggerPromise)
+    .mockReturnValueOnce(new Promise<any>(() => undefined));
+  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
+  const open = jest.fn();
+  (window as any).gdbgui_collapser_registry = {
+    container: { isOpen: () => true, open, close: jest.fn() }
+  };
+  await mountPanel(session);
+
+  const confirm = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題")!;
+  act(() => { Simulate.click(confirm); });
+  await act(async () => { await Promise.resolve(); });
+  rejectTrigger(new Error("offline"));
+  await act(async () => {
+    await triggerPromise.catch(() => undefined);
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  });
+
+  const retry = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "重試")!;
+  expect(retry).toBeDefined();
+  expect(root.querySelector("select")).toBeNull();
+  expect(open).not.toHaveBeenCalled();
+  act(() => { Simulate.click(retry); });
+  await act(async () => { await Promise.resolve(); });
+  expect(liveQuizClient.triggerLiveQuestion).toHaveBeenCalledTimes(2);
+
+  const opened = {
+    ...session,
+    questions: [{ ...session.questions[0], state: "open" }],
+    active_question: { ...session.questions[0], state: "open" }
+  };
+  act(() => {
+    (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls[0][1].onState(opened);
+  });
+  expect(open).not.toHaveBeenCalled();
+  expect(root.textContent).not.toContain("重試");
+});
+
+test("HTTP 409 stays hidden until a socket snapshot reveals the other open question", async () => {
+  let rejectTrigger!: (reason: Error) => void;
+  let resolveReconcile!: (session: any) => void;
+  const triggerPromise = new Promise<any>((_, reject) => { rejectTrigger = reject; });
+  const reconcilePromise = new Promise<any>(resolve => { resolveReconcile = resolve; });
+  const session = panelSession();
+  const second = {
+    id: "q2", state: "ready", kind: "choice", prompt: "另一題",
+    source_file: "main.cpp", line: 8
+  };
+  session.questions.push(second as any);
+  (liveQuizClient.triggerLiveQuestion as jest.Mock).mockReturnValue(triggerPromise);
+  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
+  const open = jest.fn();
+  (window as any).gdbgui_collapser_registry = {
+    container: { isOpen: () => true, open, close: jest.fn() }
+  };
+  await mountPanel(session);
+  (liveQuizClient.getLiveSession as jest.Mock).mockReturnValue(reconcilePromise);
+
+  const confirm = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題")!;
+  act(() => { Simulate.click(confirm); });
+  await act(async () => { await Promise.resolve(); });
+  const conflict: any = new Error("conflict");
+  conflict.status = 409;
+  rejectTrigger(conflict);
+  await act(async () => {
+    await triggerPromise.catch(() => undefined);
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  });
+  expect(open).not.toHaveBeenCalled();
+  expect(root.querySelector("select")).toBeNull();
+  expect(liveQuizClient.getLiveSession).toHaveBeenCalledTimes(3);
+
+  const otherOpened = {
+    ...session,
+    questions: [session.questions[0], { ...second, state: "open" }],
+    active_question: { ...second, state: "open" }
+  };
+  act(() => {
+    (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls[0][1].onState(otherOpened);
+  });
+  resolveReconcile(otherOpened);
+  await act(async () => { await reconcilePromise; await Promise.resolve(); });
+
+  expect(open).not.toHaveBeenCalled();
+  expect(root.textContent).not.toContain("重試");
+  expect(root.textContent).toContain("另一題");
+});
+
 test("a late successful trigger cannot hide the container after panel cleanup", async () => {
   let resolveTrigger!: (session: any) => void;
   const triggerPromise = new Promise<any>(resolve => { resolveTrigger = resolve; });
