@@ -103,9 +103,15 @@ const Actions = {
     (window as any).gdbgui_reset_var_queue?.();
     // 清空 UML 物件圖狀態，否則重跑時面板會殘留上一次的物件框（中止在途輪詢 + 清 __latest_uml）
     (window as any).gdbgui_reset_uml_state?.();
-    // 重新執行＝開一堂新的即時課堂（勾選了才會有反應）。橋接的理由同上：
-    // LiveQuizPanel 才知道怎麼開課與收尾，Actions 不該認識它。
-    (window as any).gdbgui_live_quiz_restart?.();
+    // 這裡曾經掛過「重新執行＝開一堂新課」的鉤子，已移除。
+    //
+    // 原因：開課與收課的副作用包含重載教案——endLiveSession 經 socket 的 ended
+    // 事件走到 finishLiveQuiz() → loadLessonFromServer()，而 connect() 那邊又會
+    // applyProjectBundle()。這裡是 inferior_program_starting，程式正在啟動，
+    // 底下的原始碼與 binary 被抽換掉，下一步就會得到 "The program is not being run."
+    //
+    // 要重新接上的話，觸發點必須在程式**已經跑起來之後**，而且要先確認同一份教案、
+    // 同一個版本時不需要重載。
     // 程式重新開始，重置每行的進入計數
     (global_variable as any).__line_visit_count = {};
     // 快轉綁在 __line_visit_count 上，計數歸零就必須解除（之後會再武裝一次）
