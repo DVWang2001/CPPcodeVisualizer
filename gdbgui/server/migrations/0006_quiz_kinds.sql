@@ -11,9 +11,10 @@
 -- （見 db.py），而 live_quiz_responses 有 FK 指向 live_quiz_questions(id)。FK 開著時
 -- DROP TABLE live_quiz_questions 會被擋下，或是連帶把既有的作答資料級聯刪掉。
 -- PRAGMA foreign_keys 在交易內是 no-op，但 executescript() 執行前會隱式 COMMIT，
--- 所以放在腳本第一行確實會生效；腳本結尾對稱地開回去，不把「FK 關閉」這個
--- 連線層級的副作用外洩給下一個在同一條連線上執行的東西。
+-- 所以先關 FK、再以明確交易包住整段重建：即使中斷在 DROP→ALTER 之間也會整段
+-- rollback。COMMIT 後才把 FK 開回去，不把連線層級副作用外洩。
 PRAGMA foreign_keys=OFF;
+BEGIN IMMEDIATE;
 
 CREATE TABLE IF NOT EXISTS live_quiz_questions_v2 (
     id                  INTEGER PRIMARY KEY,
@@ -104,4 +105,5 @@ ALTER TABLE live_quiz_responses_v2 RENAME TO live_quiz_responses;
 CREATE INDEX IF NOT EXISTS live_quiz_question_session_idx
     ON live_quiz_questions (session_id, position);
 
+COMMIT;
 PRAGMA foreign_keys=ON;
