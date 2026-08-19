@@ -49,6 +49,23 @@ from .sessionmanager import SessionManager, DebugSession
 logger = logging.getLogger(__file__)
 # Create flask application and add some configuration keys to be used in various callbacks
 app = Flask(__name__, template_folder=str(TEMPLATE_DIR), static_folder=str(STATIC_DIR))
+# 必須在 Compress(app) 之前設定：Flask-Compress 用 setdefault 讀這個鍵，先設先贏。
+#
+# Flask-Compress 1.10.1 的預設清單只有 `application/javascript`，但 IANA 後來把
+# JavaScript 的註冊型別改成 `text/javascript`，Werkzeug 跟著改了。兩邊對不上的結果是
+# 下面那行 `Compress(app)` 對**所有** JS 檔完全空轉——站台上 14.4 MB 的 JS 全部未壓縮
+# 送出（gzip 後只有 3.5 MB）。使用者的症狀是點進教案要等兩分鐘，而伺服器端一切正常：
+# 沒有錯誤、沒有慢查詢，loopback 上 3.6 MB 的檔案 0.035 秒就吐完，瓶頸全在網路上。
+#
+# 兩種型別都留著：舊的 Werkzeug 仍會回 application/javascript，拿掉會在舊環境上復發。
+app.config["COMPRESS_MIMETYPES"] = [
+    "text/html",
+    "text/css",
+    "text/xml",
+    "application/json",
+    "application/javascript",
+    "text/javascript",
+]
 Compress(
     app
 )  # add gzip compression to Flask. see https://github.com/libwilliam/flask-compress
