@@ -37,6 +37,17 @@ import {
 
 type State = any;
 
+/**
+ * 側欄裡即時課堂面板的掛載點。
+ *
+ * 面板以前是程式碼上方的常駐橫幅，整堂課佔著約 250px，而其中最大的 QR 只有開場
+ * 那 30 秒有人看。搬進側欄之後程式碼區拿回完整高度。
+ */
+function liveQuizSlot(): Element | null {
+  return document.getElementById("live-quiz-slot");
+}
+
+
 // 空白編輯器顯示的預設程式。存檔路徑也要看它，才擋得住「開了編輯器就按儲存」
 // 產出的一堆 Hello World 教案。
 const DEFAULT_TEMPLATE = `#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello, World!" << endl;\n    return 0;\n}\n`;
@@ -70,13 +81,10 @@ class SourceCode extends React.Component<{}, State> {
       showLessonCommit: false,
       showLessonHistory: false,
       showQuizAuthoring: false,
-      showLiveQuiz: (() => {
-        try {
-          return Boolean(sessionStorage.getItem("gdbgui_live_quiz_session_id"));
-        } catch (_) {
-          return false;
-        }
-      })(),
+      // 預設勾選：面板一開始就在側欄等著，教師按「重新執行」就能開課。
+      // 勾選只是「顯示面板」，不會自己建立課堂——建立課堂會產 QR、讓學生加入、
+      // 寫進資料庫，那必須由重新執行（或面板裡的按鈕）明確觸發。
+      showLiveQuiz: true,
     };
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
@@ -122,6 +130,9 @@ class SourceCode extends React.Component<{}, State> {
   };
 
   componentDidMount() {
+    // 側欄的即時課堂掛載點是兄弟元件畫出來的，掛載順序不保證。第一次 render 時
+    // 它可能還不存在，portal 會被略過；排一次重畫把面板補上去。
+    setTimeout(() => this.forceUpdate(), 0);
     // /?lesson=<id>：從教案庫或個人檔案頁點進來的。伺服器上的那一篇優先於
     // localStorage 的 autosave——使用者剛剛才明確選了要開哪一篇教案。
     const requestedLesson = this.lessonIdFromUrl();
@@ -1240,12 +1251,6 @@ class SourceCode extends React.Component<{}, State> {
       : null;
   };
 
-  openLiveQuiz = () => {
-    const error = this.liveQuizStartError();
-    if (error) return window.alert(error);
-    this.setState({ showLiveQuiz: true } as any);
-  };
-
   setLiveQuizVersionLock = (locked: boolean) => {
     this.liveQuizVersionLock = locked;
     if (locked) {
@@ -1748,15 +1753,30 @@ class SourceCode extends React.Component<{}, State> {
                 this.currentLessonIsMine &&
                 this.lessonQuizDraft &&
                 this.lessonQuizDraft.questions.length > 0 && (
-                  <button
-                    onClick={this.openLiveQuiz}
-                    data-testid="live-quiz-open"
-                    className="btn btn-default btn-sm"
-                    disabled={Boolean(liveQuizStartError)}
-                    title={liveQuizStartError || "顯示 QR 並開始播放時自動出題"}
-                    style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                  // 從按鈕改成預設勾選的勾選框：面板本來就該在側欄等著，不必先按一次
+                  // 才出現。勾選只控制「面板顯不顯示」——真正開課（產 QR、學生可加入、
+                  // 寫進資料庫）由「重新執行」觸發。
+                  // data-testid 沿用舊值：那是 e2e 的契約，改名會靜默地讓測試失去目標。
+                  <label
+                    title={liveQuizStartError || "重新執行時開一堂新課；播放停在綁定行時自動出題"}
+                    style={{
+                      height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px",
+                      display: "inline-flex", alignItems: "center", gap: "4px",
+                      fontWeight: "normal", marginBottom: 0,
+                      opacity: liveQuizStartError ? 0.5 : 1
+                    }}>
+                    <input
+                      type="checkbox"
+                      data-testid="live-quiz-open"
+                      checked={Boolean((this.state as any).showLiveQuiz)}
+                      disabled={Boolean(liveQuizStartError)}
+                      onChange={event =>
+                        this.setState({ showLiveQuiz: event.target.checked } as any)
+                      }
+                      style={{ margin: 0 }}
+                    />
                     即時課堂
-                  </button>
+                  </label>
                 )}
               <button
                 onClick={this.saveLessonToAccount}
@@ -1871,14 +1891,20 @@ class SourceCode extends React.Component<{}, State> {
             this.currentLessonId !== null &&
             this.currentLessonIsMine &&
             this.lessonQuizDraft &&
-            this.lessonQuizDraft.questions.length > 0 && (
+            this.lessonQuizDraft.questions.length > 0 &&
+            // 畫進側欄的掛載點，而不是留在程式碼上方。props 全是這個元件的方法，
+            // 用 portal 就不必把這些狀態往上提到 RightSidebar。
+            // 掛載點還沒出現時先不畫；side bar 掛好之後的下一次 render 就會補上。
+            liveQuizSlot() !== null &&
+            ReactDOM.createPortal(
               <LiveQuizPanel
                 lessonId={this.currentLessonId}
                 startError={this.liveQuizStartError}
                 prepareVersion={this.prepareLiveQuizVersion}
                 onSessionEnded={this.finishLiveQuiz}
                 onClose={() => this.setState({ showLiveQuiz: false } as any)}
-              />
+              />,
+              liveQuizSlot() as Element
             )}
           {(this.state as any).showLessonCommit && this.lessonBaseline && this.pendingLessonCommit && (
             <LessonCommitDialog

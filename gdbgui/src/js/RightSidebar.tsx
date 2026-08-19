@@ -233,6 +233,15 @@ class RightSidebar extends React.Component<any, any> {
         onMouseUp={onmouseup_in_parent_callback}
         onMouseMove={onmousemove_in_parent_callback}
       >
+        {/*
+          即時課堂面板的掛載點。面板本身由 SourceCode 用 createPortal 畫進來——
+          它需要的 props（lessonId、prepareVersion、onSessionEnded…）全是 SourceCode
+          的方法，把那些狀態往上提到側欄只會讓兩邊都變複雜；portal 讓擁有權留在原處。
+
+          放在側欄最上面而不是常駐橫幅，是因為它以前佔著程式碼上方約 250px 整堂課
+          不放，而 QR 只有開場那 30 秒有人看。做法沿用下面 grid-container 的先例。
+        */}
+        <div id="live-quiz-slot" />
         <ToolTipTourguide
           // @ts-expect-error ts-migrate(2322) FIXME: Property 'position' does not exist on type 'Intrin... Remove this comment to see the full error message
           position={"topleft"}

@@ -500,14 +500,49 @@ export default function LiveQuizPanel({
   return (
     <section
       aria-label="即時課堂控制"
-      style={{ padding: "16px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc", color: ink }}
+      style={{ padding: "12px 14px", background: "#f7f9fc", color: ink }}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "160px minmax(240px, 1fr) minmax(260px, 1.3fr)", gap: "18px" }}>
+      {showQr && (
+        <div
+          role="dialog"
+          aria-label="放大的加入 QR Code"
+          data-testid="live-quiz-qr-overlay"
+          onClick={() => setShowQr(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 1050, background: "rgba(0,0,0,.55)",
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}
+        >
+          {/* 放大是暫時的：學生掃完就關掉，不像常駐橫幅那樣整堂課擋著程式碼。 */}
+          <div
+            onClick={event => event.stopPropagation()}
+            style={{ background: "#fff", padding: "18px", borderRadius: "8px", textAlign: "center" }}
+          >
+            <img
+              src={session.qr_url}
+              alt="學生加入課堂的 QR Code"
+              style={{ display: "block", width: "min(60vmin, 420px)", height: "min(60vmin, 420px)" }}
+            />
+            <div style={{ marginTop: "10px", fontSize: "13px", wordBreak: "break-all" }}>{session.join_url}</div>
+            <button type="button" className="btn btn-default btn-sm" style={{ marginTop: "10px" }}
+              onClick={() => setShowQr(false)}>關閉</button>
+          </div>
+        </div>
+      )}
+      {/* 側欄只有一欄寬，原本的三欄 grid 會把每欄擠成不可讀的細條。 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <div>
           <img
             src={session.qr_url}
             alt="學生加入課堂的 QR Code"
-            style={{ display: "block", width: "150px", height: "150px", background: "#fff", border: "1px solid #d8dee9" }}
+            data-testid="live-quiz-qr"
+            title="點一下放大"
+            onClick={() => setShowQr(true)}
+            style={{
+              display: "block", width: "100%", maxWidth: "190px", aspectRatio: "1",
+              margin: "0 auto", cursor: "zoom-in",
+              background: "#fff", border: "1px solid #d8dee9"
+            }}
           />
           <div style={{ marginTop: "7px", fontSize: "12px", color: connected ? "#237a3b" : "#a65f00" }}>
             {connected ? "● 即時連線中" : "● 重新連線中"}
