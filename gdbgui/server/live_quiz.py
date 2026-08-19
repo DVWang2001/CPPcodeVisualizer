@@ -57,11 +57,53 @@ class QuizConflict(QuizRejected):
     """A valid request conflicts with the current live-session state."""
 
 
-def _exact_dict(value, keys, label):
+def validate_captured_table(raw: object, max_cells: int) -> dict:
+    """驗證教師端送上來的表格快照。"""
+    if not isinstance(raw, dict):
+        raise QuizRejected("表格格式不正確。")
+    if set(raw) != {"rows", "cols", "row_labels", "col_labels", "values"}:
+        raise QuizRejected("表格含有未知欄位或缺少必要欄位。")
+
+    rows, cols = raw["rows"], raw["cols"]
+    for value in (rows, cols):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise QuizRejected("表格維度必須是正整數。")
+    if rows * cols > max_cells:
+        raise QuizRejected(f"表格有 {rows}×{cols}={rows * cols} 格，超過上限 {max_cells} 格。")
+
+    values = raw["values"]
+    if not isinstance(values, list) or len(values) != rows:
+        raise QuizRejected("表格列數與內容不符。")
+    normalized_values = []
+    for index, row in enumerate(values):
+        if not isinstance(row, list) or len(row) != cols:
+            actual = len(row) if isinstance(row, list) else "?"
+            raise QuizRejected(f"第 {index + 1} 列有 {actual} 格，與其他列不一致。")
+        for cell in row:
+            if not isinstance(cell, str):
+                raise QuizRejected("表格內容必須是字串。")
+            if len(cell) > MAX_CELL_LENGTH:
+                raise QuizRejected(f"單格內容不可超過 {MAX_CELL_LENGTH} 字元。填表題只適用純量。")
+        normalized_values.append(list(row))
+
+    labels = {}
+    for key, expected in (("row_labels", rows), ("col_labels", cols)):
+        label = raw[key]
+        if not isinstance(label, list) or len(label) != expected:
+            raise QuizRejected("表格標籤數量與維度不符。")
+        for text in label:
+            if not isinstance(text, str) or len(text) > MAX_CELL_LENGTH:
+                raise QuizRejected("表格標籤格式不正確。")
+        labels[key] = list(label)
+
+    return {"rows": rows, "cols": cols, "values": normalized_values, **labels}
+
+
+def _exact_dict(value, keys, label, optional_keys=()):
     if not isinstance(value, dict):
         raise QuizRejected(f"{label}格式不正確。")
     actual = set(value)
-    if actual - keys:
+    if actual - (keys | frozenset(optional_keys)):
         raise QuizRejected(f"{label}含有未知欄位。")
     if keys - actual:
         raise QuizRejected(f"{label}缺少必要欄位。")
@@ -415,7 +457,13 @@ def create_session(owner_id: int, lesson_id: int) -> Optional[dict]:
 
 
 def trigger_question(
-    session_id: int, owner_id: int, question_key: str, source_file: str, line: int
+    session_id: int,
+    owner_id: int,
+    question_key: str,
+    source_file: str,
+    line: int,
+    table=None,
+    var_hint=None,
 ) -> Optional[dict]:
     if not _valid_id(session_id) or not _valid_id(owner_id):
         return None
@@ -451,6 +499,23 @@ def trigger_question(
                 ).fetchone()
                 if other is not None:
                     raise QuizConflict("上一題尚未結束作答。")
+                if question["kind"] == "table":
+                    spec = json.loads(question["table_spec_json"])
+                    captured = validate_captured_table(table, spec["max_cells"])
+                    cell_stats = [0] * (captured["rows"] * captured["cols"])
+                    new_hint = var_hint if isinstance(var_hint, str) else spec["var_hint"]
+                    if len(new_hint) > 128:
+                        raise QuizRejected("變數提示過長。")
+                    conn.execute(
+                        "UPDATE live_quiz_questions SET correct_table_json=?, cell_stats_json=?, "
+                        "table_spec_json=? WHERE id=?",
+                        (
+                            json.dumps(captured, ensure_ascii=False),
+                            json.dumps(cell_stats),
+                            json.dumps({**spec, "var_hint": new_hint}, ensure_ascii=False),
+                            question["id"],
+                        ),
+                    )
                 conn.execute(
                     "UPDATE live_quiz_questions SET state='open', opened_at=? WHERE id=?",
                     (db._now(), question["id"]),
@@ -800,8 +865,10 @@ def _teacher_payload(session_id, owner_id):
     return payload
 
 
-def _request_fields(keys, label="請求"):
-    return _exact_dict(request.get_json(silent=True), frozenset(keys), label)
+def _request_fields(keys, label="請求", optional_keys=()):
+    return _exact_dict(
+        request.get_json(silent=True), frozenset(keys), label, optional_keys
+    )
 
 
 def _error(message, status):
@@ -832,13 +899,17 @@ def teacher_state(session_id):
 )
 def trigger_question_route(session_id, question_key):
     try:
-        body = _request_fields(("source_file", "line"))
+        body = _request_fields(
+            ("source_file", "line"), optional_keys=("table", "var_hint")
+        )
         updated = trigger_question(
             session_id,
             current_user_id(),
             question_key,
             body["source_file"],
             body["line"],
+            table=body.get("table"),
+            var_hint=body.get("var_hint"),
         )
         if updated is None:
             return _error("找不到課堂或題目。", 404)
