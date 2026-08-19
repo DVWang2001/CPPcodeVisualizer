@@ -138,3 +138,18 @@ test("填表格數不合法時不能儲存，唯讀時新控制項全停用", ()
   expect(rendered.root.querySelector('input[aria-label="第 1 題格數上限"]')!.matches(":disabled")).toBe(true);
   cleanup(rendered.root);
 });
+
+test("唯讀對話框只在真正可用的控制項間包覆焦點", () => {
+  const { root } = renderDialog(tableQuiz, jest.fn(), true);
+  const close = Array.from(root.querySelectorAll("button")).find(button =>
+    button.textContent === "關閉"
+  )!;
+
+  expect(document.activeElement).toBe(close);
+  act(() => { Simulate.keyDown(close, { key: "Tab", shiftKey: true }); });
+  expect(document.activeElement).toBe(close);
+  act(() => { Simulate.keyDown(close, { key: "Tab" }); });
+  expect(document.activeElement).toBe(close);
+  expect(root.querySelector("fieldset")!.contains(document.activeElement)).toBe(false);
+  cleanup(root);
+});

@@ -63,6 +63,10 @@ const panel: React.CSSProperties = {
 
 const count = (value: string) => Array.from(value).length;
 
+const focusableControls = (root: HTMLElement): HTMLElement[] =>
+  Array.prototype.slice.call(root.querySelectorAll("button, input, select, textarea"))
+    .filter((control: HTMLElement) => !control.matches(":disabled"));
+
 export default function QuizAuthoringDialog({
   quiz,
   sourceCode,
@@ -81,7 +85,7 @@ export default function QuizAuthoringDialog({
 
   React.useEffect(() => {
     previousFocus.current = document.activeElement as HTMLElement;
-    const first = dialogRef.current && dialogRef.current.querySelector<HTMLElement>("button");
+    const first = dialogRef.current && focusableControls(dialogRef.current)[0];
     if (first) first.focus();
     return () => {
       if (previousFocus.current && document.contains(previousFocus.current)) {
@@ -124,11 +128,7 @@ export default function QuizAuthoringDialog({
       return;
     }
     if (event.key !== "Tab" || !dialogRef.current) return;
-    const controls = Array.prototype.slice.call(
-      dialogRef.current.querySelectorAll(
-        "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])"
-      )
-    ) as HTMLElement[];
+    const controls = focusableControls(dialogRef.current);
     if (!controls.length) return;
     const index = controls.indexOf(document.activeElement as HTMLElement);
     if (
