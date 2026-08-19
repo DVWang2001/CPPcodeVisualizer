@@ -14,7 +14,7 @@ import io from "socket.io-client";
 import { global_variable } from "./global_variable";
 import { buildGhostFromSnapshots } from "./ghostTree";
 import { isFastForwarding } from "./fastForward";
-import { isQuizPlaybackBlocked } from "./lessonQuizRuntime";
+import { isQuizPlaybackBlocked, lessonQuizRuntime } from "./lessonQuizRuntime";
 import { armStepWatchdog } from "./stepWatchdog";
 
 /**
@@ -1053,11 +1053,14 @@ GdbApi.socket = socket;
 
 // 自動播放指令執行器：由 VisualizerHelper 在 TTS 結束後呼叫
 (window as any).gdbgui_execute_autoplay_command = (command: string) => {
-  if (isQuizPlaybackBlocked(store)) return;
+  // 題目開著時把指令寄放而不是丟掉。教案那一行的 TTS 仍然會照常播完，播完就會
+  // 走到這裡要執行 [next]——直接 return 的話指令無聲消失，教師收卷後畫面不動，
+  // 得自己按一次單步才會繼續。收卷時 questionClosed 會把它交還。
+  if (isQuizPlaybackBlocked(store)) return lessonQuizRuntime.stashAutoplay(command);
   // 快轉時零延遲：GDB round trip 本身就是這個模式唯一的成本，不再額外等停頓
   const delay: number = isFastForwarding() ? 0 : ((window as any).gdbgui_autoplay_delay ?? 600);
   setTimeout(async () => {
-    if (isQuizPlaybackBlocked(store)) return;
+    if (isQuizPlaybackBlocked(store)) return lessonQuizRuntime.stashAutoplay(command);
     // 再次確認自動播放仍啟用（使用者可能在 TTS 播放中途關閉）
     if (!store.get("autoplay_enabled")) return;
     // 若目前處於暫停狀態，儲存指令等待恢復後執行
@@ -1068,7 +1071,7 @@ GdbApi.socket = socket;
     // 等待 BST 插入比對動畫完成，再繼續執行 GDB 指令
     const barrier = (window as any).gdbgui_bst_anim_done as Promise<void> | null | undefined;
     if (barrier) await barrier;
-    if (isQuizPlaybackBlocked(store)) return;
+    if (isQuizPlaybackBlocked(store)) return lessonQuizRuntime.stashAutoplay(command);
     // 動畫結束後再次確認狀態（使用者可能在動畫期間關閉 autoplay 或暫停）
     if (!store.get("autoplay_enabled")) return;
     if (store.get("autoplay_paused")) {

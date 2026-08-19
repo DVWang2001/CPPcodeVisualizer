@@ -165,15 +165,14 @@ const Actions = {
       else (global_variable as any).__latest_containers = new Map();
     }
     if (quizMatched) {
-      // 順序不能反：stop_tts() 會把 _tts_autoplay_command 清掉，而**那個**才是驅動
-      // 自動播放前進的東西——TTS 播完之後由它決定下一步做什麼。
-      //
-      // store 裡的 autoplay_pending_command 只有「使用者暫停時」才會被寫入，題目
-      // 觸發時它是空的。先前寄放它等於什麼都沒寄放，於是收卷後畫面就是不動。
-      const playing = (window as any)._gdbgui_tts_playing;
-      lessonQuizRuntime.stashAutoplay(
-        (playing && playing.autoplayCommand) || store.get("autoplay_pending_command")
-      );
+      // 這裡刻意**不**寄放續播指令。曾經試過兩次，兩次都瞄錯時機：
+      //   * store 的 autoplay_pending_command 只有「使用者暫停時」才會被寫入，
+      //     題目觸發的當下是空的；
+      //   * _gdbgui_tts_playing.autoplayCommand 此刻屬於**上一行**的語音，
+      //     收卷時重播它會走錯步。
+      // 指令真正遺失的地方是 gdbgui_execute_autoplay_command：這一行的 TTS 仍會
+      // 照常播完，播完時要執行 [next]，而那個函式看到閘門關著就直接丟掉。寄放已經
+      // 移到那三個丟棄點上。
       Actions.stop_tts();
       store.set("autoplay_pending_command", null);
     }
