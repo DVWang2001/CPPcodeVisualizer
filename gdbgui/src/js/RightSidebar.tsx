@@ -82,6 +82,7 @@ class Collapser extends React.Component<{}, CollapserState> {
       (window as any).gdbgui_collapser_registry[id] = {
         open:  () => { if (this.state.collapsed)  this.setState({ collapsed: false }); },
         close: () => { if (!this.state.collapsed) this.setState({ collapsed: true  }); },
+        isOpen: () => !this.state.collapsed,
       };
     }
   }

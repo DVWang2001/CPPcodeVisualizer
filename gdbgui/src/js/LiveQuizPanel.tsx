@@ -10,6 +10,9 @@ import {
   triggerLiveQuestion
 } from "./liveQuizClient";
 import { lessonQuizRuntime, LiveQuizSession, RuntimeState } from "./lessonQuizRuntime";
+import { global_variable } from "./global_variable";
+import { CapturedTable, tableFromContainer } from "./tableFromContainer";
+import TableHeatmap from "./TableHeatmap";
 
 type Props = {
   lessonId: number;
@@ -23,6 +26,98 @@ const STORAGE_KEY = "gdbgui_live_quiz_session_id";
 const ink = "#17233b";
 const muted = "#667085";
 const amber = "#e9a319";
+
+export function closeQuizContainer(): boolean {
+  const entry = ((window as any).gdbgui_collapser_registry || {}).container;
+  if (!entry || !entry.isOpen || !entry.isOpen()) return false;
+  entry.close();
+  return true;
+}
+
+export function restoreQuizContainer(closedByQuiz: boolean) {
+  if (!closedByQuiz) return;
+  const entry = ((window as any).gdbgui_collapser_registry || {}).container;
+  if (entry) entry.open();
+}
+
+export function TableTriggerConfirm({
+  pending,
+  busy,
+  onConfirm
+}: {
+  pending: NonNullable<RuntimeState["pendingTable"]>;
+  busy: boolean;
+  onConfirm: (table: CapturedTable, varHint: string) => void;
+}) {
+  const containers = ((global_variable as any).__latest_containers as Map<string, any> | undefined) || new Map();
+  const names = Array.from(containers.keys());
+  const preferred = containers.has(pending.tableSpec.var_hint)
+    ? pending.tableSpec.var_hint
+    : (names[0] || "");
+  const [selected, setSelected] = React.useState(preferred);
+  const [, setRefresh] = React.useState(0);
+  React.useEffect(() => {
+    const interval = window.setInterval(() => setRefresh(value => value + 1), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+  React.useEffect(() => {
+    if (!containers.has(selected) && preferred) setSelected(preferred);
+  }, [preferred, selected]);
+  const capture = selected
+    ? tableFromContainer(containers.get(selected), pending.tableSpec.max_cells)
+    : null;
+  const valid = capture !== null && capture.ok === true;
+
+  return (
+    <div style={{ marginTop: "10px", padding: "10px", background: "#fff", border: "1px solid #d8dee9" }}>
+      {names.length === 0 ? (
+        <div role="status">程式需先停在容器有值的位置</div>
+      ) : (
+        <React.Fragment>
+          <label>
+            正解容器
+            <select
+              className="form-control input-sm"
+              value={selected}
+              onChange={event => setSelected(event.target.value)}
+            >
+              {names.map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </label>
+          {capture && capture.ok === false && (
+            <div role="alert" style={{ color: "#a61b1b", marginTop: "8px" }}>{capture.reason}</div>
+          )}
+          {capture && capture.ok === true && (
+            <div style={{ overflow: "auto", marginTop: "8px" }}>
+              <table style={{ borderCollapse: "collapse" }}>
+                <tbody>
+                  {capture.table.values.map((row, rowIndex) => (
+                    <tr key={rowIndex}>
+                      {row.map((value, colIndex) => (
+                        <td key={colIndex} style={{ border: "1px solid #d8dee9", padding: "4px 8px" }}>{value}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </React.Fragment>
+      )}
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        style={{ marginTop: "8px" }}
+        disabled={busy || !valid}
+        onClick={() => {
+          if (capture && capture.ok === true) onConfirm(capture.table, selected);
+        }}
+      >
+        確認出題
+      </button>
+    </div>
+  );
+}
 
 function storedSessionId(): number | null {
   try {
@@ -72,6 +167,12 @@ export default function LiveQuizPanel({
   const endedRef = React.useRef(false);
   const restorationRef = React.useRef<Promise<void> | null>(null);
   const urlRef = React.useRef<HTMLInputElement | null>(null);
+  const containerClosedRef = React.useRef(false);
+
+  const restoreHiddenContainer = () => {
+    restoreQuizContainer(containerClosedRef.current);
+    containerClosedRef.current = false;
+  };
 
   const restoreLatest = (): Promise<void> => {
     setBusy(true);
@@ -93,6 +194,7 @@ export default function LiveQuizPanel({
     if (restorationRef.current) return restorationRef.current;
     endedRef.current = true;
     lessonQuizRuntime.deactivate();
+    restoreHiddenContainer();
     if (disconnectRef.current) disconnectRef.current();
     disconnectRef.current = null;
     rememberSession(null);
@@ -122,7 +224,13 @@ export default function LiveQuizPanel({
         setSession(current);
         setError(null);
         lessonQuizRuntime.activate(current, {
-          trigger: triggerLiveQuestion,
+          trigger: (sessionId, questionId, sourceFile, line, capture) =>
+            triggerLiveQuestion(sessionId, questionId, sourceFile, line, capture).then(updated => {
+              if (capture && !containerClosedRef.current) {
+                containerClosedRef.current = closeQuizContainer();
+              }
+              return updated;
+            }),
           setGate: value => store.set("quiz_playback_gate", value),
           onChange: next => {
             setRuntimeState(next);
@@ -138,6 +246,12 @@ export default function LiveQuizPanel({
             }
             setSession(next);
             lessonQuizRuntime.syncSession(next);
+            if (
+              !next.active_question &&
+              !next.questions.some(question => question.state === "open")
+            ) {
+              restoreHiddenContainer();
+            }
           },
           onStats: setStats,
           onConnection: value => {
@@ -188,6 +302,7 @@ export default function LiveQuizPanel({
       cancelled = true;
       if (disconnectRef.current) disconnectRef.current();
       lessonQuizRuntime.deactivate();
+      restoreHiddenContainer();
     };
   }, [lessonId]);
 
@@ -219,6 +334,7 @@ export default function LiveQuizPanel({
         setSession(updated);
         setStats(null);
         lessonQuizRuntime.questionClosed(updated);
+        restoreHiddenContainer();
       })
       .catch(reason => setError(reason.message || "無法關閉題目。"))
       .then(() => setBusy(false));
@@ -290,6 +406,7 @@ export default function LiveQuizPanel({
   const counts = (stats && stats.option_counts) || (question && question.option_counts) || {};
   const answerCount = (stats && stats.answer_count) || (question && question.answer_count) || 0;
   const correctCount = (stats && stats.correct_count) || (question && question.correct_count) || 0;
+  const cellStats = (stats && stats.cell_stats) || (question && question.cell_stats) || [];
   let joinHost = "";
   try {
     joinHost = new URL(session.join_url || "").host;
@@ -339,7 +456,16 @@ export default function LiveQuizPanel({
                 <span>已作答 {answerCount}</span>
                 <span>答對 {correctCount}</span>
               </div>
-              {(question.options || []).map((option: any) => {
+              {question.kind === "table" ? (
+                <TableHeatmap
+                  rows={question.rows}
+                  cols={question.cols}
+                  rowLabels={question.row_labels || []}
+                  colLabels={question.col_labels || []}
+                  stats={cellStats}
+                  answerCount={answerCount}
+                />
+              ) : (question.options || []).map((option: any) => {
                 const value = Number(counts[option.id]) || 0;
                 const width = answerCount ? Math.round((value / answerCount) * 100) : 0;
                 return (
@@ -356,6 +482,15 @@ export default function LiveQuizPanel({
             </React.Fragment>
           ) : (
             <div style={{ color: muted, padding: "24px 0" }}>等待播放到下一個題目綁定行。</div>
+          )}
+
+          {runtimeState.pendingTable && (
+            <TableTriggerConfirm
+              key={runtimeState.pendingTable.questionId}
+              pending={runtimeState.pendingTable}
+              busy={busy || runtimeState.inFlightQuestionId !== null}
+              onConfirm={(table, varHint) => lessonQuizRuntime.confirmTable(table, varHint)}
+            />
           )}
 
           {(runtimeState.error || error) && (

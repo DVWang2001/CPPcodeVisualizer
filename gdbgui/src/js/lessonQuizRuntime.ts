@@ -1,5 +1,6 @@
 import { QuizTrigger } from "./quizSchema";
 import { SourceFrame, triggerMatchesFrame } from "./quizTrigger";
+import { CapturedTable } from "./tableFromContainer";
 
 export type LiveQuizSession = {
   id: number;
@@ -14,13 +15,26 @@ type RuntimeCallbacks = {
     sessionId: number,
     questionId: string,
     sourceFile: string,
-    line: number
+    line: number,
+    capture?: { table: CapturedTable; var_hint: string }
   ) => Promise<LiveQuizSession>;
   setGate: (blocked: boolean) => void;
   onChange?: (state: RuntimeState) => void;
 };
 
-type RuntimeQuestion = { id: string; trigger: QuizTrigger };
+type RuntimeQuestion = {
+  id: string;
+  kind: "choice" | "table";
+  trigger: QuizTrigger;
+  tableSpec?: { var_hint: string; max_cells: number };
+};
+
+export type PendingTable = {
+  questionId: string;
+  sourceFile: string;
+  line: number;
+  tableSpec: { var_hint: string; max_cells: number };
+};
 
 export type RuntimeState = {
   active: boolean;
@@ -28,6 +42,7 @@ export type RuntimeState = {
   inFlightQuestionId: string | null;
   error: string | null;
   session: LiveQuizSession | null;
+  pendingTable: PendingTable | null;
 };
 
 let activeSession: LiveQuizSession | null = null;
@@ -36,6 +51,8 @@ let callbacks: RuntimeCallbacks | null = null;
 let blocked = false;
 let inFlightQuestionId: string | null = null;
 let failedQuestion: RuntimeQuestion | null = null;
+let pendingQuestion: RuntimeQuestion | null = null;
+let pendingCapture: { table: CapturedTable; var_hint: string } | null = null;
 let error: string | null = null;
 let generation = 0;
 const triggered = new Set<string>();
@@ -46,7 +63,13 @@ function snapshot(): RuntimeState {
     blocked,
     inFlightQuestionId,
     error,
-    session: activeSession
+    session: activeSession,
+    pendingTable: pendingQuestion && pendingQuestion.tableSpec ? {
+      questionId: pendingQuestion.id,
+      sourceFile: pendingQuestion.trigger.source_file,
+      line: pendingQuestion.trigger.line,
+      tableSpec: pendingQuestion.tableSpec
+    } : null
   };
 }
 
@@ -64,6 +87,8 @@ function sessionIsBlocked(session: LiveQuizSession): boolean {
 function questionsFromSession(session: LiveQuizSession): RuntimeQuestion[] {
   return session.questions.map(question => ({
     id: question.id,
+    kind: question.kind === "table" ? "table" : "choice",
+    tableSpec: question.kind === "table" ? question.table_spec : undefined,
     trigger: {
       kind: "source_line",
       source_file: question.source_file,
@@ -73,7 +98,10 @@ function questionsFromSession(session: LiveQuizSession): RuntimeQuestion[] {
   }));
 }
 
-function openQuestion(question: RuntimeQuestion): boolean {
+function openQuestion(
+  question: RuntimeQuestion,
+  capture?: { table: CapturedTable; var_hint: string }
+): boolean {
   if (!activeSession || !callbacks || inFlightQuestionId) return false;
   const currentGeneration = generation;
   const sessionId = activeSession.id;
@@ -84,17 +112,16 @@ function openQuestion(question: RuntimeQuestion): boolean {
   triggered.add(question.id);
   callbacks.setGate(true);
   changed();
-  callbacks
-    .trigger(
-      sessionId,
-      question.id,
-      question.trigger.source_file,
-      question.trigger.line
-    )
+  const request = capture
+    ? callbacks.trigger(sessionId, question.id, question.trigger.source_file, question.trigger.line, capture)
+    : callbacks.trigger(sessionId, question.id, question.trigger.source_file, question.trigger.line);
+  request
     .then(session => {
       if (generation !== currentGeneration || !activeSession) return;
       activeSession = session;
       inFlightQuestionId = null;
+      pendingQuestion = null;
+      pendingCapture = null;
       changed();
     })
     .catch(() => {
@@ -135,6 +162,8 @@ export const lessonQuizRuntime = {
     blocked = false;
     inFlightQuestionId = null;
     failedQuestion = null;
+    pendingQuestion = null;
+    pendingCapture = null;
     error = null;
     triggered.clear();
   },
@@ -150,10 +179,26 @@ export const lessonQuizRuntime = {
         triggerMatchesFrame(candidate.trigger, frame)
       );
     });
-    return question ? openQuestion(question) : false;
+    if (!question) return false;
+    if (question.kind === "choice") return openQuestion(question);
+    blocked = true;
+    error = null;
+    pendingQuestion = question;
+    pendingCapture = null;
+    triggered.add(question.id);
+    callbacks.setGate(true);
+    changed();
+    return true;
+  },
+
+  confirmTable(table: CapturedTable, varHint: string): boolean {
+    if (!pendingQuestion || inFlightQuestionId) return false;
+    pendingCapture = { table, var_hint: varHint };
+    return openQuestion(pendingQuestion, pendingCapture);
   },
 
   retryTrigger(): boolean {
+    if (pendingQuestion && pendingCapture) return openQuestion(pendingQuestion, pendingCapture);
     return failedQuestion ? openQuestion(failedQuestion) : false;
   },
 
@@ -162,6 +207,8 @@ export const lessonQuizRuntime = {
     blocked = false;
     inFlightQuestionId = null;
     failedQuestion = null;
+    pendingQuestion = null;
+    pendingCapture = null;
     error = null;
     if (callbacks) callbacks.setGate(false);
     changed();
@@ -170,7 +217,16 @@ export const lessonQuizRuntime = {
   syncSession(session: LiveQuizSession) {
     if (!activeSession || session.id !== activeSession.id) return;
     activeSession = session;
-    const nextBlocked = sessionIsBlocked(session);
+    const serverBlocked = sessionIsBlocked(session);
+    if (serverBlocked && (pendingQuestion || inFlightQuestionId)) {
+      generation += 1;
+      pendingQuestion = null;
+      pendingCapture = null;
+      inFlightQuestionId = null;
+      failedQuestion = null;
+      error = null;
+    }
+    const nextBlocked = serverBlocked || pendingQuestion !== null;
     if (blocked !== nextBlocked && callbacks) {
       blocked = nextBlocked;
       if (!blocked) {
@@ -189,6 +245,8 @@ export const lessonQuizRuntime = {
     blocked = false;
     inFlightQuestionId = null;
     failedQuestion = null;
+    pendingQuestion = null;
+    pendingCapture = null;
     error = null;
     callbacks.setGate(false);
     changed();

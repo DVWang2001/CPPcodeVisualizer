@@ -24,6 +24,15 @@ const session = () => ({
   active_question: null
 });
 
+const tableSession = () => ({
+  ...session(),
+  questions: [{
+    ...session().questions[0],
+    kind: "table",
+    table_spec: { var_hint: "dp", max_cells: 20 }
+  }]
+});
+
 function pendingPromise<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: Error) => void;
@@ -57,6 +66,86 @@ test("opens the gate synchronously before trigger promise settles", () => {
   expect(setGate).toHaveBeenLastCalledWith(true);
   expect(trigger).toHaveBeenCalledWith(7, "q1", "main.cpp", 3);
   expect(lessonQuizRuntime.onGdbPause({ fullname: "/tmp/main.cpp", line: "3" })).toBe(false);
+});
+
+test("a table match closes the gate without posting until confirmation", () => {
+  const trigger = jest.fn();
+  const setGate = jest.fn();
+  lessonQuizRuntime.activate(tableSession(), { trigger, setGate });
+
+  expect(lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 })).toBe(true);
+  expect(setGate).toHaveBeenLastCalledWith(true);
+  expect(trigger).not.toHaveBeenCalled();
+  expect(lessonQuizRuntime.state().pendingTable).toMatchObject({
+    questionId: "q1",
+    sourceFile: "main.cpp",
+    line: 3,
+    tableSpec: { var_hint: "dp", max_cells: 20 }
+  });
+});
+
+test("confirming a table sends the captured answer and selected variable", () => {
+  const deferred = pendingPromise<any>();
+  const trigger = jest.fn(() => deferred.promise);
+  lessonQuizRuntime.activate(tableSession(), { trigger, setGate: jest.fn() });
+  lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 });
+  const table = {
+    rows: 1, cols: 2, row_labels: ["0"], col_labels: ["0", "1"], values: [["1", "2"]]
+  };
+
+  expect(lessonQuizRuntime.confirmTable(table, "dp")).toBe(true);
+  expect(trigger).toHaveBeenCalledWith(7, "q1", "main.cpp", 3, { table, var_hint: "dp" });
+});
+
+test("a failed table trigger retains the capture and retry sends it again", async () => {
+  const table = {
+    rows: 1, cols: 1, row_labels: ["0"], col_labels: ["0"], values: [["1"]]
+  };
+  const trigger = jest.fn()
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValueOnce({ ...tableSession(), questions: [{ id: "q1", state: "open" }] });
+  lessonQuizRuntime.activate(tableSession(), { trigger, setGate: jest.fn() });
+  lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 });
+  lessonQuizRuntime.confirmTable(table, "memo");
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(lessonQuizRuntime.state().pendingTable).not.toBeNull();
+  expect(lessonQuizRuntime.retryTrigger()).toBe(true);
+  expect(trigger).toHaveBeenLastCalledWith(7, "q1", "main.cpp", 3, { table, var_hint: "memo" });
+});
+
+test("deactivation clears a pending table capture", () => {
+  lessonQuizRuntime.activate(tableSession(), { trigger: jest.fn(), setGate: jest.fn() });
+  lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 });
+
+  lessonQuizRuntime.deactivate();
+
+  expect(lessonQuizRuntime.state().pendingTable).toBeNull();
+});
+
+test("lobby socket updates keep a pending table selection stable", () => {
+  lessonQuizRuntime.activate(tableSession(), { trigger: jest.fn(), setGate: jest.fn() });
+  lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 });
+
+  lessonQuizRuntime.syncSession({ ...tableSession(), joined_count: 4 });
+
+  expect(lessonQuizRuntime.state().blocked).toBe(true);
+  expect(lessonQuizRuntime.state().pendingTable!.questionId).toBe("q1");
+});
+
+test("an open socket snapshot clears a stale pending table selection", () => {
+  lessonQuizRuntime.activate(tableSession(), { trigger: jest.fn(), setGate: jest.fn() });
+  lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 });
+
+  lessonQuizRuntime.syncSession({
+    ...tableSession(),
+    active_question: { id: "q1", state: "open" },
+    questions: [{ ...tableSession().questions[0], state: "open" }]
+  });
+
+  expect(lessonQuizRuntime.state().pendingTable).toBeNull();
+  expect(lessonQuizRuntime.state().blocked).toBe(true);
 });
 
 test("failed trigger keeps the gate and exposes retry", async () => {

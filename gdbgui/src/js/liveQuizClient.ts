@@ -1,5 +1,6 @@
 import io from "socket.io-client";
 import { LiveQuizSession } from "./lessonQuizRuntime";
+import { CapturedTable } from "./tableFromContainer";
 
 export type LiveQuizStats = {
   joined_count: number;
@@ -7,7 +8,8 @@ export type LiveQuizStats = {
   state: string;
   answer_count: number;
   correct_count: number;
-  option_counts: { [optionId: string]: number };
+  option_counts?: { [optionId: string]: number };
+  cell_stats?: number[];
 };
 
 function csrfToken(): string {
@@ -47,12 +49,15 @@ export const triggerLiveQuestion = (
   sessionId: number,
   questionId: string,
   sourceFile: string,
-  line: number
+  line: number,
+  capture?: { table: CapturedTable; var_hint: string }
 ): Promise<LiveQuizSession> =>
   request(
     "POST",
     `/api/live-quiz/sessions/${sessionId}/questions/${encodeURIComponent(questionId)}/trigger`,
-    { source_file: sourceFile, line }
+    capture
+      ? { source_file: sourceFile, line, table: capture.table, var_hint: capture.var_hint }
+      : { source_file: sourceFile, line }
   );
 
 export const closeLiveQuestion = (

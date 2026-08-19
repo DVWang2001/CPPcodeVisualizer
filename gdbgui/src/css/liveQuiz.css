@@ -1,0 +1,7 @@
+.table-heatmap__cell {
+  background: var(--surface);
+}
+
+.table-heatmap__heat {
+  background: var(--highlight);
+}
