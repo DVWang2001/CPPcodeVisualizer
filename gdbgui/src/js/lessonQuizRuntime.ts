@@ -112,9 +112,12 @@ function openQuestion(
   triggered.add(question.id);
   callbacks.setGate(true);
   changed();
+  const trigger = callbacks.trigger;
   const request = capture
-    ? callbacks.trigger(sessionId, question.id, question.trigger.source_file, question.trigger.line, capture)
-    : callbacks.trigger(sessionId, question.id, question.trigger.source_file, question.trigger.line);
+    ? Promise.resolve().then(() =>
+        trigger(sessionId, question.id, question.trigger.source_file, question.trigger.line, capture)
+      )
+    : trigger(sessionId, question.id, question.trigger.source_file, question.trigger.line);
   request
     .then(session => {
       if (generation !== currentGeneration || !activeSession) return;

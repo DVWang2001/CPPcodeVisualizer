@@ -85,7 +85,7 @@ test("a table match closes the gate without posting until confirmation", () => {
   });
 });
 
-test("confirming a table sends the captured answer and selected variable", () => {
+test("confirming a table exposes in-flight state before sending the captured answer", async () => {
   const deferred = pendingPromise<any>();
   const trigger = jest.fn(() => deferred.promise);
   lessonQuizRuntime.activate(tableSession(), { trigger, setGate: jest.fn() });
@@ -95,6 +95,9 @@ test("confirming a table sends the captured answer and selected variable", () =>
   };
 
   expect(lessonQuizRuntime.confirmTable(table, "dp")).toBe(true);
+  expect(trigger).not.toHaveBeenCalled();
+  expect(lessonQuizRuntime.state().inFlightQuestionId).toBe("q1");
+  await Promise.resolve();
   expect(trigger).toHaveBeenCalledWith(7, "q1", "main.cpp", 3, { table, var_hint: "dp" });
 });
 
@@ -108,8 +111,7 @@ test("a failed table trigger retains the capture and retry sends it again", asyn
   lessonQuizRuntime.activate(tableSession(), { trigger, setGate: jest.fn() });
   lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 });
   lessonQuizRuntime.confirmTable(table, "memo");
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let i = 0; i < 5; i++) await Promise.resolve();
 
   expect(lessonQuizRuntime.state().pendingTable).not.toBeNull();
   expect(lessonQuizRuntime.retryTrigger()).toBe(true);

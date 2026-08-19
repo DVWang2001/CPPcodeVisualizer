@@ -24,6 +24,20 @@ const pending: PendingTable = {
   line: 3,
   tableSpec: { var_hint: "dp", max_cells: 20 }
 };
+const panelSession = () => ({
+  id: 7,
+  lesson_id: 2,
+  lesson_version: 1,
+  state: "lobby",
+  join_url: "http://localhost/join",
+  qr_url: "qr",
+  questions: [{
+    id: "q1", state: "ready", kind: "table", prompt: "填 dp",
+    source_file: "main.cpp", line: 3,
+    table_spec: { var_hint: "dp", max_cells: 20 }
+  }],
+  active_question: null
+});
 let root: HTMLDivElement;
 
 beforeAll(() => {
@@ -53,6 +67,22 @@ function render(onConfirm = jest.fn()) {
     );
   });
   return onConfirm;
+}
+
+async function mountPanel(session = panelSession()) {
+  (liveQuizClient.getLiveSession as jest.Mock).mockResolvedValue(session);
+  sessionStorage.setItem("gdbgui_live_quiz_session_id", "7");
+  await act(async () => {
+    ReactDOM.render(React.createElement(LiveQuizPanel, {
+      lessonId: 2,
+      startError: () => null,
+      prepareVersion: () => Promise.resolve(),
+      onSessionEnded: () => Promise.resolve(),
+      onClose: jest.fn()
+    }), root);
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  });
+  act(() => { lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 }); });
 }
 
 test("no captured container disables confirmation with the required message", () => {
@@ -124,51 +154,56 @@ test("container visibility is restored only when the quiz flow closed an open pa
   expect(open).not.toHaveBeenCalled();
 });
 
+test("table POST hides preview and container, then rejection restores both for retry", async () => {
+  let rejectTrigger!: (reason: Error) => void;
+  const triggerPromise = new Promise<any>((_, reject) => { rejectTrigger = reject; });
+  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
+  const open = jest.fn();
+  const close = jest.fn();
+  (window as any).gdbgui_collapser_registry = {
+    container: { isOpen: () => true, open, close }
+  };
+  (liveQuizClient.triggerLiveQuestion as jest.Mock).mockImplementation(() => {
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(root.querySelector("select")).toBeNull();
+    return triggerPromise;
+  });
+  await mountPanel();
+
+  const confirm = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題")!;
+  act(() => { Simulate.click(confirm); });
+  await act(async () => { await Promise.resolve(); });
+
+  expect(root.querySelector("select")).toBeNull();
+  rejectTrigger(new Error("offline"));
+  await act(async () => { await triggerPromise.catch(() => undefined); await Promise.resolve(); });
+  expect(root.querySelector("select")).not.toBeNull();
+  expect(open).toHaveBeenCalledTimes(1);
+});
+
 test("a late successful trigger cannot hide the container after panel cleanup", async () => {
   let resolveTrigger!: (session: any) => void;
   const triggerPromise = new Promise<any>(resolve => { resolveTrigger = resolve; });
-  const session = {
-    id: 7,
-    lesson_id: 2,
-    lesson_version: 1,
-    state: "lobby",
-    join_url: "http://localhost/join",
-    qr_url: "qr",
-    questions: [{
-      id: "q1", state: "ready", kind: "table", prompt: "填 dp",
-      source_file: "main.cpp", line: 3,
-      table_spec: { var_hint: "dp", max_cells: 20 }
-    }],
-    active_question: null
-  };
-  (liveQuizClient.getLiveSession as jest.Mock).mockResolvedValue(session);
+  const session = panelSession();
   (liveQuizClient.triggerLiveQuestion as jest.Mock).mockReturnValue(triggerPromise);
-  sessionStorage.setItem("gdbgui_live_quiz_session_id", "7");
   (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
   const close = jest.fn();
   (window as any).gdbgui_collapser_registry = {
     container: { isOpen: () => true, open: jest.fn(), close }
   };
 
-  await act(async () => {
-    ReactDOM.render(React.createElement(LiveQuizPanel, {
-      lessonId: 2,
-      startError: () => null,
-      prepareVersion: () => Promise.resolve(),
-      onSessionEnded: () => Promise.resolve(),
-      onClose: jest.fn()
-    }), root);
-    for (let i = 0; i < 6; i++) await Promise.resolve();
-  });
-  act(() => { lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 }); });
+  await mountPanel(session);
   const confirm = Array.from(root.querySelectorAll("button"))
     .find(button => button.textContent === "確認出題")!;
   act(() => { Simulate.click(confirm); });
+  await act(async () => { await Promise.resolve(); });
   expect(liveQuizClient.triggerLiveQuestion).toHaveBeenCalled();
+  expect(close).toHaveBeenCalledTimes(1);
 
   act(() => { ReactDOM.unmountComponentAtNode(root); });
   resolveTrigger({ ...session, active_question: { id: "q1", state: "open", kind: "table" } });
   await act(async () => { await triggerPromise; await Promise.resolve(); });
 
-  expect(close).not.toHaveBeenCalled();
+  expect(close).toHaveBeenCalledTimes(1);
 });

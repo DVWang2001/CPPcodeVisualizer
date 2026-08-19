@@ -611,6 +611,7 @@ def update_lesson_owned_by(
     title: str,
     bundle_json: str,
     parent_version: Optional[int] = None,
+    expected_current_version: Optional[int] = None,
 ) -> Optional[LessonWriteResult]:
     """為擁有者新增一份快照，或在內容不變時回傳目前版本。
 
@@ -653,6 +654,12 @@ def update_lesson_owned_by(
                 parent_id = int(parent["id"])
 
             current_version = int(current["version"])
+            if (
+                expected_current_version is not None
+                and current_version != expected_current_version
+            ):
+                conn.commit()
+                return LessonWriteResult(lesson_id, current_version, changed=False)
             if (
                 parent_id == int(current["version_id"])
                 and title == current["title"]

@@ -169,3 +169,42 @@ def test_trigger_route_captures_table_and_optional_hint(flask_app):
         ).fetchone()
     assert json.loads(row["correct_table_json"]) == captured
     assert json.loads(row["cell_stats_json"]) == [0, 0, 0, 0]
+
+
+def test_selected_hint_persists_to_the_next_session_without_mutating_pinned_version(flask_app):
+    owner = register_user(flask_app, display_name="Persistent Hint Owner")
+    bundle = _bundle(_table_question())
+    lesson_id = db.create_lesson(
+        owner.user_id, "提示持久化", json.dumps(bundle, ensure_ascii=False)
+    )
+    first = live_quiz.create_session(owner.user_id, lesson_id)
+
+    live_quiz.trigger_question(
+        first["id"], owner.user_id, "t1", "a.cpp", 3, _table(), "memo"
+    )
+
+    second = live_quiz.create_session(owner.user_id, lesson_id)
+    assert second["questions"][0]["table_spec"]["var_hint"] == "memo"
+    pinned = db.lesson_version_owned_by(lesson_id, owner.user_id, 1)
+    assert json.loads(pinned["bundle_json"])["quiz"]["questions"][0]["table_spec"]["var_hint"] == "dp"
+
+
+def test_selected_hint_does_not_overwrite_a_concurrent_newer_lesson_version(flask_app):
+    owner = register_user(flask_app, display_name="Concurrent Hint Owner")
+    original = _bundle(_table_question())
+    lesson_id = db.create_lesson(
+        owner.user_id, "提示衝突", json.dumps(original, ensure_ascii=False)
+    )
+    first = live_quiz.create_session(owner.user_id, lesson_id)
+    newer = _bundle(_table_question(table_spec={"var_hint": "newer", "max_cells": 200}))
+    db.update_lesson_owned_by(
+        lesson_id, owner.user_id, "提示衝突", json.dumps(newer, ensure_ascii=False)
+    )
+
+    live_quiz.trigger_question(
+        first["id"], owner.user_id, "t1", "a.cpp", 3, _table(), "memo"
+    )
+
+    second = live_quiz.create_session(owner.user_id, lesson_id)
+    assert second["questions"][0]["table_spec"]["var_hint"] == "newer"
+    assert db.lesson_by_id(lesson_id)["current_version"] == 2

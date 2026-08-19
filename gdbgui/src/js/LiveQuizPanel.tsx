@@ -231,15 +231,18 @@ export default function LiveQuizPanel({
         lessonQuizRuntime.activate(current, {
           trigger: (sessionId, questionId, sourceFile, line, capture) => {
             const requestGeneration = triggerGenerationRef.current;
-            return triggerLiveQuestion(sessionId, questionId, sourceFile, line, capture).then(updated => {
-              if (
-                capture && mountedRef.current && !endedRef.current &&
-                triggerGenerationRef.current === requestGeneration && !containerClosedRef.current
-              ) {
-                containerClosedRef.current = closeQuizContainer();
+            return triggerLiveQuestion(sessionId, questionId, sourceFile, line, capture).then(
+              updated => updated,
+              reason => {
+                if (
+                  capture && mountedRef.current && !endedRef.current &&
+                  triggerGenerationRef.current === requestGeneration
+                ) {
+                  restoreHiddenContainer();
+                }
+                throw reason;
               }
-              return updated;
-            });
+            );
           },
           setGate: value => store.set("quiz_playback_gate", value),
           onChange: next => {
@@ -498,12 +501,15 @@ export default function LiveQuizPanel({
             <div style={{ color: muted, padding: "24px 0" }}>等待播放到下一個題目綁定行。</div>
           )}
 
-          {runtimeState.pendingTable && (
+          {runtimeState.pendingTable && runtimeState.inFlightQuestionId === null && (
             <TableTriggerConfirm
               key={runtimeState.pendingTable.questionId}
               pending={runtimeState.pendingTable}
-              busy={busy || runtimeState.inFlightQuestionId !== null}
-              onConfirm={(table, varHint) => lessonQuizRuntime.confirmTable(table, varHint)}
+              busy={busy}
+              onConfirm={(table, varHint) => {
+                containerClosedRef.current = closeQuizContainer();
+                if (!lessonQuizRuntime.confirmTable(table, varHint)) restoreHiddenContainer();
+              }}
             />
           )}
 
@@ -511,7 +517,17 @@ export default function LiveQuizPanel({
             <div role="alert" style={{ color: "#a61b1b", marginTop: "8px" }}>
               {runtimeState.error || error}
               {runtimeState.error && (
-                <button type="button" className="btn btn-default btn-xs" style={{ marginLeft: "8px" }} onClick={() => lessonQuizRuntime.retryTrigger()}>
+                <button
+                  type="button"
+                  className="btn btn-default btn-xs"
+                  style={{ marginLeft: "8px" }}
+                  onClick={() => {
+                    if (runtimeState.pendingTable) {
+                      containerClosedRef.current = closeQuizContainer();
+                      if (!lessonQuizRuntime.retryTrigger()) restoreHiddenContainer();
+                    } else lessonQuizRuntime.retryTrigger();
+                  }}
+                >
                   重試
                 </button>
               )}

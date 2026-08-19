@@ -525,6 +525,37 @@ def create_session(owner_id: int, lesson_id: int) -> Optional[dict]:
     return session_owned_by(session_id, owner_id)
 
 
+def _persist_table_hint(session_id: int, owner_id: int, question_key: str, var_hint: str) -> None:
+    with closing(db.connect()) as conn:
+        snapshot = conn.execute(
+            "SELECT s.lesson_id, v.version, v.title, v.bundle_json "
+            "FROM live_quiz_sessions s JOIN lesson_versions v ON v.id=s.lesson_version_id "
+            "WHERE s.id=? AND s.owner_user_id=?",
+            (session_id, owner_id),
+        ).fetchone()
+    if snapshot is None:
+        return
+    bundle = json.loads(snapshot["bundle_json"])
+    questions = bundle.get("quiz", {}).get("questions", [])
+    question = next((item for item in questions if item.get("id") == question_key), None)
+    if question is None or question.get("kind") != "table":
+        return
+    if question["table_spec"]["var_hint"] == var_hint:
+        return
+    question["table_spec"]["var_hint"] = var_hint
+    try:
+        db.update_lesson_owned_by(
+            int(snapshot["lesson_id"]),
+            owner_id,
+            snapshot["title"],
+            json.dumps(bundle, ensure_ascii=False, separators=(",", ":")),
+            parent_version=int(snapshot["version"]),
+            expected_current_version=int(snapshot["version"]),
+        )
+    except db.LessonQuotaExceeded:
+        return
+
+
 def trigger_question(
     session_id: int,
     owner_id: int,
@@ -538,6 +569,7 @@ def trigger_question(
         return None
     if not isinstance(question_key, str) or not question_key:
         raise QuizRejected("缺少題目 ID。")
+    hint_to_persist = None
     with closing(db.connect()) as conn:
         conn.execute("BEGIN IMMEDIATE")
         try:
@@ -585,6 +617,8 @@ def trigger_question(
                             question["id"],
                         ),
                     )
+                    if new_hint != spec["var_hint"]:
+                        hint_to_persist = new_hint
                 conn.execute(
                     "UPDATE live_quiz_questions SET state='open', opened_at=? WHERE id=?",
                     (db._now(), question["id"]),
@@ -593,6 +627,8 @@ def trigger_question(
         except BaseException:
             conn.rollback()
             raise
+    if hint_to_persist is not None:
+        _persist_table_hint(session_id, owner_id, question_key, hint_to_persist)
     return session_owned_by(session_id, owner_id)
 
 
