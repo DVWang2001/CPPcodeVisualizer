@@ -2,7 +2,7 @@ import { loadDraft, saveDraft } from "../tableDraft";
 
 jest.mock("../../css/studentQuiz.css", () => ({}));
 
-import { submitTableAnswer } from "../studentQuiz";
+import { submitTableAnswer, tableResultClass } from "../studentQuiz";
 
 const answer = [["0", "1"], ["1", "2"]];
 
@@ -60,4 +60,10 @@ test("non-conflict table submission errors retain the draft", async () => {
 
   await expect(submitTableAnswer("table-1", answer, jest.fn())).rejects.toMatchObject({ status: 500 });
   expect(loadDraft("table-1", 2, 2)).toEqual(answer);
+});
+
+test("unanswered table result stays neutral instead of comparing null counts equal", () => {
+  expect(tableResultClass({ correct_cells: null, total_cells: null, explanation: "" })).toBe("");
+  expect(tableResultClass({ correct_cells: 0, total_cells: 4, explanation: "" })).toBe("is-wrong");
+  expect(tableResultClass({ correct_cells: 4, total_cells: 4, explanation: "" })).toBe("is-correct");
 });

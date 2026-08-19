@@ -171,3 +171,104 @@ test("marking a table submitted does not invent a choice selection", () => {
   expect(next.selected_option_id).toBeNull();
   expect((next.active_question as any).kind).toBe("table");
 });
+
+test("malformed table dimensions fall back without allocating an unsafe grid", () => {
+  const dimensions = [
+    [0, 2],
+    [1.5, 2],
+    [20, 20],
+    [Number.MAX_SAFE_INTEGER, 2]
+  ];
+
+  for (const [rows, cols] of dimensions) {
+    const snapshot = tableSnapshot();
+    snapshot.active_question.rows = rows;
+    snapshot.active_question.cols = cols;
+    const next = reduceStudentState(initialStudentState("DP 課堂"), snapshot);
+
+    expect(next.status).toBe("open");
+    expect(next.active_question).toMatchObject({
+      kind: "table",
+      rows: 0,
+      cols: 0,
+      row_labels: [],
+      col_labels: [],
+      answer: null
+    });
+  }
+});
+
+test("malformed table labels and oversized cells use safe fallbacks", () => {
+  const snapshot = tableSnapshot();
+  snapshot.active_question = {
+    ...snapshot.active_question,
+    rows: 1,
+    cols: 2,
+    row_labels: [7],
+    col_labels: ["x".repeat(33), "j=1"],
+    answer: [["x".repeat(33), "2"]]
+  } as any;
+
+  const next = reduceStudentState(initialStudentState("DP 課堂"), snapshot);
+
+  expect(next.status).toBe("open");
+  expect(next.active_question).toMatchObject({
+    kind: "table",
+    row_labels: ["0"],
+    col_labels: ["0", "1"],
+    answer: null
+  });
+
+  const closedSnapshotWithLongCorrectValue = tableSnapshot("closed");
+  closedSnapshotWithLongCorrectValue.active_question = {
+    ...closedSnapshotWithLongCorrectValue.active_question,
+    answer: [["0", "1"], ["1", "2"]],
+    correct_values: [["x".repeat(33), "1"], ["1", "2"]],
+    result: { correct_cells: 4, total_cells: 4, explanation: "" }
+  } as any;
+  const closed = reduceStudentState(
+    initialStudentState("DP 課堂"),
+    closedSnapshotWithLongCorrectValue
+  );
+  expect((closed.active_question as any).correct_values).toBeUndefined();
+});
+
+test("malformed table result objects and inconsistent counts are discarded", () => {
+  const malformedResults = [
+    "not an object",
+    { correct_cells: 5, total_cells: 4, explanation: "too many" },
+    { correct_cells: 3, total_cells: 3, explanation: "wrong total" },
+    { correct_cells: 3, total_cells: 4, explanation: 7 }
+  ];
+
+  for (const result of malformedResults) {
+    const snapshot = tableSnapshot("closed");
+    snapshot.active_question = {
+      ...snapshot.active_question,
+      answer: [["0", "1"], ["1", "2"]],
+      correct_values: [["0", "1"], ["1", "2"]],
+      result
+    } as any;
+    const next = reduceStudentState(initialStudentState("DP 課堂"), snapshot);
+
+    expect((next.active_question as any).correct_values).toEqual([["0", "1"], ["1", "2"]]);
+    expect((next.active_question as any).result).toBeUndefined();
+  }
+});
+
+test("unanswered closed table keeps null counts for a neutral result", () => {
+  const snapshot = tableSnapshot("closed");
+  snapshot.active_question = {
+    ...snapshot.active_question,
+    correct_values: [["0", "1"], ["1", "2"]],
+    result: { correct_cells: null, total_cells: null, explanation: "看轉移式。" }
+  } as any;
+
+  const next = reduceStudentState(initialStudentState("DP 課堂"), snapshot);
+
+  expect((next.active_question as any).result).toEqual({
+    correct_cells: null,
+    total_cells: null,
+    explanation: "看轉移式。"
+  });
+});

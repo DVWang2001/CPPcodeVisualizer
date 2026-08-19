@@ -1,3 +1,6 @@
+import { MAX_CELLS_CEILING } from "./quizSchema";
+import { MAX_CELL_LENGTH } from "./tableFromContainer";
+
 export type StudentQuizStatus =
   | "joining"
   | "waiting"
@@ -85,15 +88,19 @@ function nonnegativeInteger(value: any): number | null {
 }
 
 function labels(value: any, length: number): string[] {
-  return Array.isArray(value) && value.length === length
-    ? value.map(text)
+  return Array.isArray(value) && value.length === length && Array.from(value).every(
+    label => typeof label === "string" && label.length <= MAX_CELL_LENGTH
+  )
+    ? value
     : Array.from({ length }, (_, index) => String(index));
 }
 
 function tableValues(value: any, rows: number, cols: number): string[][] | null {
   if (!Array.isArray(value) || value.length !== rows) return null;
   for (const row of value) {
-    if (!Array.isArray(row) || row.length !== cols || row.some(cell => typeof cell !== "string")) {
+    if (!Array.isArray(row) || row.length !== cols || Array.from(row).some(
+      cell => typeof cell !== "string" || cell.length > MAX_CELL_LENGTH
+    )) {
       return null;
     }
   }
@@ -140,9 +147,12 @@ export function reduceStudentState(
   };
 
   if (raw.kind === "table") {
-    const rows = positiveInteger(raw.rows) || 0;
-    const cols = positiveInteger(raw.cols) || 0;
-    const answer = tableValues(raw.answer, rows, cols);
+    const dimensionsValid = Number.isSafeInteger(raw.rows) && raw.rows > 0 &&
+      Number.isSafeInteger(raw.cols) && raw.cols > 0 &&
+      raw.rows * raw.cols <= MAX_CELLS_CEILING;
+    const rows = dimensionsValid ? raw.rows : 0;
+    const cols = dimensionsValid ? raw.cols : 0;
+    const answer = dimensionsValid ? tableValues(raw.answer, rows, cols) : null;
     const question: StudentQuizTableQuestion = {
       ...base,
       kind: "table",
@@ -153,13 +163,21 @@ export function reduceStudentState(
       answer
     };
     if (state === "closed") {
-      const correctValues = tableValues(raw.correct_values, rows, cols);
+      const correctValues = dimensionsValid ? tableValues(raw.correct_values, rows, cols) : null;
       if (correctValues) question.correct_values = correctValues;
-      if (raw.result) {
-        question.result = {
-          correct_cells: nonnegativeInteger(raw.result.correct_cells),
-          total_cells: positiveInteger(raw.result.total_cells),
-          explanation: text(raw.result.explanation)
+      const rawResult = raw.result;
+      if (dimensionsValid && rawResult && typeof rawResult === "object" && !Array.isArray(rawResult) &&
+        typeof rawResult.explanation === "string") {
+        const correctCells = nonnegativeInteger(rawResult.correct_cells);
+        const totalCells = positiveInteger(rawResult.total_cells);
+        const answeredCountsValid = answer !== null && correctCells !== null &&
+          totalCells === rows * cols && correctCells <= totalCells;
+        const unansweredCountsValid = answer === null && rawResult.correct_cells === null &&
+          rawResult.total_cells === null;
+        if (answeredCountsValid || unansweredCountsValid) question.result = {
+          correct_cells: answeredCountsValid ? correctCells : null,
+          total_cells: answeredCountsValid ? totalCells : null,
+          explanation: rawResult.explanation
         };
       }
     }

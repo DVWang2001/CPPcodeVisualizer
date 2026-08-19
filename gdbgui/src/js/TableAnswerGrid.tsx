@@ -12,9 +12,13 @@ export default function TableAnswerGrid({ question, onSubmit, submitted }: Props
   const [values, setValues] = React.useState<string[][]>(() =>
     question.answer || loadDraft(question.id, question.rows, question.cols)
   );
+  React.useEffect(() => {
+    if (question.answer) setValues(question.answer);
+  }, [question.answer]);
   const inputs = React.useRef<Array<HTMLInputElement | null>>([]);
   const locked = submitted || question.state === "closed";
   const showResults = question.state === "closed" && !!question.answer && !!question.correct_values;
+  const displayedValues = question.answer || values;
 
   const change = (row: number, col: number, value: string) => {
     setValues(previous => {
@@ -26,7 +30,7 @@ export default function TableAnswerGrid({ question, onSubmit, submitted }: Props
   };
 
   return (
-    <div className="table-answer-scroll" style={{ overflow: "auto" }}>
+    <div className="table-answer-scroll" style={{ overflow: "auto", maxHeight: "60vh" }}>
       <table className="table-answer-grid">
         <caption className="sr-only">填表答案</caption>
         <thead>
@@ -49,7 +53,7 @@ export default function TableAnswerGrid({ question, onSubmit, submitted }: Props
           </tr>
         </thead>
         <tbody>
-          {values.map((line, row) => (
+          {displayedValues.map((line, row) => (
             <tr key={row}>
               <th
                 className="table-answer-row"

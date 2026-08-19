@@ -59,25 +59,31 @@ test("grid uses text-compatible numeric inputs inside its own sticky scroller", 
   expect(inputs[0].getAttribute("aria-label")).toContain("i=0");
   expect(inputs[0].getAttribute("aria-label")).toContain("j=0");
   expect((root.querySelector(".table-answer-scroll") as HTMLElement).style.overflow).toBe("auto");
+  expect((root.querySelector(".table-answer-scroll") as HTMLElement).style.maxHeight).toBe("60vh");
   expect((root.querySelector(".table-answer-corner") as HTMLElement).style.position).toBe("sticky");
   expect((root.querySelector(".table-answer-col") as HTMLElement).style.position).toBe("sticky");
   expect((root.querySelector(".table-answer-row") as HTMLElement).style.position).toBe("sticky");
 });
 
-test("grid restores a draft but prefers a valid server-owned answer", () => {
+test("same grid instance replaces its draft with the server-owned answer", () => {
   saveDraft("table-1", [["1", "2"], ["3", "4"]]);
   render();
   expect(Array.from(root.querySelectorAll("input")).map(input => input.value)).toEqual([
     "1", "2", "3", "4"
   ]);
 
-  act(() => {
-    ReactDOM.unmountComponentAtNode(root);
+  render({
+    submitted: true,
+    question: question({
+      state: "closed",
+      answer: [["9", "8"], ["7", "6"]],
+      correct_values: [["9", "0"], ["7", "0"]]
+    })
   });
-  render({ question: question({ answer: [["9", "8"], ["7", "6"]] }) });
   expect(Array.from(root.querySelectorAll("input")).map(input => input.value)).toEqual([
     "9", "8", "7", "6"
   ]);
+  expect(root.querySelector("input")!.classList.contains("is-correct")).toBe(true);
 });
 
 test("changing a cell saves the complete draft", () => {

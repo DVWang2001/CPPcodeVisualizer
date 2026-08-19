@@ -8,7 +8,8 @@ import {
   markStudentError,
   markSubmitted,
   reduceStudentState,
-  StudentQuizState
+  StudentQuizState,
+  StudentQuizTableResult
 } from "./studentQuizState";
 import { clearDraft } from "./tableDraft";
 import "../css/studentQuiz.css";
@@ -66,6 +67,11 @@ export async function submitTableAnswer(
   }
   applySnapshot(snapshot);
   clearDraft(questionId);
+}
+
+export function tableResultClass(result: StudentQuizTableResult): "" | "is-correct" | "is-wrong" {
+  if (result.correct_cells === null || result.total_cells === null) return "";
+  return result.correct_cells === result.total_cells ? "is-correct" : "is-wrong";
 }
 
 function statusText(state: StudentQuizState, submitting: boolean): string {
@@ -264,7 +270,7 @@ function StudentQuizApp({ data }: { data: InitialData }) {
                   submitted={state.status !== "open" || submitting}
                 />
                 {state.status === "closed" && question.result && (
-                  <div className={`result-box ${question.result.correct_cells === question.result.total_cells ? "is-correct" : "is-wrong"}`}>
+                  <div className={["result-box", tableResultClass(question.result)].filter(Boolean).join(" ")}>
                     <strong>
                       {question.result.correct_cells === null
                         ? "— 本題未作答"
