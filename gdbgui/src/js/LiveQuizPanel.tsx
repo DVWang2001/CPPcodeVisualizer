@@ -28,6 +28,7 @@ const muted = "#667085";
 const amber = "#e9a319";
 
 export function closeQuizContainer(): boolean {
+  (window as any).gdbgui_table_quiz_hides_container = true;
   const entry = ((window as any).gdbgui_collapser_registry || {}).container;
   if (!entry || !entry.isOpen || !entry.isOpen()) return false;
   entry.close();
@@ -35,6 +36,7 @@ export function closeQuizContainer(): boolean {
 }
 
 export function restoreQuizContainer(closedByQuiz: boolean) {
+  (window as any).gdbgui_table_quiz_hides_container = false;
   if (!closedByQuiz) return;
   const entry = ((window as any).gdbgui_collapser_registry || {}).container;
   if (entry) entry.open();
@@ -168,6 +170,8 @@ export default function LiveQuizPanel({
   const restorationRef = React.useRef<Promise<void> | null>(null);
   const urlRef = React.useRef<HTMLInputElement | null>(null);
   const containerClosedRef = React.useRef(false);
+  const mountedRef = React.useRef(true);
+  const triggerGenerationRef = React.useRef(0);
 
   const restoreHiddenContainer = () => {
     restoreQuizContainer(containerClosedRef.current);
@@ -193,6 +197,7 @@ export default function LiveQuizPanel({
   const finishEnded = (ended: LiveQuizSession): Promise<void> => {
     if (restorationRef.current) return restorationRef.current;
     endedRef.current = true;
+    triggerGenerationRef.current += 1;
     lessonQuizRuntime.deactivate();
     restoreHiddenContainer();
     if (disconnectRef.current) disconnectRef.current();
@@ -224,13 +229,18 @@ export default function LiveQuizPanel({
         setSession(current);
         setError(null);
         lessonQuizRuntime.activate(current, {
-          trigger: (sessionId, questionId, sourceFile, line, capture) =>
-            triggerLiveQuestion(sessionId, questionId, sourceFile, line, capture).then(updated => {
-              if (capture && !containerClosedRef.current) {
+          trigger: (sessionId, questionId, sourceFile, line, capture) => {
+            const requestGeneration = triggerGenerationRef.current;
+            return triggerLiveQuestion(sessionId, questionId, sourceFile, line, capture).then(updated => {
+              if (
+                capture && mountedRef.current && !endedRef.current &&
+                triggerGenerationRef.current === requestGeneration && !containerClosedRef.current
+              ) {
                 containerClosedRef.current = closeQuizContainer();
               }
               return updated;
-            }),
+            });
+          },
           setGate: value => store.set("quiz_playback_gate", value),
           onChange: next => {
             setRuntimeState(next);
@@ -250,6 +260,7 @@ export default function LiveQuizPanel({
               !next.active_question &&
               !next.questions.some(question => question.state === "open")
             ) {
+              triggerGenerationRef.current += 1;
               restoreHiddenContainer();
             }
           },
@@ -271,6 +282,7 @@ export default function LiveQuizPanel({
   };
 
   React.useEffect(() => {
+    mountedRef.current = true;
     let cancelled = false;
     const remembered = storedSessionId();
     if (remembered !== null) {
@@ -300,6 +312,8 @@ export default function LiveQuizPanel({
     }
     return () => {
       cancelled = true;
+      mountedRef.current = false;
+      triggerGenerationRef.current += 1;
       if (disconnectRef.current) disconnectRef.current();
       lessonQuizRuntime.deactivate();
       restoreHiddenContainer();

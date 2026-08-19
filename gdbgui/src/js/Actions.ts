@@ -149,6 +149,11 @@ const Actions = {
     // for 迴圈三段式單步：每次真正停下來都重算一次目前段落（A 或 C，或 null）
     recompute_for_sub_step(frame);
     const quizMatched = lessonQuizRuntime.onGdbPause(frame);
+    if (lessonQuizRuntime.state().pendingTable) {
+      const latestContainers = (global_variable as any).__latest_containers as Map<string, any> | undefined;
+      if (latestContainers) latestContainers.clear();
+      else (global_variable as any).__latest_containers = new Map();
+    }
     if (quizMatched) {
       Actions.stop_tts();
       store.set("autoplay_pending_command", null);

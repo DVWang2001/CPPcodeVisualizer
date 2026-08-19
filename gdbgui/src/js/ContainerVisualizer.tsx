@@ -158,7 +158,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             }
         }
 
-        if (latestContainers.size > 0) {
+        if (latestContainers.size > 0 && !(window as any).gdbgui_table_quiz_hides_container) {
             const registry = (window as any).gdbgui_collapser_registry || {};
             if (registry["container"]) registry["container"].open();
         }

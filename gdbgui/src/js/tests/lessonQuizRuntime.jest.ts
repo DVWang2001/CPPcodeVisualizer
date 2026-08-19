@@ -4,6 +4,7 @@ import GdbApi from "../GdbApi";
 import VisualizerHelper from "../VisualizerHelper";
 import initialStoreData from "../InitialStoreData";
 import { store } from "statorgfc";
+import { global_variable } from "../global_variable";
 
 jest.mock("../SourceCode", () => ({
   __esModule: true,
@@ -148,6 +149,22 @@ test("an open socket snapshot clears a stale pending table selection", () => {
   expect(lessonQuizRuntime.state().blocked).toBe(true);
 });
 
+test.each(["closed", "ended"])("a server %s snapshot releases a pending table gate", state => {
+  const setGate = jest.fn();
+  lessonQuizRuntime.activate(tableSession(), { trigger: jest.fn(), setGate });
+  lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 });
+
+  lessonQuizRuntime.syncSession({
+    ...tableSession(),
+    state: state === "ended" ? "ended" : "lobby",
+    questions: [{ ...tableSession().questions[0], state }]
+  });
+
+  expect(lessonQuizRuntime.state().pendingTable).toBeNull();
+  expect(lessonQuizRuntime.state().blocked).toBe(false);
+  expect(setGate).toHaveBeenLastCalledWith(false);
+});
+
 test("failed trigger keeps the gate and exposes retry", async () => {
   const setGate = jest.fn();
   const trigger = jest
@@ -254,6 +271,41 @@ test("a matched pause suppresses narration", () => {
   Actions.inferior_program_paused({ fullname: "/tmp/main.cpp", line: "3", func: "main" });
 
   expect(narration).not.toHaveBeenCalled();
+});
+
+test("a table pause clears stale containers before current-stop processing", () => {
+  lessonQuizRuntime.activate(tableSession(), { trigger: jest.fn(), setGate: jest.fn() });
+  (global_variable as any).__latest_containers = new Map([["stale", { values: [[0]] }]]);
+  const processing = jest.spyOn(VisualizerHelper, "processing_guide").mockImplementation(() => {
+    expect((global_variable as any).__latest_containers.size).toBe(0);
+    (global_variable as any).__latest_containers.set("dp", { values: [[1]] });
+  });
+  jest.spyOn(VisualizerHelper, "detect_container_op").mockImplementation(() => undefined);
+  jest.spyOn(VisualizerHelper, "play_tts").mockImplementation(() => Promise.resolve());
+  jest.spyOn(Actions, "refresh_state_for_gdb_pause").mockImplementation(() => undefined);
+  jest.spyOn(require("../SourceCode").default, "make_current_line_visible").mockImplementation(() => true);
+
+  Actions.inferior_program_paused({ fullname: "main.cpp", line: 3, func: "main" });
+
+  expect(processing).toHaveBeenCalled();
+  expect(Array.from((global_variable as any).__latest_containers.keys())).toEqual(["dp"]);
+});
+
+test("a choice pause keeps the latest container snapshot", () => {
+  lessonQuizRuntime.activate(session(), {
+    trigger: jest.fn(() => new Promise<any>(() => undefined)),
+    setGate: jest.fn()
+  });
+  const stale = new Map([["keep", { values: [[0]] }]]);
+  (global_variable as any).__latest_containers = stale;
+  jest.spyOn(VisualizerHelper, "processing_guide").mockImplementation(() => undefined);
+  jest.spyOn(VisualizerHelper, "detect_container_op").mockImplementation(() => undefined);
+  jest.spyOn(Actions, "refresh_state_for_gdb_pause").mockImplementation(() => undefined);
+  jest.spyOn(require("../SourceCode").default, "make_current_line_visible").mockImplementation(() => true);
+
+  Actions.inferior_program_paused({ fullname: "main.cpp", line: 3, func: "main" });
+
+  expect((global_variable as any).__latest_containers).toBe(stale);
 });
 
 test.each([

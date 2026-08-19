@@ -2,11 +2,21 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import { act, Simulate } from "react-dom/test-utils";
 jest.mock("../../css/liveQuiz.css", () => ({}));
-jest.mock("../liveQuizClient", () => ({}));
+jest.mock("../liveQuizClient", () => ({
+  closeLiveQuestion: jest.fn(),
+  connectTeacherQuizSocket: jest.fn(() => jest.fn()),
+  createLiveSession: jest.fn(),
+  endLiveSession: jest.fn(),
+  getLiveSession: jest.fn(),
+  triggerLiveQuestion: jest.fn()
+}));
 
-import { closeQuizContainer, restoreQuizContainer, TableTriggerConfirm } from "../LiveQuizPanel";
-import { PendingTable } from "../lessonQuizRuntime";
+import LiveQuizPanel, { closeQuizContainer, restoreQuizContainer, TableTriggerConfirm } from "../LiveQuizPanel";
+import { lessonQuizRuntime, PendingTable } from "../lessonQuizRuntime";
 import { global_variable } from "../global_variable";
+import * as liveQuizClient from "../liveQuizClient";
+import { store } from "statorgfc";
+import initialStoreData from "../InitialStoreData";
 
 const pending: PendingTable = {
   questionId: "q1",
@@ -16,10 +26,18 @@ const pending: PendingTable = {
 };
 let root: HTMLDivElement;
 
+beforeAll(() => {
+  // @ts-expect-error statorgfc's old declarations omit initialize.
+  store.initialize({ ...initialStoreData }, { immutable: false, debounce_ms: 0 });
+});
+
 beforeEach(() => {
   root = document.createElement("div");
   document.body.appendChild(root);
   (global_variable as any).__latest_containers = new Map();
+  sessionStorage.clear();
+  lessonQuizRuntime.deactivate();
+  jest.clearAllMocks();
 });
 
 afterEach(() => {
@@ -104,4 +122,53 @@ test("container visibility is restored only when the quiz flow closed an open pa
   restoreQuizContainer(closeQuizContainer());
   expect(close).not.toHaveBeenCalled();
   expect(open).not.toHaveBeenCalled();
+});
+
+test("a late successful trigger cannot hide the container after panel cleanup", async () => {
+  let resolveTrigger!: (session: any) => void;
+  const triggerPromise = new Promise<any>(resolve => { resolveTrigger = resolve; });
+  const session = {
+    id: 7,
+    lesson_id: 2,
+    lesson_version: 1,
+    state: "lobby",
+    join_url: "http://localhost/join",
+    qr_url: "qr",
+    questions: [{
+      id: "q1", state: "ready", kind: "table", prompt: "填 dp",
+      source_file: "main.cpp", line: 3,
+      table_spec: { var_hint: "dp", max_cells: 20 }
+    }],
+    active_question: null
+  };
+  (liveQuizClient.getLiveSession as jest.Mock).mockResolvedValue(session);
+  (liveQuizClient.triggerLiveQuestion as jest.Mock).mockReturnValue(triggerPromise);
+  sessionStorage.setItem("gdbgui_live_quiz_session_id", "7");
+  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
+  const close = jest.fn();
+  (window as any).gdbgui_collapser_registry = {
+    container: { isOpen: () => true, open: jest.fn(), close }
+  };
+
+  await act(async () => {
+    ReactDOM.render(React.createElement(LiveQuizPanel, {
+      lessonId: 2,
+      startError: () => null,
+      prepareVersion: () => Promise.resolve(),
+      onSessionEnded: () => Promise.resolve(),
+      onClose: jest.fn()
+    }), root);
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  });
+  act(() => { lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 }); });
+  const confirm = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題")!;
+  act(() => { Simulate.click(confirm); });
+  expect(liveQuizClient.triggerLiveQuestion).toHaveBeenCalled();
+
+  act(() => { ReactDOM.unmountComponentAtNode(root); });
+  resolveTrigger({ ...session, active_question: { id: "q1", state: "open", kind: "table" } });
+  await act(async () => { await triggerPromise; await Promise.resolve(); });
+
+  expect(close).not.toHaveBeenCalled();
 });

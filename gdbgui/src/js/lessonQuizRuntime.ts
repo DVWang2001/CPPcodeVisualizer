@@ -217,9 +217,14 @@ export const lessonQuizRuntime = {
   syncSession(session: LiveQuizSession) {
     if (!activeSession || session.id !== activeSession.id) return;
     activeSession = session;
-    const serverBlocked = sessionIsBlocked(session);
-    if (serverBlocked && (pendingQuestion || inFlightQuestionId)) {
-      generation += 1;
+    const serverBlocked = session.state !== "ended" && sessionIsBlocked(session);
+    const pendingServerQuestion = pendingQuestion &&
+      session.questions.find(question => question.id === pendingQuestion!.id);
+    const pendingIsReady = Boolean(
+      pendingQuestion && session.state !== "ended" && pendingServerQuestion?.state === "ready"
+    );
+    if ((pendingQuestion && !pendingIsReady) || (serverBlocked && inFlightQuestionId)) {
+      if (inFlightQuestionId) generation += 1;
       pendingQuestion = null;
       pendingCapture = null;
       inFlightQuestionId = null;
