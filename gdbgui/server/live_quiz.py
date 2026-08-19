@@ -2,6 +2,7 @@
 
 import json
 import ipaddress
+import logging
 import re
 import secrets
 from contextlib import closing
@@ -19,6 +20,9 @@ from qrcode.image.svg import SvgPathImage
 
 from . import db
 from .http_util import current_user_id, is_cross_origin
+
+
+logger = logging.getLogger(__name__)
 
 
 MAX_QUESTIONS = 30
@@ -552,8 +556,8 @@ def _persist_table_hint(session_id: int, owner_id: int, question_key: str, var_h
             parent_version=int(snapshot["version"]),
             expected_current_version=int(snapshot["version"]),
         )
-    except db.LessonQuotaExceeded:
-        return
+    except db.LessonRejected as exc:
+        logger.warning("[live quiz] could not persist table hint: %s", exc)
 
 
 def trigger_question(

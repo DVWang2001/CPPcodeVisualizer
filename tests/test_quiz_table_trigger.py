@@ -208,3 +208,24 @@ def test_selected_hint_does_not_overwrite_a_concurrent_newer_lesson_version(flas
     second = live_quiz.create_session(owner.user_id, lesson_id)
     assert second["questions"][0]["table_spec"]["var_hint"] == "newer"
     assert db.lesson_by_id(lesson_id)["current_version"] == 2
+
+
+def test_hint_persistence_rejection_does_not_fail_an_already_open_trigger(
+    flask_app, monkeypatch, caplog
+):
+    owner = register_user(flask_app, display_name="Rejected Hint Owner")
+    lesson_id = db.create_lesson(
+        owner.user_id, "提示寫入失敗", json.dumps(_bundle(_table_question()), ensure_ascii=False)
+    )
+    session = live_quiz.create_session(owner.user_id, lesson_id)
+
+    def reject_version(*args, **kwargs):
+        raise db.LessonRejected("lesson bundle is too large")
+
+    monkeypatch.setattr(db, "update_lesson_owned_by", reject_version)
+    opened = live_quiz.trigger_question(
+        session["id"], owner.user_id, "t1", "a.cpp", 3, _table(), "memo"
+    )
+
+    assert opened["active_question"]["state"] == "open"
+    assert "lesson bundle is too large" in caplog.text

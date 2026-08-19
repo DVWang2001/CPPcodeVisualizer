@@ -234,13 +234,35 @@ export default function LiveQuizPanel({
             return triggerLiveQuestion(sessionId, questionId, sourceFile, line, capture).then(
               updated => updated,
               reason => {
-                if (
-                  capture && mountedRef.current && !endedRef.current &&
-                  triggerGenerationRef.current === requestGeneration
-                ) {
-                  restoreHiddenContainer();
+                if (!capture || !mountedRef.current || endedRef.current) throw reason;
+                if (triggerGenerationRef.current !== requestGeneration) {
+                  const reconciled = lessonQuizRuntime.state().session;
+                  if (reconciled) return reconciled;
+                  throw reason;
                 }
-                throw reason;
+                if (reason.status === 400 || reason.status === 409) {
+                  restoreHiddenContainer();
+                  throw reason;
+                }
+                return getLiveSession(sessionId).then(latest => {
+                  if (
+                    !mountedRef.current || endedRef.current ||
+                    triggerGenerationRef.current !== requestGeneration
+                  ) {
+                    return lessonQuizRuntime.state().session || latest;
+                  }
+                  setSession(latest);
+                  lessonQuizRuntime.syncSession(latest);
+                  const question = latest.questions.find(value => value.id === questionId);
+                  const tableOpen = latest.questions.some(
+                    value => value.kind === "table" && value.state === "open"
+                  );
+                  if (question && question.state === "ready" && !tableOpen) {
+                    restoreHiddenContainer();
+                    throw reason;
+                  }
+                  return latest;
+                }, () => { throw reason; });
               }
             );
           },
@@ -257,13 +279,18 @@ export default function LiveQuizPanel({
               finishEnded(next);
               return;
             }
+            const inFlight = lessonQuizRuntime.state().inFlightQuestionId;
+            const requestStillReady = inFlight !== null && next.questions.some(
+              question => question.id === inFlight && question.state === "ready"
+            );
+            if (!requestStillReady) triggerGenerationRef.current += 1;
             setSession(next);
             lessonQuizRuntime.syncSession(next);
             if (
+              !requestStillReady &&
               !next.active_question &&
               !next.questions.some(question => question.state === "open")
             ) {
-              triggerGenerationRef.current += 1;
               restoreHiddenContainer();
             }
           },

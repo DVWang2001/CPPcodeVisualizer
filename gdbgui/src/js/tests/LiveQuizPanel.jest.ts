@@ -154,7 +154,7 @@ test("container visibility is restored only when the quiz flow closed an open pa
   expect(open).not.toHaveBeenCalled();
 });
 
-test("table POST hides preview and container, then rejection restores both for retry", async () => {
+test("table POST hides preview and container, then HTTP 400 restores both for retry", async () => {
   let rejectTrigger!: (reason: Error) => void;
   const triggerPromise = new Promise<any>((_, reject) => { rejectTrigger = reject; });
   (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
@@ -176,10 +176,104 @@ test("table POST hides preview and container, then rejection restores both for r
   await act(async () => { await Promise.resolve(); });
 
   expect(root.querySelector("select")).toBeNull();
-  rejectTrigger(new Error("offline"));
+  const rejected: any = new Error("invalid");
+  rejected.status = 400;
+  rejectTrigger(rejected);
   await act(async () => { await triggerPromise.catch(() => undefined); await Promise.resolve(); });
   expect(root.querySelector("select")).not.toBeNull();
   expect(open).toHaveBeenCalledTimes(1);
+});
+
+test("a socket-open snapshot before a statusless rejection keeps the table hidden", async () => {
+  let rejectTrigger!: (reason: Error) => void;
+  const triggerPromise = new Promise<any>((_, reject) => { rejectTrigger = reject; });
+  const session = panelSession();
+  (liveQuizClient.triggerLiveQuestion as jest.Mock).mockReturnValue(triggerPromise);
+  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
+  const open = jest.fn();
+  (window as any).gdbgui_collapser_registry = {
+    container: { isOpen: () => true, open, close: jest.fn() }
+  };
+  await mountPanel(session);
+
+  const confirm = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題")!;
+  act(() => { Simulate.click(confirm); });
+  await act(async () => { await Promise.resolve(); });
+  const opened = {
+    ...session,
+    questions: [{ ...session.questions[0], state: "open" }],
+    active_question: { ...session.questions[0], state: "open" }
+  };
+  act(() => {
+    (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls[0][1].onState(opened);
+  });
+  rejectTrigger(new Error("offline"));
+  await act(async () => { await triggerPromise.catch(() => undefined); await Promise.resolve(); });
+
+  expect(open).not.toHaveBeenCalled();
+  expect((window as any).gdbgui_table_quiz_hides_container).toBe(true);
+});
+
+test("an unrelated ready socket snapshot cannot reveal a table while its POST is pending", async () => {
+  const triggerPromise = new Promise<any>(() => undefined);
+  const session = panelSession();
+  (liveQuizClient.triggerLiveQuestion as jest.Mock).mockReturnValue(triggerPromise);
+  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
+  const open = jest.fn();
+  (window as any).gdbgui_collapser_registry = {
+    container: { isOpen: () => true, open, close: jest.fn() }
+  };
+  await mountPanel(session);
+
+  const confirm = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題")!;
+  act(() => { Simulate.click(confirm); });
+  await act(async () => { await Promise.resolve(); });
+  act(() => {
+    (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls[0][1].onState(session);
+  });
+
+  expect(open).not.toHaveBeenCalled();
+  expect(root.querySelector("select")).toBeNull();
+});
+
+test("a socket-open snapshot during statusless rejection reconciliation prevents stale restore", async () => {
+  let rejectTrigger!: (reason: Error) => void;
+  let resolveReconcile!: (session: any) => void;
+  const triggerPromise = new Promise<any>((_, reject) => { rejectTrigger = reject; });
+  const reconcilePromise = new Promise<any>(resolve => { resolveReconcile = resolve; });
+  const session = panelSession();
+  (liveQuizClient.triggerLiveQuestion as jest.Mock).mockReturnValue(triggerPromise);
+  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
+  const open = jest.fn();
+  (window as any).gdbgui_collapser_registry = {
+    container: { isOpen: () => true, open, close: jest.fn() }
+  };
+  await mountPanel(session);
+  (liveQuizClient.getLiveSession as jest.Mock).mockReturnValue(reconcilePromise);
+
+  const confirm = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題")!;
+  act(() => { Simulate.click(confirm); });
+  await act(async () => { await Promise.resolve(); });
+  rejectTrigger(new Error("offline"));
+  await act(async () => { await triggerPromise.catch(() => undefined); await Promise.resolve(); });
+  expect(open).not.toHaveBeenCalled();
+
+  const opened = {
+    ...session,
+    questions: [{ ...session.questions[0], state: "open" }],
+    active_question: { ...session.questions[0], state: "open" }
+  };
+  act(() => {
+    (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls[0][1].onState(opened);
+  });
+  resolveReconcile(session);
+  await act(async () => { await reconcilePromise; await Promise.resolve(); });
+
+  expect(open).not.toHaveBeenCalled();
+  expect((window as any).gdbgui_table_quiz_hides_container).toBe(true);
 });
 
 test("a late successful trigger cannot hide the container after panel cleanup", async () => {
