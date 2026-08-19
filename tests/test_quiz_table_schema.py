@@ -6,6 +6,7 @@ CHECK 寫錯，症狀會出現在很久以後的課堂上，而不是在這裡�
 """
 
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -72,3 +73,55 @@ def test_migrate_is_idempotent():
     db.migrate()
     with db.connect() as conn:
         assert _columns(conn, "live_quiz_questions") == before
+
+
+def test_replaying_0006_preserves_populated_table_quiz(tmp_path, monkeypatch):
+    """腳本已完成但版本號未落盤時，重播不能把 table 資料當 choice 複製。"""
+    monkeypatch.setattr(db, "DATA_DIR", tmp_path / "replay")
+    db.migrate()
+    with closing(db.connect()) as conn:
+        conn.executescript(
+            """
+            INSERT INTO users VALUES (1, 'owner', 'hash', 'Owner', 'now');
+            INSERT INTO lessons VALUES (1, 1, 'lesson', '{}', 'now', 'now');
+            INSERT INTO live_quiz_sessions
+                (id, lesson_id, owner_user_id, title, join_nonce, state, created_at)
+            VALUES (1, 1, 1, 'session', 'nonce', 'lobby', 'now');
+            INSERT INTO live_quiz_participants
+                (id, session_id, nickname, credential_hash, created_at, last_seen_at)
+            VALUES (1, 1, 'student', 'credential', 'now', 'now');
+            INSERT INTO live_quiz_questions
+                (id, session_id, question_key, kind, prompt, explanation, source_file,
+                 trigger_line, trigger_anchor_json, position, state, opened_at,
+                 answer_count, correct_count, table_spec_json, correct_table_json,
+                 cell_stats_json)
+            VALUES
+                (1, 1, 'table', 'table', 'p', 'e', 'a.cpp', 3, '{}', 0, 'open',
+                 'now', 1, 0, '{"var_hint":"dp","max_cells":4}',
+                 '{"rows":1,"cols":1,"row_labels":["0"],"col_labels":["0"],"values":[["42"]]}',
+                 '[1]');
+            INSERT INTO live_quiz_responses
+                (participant_id, question_id, answered_at, answer_json, correct_cells, total_cells)
+            VALUES (1, 1, 'now', '[["0"]]', 0, 1);
+            DELETE FROM schema_version WHERE version = 6;
+            """
+        )
+
+    assert db.migrate() == 1
+
+    with closing(db.connect()) as conn:
+        question = conn.execute(
+            "SELECT kind, table_spec_json, correct_table_json, cell_stats_json "
+            "FROM live_quiz_questions WHERE id=1"
+        ).fetchone()
+        response = conn.execute(
+            "SELECT answer_json, correct_cells, total_cells "
+            "FROM live_quiz_responses WHERE participant_id=1 AND question_id=1"
+        ).fetchone()
+    assert tuple(question) == (
+        "table",
+        '{"var_hint":"dp","max_cells":4}',
+        '{"rows":1,"cols":1,"row_labels":["0"],"col_labels":["0"],"values":[["42"]]}',
+        "[1]",
+    )
+    assert tuple(response) == ('[["0"]]', 0, 1)

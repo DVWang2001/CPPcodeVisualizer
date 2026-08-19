@@ -225,7 +225,21 @@ def migrate() -> int:
             if version in applied:
                 continue
             logger.info("[db] applying migration %s", path.name)
-            conn.executescript(path.read_text(encoding="utf-8"))
+            already_materialized = False
+            if version == 6:
+                question_columns = {
+                    row[1] for row in conn.execute("PRAGMA table_info(live_quiz_questions)")
+                }
+                response_columns = {
+                    row[1] for row in conn.execute("PRAGMA table_info(live_quiz_responses)")
+                }
+                already_materialized = {
+                    "kind", "table_spec_json", "correct_table_json", "cell_stats_json"
+                } <= question_columns and {
+                    "answer_json", "correct_cells", "total_cells"
+                } <= response_columns
+            if not already_materialized:
+                conn.executescript(path.read_text(encoding="utf-8"))
             conn.execute(
                 "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
                 (version, _now()),

@@ -3,9 +3,9 @@
 -- 為什麼是重建而不是 ALTER：0005 把單選題專屬欄位全部寫成 NOT NULL，而填表題沒有
 -- 選項。SQLite 無法直接放寬 NOT NULL，只能建新表→複製→改名。
 --
--- 每一段都必須冪等（db.migrate() 可能重播部分套用過的檔案），所以用
--- CREATE TABLE IF NOT EXISTS + INSERT ... SELECT ... WHERE NOT EXISTS 的組合，
--- 而不是無條件的 ALTER/DROP。
+-- 若腳本已完成、只差 schema_version 落盤，db.migrate() 會由兩張表的新欄位判定並
+-- 直接補版本號；SQLite 靜態 SQL 無法同時 SELECT「可能存在、也可能不存在」的欄位。
+-- 腳本內的 IF NOT EXISTS / WHERE NOT EXISTS 則處理建表與複製途中可安全重試的步驟。
 --
 -- 為什麼開頭要關 foreign_keys：db.connect() 每條連線都開著 PRAGMA foreign_keys=ON
 -- （見 db.py），而 live_quiz_responses 有 FK 指向 live_quiz_questions(id)。FK 開著時
