@@ -278,9 +278,11 @@ export default function LiveQuizPanel({
               finishEnded(next);
               return;
             }
-            const inFlight = lessonQuizRuntime.state().inFlightQuestionId;
-            const requestStillReady = inFlight !== null && next.questions.some(
-              question => question.id === inFlight && question.state === "ready"
+            const runtime = lessonQuizRuntime.state();
+            const protectedQuestionId = runtime.inFlightQuestionId ||
+              (runtime.pendingTable && runtime.error ? runtime.pendingTable.questionId : null);
+            const requestStillReady = protectedQuestionId !== null && next.questions.some(
+              question => question.id === protectedQuestionId && question.state === "ready"
             );
             if (!requestStillReady) triggerGenerationRef.current += 1;
             setSession(next);

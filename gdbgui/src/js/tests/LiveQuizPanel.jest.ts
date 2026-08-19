@@ -276,7 +276,7 @@ test("a socket-open snapshot during statusless rejection reconciliation prevents
   expect((window as any).gdbgui_table_quiz_hides_container).toBe(true);
 });
 
-test("a statusless rejection reconciled as ready stays hidden and retryable until delayed open", async () => {
+test("a ready join snapshot cannot reveal a reconciled uncertain trigger before delayed open", async () => {
   let rejectTrigger!: (reason: Error) => void;
   const triggerPromise = new Promise<any>((_, reject) => { rejectTrigger = reject; });
   const session = panelSession();
@@ -297,7 +297,7 @@ test("a statusless rejection reconciled as ready stays hidden and retryable unti
   rejectTrigger(new Error("offline"));
   await act(async () => {
     await triggerPromise.catch(() => undefined);
-    for (let i = 0; i < 6; i++) await Promise.resolve();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
   });
 
   const retry = Array.from(root.querySelectorAll("button"))
@@ -305,6 +305,13 @@ test("a statusless rejection reconciled as ready stays hidden and retryable unti
   expect(retry).toBeDefined();
   expect(root.querySelector("select")).toBeNull();
   expect(open).not.toHaveBeenCalled();
+  act(() => {
+    (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls[0][1].onState(session);
+  });
+  expect(root.querySelector("select")).toBeNull();
+  expect(open).not.toHaveBeenCalled();
+  expect(root.textContent).toContain("重試");
+
   act(() => { Simulate.click(retry); });
   await act(async () => { await Promise.resolve(); });
   expect(liveQuizClient.triggerLiveQuestion).toHaveBeenCalledTimes(2);
@@ -350,7 +357,7 @@ test("HTTP 409 stays hidden until a socket snapshot reveals the other open quest
   rejectTrigger(conflict);
   await act(async () => {
     await triggerPromise.catch(() => undefined);
-    for (let i = 0; i < 6; i++) await Promise.resolve();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
   });
   expect(open).not.toHaveBeenCalled();
   expect(root.querySelector("select")).toBeNull();
