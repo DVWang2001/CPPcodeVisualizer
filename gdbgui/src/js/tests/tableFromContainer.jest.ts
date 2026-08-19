@@ -36,6 +36,12 @@ test("值一律轉成字串，不做數字正規化", () => {
   if (result.ok) expect(result.table.values).toEqual([["0042"]]);
 });
 
+test("null 與 undefined 儲存格轉成空字串", () => {
+  const result = tableFromContainer(grid([[null, undefined]]), 200);
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.table.values).toEqual([["", ""]]);
+});
+
 test("超過 32 字元的儲存格被拒絕", () => {
   const result = tableFromContainer(grid([["x".repeat(33)]]), 200);
   expect(result.ok).toBe(false);

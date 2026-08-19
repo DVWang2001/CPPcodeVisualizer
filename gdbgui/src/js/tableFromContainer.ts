@@ -44,7 +44,7 @@ export function tableFromContainer(payload: any, maxCells: number): TableCapture
     for (let i = 0; i < rows; i++) {
         const line: string[] = [];
         for (let j = 0; j < cols; j++) {
-            const cell = String(values[i][j]);
+            const cell = String(values[i][j] ?? "");
             if (cell.length > MAX_CELL_LENGTH) {
                 return { ok: false, reason: `第 ${i + 1} 列第 ${j + 1} 格的內容過長，填表題只適用純量。` };
             }
