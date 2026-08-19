@@ -263,11 +263,10 @@ def _valid_id(value):
 
 
 def _question_payload(row):
-    return {
+    payload = {
         "id": row["question_key"],
+        "kind": row["kind"],
         "prompt": row["prompt"],
-        "options": json.loads(row["options_json"]),
-        "correct_option_id": row["correct_option_id"],
         "explanation": row["explanation"],
         "source_file": row["source_file"],
         "line": int(row["trigger_line"]),
@@ -278,8 +277,16 @@ def _question_payload(row):
         "closed_at": row["closed_at"],
         "answer_count": int(row["answer_count"]),
         "correct_count": int(row["correct_count"]),
-        "option_counts": json.loads(row["option_counts_json"]),
     }
+    # 填表題沒有選項，options_json / correct_option_id / option_counts_json
+    # 這三欄在資料庫裡是 NULL；無條件 json.loads 會直接 TypeError，開課即 500。
+    if row["kind"] == "table":
+        payload["table_spec"] = json.loads(row["table_spec_json"])
+    else:
+        payload["options"] = json.loads(row["options_json"])
+        payload["correct_option_id"] = row["correct_option_id"]
+        payload["option_counts"] = json.loads(row["option_counts_json"])
+    return payload
 
 
 def _session_row(conn, session_id, owner_id=None):

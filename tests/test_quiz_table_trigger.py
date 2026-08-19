@@ -1,9 +1,12 @@
 """填表題的 bundle 驗證與出題捕獲。"""
 
+import json
+
 import pytest
 
-from gdbgui.server import live_quiz
+from gdbgui.server import db, live_quiz
 from gdbgui.server.live_quiz import QuizRejected
+from .conftest import register_user
 
 SOURCE = "int main() {\n    int dp[2][2];\n    return 0;\n}\n"
 
@@ -68,3 +71,23 @@ def test_table_question_rejects_choice_fields():
         live_quiz.validate_quiz_bundle(
             _bundle(_table_question(correct_option_id="a"))
         )
+
+
+def test_create_session_accepts_a_table_question(flask_app):
+    """create_session -> _session_payload 會對每一題無條件 json.loads(options_json)；
+    填表題的 options_json 是 NULL，這條路徑之前完全沒被測到，一落地就是開課 500。"""
+    owner = register_user(flask_app, display_name="Table Owner")
+    bundle = {
+        "version": "2.0",
+        "fullname_to_render": "a.cpp",
+        "source_code": SOURCE,
+        "breakpoints": [],
+        "program_input": "",
+        "quiz": {"schema_version": 1, "questions": [_table_question()]},
+    }
+    lesson_id = db.create_lesson(
+        owner.user_id, "填表題教案", json.dumps(bundle, ensure_ascii=False)
+    )
+    session = live_quiz.create_session(owner.user_id, lesson_id)
+    assert session is not None
+    assert session["questions"][0]["kind"] == "table"
