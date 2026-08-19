@@ -130,7 +130,7 @@ export function reduceStudentState(
     };
   }
 
-  const state = raw.state === "closed" ? "closed" : "open";
+  const state: "open" | "closed" = raw.state === "closed" ? "closed" : "open";
   const base = {
     id: text(raw.id),
     prompt: text(raw.prompt),

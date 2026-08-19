@@ -90,10 +90,12 @@ test("waiting, closed and ended are derived from complete server snapshots", () 
   const waiting = reduceStudentState(initial, { ...openSnapshot(), active_question: null });
   const closed = reduceStudentState(waiting, closedSnapshot());
   const ended = reduceStudentState(closed, { state: "ended" });
+  const closedQuestion = closed.active_question;
 
   expect(waiting.status).toBe("waiting");
   expect(closed.status).toBe("closed");
-  expect(closed.active_question!.result!.correct_option_id).toBe("b");
+  if (!closedQuestion || closedQuestion.kind !== "choice") throw new Error("expected choice question");
+  expect(closedQuestion.result!.correct_option_id).toBe("b");
   expect(ended).toMatchObject({ status: "ended", active_question: null });
 });
 

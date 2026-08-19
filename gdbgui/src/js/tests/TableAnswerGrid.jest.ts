@@ -29,7 +29,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  act(() => ReactDOM.unmountComponentAtNode(root));
+  act(() => {
+    ReactDOM.unmountComponentAtNode(root);
+  });
   root.remove();
 });
 
@@ -69,7 +71,9 @@ test("grid restores a draft but prefers a valid server-owned answer", () => {
     "1", "2", "3", "4"
   ]);
 
-  act(() => ReactDOM.unmountComponentAtNode(root));
+  act(() => {
+    ReactDOM.unmountComponentAtNode(root);
+  });
   render({ question: question({ answer: [["9", "8"], ["7", "6"]] }) });
   expect(Array.from(root.querySelectorAll("input")).map(input => input.value)).toEqual([
     "9", "8", "7", "6"
