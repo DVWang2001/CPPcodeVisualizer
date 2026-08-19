@@ -1,6 +1,7 @@
 import {
   addQuestion,
   bindQuestion,
+  changeQuestionKind,
   emptyQuiz,
   moveQuestion,
   QuizQuestion,
@@ -81,4 +82,27 @@ test("moving an edge or unknown question is a safe immutable no-op", () => {
   expect(moveQuestion(quiz, "q1", -1)).toEqual(quiz);
   expect(moveQuestion(quiz, "missing", 1)).toEqual(quiz);
   expect(moveQuestion(quiz, "q1", -1)).not.toBe(quiz);
+});
+
+test("題型轉換只保留目標 union 欄位", () => {
+  const choice = quizWithIds(["q1"]);
+  const table = changeQuestionKind(choice, "q1", "table");
+
+  expect(table.questions[0]).toEqual({
+    id: "q1",
+    kind: "table",
+    prompt: "題目 q1",
+    explanation: "說明",
+    trigger: choice.questions[0].trigger,
+    table_spec: { var_hint: "", max_cells: 200 }
+  });
+
+  const back = changeQuestionKind(table, "q1", "choice");
+  expect(Object.keys(back.questions[0]).sort()).toEqual([
+    "correct_option_id", "explanation", "id", "kind", "options", "prompt", "trigger"
+  ]);
+  if (back.questions[0].kind !== "choice") throw new Error("expected choice");
+  expect(back.questions[0].options.map(option => option.text)).toEqual(["", ""]);
+  expect(new Set(back.questions[0].options.map(option => option.id)).size).toBe(2);
+  expect(back.questions[0].correct_option_id).toBe(back.questions[0].options[0].id);
 });

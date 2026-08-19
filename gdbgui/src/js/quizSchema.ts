@@ -244,6 +244,42 @@ export function addQuestion(quiz: QuizSpec): QuizSpec {
   return copy;
 }
 
+export function changeQuestionKind(
+  quiz: QuizSpec,
+  questionId: string,
+  kind: "choice" | "table"
+): QuizSpec {
+  const copy = cloneQuiz(quiz)!;
+  const index = copy.questions.findIndex(question => question.id === questionId);
+  if (index < 0 || copy.questions[index].kind === kind) return copy;
+  const { id, prompt, explanation, trigger } = copy.questions[index];
+  if (kind === "table") {
+    copy.questions[index] = {
+      id,
+      kind,
+      prompt,
+      explanation,
+      trigger,
+      table_spec: { var_hint: "", max_cells: MAX_CELLS_CEILING }
+    };
+  } else {
+    const firstOption = authoringId("option");
+    copy.questions[index] = {
+      id,
+      kind,
+      prompt,
+      explanation,
+      trigger,
+      options: [
+        { id: firstOption, text: "" },
+        { id: authoringId("option"), text: "" }
+      ],
+      correct_option_id: firstOption
+    };
+  }
+  return copy;
+}
+
 export function removeQuestion(quiz: QuizSpec, questionId: string): QuizSpec {
   const copy = cloneQuiz(quiz)!;
   copy.questions = copy.questions.filter(question => question.id !== questionId);

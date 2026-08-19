@@ -3,15 +3,18 @@ import {
   addOption,
   addQuestion,
   bindQuestion,
+  changeQuestionKind,
   cloneQuiz,
   emptyQuiz,
   moveQuestion,
+  MAX_CELLS_CEILING,
   QuizQuestion,
   QuizSpec,
   removeOption,
   removeQuestion,
   validateQuiz
 } from "./quizSchema";
+import { global_variable } from "./global_variable";
 
 type Props = {
   quiz: QuizSpec | null;
@@ -71,6 +74,7 @@ export default function QuizAuthoringDialog({
 }: Props) {
   const [draft, setDraft] = React.useState<QuizSpec>(() => cloneQuiz(quiz) || emptyQuiz());
   const [bindingErrors, setBindingErrors] = React.useState<{ [id: string]: string }>({});
+  const [containerPickers, setContainerPickers] = React.useState<{ [id: string]: boolean }>({});
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
   const previousFocus = React.useRef<HTMLElement | null>(null);
   const validation = validateQuiz(draft, sourceCode, sourceFile);
@@ -122,7 +126,7 @@ export default function QuizAuthoringDialog({
     if (event.key !== "Tab" || !dialogRef.current) return;
     const controls = Array.prototype.slice.call(
       dialogRef.current.querySelectorAll(
-        "button:not([disabled]), input:not([disabled]), textarea:not([disabled])"
+        "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])"
       )
     ) as HTMLElement[];
     if (!controls.length) return;
@@ -232,6 +236,9 @@ export default function QuizAuthoringDialog({
 
           {draft.questions.map((question, index) => {
             const prefix = `第 ${index + 1} 題`;
+            const containerNames = Array.from(
+              (((global_variable as any).__latest_containers as Map<string, any> | undefined) || new Map()).keys()
+            );
             const errors = validation.errors.filter(error => error.indexOf(prefix) >= 0);
             if (bindingErrors[question.id]) errors.push(bindingErrors[question.id]);
             return (
@@ -284,6 +291,21 @@ export default function QuizAuthoringDialog({
                     </button>
                   </div>
                 </div>
+
+                <label style={{ display: "block", marginBottom: "12px" }}>
+                  題型
+                  <select
+                    className="form-control"
+                    aria-label={`${prefix}題型`}
+                    value={question.kind}
+                    onChange={event =>
+                      setDraft(changeQuestionKind(draft, question.id, event.target.value as "choice" | "table"))
+                    }
+                  >
+                    <option value="choice">單選題</option>
+                    <option value="table">填表題</option>
+                  </select>
+                </label>
 
                 <label htmlFor={`prompt-${question.id}`} style={{ width: "100%" }}>
                   <span style={{ display: "flex", justifyContent: "space-between" }}>
@@ -389,6 +411,82 @@ export default function QuizAuthoringDialog({
                     ＋ 新增選項
                   </button>
                 </fieldset>
+                )}
+
+                {question.kind === "table" && (
+                  <fieldset style={{ border: 0, padding: 0, margin: "0 0 12px" }}>
+                    <legend style={{ fontSize: "14px", marginBottom: "8px", border: 0 }}>
+                      表格設定
+                    </legend>
+                    <label style={{ display: "block", marginBottom: "8px" }}>
+                      變數提示（選填）
+                      <input
+                        className="form-control"
+                        aria-label={`${prefix}變數提示`}
+                        maxLength={128}
+                        value={question.table_spec.var_hint}
+                        onChange={event =>
+                          updateQuestion(question.id, value =>
+                            value.kind === "table"
+                              ? { ...value, table_spec: { ...value.table_spec, var_hint: event.target.value } }
+                              : value
+                          )
+                        }
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-default btn-sm"
+                      disabled={containerNames.length === 0}
+                      onClick={() =>
+                        setContainerPickers({ ...containerPickers, [question.id]: !containerPickers[question.id] })
+                      }
+                    >
+                      從畫面上的容器選擇
+                    </button>
+                    {containerNames.length === 0 && (
+                      <small style={{ display: "block", color: colors.muted, marginTop: "5px" }}>
+                        目前沒有容器；可留空，第一次出題時再選擇。
+                      </small>
+                    )}
+                    {containerNames.length > 0 && containerPickers[question.id] && (
+                      <select
+                        className="form-control"
+                        aria-label={`${prefix}畫面上的容器`}
+                        value={containerNames.indexOf(question.table_spec.var_hint) >= 0 ? question.table_spec.var_hint : ""}
+                        onChange={event =>
+                          updateQuestion(question.id, value =>
+                            value.kind === "table"
+                              ? { ...value, table_spec: { ...value.table_spec, var_hint: event.target.value } }
+                              : value
+                          )
+                        }
+                        style={{ marginTop: "8px" }}
+                      >
+                        <option value="" disabled>選擇容器</option>
+                        {containerNames.map(name => <option key={name} value={name}>{name}</option>)}
+                      </select>
+                    )}
+                    <label style={{ display: "block", marginTop: "10px" }}>
+                      格數上限
+                      <input
+                        type="number"
+                        className="form-control"
+                        aria-label={`${prefix}格數上限`}
+                        min={1}
+                        max={MAX_CELLS_CEILING}
+                        step={1}
+                        value={question.table_spec.max_cells}
+                        onChange={event =>
+                          updateQuestion(question.id, value =>
+                            value.kind === "table"
+                              ? { ...value, table_spec: { ...value.table_spec, max_cells: Number(event.target.value) } }
+                              : value
+                          )
+                        }
+                      />
+                    </label>
+                  </fieldset>
                 )}
 
                 <label htmlFor={`explanation-${question.id}`} style={{ width: "100%" }}>
