@@ -146,6 +146,13 @@ test('two phones answer a captured DP table without leaking it before close', as
       fillTable(studentA, [['11', '22'], ['33', '44']]),
       fillTable(studentB, [['11', '999'], ['888', '44']]),
     ]);
+    // 收卷前不得看到個別作答：其他人還在寫，老師此刻也不需要看。
+    const questionKey = session.questions[0].id;
+    const beforeClose = await teacherPage.request.get(
+      `/api/live-quiz/sessions/${sessionId}/questions/${questionKey}/responses`
+    );
+    expect(beforeClose.status()).toBe(409);
+
     await teacherPage.getByRole('button', { name: '結束作答並繼續' }).click();
 
     for (const [row, col, wrong] of [[0, 0, 0], [0, 1, 1], [1, 0, 1], [1, 1, 0]]) {
@@ -155,6 +162,19 @@ test('two phones answer a captured DP table without leaking it before close', as
     await expect(studentB.getByText('2/4 格正確')).toBeVisible();
     await expect(studentB.getByLabel('0，1，答案錯誤，正確答案 22')).toBeVisible();
     await expect(studentB.getByLabel('1，0，答案錯誤，正確答案 33')).toBeVisible();
+
+    // 收卷後的個別作答檢討：答對最少的排最前，教師要檢討的就是那一份。
+    const reviewItems = teacherPage.getByTestId('live-quiz-review-item');
+    await expect(reviewItems).toHaveCount(2, { timeout: 15_000 });
+    await expect(reviewItems.first()).toContainText('手機乙');
+    await expect(reviewItems.first()).toContainText('2/4');
+    await expect(reviewItems.nth(1)).toContainText('手機甲');
+    await expect(reviewItems.nth(1)).toContainText('4/4');
+
+    // 展開那一份，錯的兩格帶著正解
+    await reviewItems.first().click();
+    await expect(teacherPage.getByTitle('正解 22')).toBeVisible();
+    await expect(teacherPage.getByTitle('正解 33')).toBeVisible();
   } finally {
     if (lessonId !== null) {
       await teacherPage.request.delete(`/api/lessons/${lessonId}`, {
