@@ -519,3 +519,16 @@ test("收卷後列出個別作答，點一位展開他那張表", async () => {
   expect(root.textContent).toContain("9");
   expect(root.innerHTML).toContain("正解 1");
 });
+
+test("開新課堂時暫停播放，讓學生有時間掃碼", async () => {
+  // 按 Run 會建立課堂並彈出 QR，但播放若立刻往前跑，到達綁定行時題目就開了——
+  // 學生根本來不及掃。空檔必須由老師控制：掃完再按既有的播放鍵繼續。
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended" });
+  (liveQuizClient.createLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), id: 8 });
+  store.set("autoplay_paused", false);
+
+  await act(async () => { await (window as any).gdbgui_live_quiz_restart(); });
+
+  expect(store.get("autoplay_paused")).toBe(true);
+});

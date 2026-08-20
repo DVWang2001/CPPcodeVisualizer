@@ -416,7 +416,13 @@ export default function LiveQuizPanel({
         return createLiveSession(lessonId);
       })
       .then(connect)
-      .then(() => setShowQr(true))
+      .then(() => {
+        setShowQr(true);
+        // 暫停播放，把「學生掃碼」的空檔交給老師控制。不暫停的話播放會直接往前跑，
+        // 到達綁定行時題目就開了——而學生此刻連 QR 都還沒掃到。
+        // 沿用既有的 autoplay_paused：老師掃完按原本的播放鍵繼續，不必新學一個操作。
+        store.set("autoplay_paused", true);
+      })
       .catch(reason => setError(reason.message || "無法開始課堂。"))
       .then(() => {
         restartingRef.current = false;

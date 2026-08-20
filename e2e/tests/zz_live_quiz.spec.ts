@@ -92,8 +92,17 @@ async function decodeQrPixels(qr: Locator): Promise<string> {
   });
 }
 
-async function runTeacherToBoundLine(page: Page): Promise<void> {
+/** 只按 Run：課堂在此建立、QR 彈出，播放刻意停住等老師放行。 */
+async function startClassroom(page: Page): Promise<void> {
   await page.click('#run_button');
+  await page.getByRole('dialog', { name: '放大的加入 QR Code' })
+    .getByRole('button', { name: '關閉' }).click();
+  await page.waitForFunction(() => (window as any).store?.get('autoplay_paused') === true);
+}
+
+/** 學生掃完之後才放行播放，一路跑到綁定行、題目在那裡開出來。 */
+async function resumeToBoundLine(page: Page): Promise<void> {
+  await page.click('#autoplay_pause_button');
   await page.waitForFunction(
     () => Number((window as any).store?.get('paused_on_frame')?.line) === 26,
     null,
@@ -160,12 +169,10 @@ test('student scans rendered QR and answers when playback reaches the bound line
     )).toBe(SOURCE);
     await expect(teacherPage.getByTestId('save-lesson-to-account')).toBeDisabled();
 
-    // 動線是「先 Run，再讓學生掃」：按 Run 會結束舊課堂並開一堂新的（刻意的行為），
-    // 所以 Run 之前掃到的 QR 屬於已被取代的那一堂，學生會在作答時被拒。
-    // Run 之後 QR 放大層會自動彈出，關掉它才看得到側欄那張（decodeQrPixels 取的是側欄那張）。
-    await runTeacherToBoundLine(teacherPage);
-    await teacherPage.getByRole('dialog', { name: '放大的加入 QR Code' })
-      .getByRole('button', { name: '關閉' }).click();
+    // 動線：按 Run 建立課堂並暫停播放 → 學生掃碼 → 老師放行 → 到綁定行才開題。
+    // 按 Run 會結束舊課堂並開新的（刻意的行為），所以 Run 之前掃到的 QR 已經失效；
+    // 而播放若不暫停，到綁定行時題目就開了，學生根本來不及掃。
+    await startClassroom(teacherPage);
     const decodedUrl = await decodeQrPixels(
       teacherPage.locator("img[alt='學生加入課堂的 QR Code']")
     );
@@ -173,6 +180,7 @@ test('student scans rendered QR and answers when playback reaches the bound line
     await expect(teacherPage.getByText('連線主機：app:5000')).toBeVisible();
 
     await joinStudent(studentPage, decodedUrl, '小明');
+    await resumeToBoundLine(teacherPage);
     await expect(studentPage.getByRole('heading', { name: 'i 是多少？' })).toBeVisible();
     for (const id of ['continue_button', 'next_button', 'step_button', 'return_button']) {
       await expect(teacherPage.locator(`#${id}`)).toBeDisabled();
@@ -253,12 +261,10 @@ test('two phones submit concurrently and a retry cannot replace the first answer
     // 勾選框預設已勾選，面板已在側欄；點它是取消勾選（見上一條測試的註解）。
     await expect(teacherPage.getByTestId('live-quiz-open')).toBeChecked();
     await teacherPage.getByRole('button', { name: '開始即時課堂' }).click();
-    // 動線是「先 Run，再讓學生掃」：按 Run 會結束舊課堂並開一堂新的（刻意的行為），
-    // 所以 Run 之前掃到的 QR 屬於已被取代的那一堂，學生會在作答時被拒。
-    // Run 之後 QR 放大層會自動彈出，關掉它才看得到側欄那張（decodeQrPixels 取的是側欄那張）。
-    await runTeacherToBoundLine(teacherPage);
-    await teacherPage.getByRole('dialog', { name: '放大的加入 QR Code' })
-      .getByRole('button', { name: '關閉' }).click();
+    // 動線：按 Run 建立課堂並暫停播放 → 學生掃碼 → 老師放行 → 到綁定行才開題。
+    // 按 Run 會結束舊課堂並開新的（刻意的行為），所以 Run 之前掃到的 QR 已經失效；
+    // 而播放若不暫停，到綁定行時題目就開了，學生根本來不及掃。
+    await startClassroom(teacherPage);
     const decodedUrl = await decodeQrPixels(
       teacherPage.locator("img[alt='學生加入課堂的 QR Code']")
     );
@@ -266,6 +272,7 @@ test('two phones submit concurrently and a retry cannot replace the first answer
       joinStudent(studentA, decodedUrl, '小華'),
       joinStudent(studentB, decodedUrl, '小美'),
     ]);
+    await resumeToBoundLine(teacherPage);
 
     const [answerA, answerB] = await Promise.all([
       studentA.request.post('/api/live-quiz/guest/answers', {
