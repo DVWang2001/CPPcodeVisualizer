@@ -667,6 +667,52 @@ def close_question(session_id: int, owner_id: int, question_key: str) -> Optiona
     return session_owned_by(session_id, owner_id)
 
 
+
+def responses_for_question(session_id: int, owner_id: int, question_key: str):
+    """收卷後，教師檢視每位學生的填表作答。
+
+    三道守衛，少一道這個功能就從教學工具變成外洩面：
+
+      * **擁有者**——只有開這堂課的人看得到。
+      * **題型是 table**——單選題不做這個畫面，選項分布已經說完了。
+      * **狀態是 closed**——收卷前不得外露個別作答：其他人還在寫，而老師此刻也不需要看。
+
+    排序把答對最少的排最前面：教師要檢討的就是那幾份。
+
+    ⚠️ `end_session()` 會刪光 responses 與 participants，所以這份資料只在課堂還開著的
+    時候存在。課後檢討需要另一套保留機制，那會再次動到資料邊界。
+    """
+    if not _valid_id(session_id) or not _valid_id(owner_id):
+        return None
+    with closing(db.connect()) as conn:
+        if _session_row(conn, session_id, owner_id) is None:
+            return None
+        question = conn.execute(
+            "SELECT id, kind, state FROM live_quiz_questions "
+            "WHERE session_id=? AND question_key=?",
+            (session_id, question_key),
+        ).fetchone()
+        if question is None:
+            return None
+        if question["kind"] != "table" or question["state"] != "closed":
+            raise QuizConflict("這一題沒有可檢視的個別作答。")
+        rows = conn.execute(
+            "SELECT p.nickname, r.answer_json, r.correct_cells, r.total_cells "
+            "FROM live_quiz_responses r "
+            "JOIN live_quiz_participants p ON p.id = r.participant_id "
+            "WHERE r.question_id=? ORDER BY r.correct_cells ASC, p.nickname ASC",
+            (question["id"],),
+        ).fetchall()
+    return [
+        {
+            "nickname": row["nickname"],
+            "answer": json.loads(row["answer_json"]) if row["answer_json"] else None,
+            "correct_cells": row["correct_cells"],
+            "total_cells": row["total_cells"],
+        }
+        for row in rows
+    ]
+
 def end_session(session_id: int, owner_id: int) -> Optional[dict]:
     if not _valid_id(session_id) or not _valid_id(owner_id):
         return None
@@ -1151,6 +1197,19 @@ def close_question_route(session_id, question_key):
     except QuizConflict as exc:
         return _error(str(exc), 409)
 
+
+
+@blueprint.get(
+    "/api/live-quiz/sessions/<int:session_id>/questions/<question_key>/responses"
+)
+def question_responses_route(session_id, question_key):
+    try:
+        rows = responses_for_question(session_id, current_user_id(), question_key)
+        if rows is None:
+            return _error("找不到課堂或題目。", 404)
+        return jsonify({"responses": rows})
+    except QuizConflict as exc:
+        return _error(str(exc), 409)
 
 @blueprint.post("/api/live-quiz/sessions/<int:session_id>/end")
 def end_session_route(session_id):
