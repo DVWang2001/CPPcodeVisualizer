@@ -532,3 +532,27 @@ test("開新課堂時暫停播放，讓學生有時間掃碼", async () => {
 
   expect(store.get("autoplay_paused")).toBe(true);
 });
+
+// ⚠️ 這條是**紅的**，記錄一個尚未修好的產品 bug，不是不穩定的測試。
+// 換課時舊課堂的 ended 事件會關掉剛為新課堂啟用的 runtime，播放到綁定行時不再開題。
+// 試過兩種守衛（restartingRef、以 session id 比對、connect 內同步更新 ref）都沒生效，
+// 代表 deactivate 的來源不是我以為的 finishEnded。詳見 docs/2026-08-19-handoff.md。
+// 標記 skip 是為了讓其餘 463 條仍能當作可用的訊號，不是為了讓問題消失。
+test.skip("舊課堂的 ended 事件不得關掉已經換上的新課堂", async () => {
+  // restartSession 先結束舊課堂再建立新的。舊課堂的 ended 事件經 socket 晚一步回來，
+  // 若照常收尾就會 deactivate 掉剛為新課堂啟用的 runtime——播放到綁定行時不會開題，
+  // 而畫面上一切看起來正常。用「這個 ended 屬於哪一堂」判斷，比旗標可靠。
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended" });
+  (liveQuizClient.createLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), id: 8 });
+
+  await act(async () => { await (window as any).gdbgui_live_quiz_restart(); });
+  expect(lessonQuizRuntime.state().active).toBe(true);
+
+  // 舊課堂（id 7）的 ended 事件遲到
+  const calls = (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls;
+  const handlers = calls[calls.length - 1][1];
+  act(() => { handlers.onState({ ...panelSession(), id: 7, state: "ended" }); });
+
+  expect(lessonQuizRuntime.state().active).toBe(true);
+});

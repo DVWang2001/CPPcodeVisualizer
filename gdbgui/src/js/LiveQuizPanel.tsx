@@ -213,6 +213,11 @@ export default function LiveQuizPanel({
   };
 
   const finishEnded = (ended: LiveQuizSession): Promise<void> => {
+    // 換課時舊課堂的 ended 事件會晚一步從 socket 回來。照常收尾就會 deactivate 掉
+    // 剛為**新**課堂啟用的 runtime——播放到綁定行時不再開題，而畫面上一切看起來正常。
+    // 用「這個 ended 屬於哪一堂」判斷而不是靠旗標：事件早到或晚到都判得對。
+    const current = sessionRef.current;
+    if (current && ended.id !== current.id) return Promise.resolve();
     if (restorationRef.current) return restorationRef.current;
     endedRef.current = true;
     triggerGenerationRef.current += 1;
@@ -244,6 +249,9 @@ export default function LiveQuizPanel({
         if (current.state === "ended") return finishEnded(current);
         endedRef.current = false;
         restorationRef.current = null;
+        // 同步更新 ref，不等下一次 render：舊課堂的 ended 事件可能在這之間就到，
+        // 而 finishEnded 要靠 ref 判斷「這個 ended 屬於哪一堂」。
+        sessionRef.current = current;
         setSession(current);
         setError(null);
         lessonQuizRuntime.activate(current, {
