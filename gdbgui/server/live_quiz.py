@@ -395,6 +395,10 @@ def _question_payload(row):
                     "row_labels": table["row_labels"],
                     "col_labels": table["col_labels"],
                     "cell_stats": json.loads(row["cell_stats_json"]),
+                    # 正解只給教師。這個 payload 只走 _teacher_payload（owner-only），
+                    # 學生端走的是另一個函式 student_question_payload，那裡在 closed
+                    # 之前不會出現正解。檢討個別作答時要靠它標出哪幾格錯。
+                    "correct_values": table["values"],
                 }
             )
     else:

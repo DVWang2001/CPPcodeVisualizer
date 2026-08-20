@@ -7,12 +7,15 @@ import {
   endLiveSession,
   getLiveSession,
   LiveQuizStats,
-  triggerLiveQuestion
+  triggerLiveQuestion,
+  fetchQuestionResponses,
+  StudentTableResponse
 } from "./liveQuizClient";
 import { lessonQuizRuntime, LiveQuizSession, RuntimeState } from "./lessonQuizRuntime";
 import { global_variable } from "./global_variable";
 import { CapturedTable, tableFromContainer } from "./tableFromContainer";
 import TableHeatmap from "./TableHeatmap";
+import TableAnswerReview from "./TableAnswerReview";
 
 type Props = {
   lessonId: number;
@@ -164,6 +167,9 @@ export default function LiveQuizPanel({
   sessionRef.current = session;
   /** QR 放大層。開新課堂時自動打開，讓學生馬上重掃。 */
   const [showQr, setShowQr] = React.useState(false);
+  /** 收卷後的個別作答（僅填表題）。伺服器只在 closed 之後才給。 */
+  const [reviews, setReviews] = React.useState<StudentTableResponse[] | null>(null);
+  const [openReview, setOpenReview] = React.useState<string | null>(null);
   const [stats, setStats] = React.useState<LiveQuizStats | null>(null);
   const [runtimeState, setRuntimeState] = React.useState<RuntimeState>(
     lessonQuizRuntime.state()
@@ -425,6 +431,23 @@ export default function LiveQuizPanel({
     };
   }, [restartSession]);
 
+  // 收卷後抓個別作答。條件必須跟伺服器的三道守衛一致（table + closed + 擁有者），
+  // 否則會在每次狀態更新時打出一連串必然 409 的請求。
+  React.useEffect(() => {
+    const current = session;
+    const target = latestQuestion(current);
+    if (!current || !target || target.kind !== "table" || target.state !== "closed") {
+      setReviews(null);
+      setOpenReview(null);
+      return;
+    }
+    let cancelled = false;
+    fetchQuestionResponses(current.id, target.id)
+      .then(payload => { if (!cancelled) setReviews(payload.responses); })
+      .catch(() => { if (!cancelled) setReviews([]); });
+    return () => { cancelled = true; };
+  }, [session]);
+
   const closeQuestion = () => {
     const question = session && session.active_question;
     if (!session || !question) return;
@@ -592,6 +615,7 @@ export default function LiveQuizPanel({
                 <span>答對 {correctCount}</span>
               </div>
               {question.kind === "table" ? (
+                <React.Fragment>
                 <TableHeatmap
                   rows={question.rows}
                   cols={question.cols}
@@ -600,6 +624,40 @@ export default function LiveQuizPanel({
                   stats={cellStats}
                   answerCount={answerCount}
                 />
+                {question.state === "closed" && reviews !== null && (
+                  <div style={{ marginTop: "12px" }}>
+                    <div style={{ color: muted, fontSize: "12px", marginBottom: "4px" }}>
+                      個別作答（{reviews.length}）· 答對最少的排最前
+                    </div>
+                    {reviews.length === 0 && (
+                      <div style={{ fontSize: "12px", color: muted }}>沒有人送出作答。</div>
+                    )}
+                    {reviews.map(item => (
+                      <div key={item.nickname} style={{ marginBottom: "6px" }}>
+                        <button
+                          type="button"
+                          className="btn btn-default btn-sm"
+                          data-testid="live-quiz-review-item"
+                          style={{ width: "100%", textAlign: "left", fontSize: "12px" }}
+                          onClick={() =>
+                            setOpenReview(openReview === item.nickname ? null : item.nickname)
+                          }
+                        >
+                          {item.nickname} · {item.correct_cells}/{item.total_cells}
+                        </button>
+                        {openReview === item.nickname && (
+                          <TableAnswerReview
+                            response={item}
+                            correctValues={question.correct_values || []}
+                            rowLabels={question.row_labels || []}
+                            colLabels={question.col_labels || []}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                </React.Fragment>
               ) : (question.options || []).map((option: any) => {
                 const value = Number(counts[option.id]) || 0;
                 const width = answerCount ? Math.round((value / answerCount) * 100) : 0;

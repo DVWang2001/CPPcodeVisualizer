@@ -480,3 +480,42 @@ test("收卷後真的把續播指令執行掉，而不是只放回槽裡", async
 
   expect(execute).toHaveBeenCalledWith("next");
 });
+
+test("收卷後列出個別作答，點一位展開他那張表", async () => {
+  // 教師檢討用。伺服器只在 table + closed + 擁有者三個條件都成立時才給資料，
+  // 前端的抓取條件必須跟它一致，否則每次狀態更新都會打出必然 409 的請求。
+  (liveQuizClient.fetchQuestionResponses as jest.Mock) = jest.fn().mockResolvedValue({
+    responses: [
+      { nickname: "小明", answer: [["0", "9"]], correct_cells: 1, total_cells: 2 }
+    ]
+  });
+  const closed = {
+    ...panelSession(),
+    questions: [{
+      ...panelSession().questions[0],
+      state: "closed",
+      opened_at: "2026-08-20T00:00:00",
+      rows: 1, cols: 2,
+      row_labels: ["0"], col_labels: ["0", "1"],
+      cell_stats: [0, 1],
+      correct_values: [["0", "1"]]
+    }],
+    active_question: null
+  };
+
+  await mountPanel(closed);
+  await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+
+  const items = Array.from(
+    root.querySelectorAll('[data-testid="live-quiz-review-item"]')
+  ) as HTMLButtonElement[];
+  expect(items).toHaveLength(1);
+  expect(items[0].textContent).toContain("小明");
+  expect(items[0].textContent).toContain("1/2");
+
+  act(() => { Simulate.click(items[0]); });
+
+  // 展開後看得到他填的值，錯的那格帶著正解提示
+  expect(root.textContent).toContain("9");
+  expect(root.innerHTML).toContain("正解 1");
+});

@@ -69,6 +69,23 @@ export const closeLiveQuestion = (
     `/api/live-quiz/sessions/${sessionId}/questions/${encodeURIComponent(questionId)}/close`
   );
 
+export type StudentTableResponse = {
+  nickname: string;
+  answer: string[][] | null;
+  correct_cells: number;
+  total_cells: number;
+};
+
+/** 收卷後的個別作答。只有填表題、只有課堂擁有者、只有 closed 之後才拿得到（伺服器擋）。 */
+export const fetchQuestionResponses = (
+  sessionId: number,
+  questionId: string
+): Promise<{ responses: StudentTableResponse[] }> =>
+  request(
+    "GET",
+    `/api/live-quiz/sessions/${sessionId}/questions/${encodeURIComponent(questionId)}/responses`
+  );
+
 export const endLiveSession = (sessionId: number): Promise<LiveQuizSession> =>
   request("POST", `/api/live-quiz/sessions/${sessionId}/end`);
 
