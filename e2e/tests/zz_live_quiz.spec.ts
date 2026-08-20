@@ -131,7 +131,9 @@ test('student scans rendered QR and answers when playback reaches the bound line
       (window as any).monaco.editor.getModels()[0].setValue(source);
     }, savedSource);
     await expect(liveButton).toBeEnabled();
-    await liveButton.click();
+    // 「即時課堂」從按鈕改成**預設已勾選**的勾選框，面板一開始就在側欄裡。
+    // 這裡不能再點它——點下去是取消勾選，面板反而消失，「開始即時課堂」就找不到了。
+    await expect(liveButton).toBeChecked();
     await teacherPage.getByRole('button', { name: '開始即時課堂' }).click();
     await teacherPage.waitForFunction(() =>
       Number(sessionStorage.getItem('gdbgui_live_quiz_session_id')) > 0
@@ -244,7 +246,8 @@ test('two phones submit concurrently and a retry cannot replace the first answer
 
   try {
     lessonId = await loginAndOpenQuizLesson(teacherPage);
-    await teacherPage.getByTestId('live-quiz-open').click();
+    // 勾選框預設已勾選，面板已在側欄；點它是取消勾選（見上一條測試的註解）。
+    await expect(teacherPage.getByTestId('live-quiz-open')).toBeChecked();
     await teacherPage.getByRole('button', { name: '開始即時課堂' }).click();
     const decodedUrl = await decodeQrPixels(
       teacherPage.locator("img[alt='學生加入課堂的 QR Code']")
