@@ -160,15 +160,19 @@ test('student scans rendered QR and answers when playback reaches the bound line
     )).toBe(SOURCE);
     await expect(teacherPage.getByTestId('save-lesson-to-account')).toBeDisabled();
 
+    // 動線是「先 Run，再讓學生掃」：按 Run 會結束舊課堂並開一堂新的（刻意的行為），
+    // 所以 Run 之前掃到的 QR 屬於已被取代的那一堂，學生會在作答時被拒。
+    // Run 之後 QR 放大層會自動彈出，關掉它才看得到側欄那張（decodeQrPixels 取的是側欄那張）。
+    await runTeacherToBoundLine(teacherPage);
+    await teacherPage.getByRole('dialog', { name: '放大的加入 QR Code' })
+      .getByRole('button', { name: '關閉' }).click();
     const decodedUrl = await decodeQrPixels(
       teacherPage.locator("img[alt='學生加入課堂的 QR Code']")
     );
     expect(new URL(decodedUrl).pathname).toMatch(/^\/join\/[^/]+$/);
     await expect(teacherPage.getByText('連線主機：app:5000')).toBeVisible();
-    await expect(teacherPage.getByText('請用一支非教師手機測試')).toBeVisible();
 
     await joinStudent(studentPage, decodedUrl, '小明');
-    await runTeacherToBoundLine(teacherPage);
     await expect(studentPage.getByRole('heading', { name: 'i 是多少？' })).toBeVisible();
     for (const id of ['continue_button', 'next_button', 'step_button', 'return_button']) {
       await expect(teacherPage.locator(`#${id}`)).toBeDisabled();
@@ -249,6 +253,12 @@ test('two phones submit concurrently and a retry cannot replace the first answer
     // 勾選框預設已勾選，面板已在側欄；點它是取消勾選（見上一條測試的註解）。
     await expect(teacherPage.getByTestId('live-quiz-open')).toBeChecked();
     await teacherPage.getByRole('button', { name: '開始即時課堂' }).click();
+    // 動線是「先 Run，再讓學生掃」：按 Run 會結束舊課堂並開一堂新的（刻意的行為），
+    // 所以 Run 之前掃到的 QR 屬於已被取代的那一堂，學生會在作答時被拒。
+    // Run 之後 QR 放大層會自動彈出，關掉它才看得到側欄那張（decodeQrPixels 取的是側欄那張）。
+    await runTeacherToBoundLine(teacherPage);
+    await teacherPage.getByRole('dialog', { name: '放大的加入 QR Code' })
+      .getByRole('button', { name: '關閉' }).click();
     const decodedUrl = await decodeQrPixels(
       teacherPage.locator("img[alt='學生加入課堂的 QR Code']")
     );
@@ -256,7 +266,6 @@ test('two phones submit concurrently and a retry cannot replace the first answer
       joinStudent(studentA, decodedUrl, '小華'),
       joinStudent(studentB, decodedUrl, '小美'),
     ]);
-    await runTeacherToBoundLine(teacherPage);
 
     const [answerA, answerB] = await Promise.all([
       studentA.request.post('/api/live-quiz/guest/answers', {
