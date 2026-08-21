@@ -167,6 +167,16 @@ export default function LiveQuizPanel({
   sessionRef.current = session;
   /** QR 放大層。開新課堂時自動打開，讓學生馬上重掃。 */
   const [showQr, setShowQr] = React.useState(false);
+  /** 出題當下捕獲的「題目資料」容器（正解以外的那些）。
+   *
+   * 圖論題需要老師的投影畫面上留著鄰接矩陣，學生才有依據作答；把它塞進手機題幹會
+   * 吃掉半個螢幕。容器面板在出題時整個關掉——那是既有且有多條競態測試守著的行為，
+   * 不動它，改成在這裡自己畫。
+   *
+   * 捕獲而不是即時讀 __latest_containers：出題後程式仍可能前進，讀即時值會讓畫面上的
+   * 題目資料跟學生手上那題對不起來。
+   */
+  const [questionData, setQuestionData] = React.useState<Array<[string, string[][]]>>([]);
   /** 收卷後的個別作答（僅填表題）。伺服器只在 closed 之後才給。 */
   const [reviews, setReviews] = React.useState<StudentTableResponse[] | null>(null);
   const [openReview, setOpenReview] = React.useState<string | null>(null);
@@ -623,6 +633,33 @@ export default function LiveQuizPanel({
         <div style={{ borderLeft: `4px solid ${amber}`, paddingLeft: "16px" }}>
           {question ? (
             <React.Fragment>
+              {questionData.length > 0 && (
+                <div style={{ marginBottom: "10px" }}>
+                  <div style={{ color: muted, fontSize: "12px", marginBottom: "3px" }}>
+                    題目資料（投影給學生看，正解不在其中）
+                  </div>
+                  {questionData.map(([name, values]) => (
+                    <div key={name} style={{ marginBottom: "6px" }}>
+                      <code style={{ fontSize: "11px", color: ink }}>{name}</code>
+                      <table style={{ borderCollapse: "collapse", marginTop: "2px" }}>
+                        <tbody>
+                          {values.map((row, r) => (
+                            <tr key={r}>
+                              {row.map((cell, c) => (
+                                <td key={c} style={{
+                                  border: "1px solid #d8dee9", padding: "2px 6px",
+                                  font: "600 11px/1.2 ui-monospace, Menlo, Consolas, monospace",
+                                  textAlign: "center", background: "#fff", color: ink
+                                }}>{cell}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              )}
               <strong>{question.prompt}</strong>
               <div style={{ display: "flex", gap: "18px", margin: "8px 0", color: muted }}>
                 <span>已作答 {answerCount}</span>
@@ -698,6 +735,20 @@ export default function LiveQuizPanel({
               pending={runtimeState.pendingTable}
               busy={busy}
               onConfirm={(table, varHint) => {
+                const containers =
+                  ((global_variable as any).__latest_containers as Map<string, any>) || new Map();
+                setQuestionData(
+                  Array.from(containers.entries())
+                    .filter(([name, data]) =>
+                      name !== varHint &&
+                      Array.isArray(data?.values) &&
+                      Array.isArray(data.values[0])
+                    )
+                    .map(([name, data]) => [
+                      name,
+                      (data.values as any[][]).map(row => row.map((cell: any) => String(cell)))
+                    ] as [string, string[][]])
+                );
                 containerClosedRef.current = closeQuizContainer();
                 if (!lessonQuizRuntime.confirmTable(table, varHint)) restoreHiddenContainer();
               }}

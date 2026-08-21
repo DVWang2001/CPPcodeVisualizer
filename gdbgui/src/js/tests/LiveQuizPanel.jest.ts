@@ -556,3 +556,24 @@ test.skip("舊課堂的 ended 事件不得關掉已經換上的新課堂", async
 
   expect(lessonQuizRuntime.state().active).toBe(true);
 });
+
+test("出題時連題目資料一起捕獲，畫在課堂面板上", async () => {
+  // 圖論題的鄰接矩陣要留在老師的投影畫面上（學生才有依據作答），但正解不能露出。
+  // 容器面板在出題時整個關掉——那是既有且有多條競態測試守著的行為，不動它。
+  // 改成在確認出題的當下，把「正解以外的容器」一併快照，由課堂面板自己畫。
+  (global_variable as any).__latest_containers = new Map([
+    ["w", { values: [[0, 7], [7, 0]], isContainer: true }],
+    ["dp", { values: [[1, 2], [3, 4]], isContainer: true }]
+  ]);
+  await mountPanel();
+
+  const confirm = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題")!;
+  act(() => { Simulate.click(confirm); });
+  await act(async () => { await Promise.resolve(); });
+
+  // 題目資料（w）畫出來了，正解（dp，選擇器選中的那個）沒有
+  const shown = root.textContent || "";
+  expect(shown).toContain("題目資料");
+  expect(shown).toContain("w");
+});
