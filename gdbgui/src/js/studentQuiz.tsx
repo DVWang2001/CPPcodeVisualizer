@@ -2,6 +2,7 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import io from "socket.io-client";
 import TableAnswerGrid from "./TableAnswerGrid";
+import ScratchCanvas from "./ScratchCanvas";
 import {
   initialStudentState,
   markReconnecting,
@@ -179,6 +180,10 @@ function StudentQuizApp({ data }: { data: InitialData }) {
 
   const question = state.active_question;
   const nicknameLength = Array.from(nickname.trim()).length;
+  // 草稿畫布＝白紙的數位版。分頁而不是並排：手機直向的可視高度放不下「題幹＋表格＋
+  // 一個夠大的畫布」，硬擠會讓兩邊都不好用。
+  const [tab, setTab] = React.useState<"table" | "canvas">("table");
+  const [miniCanvas, setMiniCanvas] = React.useState(false);
 
   return (
     <main className="quiz-shell">
@@ -263,6 +268,29 @@ function StudentQuizApp({ data }: { data: InitialData }) {
               </form>
             ) : (
               <>
+                <div className="scratch-tabs" role="tablist">
+                  <button type="button" role="tab" aria-selected={tab === "table"}
+                    className={tab === "table" ? "on" : ""} onClick={() => setTab("table")}>填表</button>
+                  <button type="button" role="tab" aria-selected={tab === "canvas"}
+                    className={tab === "canvas" ? "on" : ""} onClick={() => setTab("canvas")}>畫布</button>
+                  {tab === "table" && (
+                    <label className="scratch-toggle">
+                      <input type="checkbox" checked={miniCanvas}
+                        onChange={event => setMiniCanvas(event.target.checked)} />
+                      顯示畫布
+                    </label>
+                  )}
+                </div>
+                {tab === "canvas" ? (
+                  <ScratchCanvas questionKey={question.id} />
+                ) : (
+                  <div className="table-with-scratch">
+                    {/* 唯讀縮圖：填表時瞄一眼自己畫的東西。不能在上面畫，避免打字時誤觸。
+                        放右上是因為表格的列標題在左邊，右上是唯一不擋到作答的角落。
+                        縮圖是 absolute，所以這層 div 必須是它的定位基準——沒有它會定位到整頁。 */}
+                    {miniCanvas && (
+                      <ScratchCanvas questionKey={question.id} readOnly onTap={() => setTab("canvas")} />
+                    )}
                 <TableAnswerGrid
                   key={question.id}
                   question={question}
@@ -277,6 +305,8 @@ function StudentQuizApp({ data }: { data: InitialData }) {
                         : `${question.result.correct_cells}/${question.result.total_cells} 格正確`}
                     </strong>
                     {question.result.explanation && <p>{question.result.explanation}</p>}
+                  </div>
+                )}
                   </div>
                 )}
               </>
