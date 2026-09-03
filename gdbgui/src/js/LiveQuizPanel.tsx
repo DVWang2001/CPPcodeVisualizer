@@ -6,6 +6,7 @@ import {
   createLiveSession,
   endLiveSession,
   getLiveSession,
+  liveQuizExportUrl,
   LiveQuizStats,
   triggerLiveQuestion,
   fetchQuestionResponses,
@@ -777,6 +778,15 @@ export default function LiveQuizPanel({
           )}
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" }}>
+            {/* 結束課堂會刪光逐筆作答，所以匯出擺在它旁邊——要按錯之前先看到。 */}
+            <a
+              className="btn btn-default btn-sm"
+              data-testid="live-quiz-export"
+              href={liveQuizExportUrl(session.id)}
+              title="下載逐筆作答。結束課堂後這些資料就會被清除。"
+            >
+              匯出作答
+            </a>
             <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={end}>結束課堂</button>
             <button
               type="button"

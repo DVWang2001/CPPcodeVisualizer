@@ -86,6 +86,13 @@ export const fetchQuestionResponses = (
     `/api/live-quiz/sessions/${sessionId}/questions/${encodeURIComponent(questionId)}/responses`
   );
 
+/**
+ * 逐筆作答的匯出網址。結束課堂會刪光這些資料，所以這是研究資料唯一的出口。
+ * 走瀏覽器導覽而非 fetch：伺服器回的是附件，點下去就落地成檔案。
+ */
+export const liveQuizExportUrl = (sessionId: number): string =>
+  `/api/live-quiz/sessions/${sessionId}/export`;
+
 export const endLiveSession = (sessionId: number): Promise<LiveQuizSession> =>
   request("POST", `/api/live-quiz/sessions/${sessionId}/end`);
 

@@ -8,6 +8,8 @@ jest.mock("../liveQuizClient", () => ({
   createLiveSession: jest.fn(),
   endLiveSession: jest.fn(),
   getLiveSession: jest.fn(),
+  // 這一個在 render 期間就被呼叫，不像其他都在事件裡——漏掉會讓整個面板渲染失敗。
+  liveQuizExportUrl: jest.fn((id: number) => `/api/live-quiz/sessions/${id}/export`),
   triggerLiveQuestion: jest.fn()
 }));
 

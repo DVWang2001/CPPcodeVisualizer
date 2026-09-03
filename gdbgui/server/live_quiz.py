@@ -717,6 +717,108 @@ def responses_for_question(session_id: int, owner_id: int, question_key: str):
         for row in rows
     ]
 
+def _json_or_none(value):
+    return json.loads(value) if value else None
+
+
+def export_session(session_id: int, owner_id: int) -> Optional[dict]:
+    """研究用的逐筆作答快照，供教師在結束課堂前取走。
+
+    存在的理由：`end_session()` 會刪光 responses 與 participants，只留各題的匿名統計
+    摘要。那是對學生的隱私承諾，不該動；但這也代表逐筆作答——每一格對錯、作答時刻、
+    誰跳過了哪一題——每上完一堂課就永久消失，任何事後的教學研究都無從做起。
+
+    這條出口只多一個動作：課堂結束前匯出。它不放寬任何邊界——擁有者才拿得到，
+    內容也就是教師在收卷後檢討畫面本來看得到的東西。
+
+    ⚠️ 暱稱照實輸出，因為那是唯一能把系統作答接回紙本問卷的鍵。要拿來做研究，
+    請在課前就請學生以匿名代號當暱稱，這樣輸出天生就是去識別的；否則這份檔案
+    含個人可辨識資訊，保管責任在匯出的人身上。
+
+    這裡不加 state 守衛：課堂結束後 responses 與 participants 本來就空了，再擋一次
+    只是多一條會過期的分支。空的匯出仍有意義——題目與匿名統計摘要照留。
+    """
+    if not _valid_id(session_id) or not _valid_id(owner_id):
+        return None
+    with closing(db.connect()) as conn:
+        session = _session_row(conn, session_id, owner_id)
+        if session is None:
+            return None
+        questions = conn.execute(
+            "SELECT question_key, kind, prompt, position, state, opened_at, closed_at, "
+            "answer_count, correct_count, correct_option_id, option_counts_json, "
+            "table_spec_json, correct_table_json, cell_stats_json "
+            "FROM live_quiz_questions WHERE session_id=? ORDER BY position",
+            (session_id,),
+        ).fetchall()
+        participants = conn.execute(
+            "SELECT nickname, created_at, last_seen_at FROM live_quiz_participants "
+            "WHERE session_id=? ORDER BY nickname",
+            (session_id,),
+        ).fetchall()
+        responses = conn.execute(
+            "SELECT q.question_key, q.kind, p.nickname, r.answered_at, "
+            "r.selected_option_id, r.is_correct, r.answer_json, "
+            "r.correct_cells, r.total_cells "
+            "FROM live_quiz_responses r "
+            "JOIN live_quiz_questions q ON q.id = r.question_id "
+            "JOIN live_quiz_participants p ON p.id = r.participant_id "
+            "WHERE q.session_id=? ORDER BY q.position, p.nickname",
+            (session_id,),
+        ).fetchall()
+    return {
+        "exported_at": db._now(),
+        "session": {
+            "id": session["id"],
+            "title": session["title"],
+            "state": session["state"],
+            "created_at": session["created_at"],
+            "ended_at": session["ended_at"],
+        },
+        "participants": [
+            {
+                "nickname": row["nickname"],
+                "joined_at": row["created_at"],
+                "last_seen_at": row["last_seen_at"],
+            }
+            for row in participants
+        ],
+        "questions": [
+            {
+                "question_key": row["question_key"],
+                "kind": row["kind"],
+                "prompt": row["prompt"],
+                "position": row["position"],
+                "state": row["state"],
+                "opened_at": row["opened_at"],
+                "closed_at": row["closed_at"],
+                "answer_count": row["answer_count"],
+                "correct_count": row["correct_count"],
+                "correct_option_id": row["correct_option_id"],
+                "option_counts": _json_or_none(row["option_counts_json"]),
+                "table_spec": _json_or_none(row["table_spec_json"]),
+                "correct_table": _json_or_none(row["correct_table_json"]),
+                "cell_stats": _json_or_none(row["cell_stats_json"]),
+            }
+            for row in questions
+        ],
+        "responses": [
+            {
+                "question_key": row["question_key"],
+                "kind": row["kind"],
+                "nickname": row["nickname"],
+                "answered_at": row["answered_at"],
+                "selected_option_id": row["selected_option_id"],
+                "is_correct": row["is_correct"],
+                "answer": _json_or_none(row["answer_json"]),
+                "correct_cells": row["correct_cells"],
+                "total_cells": row["total_cells"],
+            }
+            for row in responses
+        ],
+    }
+
+
 def end_session(session_id: int, owner_id: int) -> Optional[dict]:
     if not _valid_id(session_id) or not _valid_id(owner_id):
         return None
@@ -1214,6 +1316,21 @@ def question_responses_route(session_id, question_key):
         return jsonify({"responses": rows})
     except QuizConflict as exc:
         return _error(str(exc), 409)
+
+@blueprint.get("/api/live-quiz/sessions/<int:session_id>/export")
+def export_session_route(session_id):
+    payload = export_session(session_id, current_user_id())
+    if payload is None:
+        return _error("找不到課堂。", 404)
+    # 以附件回應，教師點連結就落地成檔案——結束課堂前的最後一個動作，不該還要另存新檔。
+    response = current_app.response_class(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        mimetype="application/json",
+    )
+    filename = "live-quiz-%d-%s.json" % (session_id, payload["exported_at"][:10])
+    response.headers["Content-Disposition"] = 'attachment; filename="%s"' % filename
+    return response
+
 
 @blueprint.post("/api/live-quiz/sessions/<int:session_id>/end")
 def end_session_route(session_id):

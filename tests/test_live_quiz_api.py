@@ -264,3 +264,55 @@ def test_guest_join_rejects_non_string_tokens_without_a_server_error(api_context
     app, _, _, _ = api_context
     _, joined = _guest_join(app, token)
     assert joined.status_code == 404
+
+
+def test_export_captures_responses_that_ending_the_session_destroys(api_context):
+    """匯出是研究資料唯一的出口：結束課堂會把逐筆作答刪光。"""
+    app, author, other, lesson_id = api_context
+    created = _create(author, lesson_id)
+    session_id = created.get_json()["id"]
+    token = _join_token(created)
+    guest, joined = _guest_join(app, token, nickname="3081")
+    assert joined.status_code == 200
+    assert author.http.post(
+        f"/api/live-quiz/sessions/{session_id}/questions/q1/trigger",
+        json={"source_file": "main.cpp", "line": 3},
+        headers={"x-csrftoken": author.csrf},
+    ).status_code == 200
+    assert guest.post(
+        "/api/live-quiz/guest/answers",
+        json={"question_id": "q1", "option_id": "b"},
+        headers={"Origin": "http://localhost"},
+    ).status_code == 200
+
+    # 別人的課堂拿不到，訪客更不行。
+    assert other.http.get(f"/api/live-quiz/sessions/{session_id}/export").status_code == 404
+    assert guest.get(f"/api/live-quiz/sessions/{session_id}/export").status_code in (302, 401, 403)
+
+    exported = author.http.get(f"/api/live-quiz/sessions/{session_id}/export")
+    assert exported.status_code == 200
+    assert "attachment" in exported.headers["Content-Disposition"]
+    payload = exported.get_json()
+    assert [p["nickname"] for p in payload["participants"]] == ["3081"]
+    assert len(payload["responses"]) == 1
+    answer = payload["responses"][0]
+    assert answer["question_key"] == "q1"
+    assert answer["nickname"] == "3081"
+    assert answer["selected_option_id"] == "b"
+    assert answer["is_correct"] == 1
+
+    assert author.http.post(
+        f"/api/live-quiz/sessions/{session_id}/questions/q1/close",
+        headers={"x-csrftoken": author.csrf},
+    ).status_code == 200
+    assert author.http.post(
+        f"/api/live-quiz/sessions/{session_id}/end",
+        headers={"x-csrftoken": author.csrf},
+    ).status_code == 200
+
+    after = author.http.get(f"/api/live-quiz/sessions/{session_id}/export").get_json()
+    assert after["responses"] == []
+    assert after["participants"] == []
+    # 題目與匿名統計摘要照留，這正是結束課堂該保住的東西。
+    assert [q["question_key"] for q in after["questions"]] == ["q1"]
+    assert after["questions"][0]["answer_count"] == 1
