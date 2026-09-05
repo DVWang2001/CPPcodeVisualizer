@@ -86,8 +86,8 @@ export default class LessonGenPanel extends React.Component<Props, State> {
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
           <label style={{ fontSize: 12, whiteSpace: "nowrap" }}>模型</label>
           <select value={cfg.preset} onChange={(e) => this.onPreset(e.target.value)} data-testid="lesson-preset">
-            <option value="zen">OpenCode Zen · big-pickle（免費，伺服器已設金鑰）</option>
-            <option value="nvidia">NVIDIA NIM（需自備 key）</option>
+            <option value="nvidia">NVIDIA NIM（伺服器已設金鑰）</option>
+            <option value="zen">OpenCode Zen · big-pickle（很慢，需自備 key）</option>
             <option value="mistral">Mistral（需自備 key）</option>
             <option value="custom">自訂</option>
           </select>
@@ -97,7 +97,7 @@ export default class LessonGenPanel extends React.Component<Props, State> {
         <input style={{ ...box, marginBottom: 4 }} placeholder="model 名稱"
           value={cfg.model} onChange={(e) => this.setCfg({ model: e.target.value, preset: "custom" })} />
         <input style={{ ...box, marginBottom: 6 }} type="password"
-          placeholder="API key（用 Zen 可留空；換別家要自己填，會存在此瀏覽器）"
+          placeholder="API key（用 NVIDIA 可留空；換別家要自己填，會存在此瀏覽器）"
           value={cfg.apiKey} onChange={(e) => this.setCfg({ apiKey: e.target.value })} />
 
         <textarea style={{ ...box, marginBottom: 6 }} rows={2} data-testid="lesson-instruction"

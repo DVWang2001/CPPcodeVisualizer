@@ -1,8 +1,11 @@
 """AI 教案生成的純函式（不依賴 Flask，方便單元測試）。"""
 import re
 
-DEFAULT_BASE_URL = "https://opencode.ai/zen/v1"
-DEFAULT_MODEL = "big-pickle"
+# 為什麼不是 OpenCode Zen 的 big-pickle：在正式機實測是 1 token/秒——13 行的程式
+# 生成花了 456 秒，一份正常長度的教案推估要 80 分鐘。而且那把 key 只授權 big-pickle
+# 一個模型（帶 key 查 /models 只回 1 個，不帶 key 回 70 個），換快模型要付費解鎖。
+DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
+DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
 MAX_SOURCE_BYTES = 100 * 1024
 
 _SYSTEM_TEMPLATE = (

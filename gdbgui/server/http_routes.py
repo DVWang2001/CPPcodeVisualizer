@@ -1383,7 +1383,8 @@ def generate_lesson():
                 "max_tokens": LESSON_MAX_OUTPUT_TOKENS,
                 "temperature": 0.3,
             },
-            # big-pickle 實測「20 個輸出 token 要 16 秒」，整份教案是好幾分鐘的事。
+            # 生成一份教案是「一次要幾千個 token」的工作，不是一般 API 呼叫。
+            # 舊的 120 秒對稍慢的模型就不夠（曾實測某模型 1 token/秒）。
             timeout=LESSON_GEN_TIMEOUT_SECONDS,
         )
     except Exception as e:

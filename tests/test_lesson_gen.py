@@ -61,7 +61,7 @@ def test_env_key_not_shared_with_other_real_providers():
     """
     for other in (
         "https://api.mistral.ai/v1",
-        "https://integrate.api.nvidia.com/v1",
+        "https://opencode.ai/zen/v1",
         "https://api.openai.com/v1",
     ):
         assert lesson_gen.env_key_allowed(other) is False

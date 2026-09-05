@@ -48,11 +48,12 @@ describe("buildRequestBody", () => {
 });
 
 describe("預設要指向能用伺服器金鑰的那一家", () => {
-  test("預設是 Zen，且 baseUrl 與後端白名單一致", () => {
+  test("預設的 baseUrl 與後端白名單一致", () => {
     // 這個字串要和 gdbgui/server/lesson_gen.py 的 DEFAULT_BASE_URL 一模一樣。
-    // 對不上的話，會員按下生成會被後端擋成「自訂 base_url 請填自己的 key」。
-    expect(defaultCfg().preset).toBe("zen");
-    expect(defaultCfg().baseUrl).toBe("https://opencode.ai/zen/v1");
-    expect(defaultCfg().model).toBe("big-pickle");
+    // 對不上的話，會員按下生成會被後端擋成「自訂 base_url 請填自己的 key」，
+    // 而那個訊息完全看不出真正的原因。
+    expect(defaultCfg().preset).toBe("nvidia");
+    expect(defaultCfg().baseUrl).toBe("https://integrate.api.nvidia.com/v1");
+    expect(defaultCfg().model).toBe("meta/llama-3.3-70b-instruct");
   });
 });

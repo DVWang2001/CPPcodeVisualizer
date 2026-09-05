@@ -1,10 +1,10 @@
 export type LessonCfg = { preset: string; baseUrl: string; model: string; apiKey: string };
 
 export const PRESETS: Record<string, { baseUrl: string; model: string }> = {
-  // Zen 是預設，也是唯一能用伺服器金鑰的一家（見 lesson_gen.ENV_KEY_BASE_URLS）。
+  // NVIDIA 是預設，也是唯一能用伺服器金鑰的一家（見 lesson_gen.ENV_KEY_BASE_URLS）。
   // 其他家仍然可選，但要自己在面板填 key——伺服器的金鑰不會送去別家。
-  zen: { baseUrl: "https://opencode.ai/zen/v1", model: "big-pickle" },
   nvidia: { baseUrl: "https://integrate.api.nvidia.com/v1", model: "meta/llama-3.3-70b-instruct" },
+  zen: { baseUrl: "https://opencode.ai/zen/v1", model: "big-pickle" },
   mistral: { baseUrl: "https://api.mistral.ai/v1", model: "mistral-small-latest" },
   custom: { baseUrl: "", model: "" },
 };
@@ -12,7 +12,7 @@ export const PRESETS: Record<string, { baseUrl: string; model: string }> = {
 const LS_KEY = "gdbgui_lesson_ai_config";
 
 export function defaultCfg(): LessonCfg {
-  return { preset: "zen", ...PRESETS.zen, apiKey: "" };
+  return { preset: "nvidia", ...PRESETS.nvidia, apiKey: "" };
 }
 
 export function applyPreset(cfg: LessonCfg, preset: string): LessonCfg {
