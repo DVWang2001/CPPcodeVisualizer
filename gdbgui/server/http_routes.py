@@ -1397,6 +1397,7 @@ def generate_lesson():
         傳達——前端必須把它當成失敗，不能當成內容。
         """
         pieces = []
+        saw_reasoning = False
         try:
             with _requests.post(
                 f"{base_url}/chat/completions",
@@ -1426,6 +1427,7 @@ def generate_lesson():
                     else:
                         # 思考過程純粹當進度用。推理階段長達數分鐘，沒有它畫面
                         # 會整整幾分鐘空白，使用者只會以為當掉。
+                        saw_reasoning = True
                         yield json.dumps({"thinking": text}, ensure_ascii=False) + "\n"
         except Exception as e:
             yield json.dumps({"error": f"呼叫模型 API 失敗：{e}"}, ensure_ascii=False) + "\n"
@@ -1433,7 +1435,15 @@ def generate_lesson():
 
         code = lesson_gen.strip_code_fences("".join(pieces))
         if not code.strip():
-            yield json.dumps({"error": "模型未輸出程式碼"}, ensure_ascii=False) + "\n"
+            # 推理型模型會把輸出額度花在思考上（實測 12 行的程式：思考 1622 塊、
+            # 教案 65 塊）。程式一長，推理量跟著漲，可能在動筆前就把額度用光——
+            # 那時候的症狀和「模型壞掉」一模一樣，訊息必須說清楚差別。
+            reason = (
+                "模型把輸出額度都用在思考上，還沒寫出程式碼就到達上限。"
+                "請把程式改短一點再試，或請管理員調高 LESSON_MAX_OUTPUT_TOKENS。"
+                if saw_reasoning else "模型未輸出程式碼"
+            )
+            yield json.dumps({"error": reason}, ensure_ascii=False) + "\n"
             return
         yield json.dumps({"done": True, "code": code}, ensure_ascii=False) + "\n"
 
