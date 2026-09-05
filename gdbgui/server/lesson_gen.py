@@ -106,10 +106,19 @@ def strip_code_fences(text):
 
 
 def sse_delta(line):
-    """從一行 SSE 取出這一塊的文字；不是內容行就回 None。
+    """從一行 SSE 取出 `("content"|"reasoning", 文字)`；不是內容行就回 None。
 
     上游是 OpenAI 相容的串流：每行長成 `data: {...}`，結尾一行是 `data: [DONE]`。
     心跳與空行照樣會出現，全部安靜略過——串流解析器不該因為一行雜訊就中斷。
+
+    **為什麼要分兩種**：deepseek-v4-flash 是推理型模型，串流會先吐一長段
+    `delta.reasoning_content`（思考過程）才輪到 `delta.content`（真正的答案）。
+    實測一個「說三個字」的請求就有 7 塊 reasoning、2 塊 content。只認 content 的
+    解析器會看到「上游 200、資料一直來、卻一個字都沒解析到」，而且如果 max_tokens
+    在推理階段就用完，content 根本不會出現。
+
+    呼叫端要把 reasoning 拿去當進度顯示（推理階段長達數分鐘，沒有它畫面是空的），
+    但**只有 content 能進最終的程式碼**。
     """
     if isinstance(line, bytes):
         line = line.decode("utf-8", "replace")
@@ -121,6 +130,11 @@ def sse_delta(line):
         return None
     try:
         choices = json.loads(payload).get("choices") or []
-        return (choices[0].get("delta") or {}).get("content") or None
+        delta = choices[0].get("delta") or {}
     except (ValueError, AttributeError, IndexError, KeyError):
         return None
+    if delta.get("content"):
+        return ("content", delta["content"])
+    if delta.get("reasoning_content"):
+        return ("reasoning", delta["reasoning_content"])
+    return None

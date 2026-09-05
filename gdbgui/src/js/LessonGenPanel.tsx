@@ -8,8 +8,10 @@ type State = {
   loading: boolean;
   error: string;
   preview: string | null;
-  /** 串流中已收到的文字。生成要十幾分鐘，沒有這個畫面上會是一片空白。 */
+  /** 串流中已收到的教案文字（只有 content，不含推理過程）。 */
   streamed: string;
+  /** 模型的思考過程。推理階段長達數分鐘，沒有它畫面會整整幾分鐘空白。 */
+  thinking: string;
 };
 
 const box: React.CSSProperties = {
@@ -18,7 +20,7 @@ const box: React.CSSProperties = {
 };
 
 export default class LessonGenPanel extends React.Component<Props, State> {
-  state: State = { cfg: loadCfg(), instruction: "", loading: false, error: "", preview: null, streamed: "" };
+  state: State = { cfg: loadCfg(), instruction: "", loading: false, error: "", preview: null, streamed: "", thinking: "" };
   _mounted = false;
 
   componentDidMount() {
@@ -47,7 +49,7 @@ export default class LessonGenPanel extends React.Component<Props, State> {
       this.setState({ error: "編輯器沒有程式碼" });
       return;
     }
-    this.setState({ loading: true, error: "", preview: null, streamed: "" });
+    this.setState({ loading: true, error: "", preview: null, streamed: "", thinking: "" });
     try {
       const resp = await fetch("/api/generate_lesson", {
         method: "POST",
@@ -79,7 +81,9 @@ export default class LessonGenPanel extends React.Component<Props, State> {
         for (const ev of events) {
           if (!this._mounted) return;
           if ("error" in ev) throw new Error(ev.error);
-          if ("delta" in ev) {
+          if ("thinking" in ev) {
+            this.setState((prev) => ({ thinking: prev.thinking + ev.thinking }));
+          } else if ("delta" in ev) {
             this.setState((prev) => ({ streamed: prev.streamed + ev.delta }));
           } else if ("done" in ev) {
             done = true;
@@ -138,7 +142,11 @@ export default class LessonGenPanel extends React.Component<Props, State> {
           value={instruction} onChange={(e) => this.setState({ instruction: e.target.value })} />
 
         <button className="btn btn-primary btn-sm" disabled={loading} onClick={this.generate} data-testid="lesson-generate">
-          {loading ? `生成中…已收到 ${this.state.streamed.length} 字` : "生成教案"}
+          {loading
+            ? this.state.streamed
+              ? `生成中…已寫 ${this.state.streamed.length} 字`
+              : `思考中…${this.state.thinking.length} 字`
+            : "生成教案"}
         </button>
 
         {error && (
@@ -150,10 +158,15 @@ export default class LessonGenPanel extends React.Component<Props, State> {
         {loading && (
           <div style={{ marginTop: 8 }}>
             <div style={{ fontSize: 12, color: "#8b5cf6", marginBottom: 4 }}>
-              生成中（首次回應約需 2 分鐘，整份教案約 10 分鐘；請勿關閉此面板）
+              生成中（模型會先思考再動筆，整份約十分鐘起跳；請勿關閉此面板）
             </div>
-            <textarea readOnly value={this.state.streamed} rows={14}
-              style={{ ...box, whiteSpace: "pre" }} data-testid="lesson-stream" />
+            {this.state.streamed ? (
+              <textarea readOnly value={this.state.streamed} rows={14}
+                style={{ ...box, whiteSpace: "pre" }} data-testid="lesson-stream" />
+            ) : (
+              <textarea readOnly value={this.state.thinking} rows={8} data-testid="lesson-thinking"
+                style={{ ...box, whiteSpace: "pre-wrap", opacity: 0.65, fontStyle: "italic" }} />
+            )}
           </div>
         )}
 

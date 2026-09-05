@@ -1415,10 +1415,18 @@ def generate_lesson():
                     ) + "\n"
                     return
                 for line in upstream.iter_lines():
-                    delta = lesson_gen.sse_delta(line)
-                    if delta:
-                        pieces.append(delta)
-                        yield json.dumps({"delta": delta}, ensure_ascii=False) + "\n"
+                    parsed = lesson_gen.sse_delta(line)
+                    if not parsed:
+                        continue
+                    kind, text = parsed
+                    if kind == "content":
+                        # 只有 content 是要留下來的教案；推理過程不能寫進去。
+                        pieces.append(text)
+                        yield json.dumps({"delta": text}, ensure_ascii=False) + "\n"
+                    else:
+                        # 思考過程純粹當進度用。推理階段長達數分鐘，沒有它畫面
+                        # 會整整幾分鐘空白，使用者只會以為當掉。
+                        yield json.dumps({"thinking": text}, ensure_ascii=False) + "\n"
         except Exception as e:
             yield json.dumps({"error": f"呼叫模型 API 失敗：{e}"}, ensure_ascii=False) + "\n"
             return

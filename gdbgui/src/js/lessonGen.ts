@@ -46,6 +46,7 @@ export function buildRequestBody(cfg: LessonCfg, source: string, instruction: st
 /** 串流事件：後端每行一個 JSON 物件（見 http_routes.generate_lesson 的 relay）。 */
 export type StreamEvent =
   | { delta: string }
+  | { thinking: string }
   | { done: true; code: string }
   | { error: string };
 

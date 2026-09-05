@@ -73,8 +73,23 @@ def test_env_key_allowed_rejects_arbitrary_host():
 
 def test_sse_delta_extracts_content():
     line = 'data: {"choices":[{"delta":{"content":"你好"}}]}'
-    assert lesson_gen.sse_delta(line) == "你好"
-    assert lesson_gen.sse_delta(line.encode("utf-8")) == "你好"
+    assert lesson_gen.sse_delta(line) == ("content", "你好")
+    assert lesson_gen.sse_delta(line.encode("utf-8")) == ("content", "你好")
+
+
+def test_sse_delta_separates_reasoning_from_the_answer():
+    """推理型模型先吐思考過程才吐答案，兩者不能混在一起。
+
+    deepseek-v4-flash 的串流實測長這樣：先 7 塊 reasoning_content、才 2 塊
+    content。把 reasoning 當成答案會讓思考過程被寫進學生看到的教案裡；把它
+    整個丟掉則會讓畫面在推理的那幾分鐘完全空白。所以要分開回報。
+    """
+    reasoning = 'data: {"choices":[{"delta":{"role":"assistant","reasoning_content":"我們"}}]}'
+    assert lesson_gen.sse_delta(reasoning) == ("reasoning", "我們")
+
+    # 同一塊同時有兩種時，答案優先——content 才是要留下來的東西。
+    both = 'data: {"choices":[{"delta":{"reasoning_content":"想","content":"答"}}]}'
+    assert lesson_gen.sse_delta(both) == ("content", "答")
 
 
 def test_sse_delta_ignores_everything_that_is_not_content():
@@ -89,6 +104,7 @@ def test_sse_delta_ignores_everything_that_is_not_content():
         'data: {"choices":[]}',
         'data: {"choices":[{"delta":{}}]}',
         'data: {"choices":[{"delta":{"content":null}}]}',
+        'data: {"choices":[{"delta":{"role":"assistant"}}]}',
         'event: ping',
     ):
         assert lesson_gen.sse_delta(noise) is None, noise
