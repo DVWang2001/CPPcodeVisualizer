@@ -8,10 +8,10 @@
 
 int main() {
     const int capacity = 6;                                                     //@ @guide 背包最多裝 6 單位重量 @tts [next] 今天這個背包，最多裝六單位的重量 @layout sidebar:58 open:container close:locals
-    const std::vector<int> weights = {3, 2, 2};                                 //@ @guide 三件物品的重量：{weights} @tts [next] 有三件物品，重量分別是三、二、二
-    const std::vector<int> values = {5, 3, 4};                                  //@ @guide 重量：{weights}\n價值：{values} @tts [next] 價值分別是五、三、四。每件物品只有一個，要嘛拿、要嘛不拿
-    const int n = 3;                                                            //@ @guide 物品共 {n} 件 @tts [next] 物品共三件
-    std::vector<std::vector<int>> dp(n + 1, std::vector<int>(capacity + 1, 0)); //@ @guide 四列七行，先全部填 0：{dp}\ndp[i][w]＝只用前 i 件物品、容量上限 w 時的最大價值\n第 0 列代表一件都還沒看，所以全是 0 @tts [next] 這張表和上一課一樣是四列七行。第 i 列代表只用前 i 件物品，第 w 行代表容量上限是 w。第零列一件都不能用，所以全是零
+    const std::vector<int> weights = {3, 2, 2};                                 //@ @guide 這一行放進三件物品的重量：3、2、2 @tts [next] 有三件物品，重量分別是三、二、二
+    const std::vector<int> values = {5, 3, 4};                                  //@ @guide 重量已經有了：{weights}\n這一行再放進它們的價值：5、3、4 @tts [next] 價值分別是五、三、四。每件物品只有一個，要嘛拿、要嘛不拿
+    const int n = 3;                                                            //@ @guide 重量：{weights}\n價值：{values}\n三件物品都齊了 @tts [next] 物品共三件
+    std::vector<std::vector<int>> dp(n + 1, std::vector<int>(capacity + 1, 0)); //@ @guide 這一行要做一張四列七行的表，每一格先填 0\ndp[i][w]＝只用前 i 件物品、容量上限 w 時的最大價值\n第 0 列代表一件都還沒看，所以全是 0\n（表要等這一行執行完才長出來）@tts [next] 這張表和上一課一樣是四列七行。第 i 列代表只用前 i 件物品，第 w 行代表容量上限是 w。第零列一件都不能用，所以全是零
     for (int i = 1; i <= n; ++i) {                                              //@ @guide 外層迴圈選一列：現在把第 {i} 件物品加進來考慮\n{dp} @tts [next] 外層迴圈每跑一圈就多考慮一件物品 | @2 [next] 這一列填完了，再多考慮一件，現在是第 {i} 件 @layout sidebar:58 open:container
         int wi = weights[i - 1];                                                //@ @guide 第 {i} 件的重量\n{weights[i - 1]:orange} @tts [next] 先把這一件的重量拿出來 | @2 [next] 換這一件的重量
         int vi = values[i - 1];                                                 //@ @guide 第 {i} 件：重量 {wi}\n它的價值\n{values[i - 1]:orange} @tts [next] 再把它的價值拿出來，這一件重 {wi} | @2 [next] 這一件重 {wi}
