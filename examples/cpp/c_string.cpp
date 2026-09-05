@@ -3,7 +3,7 @@
 #include <string>
 
 int main() {
-    std::string s = "ABC";                 //@ @guide 初始字串：{s} @tts [next] 三個字元、三格 @layout sidebar:45 open:container font:1.3
+    std::string s = "ABC";                 //@ @guide 這一行要建一個三個字元的字串\n（格子要等這一行執行完才長出來）@tts [next] 三個字元、三格 @layout sidebar:45 open:container font:1.3
     for (char ch = 'D'; ch <= 'F'; ++ch) { //@ @guide 目前的字串：{s} @tts [next] 準備把字元接到尾巴 | @2 [next] 繼續接，格子一格一格變多
         s.push_back(ch);                   //@ @guide 接上之後：{s} @tts [next] 多了一格
     }

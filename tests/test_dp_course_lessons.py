@@ -62,7 +62,7 @@ def test_source_computes_the_hand_checked_answer(folder, stem, expected_stdout):
 @pytest.mark.parametrize("folder, stem, expected_stdout", COURSE)
 def test_lesson_passes_the_static_checker(folder, stem, expected_stdout):
     """規則本體在 scripts/check_lesson.py——老師也是跑那一支，這裡只是把它綁進 CI。"""
-    problems = check_lesson.check((LESSONS / folder / f"{stem}.cpp").read_text(encoding="utf-8"))
+    problems, _ = check_lesson.check((LESSONS / folder / f"{stem}.cpp").read_text(encoding="utf-8"))
 
     assert problems == [], "; ".join(f"{stem}.cpp:{n}  {m}" for n, m in problems)
 
