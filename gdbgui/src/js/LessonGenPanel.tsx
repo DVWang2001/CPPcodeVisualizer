@@ -1,5 +1,5 @@
 import React from "react";
-import { LessonCfg, applyPreset, loadCfg, saveCfg, buildRequestBody } from "./lessonGen";
+import { LessonCfg, applyPreset, loadCfg, saveCfg, buildRequestBody, takeCompleteLines } from "./lessonGen";
 
 type Props = { getSource: () => string; onApply: (code: string) => void; onClose: () => void };
 type State = {
@@ -8,6 +8,8 @@ type State = {
   loading: boolean;
   error: string;
   preview: string | null;
+  /** 串流中已收到的文字。生成要十幾分鐘，沒有這個畫面上會是一片空白。 */
+  streamed: string;
 };
 
 const box: React.CSSProperties = {
@@ -16,7 +18,7 @@ const box: React.CSSProperties = {
 };
 
 export default class LessonGenPanel extends React.Component<Props, State> {
-  state: State = { cfg: loadCfg(), instruction: "", loading: false, error: "", preview: null };
+  state: State = { cfg: loadCfg(), instruction: "", loading: false, error: "", preview: null, streamed: "" };
   _mounted = false;
 
   componentDidMount() {
@@ -45,23 +47,54 @@ export default class LessonGenPanel extends React.Component<Props, State> {
       this.setState({ error: "編輯器沒有程式碼" });
       return;
     }
-    this.setState({ loading: true, error: "", preview: null });
+    this.setState({ loading: true, error: "", preview: null, streamed: "" });
     try {
       const resp = await fetch("/api/generate_lesson", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // 少了這一行，全域的 before_request 會在請求碰到路由之前就 403，
+          // 而且畫面上只看得到一個沒頭沒尾的錯誤。其他每個 POST 都帶了。
+          "x-csrftoken": (window as any).initial_data.csrf_token,
+        },
         body: JSON.stringify(buildRequestBody(this.state.cfg, source, this.state.instruction)),
       });
-      const data = await resp.json();
-      if (!this._mounted) return;
-      if (!resp.ok || data.message) throw new Error(data.message || `HTTP ${resp.status}`);
-      this.setState({ preview: data.code });
+      if (!resp.ok || !resp.body) {
+        const detail = await resp.text().catch(() => "");
+        throw new Error(detail.slice(0, 300) || `HTTP ${resp.status}`);
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let done = false;
+      // 逐塊讀。stream: true 讓 decoder 保留被切一半的多位元組字元，
+      // 否則中文會在切塊邊界變成問號。
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        const { events, rest } = takeCompleteLines(buffer);
+        buffer = rest;
+        for (const ev of events) {
+          if (!this._mounted) return;
+          if ("error" in ev) throw new Error(ev.error);
+          if ("delta" in ev) {
+            this.setState((prev) => ({ streamed: prev.streamed + ev.delta }));
+          } else if ("done" in ev) {
+            done = true;
+            this.setState({ preview: ev.code });
+          }
+        }
+      }
+      if (!done && this._mounted) {
+        throw new Error("串流中斷，教案沒有收完整");
+      }
     } catch (e: any) {
       if (!this._mounted) return;
       this.setState({ error: e.message || String(e) });
     } finally {
-      if (!this._mounted) return;
-      this.setState({ loading: false });
+      if (this._mounted) this.setState({ loading: false });
     }
   };
 
@@ -105,12 +138,22 @@ export default class LessonGenPanel extends React.Component<Props, State> {
           value={instruction} onChange={(e) => this.setState({ instruction: e.target.value })} />
 
         <button className="btn btn-primary btn-sm" disabled={loading} onClick={this.generate} data-testid="lesson-generate">
-          {loading ? "生成中…（最長 2 分鐘）" : "生成教案"}
+          {loading ? `生成中…已收到 ${this.state.streamed.length} 字` : "生成教案"}
         </button>
 
         {error && (
           <div data-testid="lesson-error" style={{ marginTop: 6, color: "#ff6b6b", fontSize: 12, whiteSpace: "pre-wrap" }}>
             {error}
+          </div>
+        )}
+
+        {loading && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: "#8b5cf6", marginBottom: 4 }}>
+              生成中（首次回應約需 2 分鐘，整份教案約 10 分鐘；請勿關閉此面板）
+            </div>
+            <textarea readOnly value={this.state.streamed} rows={14}
+              style={{ ...box, whiteSpace: "pre" }} data-testid="lesson-stream" />
           </div>
         )}
 

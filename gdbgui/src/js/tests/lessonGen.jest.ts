@@ -1,4 +1,4 @@
-import { PRESETS, defaultCfg, applyPreset, buildRequestBody } from "../lessonGen";
+import { PRESETS, defaultCfg, applyPreset, buildRequestBody, takeCompleteLines } from "../lessonGen";
 
 describe("applyPreset", () => {
   test("switching to mistral fills its baseUrl/model", () => {
@@ -55,5 +55,30 @@ describe("預設要指向能用伺服器金鑰的那一家", () => {
     expect(defaultCfg().preset).toBe("nvidia");
     expect(defaultCfg().baseUrl).toBe("https://integrate.api.nvidia.com/v1");
     expect(defaultCfg().model).toBe("deepseek-ai/deepseek-v4-flash-0731");
+  });
+});
+
+describe("takeCompleteLines — 串流切塊不會剛好落在換行上", () => {
+  test("完整的行解析出來，殘段留在 rest", () => {
+    const r = takeCompleteLines('{"delta":"甲"}\n{"delta":"乙"}\n{"del');
+    expect(r.events).toEqual([{ delta: "甲" }, { delta: "乙" }]);
+    expect(r.rest).toBe('{"del');
+  });
+
+  test("殘段接上下一塊之後才成為一行", () => {
+    const first = takeCompleteLines('{"delta":"甲');
+    expect(first.events).toEqual([]);
+    const second = takeCompleteLines(first.rest + ' 乙"}\n');
+    expect(second.events).toEqual([{ delta: "甲 乙" }]);
+    expect(second.rest).toBe("");
+  });
+
+  test("壞掉的一行被略過，不會讓整段串流中斷", () => {
+    const r = takeCompleteLines('{"delta":"好"}\n這不是JSON\n{"done":true,"code":"x"}\n');
+    expect(r.events).toEqual([{ delta: "好" }, { done: true, code: "x" }]);
+  });
+
+  test("空行照樣略過", () => {
+    expect(takeCompleteLines('\n\n{"delta":"甲"}\n').events).toEqual([{ delta: "甲" }]);
   });
 });

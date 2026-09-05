@@ -69,3 +69,26 @@ def test_env_key_not_shared_with_other_real_providers():
 
 def test_env_key_allowed_rejects_arbitrary_host():
     assert lesson_gen.env_key_allowed("https://evil.example.com/v1") is False
+
+
+def test_sse_delta_extracts_content():
+    line = 'data: {"choices":[{"delta":{"content":"你好"}}]}'
+    assert lesson_gen.sse_delta(line) == "你好"
+    assert lesson_gen.sse_delta(line.encode("utf-8")) == "你好"
+
+
+def test_sse_delta_ignores_everything_that_is_not_content():
+    """串流裡的雜訊不該讓解析器中斷——只要安靜略過。"""
+    for noise in (
+        "",
+        "\n",
+        ": heartbeat",
+        "data: [DONE]",
+        "data: ",
+        "data: {不是JSON",
+        'data: {"choices":[]}',
+        'data: {"choices":[{"delta":{}}]}',
+        'data: {"choices":[{"delta":{"content":null}}]}',
+        'event: ping',
+    ):
+        assert lesson_gen.sse_delta(noise) is None, noise

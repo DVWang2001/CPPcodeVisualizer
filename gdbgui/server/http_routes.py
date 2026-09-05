@@ -1366,42 +1366,76 @@ def generate_lesson():
         return jsonify({"message": "伺服器找不到 AUTHORING_GUIDE.md"}), 500
     guide_md = guide_path.read_text(encoding="utf-8")
 
-    try:
-        resp = _requests.post(
-            f"{base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": lesson_gen.build_messages(
-                    guide_md, source, _as_str(body.get("instruction", ""))
-                ),
-                # 一份教案的輸出量：dp3_knapsack.cpp 這種長度粗估就要 4800 tokens，
-                # 舊的 4096 會在中間把程式碼截斷（而且截斷後看起來像一份完整教案）。
-                "max_tokens": LESSON_MAX_OUTPUT_TOKENS,
-                "temperature": 0.3,
-            },
-            # 生成一份教案是「一次要幾千個 token」的工作，不是一般 API 呼叫。
-            # 舊的 120 秒對稍慢的模型就不夠（曾實測某模型 1 token/秒）。
-            timeout=LESSON_GEN_TIMEOUT_SECONDS,
-        )
-    except Exception as e:
-        return jsonify({"message": f"呼叫模型 API 失敗：{e}"}), 502
+    payload = {
+        "model": model,
+        "messages": lesson_gen.build_messages(
+            guide_md, source, _as_str(body.get("instruction", ""))
+        ),
+        # 一份教案的輸出量：dp3_knapsack.cpp 這種長度粗估就要 4800 tokens，
+        # 舊的 4096 會在中間把程式碼截斷（而且截斷後看起來像一份完整教案）。
+        "max_tokens": LESSON_MAX_OUTPUT_TOKENS,
+        "temperature": 0.3,
+        # 非串流不是效能選擇，是能不能完成的問題。實測 NVIDIA 的閘道在
+        # 302 秒整砍掉請求（縮小 prompt 也一樣，所以瓶頸是總時間不是輸入量），
+        # 而一份教案要 704 秒。串流讓連線上持續有資料，閘道就不會判逾時。
+        "stream": True,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
 
-    if resp.status_code != 200:
-        return jsonify({"message": f"模型 API 回傳 {resp.status_code}：{resp.text[:300]}"}), 502
+    def relay():
+        """把上游的 SSE 轉成 NDJSON 一行一塊往前端送。
 
-    try:
-        raw = resp.json()["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, ValueError) as e:
-        return jsonify({"message": f"解析模型回應失敗：{e}"}), 502
+        為什麼是 NDJSON 而不是原封轉發 SSE：前端要的是「文字增量」加上最後一份
+        去掉圍欄的完整程式碼，而去圍欄要等全部收完才能做。自己定一行一個 JSON
+        物件最省事，前端用 fetch 的 ReadableStream 逐行 parse 即可。
 
-    code = lesson_gen.strip_code_fences(raw)
-    if not code.strip():
-        return jsonify({"message": "模型未輸出程式碼"}), 502
-    return jsonify({"code": code})
+        串流一旦開始就送不出 HTTP 狀態碼了，所以錯誤只能以 {"error": ...} 這一行
+        傳達——前端必須把它當成失敗，不能當成內容。
+        """
+        pieces = []
+        try:
+            with _requests.post(
+                f"{base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                stream=True,
+                # 串流時這是「兩塊資料之間」的上限，不是整體上限。實測首塊要
+                # 143.9 秒（排隊 + prefill），所以不能設得太小。
+                timeout=LESSON_GEN_TIMEOUT_SECONDS,
+            ) as upstream:
+                if upstream.status_code != 200:
+                    detail = upstream.text[:300]
+                    yield json.dumps(
+                        {"error": f"模型 API 回傳 {upstream.status_code}：{detail}"},
+                        ensure_ascii=False,
+                    ) + "\n"
+                    return
+                for line in upstream.iter_lines():
+                    delta = lesson_gen.sse_delta(line)
+                    if delta:
+                        pieces.append(delta)
+                        yield json.dumps({"delta": delta}, ensure_ascii=False) + "\n"
+        except Exception as e:
+            yield json.dumps({"error": f"呼叫模型 API 失敗：{e}"}, ensure_ascii=False) + "\n"
+            return
+
+        code = lesson_gen.strip_code_fences("".join(pieces))
+        if not code.strip():
+            yield json.dumps({"error": "模型未輸出程式碼"}, ensure_ascii=False) + "\n"
+            return
+        yield json.dumps({"done": True, "code": code}, ensure_ascii=False) + "\n"
+
+    return current_app.response_class(
+        relay(),
+        mimetype="application/x-ndjson",
+        # 前面若有反向代理，這一行要求它不要把串流緩衝起來——緩衝會讓
+        # 「使用者看得到進度」這件事失效，也讓閘道重新開始計算閒置時間。
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
 
 
 # ── Ghost pre-run：批次 gdb 呼叫樹快照 ────────────────────────────────────────

@@ -1,4 +1,5 @@
 """AI 教案生成的純函式（不依賴 Flask，方便單元測試）。"""
+import json
 import re
 
 # 挑這一組的理由都是在正式機上量出來的，不是看規格挑的：
@@ -102,3 +103,24 @@ def strip_code_fences(text):
     t = (text or "").strip()
     m = _FENCE_RE.match(t)
     return m.group(1) if m else t
+
+
+def sse_delta(line):
+    """從一行 SSE 取出這一塊的文字；不是內容行就回 None。
+
+    上游是 OpenAI 相容的串流：每行長成 `data: {...}`，結尾一行是 `data: [DONE]`。
+    心跳與空行照樣會出現，全部安靜略過——串流解析器不該因為一行雜訊就中斷。
+    """
+    if isinstance(line, bytes):
+        line = line.decode("utf-8", "replace")
+    line = line.strip()
+    if not line.startswith("data:"):
+        return None
+    payload = line[len("data:"):].strip()
+    if not payload or payload == "[DONE]":
+        return None
+    try:
+        choices = json.loads(payload).get("choices") or []
+        return (choices[0].get("delta") or {}).get("content") or None
+    except (ValueError, AttributeError, IndexError, KeyError):
+        return None

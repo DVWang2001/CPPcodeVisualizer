@@ -42,3 +42,31 @@ export function buildRequestBody(cfg: LessonCfg, source: string, instruction: st
   if (cfg.apiKey.trim()) body.api_key = cfg.apiKey.trim();
   return body;
 }
+
+/** 串流事件：後端每行一個 JSON 物件（見 http_routes.generate_lesson 的 relay）。 */
+export type StreamEvent =
+  | { delta: string }
+  | { done: true; code: string }
+  | { error: string };
+
+/**
+ * 從串流緩衝區切出「完整的行」，尾巴那段還沒收完的留著。
+ *
+ * 網路切塊不會剛好落在換行上——一個 JSON 物件可能橫跨兩次 read。沒有把殘段
+ * 留下來的話，中文字被切一半就會 parse 失敗，串流看起來像隨機掉字。
+ */
+export function takeCompleteLines(buffer: string): { events: StreamEvent[]; rest: string } {
+  const parts = buffer.split("\n");
+  const rest = parts.pop() ?? "";
+  const events: StreamEvent[] = [];
+  for (const line of parts) {
+    const text = line.trim();
+    if (!text) continue;
+    try {
+      events.push(JSON.parse(text) as StreamEvent);
+    } catch {
+      // 壞掉的一行不該讓整段串流中斷；略過，繼續收下一行。
+    }
+  }
+  return { events, rest };
+}
