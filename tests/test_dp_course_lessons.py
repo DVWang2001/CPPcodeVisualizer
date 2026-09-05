@@ -8,14 +8,17 @@
 """
 
 import json
-import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
 from gdbgui.server.live_quiz import validate_quiz_bundle
+
+sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
+import check_lesson
 
 LESSONS = Path(__file__).parents[1] / "examples" / "lessons"
 
@@ -27,24 +30,6 @@ COURSE = [
     ("DP課4_同一題改用遞迴", "dp4_recursion", "最大價值：9\n"),
     ("DP課5_記憶化剪掉重複", "dp5_memo", "最大價值：9\n"),
 ]
-
-AUTOPLAY = re.compile(r"^\[(next|step-in|step-out|continue|fast @[^\]]+)\]")
-#: GDB 不會停駐的行：前置處理、註解、單獨的大括號、無初值的宣告，以及所有
-#: 沒有縮排的行（檔案層級的全域宣告與函式簽名——全域在 main 之前就初始化完了，
-#: 簽名行的中斷點會落到 prologue 之後的第一個敘述）。
-NO_STOP = re.compile(r"^\s*(#|//|$)|^\S|^\s*[{}]\s*;?\s*$|^\s*int result;\s*$")
-
-
-def annotation(line):
-    """行尾 //@ 註解裡的 @tts 內容（沒有就回 None）。"""
-    if "//@" not in line:
-        return None
-    fields = re.split(r"@(guide|tts|layout)\b", line.split("//@", 1)[1])
-    for keyword, value in zip(fields[1::2], fields[2::2]):
-        if keyword == "tts":
-            return value.strip()
-    return None
-
 
 @pytest.mark.parametrize("folder, stem, expected_stdout", COURSE)
 def test_bundle_matches_its_source(folder, stem, expected_stdout):
@@ -75,23 +60,11 @@ def test_source_computes_the_hand_checked_answer(folder, stem, expected_stdout):
 
 
 @pytest.mark.parametrize("folder, stem, expected_stdout", COURSE)
-def test_every_stop_line_can_autoplay(folder, stem, expected_stdout):
-    """每個 GDB 會停的行都要有 @tts，且每個 @N 段落都要以自動播放指令開頭。"""
-    lines = (LESSONS / folder / f"{stem}.cpp").read_text(encoding="utf-8").split("\n")
-    last_tts = None
+def test_lesson_passes_the_static_checker(folder, stem, expected_stdout):
+    """規則本體在 scripts/check_lesson.py——老師也是跑那一支，這裡只是把它綁進 CI。"""
+    problems = check_lesson.check((LESSONS / folder / f"{stem}.cpp").read_text(encoding="utf-8"))
 
-    for number, line in enumerate(lines, start=1):
-        tts = annotation(line)
-        code = line.split("//@", 1)[0]
-        if tts is None:
-            assert NO_STOP.match(code), f"{stem}.cpp:{number} 是停駐點卻沒有 @tts：{code.strip()}"
-            continue
-        for segment in tts.split("|"):
-            segment = re.sub(r"^\s*@\d+\s*", "", segment.strip())
-            assert AUTOPLAY.match(segment), f"{stem}.cpp:{number} 的段落缺自動播放指令：{segment[:40]}"
-        last_tts = tts
-
-    assert "[continue]" in last_tts, f"{stem}.cpp 最後一個停駐點必須以 [continue] 收尾"
+    assert problems == [], "; ".join(f"{stem}.cpp:{n}  {m}" for n, m in problems)
 
 
 def test_knapsack_lesson_carries_the_live_quiz():
