@@ -38,6 +38,47 @@ export type VersionGraph = {
 };
 
 /** Keep unknown server fields when the editor writes the fields it owns. */
+/** 開編輯器時預設載入的 Hello World。 */
+export const HELLO_WORLD_TEMPLATE =
+  `#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello, World!" << endl;\n    return 0;\n}\n`;
+
+/** 「＋ 新草稿」放進編輯器的空骨架。刻意不含 cout——要寫什麼由使用者決定。 */
+export const DRAFT_SKELETON =
+  `#include <iostream>\n\nint main() {\n    return 0;\n}\n`;
+
+/**
+ * 這份程式碼還是「未經修改的模板」嗎？
+ *
+ * 存檔守門用它擋掉「開了編輯器直接按儲存」——教案庫裡大部分垃圾都是這樣來的。
+ * 空白骨架和 Hello World 一樣都是模板，兩份都要擋，否則新草稿就成了繞過守門的
+ * 後門。空字串不算模板：空白教案是 lesson-version 明確支援的情況。
+ */
+export function isUntouchedTemplate(code: string): boolean {
+  const trimmed = (code || "").trim();
+  if (!trimmed) return false;
+  return trimmed === HELLO_WORLD_TEMPLATE.trim() || trimmed === DRAFT_SKELETON.trim();
+}
+
+/**
+ * 一份全新的空草稿。
+ *
+ * 回傳 bundle 而不是直接改編輯器，是為了走 applyProjectBundle 那條既有的路——
+ * 殺掉執行中的 gdb、清空課堂題目、重設斷點與程式輸入都在那裡處理好了。另外寫
+ * 一套重設的話，bundle 以後多一個欄位就會有人忘記跟上。
+ *
+ * 每次回新物件：呼叫端會把 breakpoints 交給會就地修改它的程式碼。
+ */
+export function newDraftBundle(): LessonBundle {
+  return {
+    version: "2.0",
+    fullname_to_render: "draft.cpp",
+    source_code: DRAFT_SKELETON,
+    breakpoints: [],
+    program_input: "",
+  };
+}
+
+
 export function mergeLessonBundle(
   retained: LessonBundle | null,
   editorBundle: LessonBundle

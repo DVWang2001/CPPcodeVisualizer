@@ -1,4 +1,8 @@
 import {
+  DRAFT_SKELETON,
+  HELLO_WORLD_TEMPLATE,
+  isUntouchedTemplate,
+  newDraftBundle,
   hasSnapshotChanges,
   layoutVersionGraph,
   mergeLessonBundle,
@@ -204,4 +208,37 @@ test("還沒載入任何教案 → 要重載", () => {
 test("版本相同但沒有 baseline → 仍要重載", () => {
   // 版本號對得上卻沒有快照，代表狀態不完整，跳過重載會讓後續拿不到 bundle
   expect(needsLessonVersionReload(4, 4, false)).toBe(true);
+});
+
+describe("新草稿", () => {
+  test("造出來的是一份最小的 v2 bundle", () => {
+    const b = newDraftBundle();
+    expect(b.version).toBe("2.0");
+    expect(b.fullname_to_render).toBe("draft.cpp");
+    expect(b.source_code).toBe(DRAFT_SKELETON);
+    expect(b.breakpoints).toEqual([]);
+    expect(b.program_input).toBe("");
+  });
+
+  test("每次都是新的物件，改了不會污染下一份草稿", () => {
+    const first = newDraftBundle();
+    (first.breakpoints as any[]).push({ line: "3" });
+    expect(newDraftBundle().breakpoints).toEqual([]);
+  });
+
+  test("骨架本身擋在存檔守門外", () => {
+    // 守門的用意是「不要讓人開了編輯器直接發布一篇未經修改的模板」。
+    // 空白骨架正是一份未經修改的模板——不擋的話，新草稿就成了繞過守門的後門。
+    expect(isUntouchedTemplate(DRAFT_SKELETON)).toBe(true);
+    expect(isUntouchedTemplate("\n" + DRAFT_SKELETON + "  ")).toBe(true);
+  });
+
+  test("原本的 Hello World 模板照樣擋", () => {
+    expect(isUntouchedTemplate(HELLO_WORLD_TEMPLATE)).toBe(true);
+  });
+
+  test("寫了自己的東西就放行", () => {
+    expect(isUntouchedTemplate(DRAFT_SKELETON.replace("return 0;", "int x = 1;\n    return 0;"))).toBe(false);
+    expect(isUntouchedTemplate("")).toBe(false);
+  });
 });

@@ -33,7 +33,10 @@ import {
   needsLessonVersionReload,
   LessonSnapshot,
   mergeLessonBundle,
-  VersionSummary
+  VersionSummary,
+  HELLO_WORLD_TEMPLATE,
+  isUntouchedTemplate,
+  newDraftBundle,
 } from "./lessonVersion";
 
 type State = any;
@@ -51,7 +54,9 @@ function liveQuizSlot(): Element | null {
 
 // 空白編輯器顯示的預設程式。存檔路徑也要看它，才擋得住「開了編輯器就按儲存」
 // 產出的一堆 Hello World 教案。
-const DEFAULT_TEMPLATE = `#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello, World!" << endl;\n    return 0;\n}\n`;
+// 模板字串搬到 lessonVersion.ts，和存檔守門用的是同一份——分成兩地遲早會有
+// 一邊被改掉，而症狀是守門默默失效。
+const DEFAULT_TEMPLATE = HELLO_WORLD_TEMPLATE;
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -1027,6 +1032,22 @@ class SourceCode extends React.Component<{}, State> {
     this.editorInstance.pushUndoStop();
   };
 
+  /**
+   * 「＋ 新草稿」：把編輯器換成一份空骨架，並解除目前的教案身分。
+   *
+   * 走 applyProjectBundle 是為了繼承它已經處理好的事（殺掉執行中的 gdb、清空
+   * 課堂題目、重設斷點與程式輸入）。但那條路徑不會動 currentLessonId——那是
+   * 「從教案庫開啟」在外層設的。不在這裡清掉的話，接著按「儲存教案」會覆蓋掉
+   * 使用者剛才開著的那一篇。
+   */
+  startNewDraft = () => {
+    this.applyProjectBundle(newDraftBundle());
+    this.currentLessonId = null;
+    this.currentLessonIsMine = false;
+    this.lessonVersionSummaries = [];
+    this.forceUpdate();
+  };
+
   handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1427,7 +1448,7 @@ class SourceCode extends React.Component<{}, State> {
     }
     // 開了編輯器直接按儲存 = 發布一篇 Hello World；教案庫裡大部分垃圾都是這樣來的。
     // ponytail: 只比對預設模板。不擋空白——空白教案是 lesson-version 明確支援的情況。
-    if ((this.editorInstance?.getValue?.() || "").trim() === DEFAULT_TEMPLATE.trim()) {
+    if (isUntouchedTemplate(this.editorInstance?.getValue?.() || "")) {
       return "這還是預設的範例程式。請先寫下自己的程式碼，或從教案庫載入一篇教案，再儲存。";
     }
     return null;
@@ -1713,6 +1734,15 @@ class SourceCode extends React.Component<{}, State> {
           <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <strong>{(this.state.fullname_to_render || "").split(/[\\/]/).pop() || this.state.fullname_to_render}</strong>
             <div>
+              <button
+                onClick={this.startNewDraft}
+                disabled={this.liveQuizVersionLock}
+                data-testid="new-draft"
+                className="btn btn-default btn-sm"
+                title="清空編輯器，從一份空白的程式開始（不影響教案庫裡已儲存的教案）"
+                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
+                ＋ 新草稿
+              </button>
               <button
                 onClick={() => this.setState({ showLessonGen: !(this.state as any).showLessonGen } as any)}
                 disabled={this.liveQuizVersionLock}
