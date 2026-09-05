@@ -1,11 +1,18 @@
 """AI 教案生成的純函式（不依賴 Flask，方便單元測試）。"""
 import re
 
-# 為什麼不是 OpenCode Zen 的 big-pickle：在正式機實測是 1 token/秒——13 行的程式
-# 生成花了 456 秒，一份正常長度的教案推估要 80 分鐘。而且那把 key 只授權 big-pickle
-# 一個模型（帶 key 查 /models 只回 1 個，不帶 key 回 70 個），換快模型要付費解鎖。
+# 挑這一組的理由都是在正式機上量出來的，不是看規格挑的：
+#
+#   * OpenCode Zen 的 big-pickle：穩定 1 token/秒，一份教案推估 80 分鐘。而且那把
+#     key 只授權它一個模型（帶 key 查 /models 回 1 個、不帶 key 回 70 個）。
+#   * NVIDIA 的 deepseek-v4-flash：每次請求約 68 秒固定開銷，之後約 29 tok/s
+#     （13 tokens 要 69.5s、800 tokens 要 97.4s——多的 787 個只花 28 秒）。
+#     一份 5000 token 的教案因此約 4 分鐘，落在下面的 timeout 內。
+#
+# 注意 meta/llama-3.3-70b-instruct（本專案原本的預設）已經從 NVIDIA 目錄下架，
+# 換模型前先打 /v1/models 確認它還在。
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
-DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
+DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
 MAX_SOURCE_BYTES = 100 * 1024
 
 _SYSTEM_TEMPLATE = (

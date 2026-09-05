@@ -3,7 +3,7 @@ export type LessonCfg = { preset: string; baseUrl: string; model: string; apiKey
 export const PRESETS: Record<string, { baseUrl: string; model: string }> = {
   // NVIDIA 是預設，也是唯一能用伺服器金鑰的一家（見 lesson_gen.ENV_KEY_BASE_URLS）。
   // 其他家仍然可選，但要自己在面板填 key——伺服器的金鑰不會送去別家。
-  nvidia: { baseUrl: "https://integrate.api.nvidia.com/v1", model: "meta/llama-3.3-70b-instruct" },
+  nvidia: { baseUrl: "https://integrate.api.nvidia.com/v1", model: "deepseek-ai/deepseek-v4-flash-0731" },
   zen: { baseUrl: "https://opencode.ai/zen/v1", model: "big-pickle" },
   mistral: { baseUrl: "https://api.mistral.ai/v1", model: "mistral-small-latest" },
   custom: { baseUrl: "", model: "" },
