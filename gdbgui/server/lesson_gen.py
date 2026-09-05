@@ -1,8 +1,8 @@
 """AI 教案生成的純函式（不依賴 Flask，方便單元測試）。"""
 import re
 
-DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
-DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
+DEFAULT_BASE_URL = "https://opencode.ai/zen/v1"
+DEFAULT_MODEL = "big-pickle"
 MAX_SOURCE_BYTES = 100 * 1024
 
 _SYSTEM_TEMPLATE = (
@@ -61,10 +61,12 @@ def validate_base_url(url):
     return u
 
 
-# 允許使用伺服器環境變數 key 的主機（防止自訂 base_url 竊取伺服器 key）
+# 允許使用伺服器環境變數 key 的主機（防止自訂 base_url 竊取伺服器 key）。
+#
+# 這裡只放「伺服器金鑰真正屬於的那一家」。多放一家就多一個把金鑰以 Bearer 送出去
+# 的對象——對方雖然會拒絕，但金鑰已經離開機器了。要換供應商就連同這份名單一起換。
 ENV_KEY_BASE_URLS = frozenset({
     DEFAULT_BASE_URL,
-    "https://api.mistral.ai/v1",
 })
 
 

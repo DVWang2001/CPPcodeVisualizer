@@ -1321,6 +1321,12 @@ def _as_str(value) -> str:
     return value if isinstance(value, str) else ""
 
 
+#: 教案生成的輸出上限與等待上限。兩個值都由「一份教案有多大、模型有多慢」決定，
+#: 不是隨手填的：見下方 max_tokens 與 timeout 的註解。
+LESSON_MAX_OUTPUT_TOKENS = 16384
+LESSON_GEN_TIMEOUT_SECONDS = 600
+
+
 @blueprint.route("/api/generate_lesson", methods=["POST"])
 @authenticate
 def generate_lesson():
@@ -1372,10 +1378,13 @@ def generate_lesson():
                 "messages": lesson_gen.build_messages(
                     guide_md, source, _as_str(body.get("instruction", ""))
                 ),
-                "max_tokens": 4096,
+                # 一份教案的輸出量：dp3_knapsack.cpp 這種長度粗估就要 4800 tokens，
+                # 舊的 4096 會在中間把程式碼截斷（而且截斷後看起來像一份完整教案）。
+                "max_tokens": LESSON_MAX_OUTPUT_TOKENS,
                 "temperature": 0.3,
             },
-            timeout=120,
+            # big-pickle 實測「20 個輸出 token 要 16 秒」，整份教案是好幾分鐘的事。
+            timeout=LESSON_GEN_TIMEOUT_SECONDS,
         )
     except Exception as e:
         return jsonify({"message": f"呼叫模型 API 失敗：{e}"}), 502

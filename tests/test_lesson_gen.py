@@ -53,8 +53,18 @@ def test_env_key_allowed_default_base_url():
     assert lesson_gen.env_key_allowed(lesson_gen.DEFAULT_BASE_URL) is True
 
 
-def test_env_key_allowed_mistral_base_url():
-    assert lesson_gen.env_key_allowed("https://api.mistral.ai/v1") is True
+def test_env_key_not_shared_with_other_real_providers():
+    """伺服器金鑰只屬於一家，別家再有名也不給。
+
+    白名單多放一家，就多一個把金鑰以 Bearer 送出去的對象——對方會拒絕，但金鑰
+    已經離開機器了。這幾家都是貨真價實的供應商，正因如此才容易被順手加進名單。
+    """
+    for other in (
+        "https://api.mistral.ai/v1",
+        "https://integrate.api.nvidia.com/v1",
+        "https://api.openai.com/v1",
+    ):
+        assert lesson_gen.env_key_allowed(other) is False
 
 
 def test_env_key_allowed_rejects_arbitrary_host():
