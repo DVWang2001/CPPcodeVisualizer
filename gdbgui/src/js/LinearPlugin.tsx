@@ -50,6 +50,14 @@ function findEraseIndex(oldVals: string[], newVals: string[]): number {
     return oldVals.length - 1;
 }
 
+// 每一格都一樣寬：以最長的那一格為準，其他格跟著它變寬。
+// 格子用等寬字型（var(--font-mono)），所以 1ch 剛好是一個字元，不必量 DOM。
+// `chromePx` 是內距加外框——格子都是 border-box，所以回傳值就是整格的寬度。
+export function uniformCellWidth(displayValues: string[], chromePx: number): string {
+    const longest = displayValues.reduce((max, v) => Math.max(max, v.length), 1);
+    return `calc(${longest}ch + ${chromePx}px)`;
+}
+
 type HighlightEntry = { index: number; color: string };
 
 function getHighlight(idx: number, highlights: HighlightEntry[] | undefined, len?: number): { bg: string; border: string } | null {
@@ -329,6 +337,10 @@ class LinearPluginImpl implements ContainerPlugin {
 
         // ── Build cell elements ───────────────────────────────────────────────
 
+        // 一格變寬，全部跟著變寬——先算出所有格子共用的寬度（含未使用容量的虛線格）。
+        const display = (v: string) => (type === 'string' && v !== '' ? `'${v}'` : v);
+        const cellWidth = uniformCellWidth(cells.map(c => display(c.value)), 22);
+
         const cellElems = cells.map((cell, idx) => {
             const isEntering   = enteringSet.has(cell.id);
             const isFadingOut  = fadingOutSet.has(cell.id);
@@ -348,7 +360,8 @@ class LinearPluginImpl implements ContainerPlugin {
                          : '1px solid var(--struct-border)';
 
             const style: React.CSSProperties = {
-                flex: 1, minWidth: '34px', padding: '12px 10px', textAlign: 'center',
+                flexGrow: 1, flexShrink: 0, flexBasis: cellWidth,
+                minWidth: '34px', padding: '12px 10px', textAlign: 'center',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontFamily: 'var(--font-mono)', fontSize: fsPx, color: 'var(--ink)',
                 boxSizing: 'border-box', background: bg, border, borderRadius: '6px',
@@ -359,7 +372,7 @@ class LinearPluginImpl implements ContainerPlugin {
 
             if (type === 'list') style.borderRadius = '999px';
 
-            const displayValue = type === 'string' && cell.value !== '' ? `'${cell.value}'` : cell.value;
+            const displayValue = display(cell.value);
 
             return React.createElement('div', {
                 key: cell.id,
@@ -373,7 +386,8 @@ class LinearPluginImpl implements ContainerPlugin {
 
         const emptyEl = React.createElement('div', {
             style: {
-                flex: 1, minWidth: '34px', padding: '12px 10px', textAlign: 'center',
+                flexGrow: 1, flexShrink: 0, flexBasis: cellWidth,
+                minWidth: '34px', padding: '12px 10px', textAlign: 'center',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontFamily: 'var(--font-mono)', fontSize: fsPx, color: 'var(--ink-faint)',
                 border: '1px dashed var(--struct-border)', background: 'var(--empty-bg)',
@@ -410,7 +424,8 @@ class LinearPluginImpl implements ContainerPlugin {
                         React.createElement('div', {
                             key: `cap-${i}`,
                             style: {
-                                flex: 1, minWidth: '34px', padding: '6px', textAlign: 'center',
+                                flexGrow: 1, flexShrink: 0, flexBasis: cellWidth, boxSizing: 'border-box',
+                                minWidth: '34px', padding: '6px', textAlign: 'center',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 fontFamily: 'var(--font-mono)', fontSize: fsPx, color: 'var(--ink-faint)',
                                 border: '1px dashed var(--struct-border)', background: 'var(--empty-bg)',

@@ -1,4 +1,4 @@
-import { linearPlugin } from '../LinearPlugin';
+import { linearPlugin, uniformCellWidth } from '../LinearPlugin';
 
 beforeEach(() => {
     linearPlugin.resetAll();
@@ -277,5 +277,27 @@ describe('animateOp — bulkChange', () => {
         const p = linearPlugin.animateOp('v', ops[0], jest.fn());
         await flushAll();
         await expect(p).resolves.toBeUndefined();
+    });
+});
+
+// ── uniformCellWidth ──────────────────────────────────────────────────────────
+
+describe('uniformCellWidth — 一格變寬，全部跟著變寬', () => {
+    it('以最長的那一格為準', () => {
+        expect(uniformCellWidth(['0', '0', '12'], 22)).toBe('calc(2ch + 22px)');
+    });
+
+    it('每一格拿到的是同一個值（不是各自照內容撐開）', () => {
+        const values = ['0', '4', '100', '9'];
+        const widths = values.map(() => uniformCellWidth(values, 22));
+        expect(new Set(widths).size).toBe(1);
+    });
+
+    it('空容器仍給得出一格的寬度', () => {
+        expect(uniformCellWidth([], 22)).toBe('calc(1ch + 22px)');
+    });
+
+    it('內距與外框由呼叫端給，2D 表格的格子比 1D 寬一點', () => {
+        expect(uniformCellWidth(['12'], 26)).toBe('calc(2ch + 26px)');
     });
 });

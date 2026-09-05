@@ -4,7 +4,7 @@ import { global_variable } from "./global_variable";
 import { animScheduler } from "./AnimScheduler";
 import { registerPlugin, getPlugin, allPlugins } from "./ContainerPlugin";
 import { bstPlugin } from "./BSTPlugin";
-import { linearPlugin } from "./LinearPlugin";
+import { linearPlugin, uniformCellWidth } from "./LinearPlugin";
 import { mazePlugin } from "./MazePlugin";
 
 // Register all plugins once at module load.
@@ -330,6 +330,12 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     // 2D non-maze grid (only reaches here for 2D arrays without maze mode)
                     if (is2D) {
                         const cols = values.length > 0 ? (values[0] as any[]).length : 0;
+                        // 整張表共用一個格寬，以最長的那一格為準——否則 0 那格會比 12 那格窄，
+                        // 每一欄各自對齊自己的內容，整張表看起來是歪的。
+                        const cellW = uniformCellWidth(
+                            values.flat().map((v: any) => (type === "string" && v !== "" ? `'${v}'` : String(v))),
+                            26
+                        );
                         const hlPosMap2D = new Map<string, { bg: string; border: string }>();
                         if (highlights && cols > 0) {
                             for (const h of highlights) {
@@ -344,7 +350,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                         {(row as any[]).map((colVal: string, colIdx: number) => {
                                             const hl2D = hlPosMap2D.get(`${rowIdx},${colIdx}`) || null;
                                             return (
-                                                <div key={`col-${rowIdx}-${colIdx}`} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none" }}>
+                                                <div key={`col-${rowIdx}-${colIdx}`} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW }}>
                                                     {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
                                                 </div>
                                             );
