@@ -29,7 +29,12 @@ COURSE = [
     ("DP課3_背包填表", "dp3_knapsack", "最大價值：9\n"),
     ("DP課4_同一題改用遞迴", "dp4_recursion", "最大價值：9\n"),
     ("DP課5_記憶化剪掉重複", "dp5_memo", "最大價值：9\n"),
+    # 走方格：AtCoder dp_h。這一份讀標準輸入，預期輸出對應官方 Sample 1。
+    ("走方格_AtCoder_Grid1", "grid_paths", "3\n"),
 ]
+
+#: 需要標準輸入的教案：檔名 → 餵給程式的內容（必須與 bundle 的 program_input 相同）。
+STDIN = {"grid_paths": "3 4\n...#\n.#..\n....\n"}
 
 @pytest.mark.parametrize("folder, stem, expected_stdout", COURSE)
 def test_bundle_matches_its_source(folder, stem, expected_stdout):
@@ -54,7 +59,10 @@ def test_source_computes_the_hand_checked_answer(folder, stem, expected_stdout):
         )
         assert compiled.returncode == 0, compiled.stderr
 
-        result = subprocess.run([str(binary)], capture_output=True, check=True)
+        result = subprocess.run(
+            [str(binary)], input=STDIN.get(stem, "").encode("utf-8"),
+            capture_output=True, check=True
+        )
 
     assert result.stdout.decode("utf-8").replace("\r\n", "\n") == expected_stdout
 
@@ -75,6 +83,19 @@ def test_knapsack_lesson_carries_the_live_quiz():
 
     assert [question["kind"] for question in quiz["questions"]] == ["choice", "choice", "table"]
     assert quiz["questions"][2]["table_spec"] == {"var_hint": "dp", "max_cells": 40}
+
+
+def test_the_grid_lesson_input_matches_its_bundle():
+    """教案裡跑的測資要和 bundle 的 program_input 是同一份。
+
+    對不上的話，老師在課堂上按 Run 看到的答案，會和學生提交到判題時算的不一樣
+    ——而兩邊都沒有錯，只是餵了不同的輸入。這種不一致最難查。
+    """
+    bundle = json.loads(
+        (LESSONS / "走方格_AtCoder_Grid1" / "grid_paths.json").read_text(encoding="utf-8")
+    )
+
+    assert bundle["program_input"] == STDIN["grid_paths"]
 
 
 def test_the_other_lessons_carry_no_quiz():
