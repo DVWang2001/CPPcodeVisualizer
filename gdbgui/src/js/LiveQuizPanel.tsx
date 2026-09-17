@@ -63,6 +63,11 @@ export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) 
     store.set("program_input", newVal);
     localStorage.setItem("gdbgui_program_input", newVal);
     setJustRandomized(true);
+    // 容器裡現在顯示的表格是「上一次執行」留下的，換了測資之後就跟不上了——
+    // 標記起來，「確認出題」看到這個旗標才知道要先重跑一次，不是隨便換個測資
+    // 都要重跑（一般的 Run/續播完全不受影響，旗標會在下一次程式真的開始執行時
+    // 自己清掉，見 Actions.ts 的 inferior_program_starting）。
+    (window as any).gdbgui_quiz_input_dirty = true;
     if (onRandomize) onRandomize();
   }, [generator, onRandomize]);
 
@@ -577,6 +582,14 @@ export default function LiveQuizPanel({
   // 「這份教案沒有題目」就跳錯誤打斷它。
   const restartSession = React.useCallback((): Promise<void> => {
     if (startError()) return Promise.resolve();
+    // 出題確認觸發的重跑：目的只是讓 C++ 程式吃到新測資重算一次，即時課堂本身
+    // （session、已加入的學生、QR）完全不該動。這個 hook 平常「重新執行＝開一堂
+    // 新課」，若在這個情境下照常結束舊 session 再開新的，學生手上的連結會立刻
+    // 失效（「課堂已結束」）——他們什麼都沒做，題目卻在老師按下確認出題那一刻
+    // 把全班踢下線。旗標只在 LiveQuizPanel「確認出題」→ 重跑那段時間為 true。
+    if ((window as any).gdbgui_rerunning_for_quiz) {
+      return Promise.resolve();
+    }
     restartingRef.current = true;
     setBusy(true);
     setError(null);
@@ -591,9 +604,6 @@ export default function LiveQuizPanel({
       })
       .then(connect)
       .then(() => {
-        if ((window as any).gdbgui_rerunning_for_quiz) {
-          return;
-        }
         setShowQr(true);
         // 暫停播放，把「學生掃碼」的空檔交給老師控制。不暫停的話播放會直接往前跑，
         // 到達綁定行時題目就開了——而學生此刻連 QR 都還沒掃到。
@@ -923,24 +933,28 @@ export default function LiveQuizPanel({
                 if (!runtimeState.pendingTable) return;
                 const questionId = runtimeState.pendingTable.questionId;
 
-                // 1. 確保最新測資寫入 store & localStorage
-                const currentInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
-                store.set("program_input", currentInput);
-
-                if ((window as any).gdbgui_auto_rerun_on_confirm) {
-                  // 2. 先重設出題記錄與鎖，清空舊的 pendingTable 狀態
+                // 只有「測資換了但容器還沒跟上」（老師剛按過 🎲 隨機測資）才需要重跑：
+                // 這時畫面上的容器值是上一輪測資留下的舊答案，直接確認會把舊答案
+                // 出給全班。旗標乾淨（沒換過測資，或換完已經自然重跑過）就照舊直接
+                // 用眼前這份已經驗證過的容器值出題，不必無謂地重跑一次程式。
+                if ((window as any).gdbgui_quiz_input_dirty) {
+                  store.set(
+                    "program_input",
+                    localStorage.getItem("gdbgui_program_input") || store.get("program_input") || ""
+                  );
                   lessonQuizRuntime.prepareReRunForQuestion(questionId);
                   reRunningForTriggerRef.current = { questionId, varHint };
                   setIsRerunningForTrigger(true);
                   (window as any).gdbgui_rerunning_for_quiz = true;
+                  // 重跑之後，程式停在第一個中斷點時 Actions.ts 會自動送 continue
+                  // 衝到題目行（見 inferior_program_paused 裡 gdbgui_rerunning_for_quiz
+                  // 那段），落地後由下面的 useEffect 抓最新容器、confirmTable。
                   GdbApi.click_run_button();
-                } else {
-                  const cap = captured || (((global_variable as any).__latest_containers as Map<string, any> | undefined)?.get(varHint));
-                  if (cap) {
-                    containerClosedRef.current = closeQuizContainer() || containerClosedRef.current;
-                    lessonQuizRuntime.confirmTable(cap, varHint);
-                  }
+                  return;
                 }
+
+                containerClosedRef.current = closeQuizContainer() || containerClosedRef.current;
+                lessonQuizRuntime.confirmTable(captured, varHint);
               }}
             />
           )}
