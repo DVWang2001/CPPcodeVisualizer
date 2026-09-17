@@ -52,6 +52,7 @@ export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) 
   const [inputVal, setInputVal] = React.useState(
     () => localStorage.getItem("gdbgui_program_input") || store.get("program_input") || ""
   );
+  const [justRandomized, setJustRandomized] = React.useState(false);
   const generator = randomTestDataFor(store.get("fullname_to_render"));
 
   const handleRandomize = () => {
@@ -60,6 +61,7 @@ export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) 
     setInputVal(newVal);
     store.set("program_input", newVal);
     localStorage.setItem("gdbgui_program_input", newVal);
+    setJustRandomized(true);
     if (onRandomize) onRandomize();
   };
 
@@ -81,6 +83,11 @@ export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) 
           </button>
         )}
       </div>
+      {justRandomized && (
+        <div style={{ fontSize: "11px", color: "#0284c7", marginBottom: "4px", background: "#e0f2fe", padding: "3px 6px", borderRadius: "3px" }}>
+          💡 已更新測資！請點擊上方 <strong>Run (↻)</strong> 重跑程式，停在題目行時點擊「確認出題」即可。
+        </div>
+      )}
       {lines.length === 0 || !lines[0] ? (
         <div style={{ color: "#94a3b8", fontSize: "12px" }}>(無設定測資)</div>
       ) : (

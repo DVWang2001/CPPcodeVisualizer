@@ -503,6 +503,7 @@ def create_session(owner_id: int, lesson_id: int) -> Optional[dict]:
                     now,
                 ),
             )
+            session_id = int(session.lastrowid)
             prog_input = bundle.get("program_input")
             default_test_input = prog_input if isinstance(prog_input, str) else None
             for position, question in enumerate(quiz["questions"]):
