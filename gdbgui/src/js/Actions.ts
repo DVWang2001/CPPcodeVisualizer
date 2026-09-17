@@ -175,6 +175,7 @@ const Actions = {
       // 移到那三個丟棄點上。
       Actions.stop_tts();
       store.set("autoplay_pending_command", null);
+      (window as any).gdbgui_rerunning_for_quiz = false;
     }
     // 讀取指導，如果存在指導並且當前的frame有line這個資訊
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
@@ -182,16 +183,30 @@ const Actions = {
     // 前瞻偵測 BST 容器 find/count 操作，在 TTS 開始前設好動畫 barrier
     // @ts-expect-error
     VisualizerHelper.detect_container_op(frame.line, frame.func);
-    // 播放 TTS 語音
-    // @ts-expect-error
-    if (!quizMatched) VisualizerHelper.play_tts(frame.line, frame.func);
-    // @ts-expect-error ts-migrate(2339) FIXME: Property 'addr' does not exist on type '{}'.
+    
+    // 出題自動重跑模式：中途停駐點不播 TTS，稍等 150ms (確保 PTY 測資寫入) 後一瞬間衝到題目行
+    const isRerunningForQuiz = (window as any).gdbgui_rerunning_for_quiz === true;
+    if (isRerunningForQuiz && !quizMatched) {
+      Actions.stop_tts();
+      setTimeout(() => {
+        if ((window as any).gdbgui_rerunning_for_quiz === true) {
+          GdbApi.click_continue_button();
+        }
+      }, 150);
+    } else if (!quizMatched) {
+      // 播放 TTS 語音
+      // @ts-expect-error
+      VisualizerHelper.play_tts(frame.line, frame.func);
+    }
+
+    // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.
     store.set("current_assembly_address", frame.addr);
     store.set("source_code_infinite_scrolling", false);
     SourceCode.make_current_line_visible();
     Actions.refresh_state_for_gdb_pause();
   },
   inferior_program_exited: function () {
+    (window as any).gdbgui_rerunning_for_quiz = false;
     clearStepWatchdog();
     lessonQuizRuntime.clearGate();
     Actions.stop_tts();

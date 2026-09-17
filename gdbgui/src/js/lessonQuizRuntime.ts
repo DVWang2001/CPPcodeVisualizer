@@ -210,6 +210,15 @@ export const lessonQuizRuntime = {
     return failedQuestion ? openQuestion(failedQuestion) : false;
   },
 
+  prepareReRunForQuestion(questionId: string) {
+    triggered.delete(questionId);
+    pendingQuestion = null;
+    pendingCapture = null;
+    blocked = false;
+    if (callbacks) callbacks.setGate(false);
+    changed();
+  },
+
   clearGate() {
     generation += 1;
     blocked = false;

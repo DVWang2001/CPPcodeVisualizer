@@ -17,6 +17,7 @@ import { global_variable } from "./global_variable";
 import { CapturedTable, tableFromContainer } from "./tableFromContainer";
 import TableHeatmap from "./TableHeatmap";
 import TableAnswerReview from "./TableAnswerReview";
+import GdbApi from "./GdbApi";
 
 type Props = {
   lessonId: number;
@@ -102,87 +103,113 @@ export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) 
 export function TableTriggerConfirm({
   pending,
   busy,
+  isRerunning,
   onConfirm
 }: {
   pending: NonNullable<RuntimeState["pendingTable"]>;
   busy: boolean;
-  onConfirm: (table: CapturedTable, varHint: string) => void;
+  isRerunning?: boolean;
+  onConfirm: (captured: any, varHint: string) => void;
 }) {
+  const [, forceUpdate] = React.useReducer(x => x + 1, 0);
+  React.useEffect(() => {
+    const timer = setInterval(forceUpdate, 100);
+    return () => clearInterval(timer);
+  }, []);
+
   const containers = ((global_variable as any).__latest_containers as Map<string, any> | undefined) || new Map();
   const names = Array.from(containers.keys());
   const preferred = containers.has(pending.tableSpec.var_hint)
     ? pending.tableSpec.var_hint
-    : (names[0] || "");
+    : (names[0] || pending.tableSpec.var_hint);
   const [selected, setSelected] = React.useState(preferred);
-  const [, setRefresh] = React.useState(0);
+
   React.useEffect(() => {
-    const interval = window.setInterval(() => setRefresh(value => value + 1), 1000);
-    return () => window.clearInterval(interval);
-  }, []);
-  React.useEffect(() => {
-    if (!containers.has(selected) && preferred) setSelected(preferred);
-  }, [preferred, selected]);
-  const capture = selected
-    ? tableFromContainer(containers.get(selected), pending.tableSpec.max_cells)
-    : null;
-  const valid = capture !== null && capture.ok === true;
+    if (preferred && (!selected || !containers.has(selected))) {
+      setSelected(preferred);
+    }
+  }, [preferred, containers]);
+
+  const activeKey = selected && containers.has(selected) ? selected : preferred;
+  const selectedCaptured = containers.get(activeKey);
+
+  let captureError = "";
+  if (selectedCaptured) {
+    if (selectedCaptured.reason) captureError = selectedCaptured.reason;
+    else if (selectedCaptured.values && (!Array.isArray(selectedCaptured.values) || (selectedCaptured.values.length > 0 && !Array.isArray(selectedCaptured.values[0])))) {
+      captureError = "填表題需要二維容器，這個是一維的。";
+    }
+  }
+
+  const disabled = busy || Boolean(isRerunning) || names.length === 0 || Boolean(captureError);
 
   return (
-    <div style={{ marginTop: "10px", padding: "10px", background: "#fff", border: "1px solid #d8dee9" }}>
-      {/* 測資區塊 (優先顯示) */}
-      <TestInputPreview />
+    <div style={{ marginTop: "10px", padding: "12px", background: "#fff", border: "1px solid #3b82f6", borderRadius: "6px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+      <div style={{ color: "#1e40af", fontWeight: 600, fontSize: "13px", marginBottom: "6px" }}>
+        🎯 即將觸發題目 (請確認測資)
+      </div>
 
       {names.length === 0 ? (
-        <div role="status">程式需先停在容器有值的位置</div>
+        <div style={{ color: "#a61b1b", fontSize: "12px", marginBottom: "6px" }}>
+          程式需先停在容器有值的位置
+        </div>
       ) : (
-        <React.Fragment>
-          <details style={{ marginTop: "6px", marginBottom: "6px" }}>
-            <summary style={{ cursor: "pointer", fontSize: "12px", color: "#475569" }}>
-              正解容器檢視 ({selected || "選擇容器"})
-            </summary>
-            <div style={{ marginTop: "4px" }}>
-              <label style={{ fontSize: "12px" }}>
-                正解容器
-                <select
-                  className="form-control input-sm"
-                  value={selected}
-                  onChange={event => setSelected(event.target.value)}
-                >
-                  {names.map(name => <option key={name} value={name}>{name}</option>)}
-                </select>
-              </label>
-              {capture && capture.ok === false && (
-                <div role="alert" style={{ color: "#a61b1b", marginTop: "8px" }}>{capture.reason}</div>
-              )}
-              {capture && capture.ok === true && (
-                <div style={{ overflow: "auto", marginTop: "8px" }}>
-                  <table style={{ borderCollapse: "collapse" }}>
-                    <tbody>
-                      {capture.table.values.map((row, rowIndex) => (
-                        <tr key={rowIndex}>
-                          {row.map((value, colIndex) => (
-                            <td key={colIndex} style={{ border: "1px solid #d8dee9", padding: "4px 8px" }}>{value}</td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </details>
-        </React.Fragment>
+        <div style={{ marginBottom: "8px" }}>
+          <select
+            className="form-control input-sm"
+            value={activeKey}
+            onChange={e => setSelected(e.target.value)}
+          >
+            {names.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        </div>
       )}
+
+      {selectedCaptured && selectedCaptured.values && Array.isArray(selectedCaptured.values) && (
+        <table style={{ borderCollapse: "collapse", margin: "6px 0" }}>
+          <tbody>
+            {selectedCaptured.values.map((row: any, r: number) => (
+              <tr key={r}>
+                {Array.isArray(row) && row.map((cell: any, c: number) => (
+                  <td key={c} style={{ border: "1px solid #ccc", padding: "2px 6px" }}>{String(cell)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {captureError ? (
+        <div style={{ color: "#a61b1b", fontSize: "12px", marginBottom: "6px" }}>
+          {captureError}
+        </div>
+      ) : null}
+
+      {/* 測資區塊 (主要顯示與調整區) */}
+      <TestInputPreview />
+
+      <div style={{ fontSize: "12px", color: "#475569", margin: "8px 0 10px", background: "#eff6ff", padding: "6px 8px", borderRadius: "4px" }}>
+        💡 按下<strong>「確認出題」</strong>後，系統將帶入此測資自動重跑程式，並擷取運算後的 DP 表格出題。
+      </div>
+
       <button
         type="button"
         className="btn btn-primary btn-sm"
-        style={{ marginTop: "8px" }}
-        disabled={busy || !valid}
+        style={{ width: "100%", fontWeight: 600 }}
+        disabled={disabled}
         onClick={() => {
-          if (capture && capture.ok === true) onConfirm(capture.table, selected);
+          const varHint = activeKey || pending.tableSpec.var_hint;
+          const capTable = selectedCaptured && selectedCaptured.values ? {
+            ...selectedCaptured,
+            rows: selectedCaptured.rows || (Array.isArray(selectedCaptured.values) ? selectedCaptured.values.length : 0),
+            cols: selectedCaptured.cols || (Array.isArray(selectedCaptured.values) && Array.isArray(selectedCaptured.values[0]) ? selectedCaptured.values[0].length : 0)
+          } : selectedCaptured;
+          onConfirm(capTable, varHint);
         }}
       >
-        確認出題
+        {isRerunning ? "🔄 正在重跑程式並擷取 DP 表格..." : "確認出題"}
       </button>
     </div>
   );
@@ -260,11 +287,69 @@ export default function LiveQuizPanel({
   const containerClosedRef = React.useRef(false);
   const mountedRef = React.useRef(true);
   const triggerGenerationRef = React.useRef(0);
+  const reRunningForTriggerRef = React.useRef<{ questionId: string; varHint: string } | null>(null);
+  const [isRerunningForTrigger, setIsRerunningForTrigger] = React.useState(false);
 
   const restoreHiddenContainer = () => {
     restoreQuizContainer(containerClosedRef.current);
     containerClosedRef.current = false;
   };
+
+  // 當按下「確認出題」觸發 GDB 自動重跑後，停在題目行時自動擷取最新 DP 表格並出題
+  React.useEffect(() => {
+    const req = reRunningForTriggerRef.current;
+    if (!req || !runtimeState.pendingTable || runtimeState.pendingTable.questionId !== req.questionId) {
+      return;
+    }
+    let cancelled = false;
+    const attemptCapture = () => {
+      if (cancelled) return false;
+      const containers = ((global_variable as any).__latest_containers as Map<string, any> | undefined) || new Map();
+      const targetVar = req.varHint || runtimeState.pendingTable!.tableSpec.var_hint;
+      const container = containers.get(targetVar);
+      const capture = container ? tableFromContainer(container, runtimeState.pendingTable!.tableSpec.max_cells) : null;
+      if (capture && capture.ok === true) {
+        reRunningForTriggerRef.current = null;
+        setIsRerunningForTrigger(false);
+        setQuestionData(
+          Array.from(containers.entries())
+            .filter(([name, data]) =>
+              name !== targetVar &&
+              Array.isArray(data?.values) &&
+              Array.isArray(data.values[0])
+            )
+            .map(([name, data]) => [
+              name,
+              (data.values as any[][]).map(row => row.map((cell: any) => String(cell)))
+            ] as [string, string[][]])
+        );
+        containerClosedRef.current = closeQuizContainer();
+        if (!lessonQuizRuntime.confirmTable(capture.table, targetVar)) {
+          restoreHiddenContainer();
+        }
+        return true;
+      }
+      return false;
+    };
+
+    if (!attemptCapture()) {
+      const timer = setInterval(() => {
+        if (attemptCapture()) clearInterval(timer);
+      }, 200);
+      const timeout = setTimeout(() => {
+        clearInterval(timer);
+        if (reRunningForTriggerRef.current) {
+          reRunningForTriggerRef.current = null;
+          setIsRerunningForTrigger(false);
+        }
+      }, 4000);
+      return () => {
+        cancelled = true;
+        clearInterval(timer);
+        clearTimeout(timeout);
+      };
+    }
+  }, [runtimeState.pendingTable]);
 
   const restoreLatest = (): Promise<void> => {
     // 換課途中不要載回最新版本：那會換掉編輯器裡的原始碼，而程式正在跑——換掉原始碼
@@ -473,6 +558,10 @@ export default function LiveQuizPanel({
         });
     sessionRequest
       .then(connect)
+      .then(() => {
+        setShowQr(true);
+        store.set("autoplay_paused", true);
+      })
       .catch(reason => setError(reason.message || "無法開始課堂。"))
       .then(() => setBusy(false));
   };
@@ -491,7 +580,7 @@ export default function LiveQuizPanel({
     setError(null);
     const previous = sessionRef.current;
     const ended = previous
-      ? endLiveSession(previous.id).then(() => undefined, () => undefined)
+      ? Promise.resolve(endLiveSession(previous.id)).then(() => undefined, () => undefined)
       : Promise.resolve();
     return ended
       .then(() => {
@@ -519,6 +608,15 @@ export default function LiveQuizPanel({
       (window as any).gdbgui_live_quiz_restart = undefined;
     };
   }, [restartSession]);
+
+  const handleCloseQr = React.useCallback(() => {
+    setShowQr(false);
+    store.set("autoplay_paused", false);
+    const pendingCmd = store.get("autoplay_pending_command") || "next";
+    if (typeof (window as any).gdbgui_execute_autoplay_command === "function") {
+      (window as any).gdbgui_execute_autoplay_command(pendingCmd);
+    }
+  }, []);
 
   // 收卷後抓個別作答。條件必須跟伺服器的三道守衛一致（table + closed + 擁有者），
   // 否則會在每次狀態更新時打出一連串必然 409 的請求。
@@ -624,6 +722,8 @@ export default function LiveQuizPanel({
     joinHost = new URL(session.join_url || "").host;
   } catch (_) {}
 
+
+
   return (
     <section
       aria-label="即時課堂控制"
@@ -634,7 +734,7 @@ export default function LiveQuizPanel({
           role="dialog"
           aria-label="放大的加入 QR Code"
           data-testid="live-quiz-qr-overlay"
-          onClick={() => setShowQr(false)}
+          onClick={handleCloseQr}
           style={{
             position: "fixed", inset: 0, zIndex: 1050, background: "rgba(0,0,0,.55)",
             display: "flex", alignItems: "center", justifyContent: "center"
@@ -652,7 +752,7 @@ export default function LiveQuizPanel({
             />
             <div style={{ marginTop: "10px", fontSize: "13px", wordBreak: "break-all" }}>{session.join_url}</div>
             <button type="button" className="btn btn-default btn-sm" style={{ marginTop: "10px" }}
-              onClick={() => setShowQr(false)}>關閉</button>
+              onClick={handleCloseQr}>關閉</button>
           </div>
         </div>
       )}
@@ -698,33 +798,43 @@ export default function LiveQuizPanel({
         <div style={{ borderLeft: `4px solid ${amber}`, paddingLeft: "16px" }}>
           {question ? (
             <React.Fragment>
-              {questionData.length > 0 && (
-                <div style={{ marginBottom: "10px" }}>
-                  <div style={{ color: muted, fontSize: "12px", marginBottom: "3px" }}>
-                    題目資料（投影給學生看，正解不在其中）
-                  </div>
-                  {questionData.map(([name, values]) => (
-                    <div key={name} style={{ marginBottom: "6px" }}>
-                      <code style={{ fontSize: "11px", color: ink }}>{name}</code>
-                      <table style={{ borderCollapse: "collapse", marginTop: "2px" }}>
-                        <tbody>
-                          {values.map((row, r) => (
-                            <tr key={r}>
-                              {row.map((cell, c) => (
-                                <td key={c} style={{
-                                  border: "1px solid #d8dee9", padding: "2px 6px",
-                                  font: "600 11px/1.2 ui-monospace, Menlo, Consolas, monospace",
-                                  textAlign: "center", background: "#fff", color: ink
-                                }}>{cell}</td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+              {(() => {
+                const capturedContainers = question.captured_containers
+                  ? Object.entries(question.captured_containers)
+                  : Array.from((((global_variable as any).__latest_containers as Map<string, any> | undefined) || new Map()).entries());
+                const items = capturedContainers.filter(([name]) => name !== (question.table_spec?.var_hint || ""));
+                if (items.length === 0) return null;
+                return (
+                  <div style={{ marginBottom: "10px" }}>
+                    <div style={{ color: muted, fontSize: "12px", marginBottom: "3px" }}>
+                      題目資料（投影給學生看，正解不在其中）
                     </div>
-                  ))}
-                </div>
-              )}
+                    {items.map(([name, data]: [string, any]) => {
+                      const values: any[][] = data && data.values ? data.values : [];
+                      return (
+                        <div key={name} style={{ marginBottom: "6px" }}>
+                          <code style={{ fontSize: "11px", color: ink }}>{name}</code>
+                          <table style={{ borderCollapse: "collapse", marginTop: "2px" }}>
+                            <tbody>
+                              {values.map((row, r) => (
+                                <tr key={r}>
+                                  {row.map((cell, c) => (
+                                    <td key={c} style={{
+                                      border: "1px solid #d8dee9", padding: "2px 6px",
+                                      font: "600 11px/1.2 ui-monospace, Menlo, Consolas, monospace",
+                                      textAlign: "center", background: "#fff", color: ink
+                                    }}>{cell}</td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
               <TestInputPreview />
               <strong>{question.prompt}</strong>
               <div style={{ display: "flex", gap: "18px", margin: "8px 0", color: muted }}>
@@ -800,23 +910,29 @@ export default function LiveQuizPanel({
               key={runtimeState.pendingTable.questionId}
               pending={runtimeState.pendingTable}
               busy={busy}
-              onConfirm={(table, varHint) => {
-                const containers =
-                  ((global_variable as any).__latest_containers as Map<string, any>) || new Map();
-                setQuestionData(
-                  Array.from(containers.entries())
-                    .filter(([name, data]) =>
-                      name !== varHint &&
-                      Array.isArray(data?.values) &&
-                      Array.isArray(data.values[0])
-                    )
-                    .map(([name, data]) => [
-                      name,
-                      (data.values as any[][]).map(row => row.map((cell: any) => String(cell)))
-                    ] as [string, string[][]])
-                );
-                containerClosedRef.current = closeQuizContainer();
-                if (!lessonQuizRuntime.confirmTable(table, varHint)) restoreHiddenContainer();
+              isRerunning={isRerunningForTrigger}
+              onConfirm={(captured, varHint) => {
+                if (!runtimeState.pendingTable) return;
+                const questionId = runtimeState.pendingTable.questionId;
+
+                // 1. 確保最新測資寫入 store & localStorage
+                const currentInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
+                store.set("program_input", currentInput);
+
+                if ((window as any).gdbgui_auto_rerun_on_confirm) {
+                  // 2. 先重設出題記錄與鎖，清空舊的 pendingTable 狀態
+                  lessonQuizRuntime.prepareReRunForQuestion(questionId);
+                  reRunningForTriggerRef.current = { questionId, varHint };
+                  setIsRerunningForTrigger(true);
+                  (window as any).gdbgui_rerunning_for_quiz = true;
+                  GdbApi.click_run_button();
+                } else {
+                  const cap = captured || (((global_variable as any).__latest_containers as Map<string, any> | undefined)?.get(varHint));
+                  if (cap) {
+                    containerClosedRef.current = closeQuizContainer() || containerClosedRef.current;
+                    lessonQuizRuntime.confirmTable(cap, varHint);
+                  }
+                }
               }}
             />
           )}

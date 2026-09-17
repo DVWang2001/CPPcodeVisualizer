@@ -997,7 +997,7 @@ class SourceCode extends React.Component<{}, State> {
           const writable = await fileHandle.createWritable();
           await writable.write(jsonStr);
           await writable.close();
-        } catch (err: any) {
+        } catch (err) {
           if (err.name !== "AbortError") {
             console.error("Save failed", err);
             Actions.add_console_entries("Save failed: " + err.message, constants.console_entry_type.STD_ERR);
@@ -1528,7 +1528,7 @@ class SourceCode extends React.Component<{}, State> {
         this.lessonBaseline = this.lessonSnapshot(
           candidate.title,
           candidate.bundle,
-          this.currentLessonVersion
+          this.currentLessonVersion || 1
         );
         this.lessonBundleTemplate = JSON.parse(JSON.stringify(candidate.bundle));
         this.liveQuizContentDirty = false;
@@ -2095,8 +2095,8 @@ class SourceCode extends React.Component<{}, State> {
       // 將源代碼存儲到global_variable以供Visualizer使用
       let obj = FileOps.get_source_file_obj_from_cache(this.state.fullname_to_render);
 
-      // If the rendered file is the main program (rendered in Monaco editor instead of static code_body)
-      let isMainEditorFile = (this.initialFullname === null) || (this.state.fullname_to_render === this.initialFullname) || (this.state.fullname_to_render.includes("uploaded_scripts") || this.state.fullname_to_render.includes("uploads/"));
+      let fn = this.state.fullname_to_render;
+      let isMainEditorFile = (this.initialFullname === null) || (fn === this.initialFullname) || (typeof fn === "string" && (fn.includes("uploaded_scripts") || fn.includes("uploads/")));
 
       if (obj && obj.source_code_obj && isMainEditorFile) {
         // Dynamically update the known main file to support re-compilation

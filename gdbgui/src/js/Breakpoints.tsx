@@ -275,16 +275,16 @@ class Breakpoints extends React.Component {
         localStorage.setItem("breakpoints", JSON.stringify(val));
       }
     };
-    store.subscribeToKeys(["breakpoints"], this.storeSubscriptionCallback);
+    if ((store as any).subscribeToKeys) {
+      (store as any).subscribeToKeys(["breakpoints"], this.storeSubscriptionCallback);
+    }
   }
   componentWillUnmount() {
-    // @ts-expect-error
-    if (store.disconnectComponentState) {
-      store.disconnectComponentState(this);
+    if ((store as any).disconnectComponentState) {
+      (store as any).disconnectComponentState(this);
     }
-    // @ts-expect-error
-    if (store.unsubscribeFromKeys) {
-      store.unsubscribeFromKeys(["breakpoints"], this.storeSubscriptionCallback);
+    if ((store as any).unsubscribeFromKeys) {
+      (store as any).unsubscribeFromKeys(["breakpoints"], this.storeSubscriptionCallback);
     }
   }
   render() {

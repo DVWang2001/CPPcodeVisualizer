@@ -94,7 +94,7 @@ export default class LessonGenPanel extends React.Component<Props, State> {
       if (!done && this._mounted) {
         throw new Error("串流中斷，教案沒有收完整");
       }
-    } catch (e: any) {
+    } catch (e) {
       if (!this._mounted) return;
       this.setState({ error: e.message || String(e) });
     } finally {

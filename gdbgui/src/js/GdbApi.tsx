@@ -3,6 +3,8 @@
  * to send various commands to gdb, to and to dispatch gdb responses to gdbgui.
  */
 import { store } from "statorgfc";
+// @ts-ignore
+import * as _ from "lodash";
 import Registers from "./Registers";
 import Memory from "./Memory";
 import Actions from "./Actions";
@@ -874,18 +876,16 @@ const GdbApi = {
    * @return nothing
    */
   run_gdb_command: function (cmd: any) {
-    // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name '_'.
     if (_.trim(cmd) === "") {
       return;
     }
 
     let cmds = cmd;
-    // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name '_'.
     if (_.isString(cmds)) {
       cmds = [cmds];
     }
 
-    if (socket.connected) {
+    if (socket && socket.connected) {
       const current_request_id = _next_request_id++;
       console.log(`傳送封包到伺服器${JSON.stringify(cmd)} (request_id: ${current_request_id})`);
       socket.emit("run_gdb_command", { cmd: cmds, run_token: store.get("run_token"), request_id: current_request_id });
@@ -905,7 +905,6 @@ const GdbApi = {
     let cmds: any[] = [];
     if (Array.isArray(user_cmd)) {
       cmds = cmds.concat(user_cmd);
-      // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name '_'.
     } else if (_.isString(user_cmd) && user_cmd.length > 0) {
       cmds.push(user_cmd);
     }

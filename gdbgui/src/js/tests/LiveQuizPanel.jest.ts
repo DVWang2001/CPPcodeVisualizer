@@ -535,6 +535,28 @@ test("開新課堂時暫停播放，讓學生有時間掃碼", async () => {
   expect(store.get("autoplay_paused")).toBe(true);
 });
 
+test("關閉 QR code 彈窗時解除暫停並開始自動播放", async () => {
+  const execute = jest.fn();
+  (window as any).gdbgui_execute_autoplay_command = execute;
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended" });
+  (liveQuizClient.createLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), id: 8 });
+
+  await act(async () => { await (window as any).gdbgui_live_quiz_restart(); });
+  expect(store.get("autoplay_paused")).toBe(true);
+
+  const qrOverlay = root.querySelector('[data-testid="live-quiz-qr-overlay"]');
+  expect(qrOverlay).not.toBeNull();
+  const closeBtn = qrOverlay?.querySelector("button");
+  expect(closeBtn?.textContent).toBe("關閉");
+
+  act(() => { Simulate.click(closeBtn!); });
+
+  expect(store.get("autoplay_paused")).toBe(false);
+  expect(execute).toHaveBeenCalledWith("next");
+});
+
+
 // ⚠️ 這條是**紅的**，記錄一個尚未修好的產品 bug，不是不穩定的測試。
 // 換課時舊課堂的 ended 事件會關掉剛為新課堂啟用的 runtime，播放到綁定行時不再開題。
 // 試過兩種守衛（restartingRef、以 session id 比對、connect 內同步更新 ref）都沒生效，
