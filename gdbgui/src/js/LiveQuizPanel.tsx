@@ -56,7 +56,7 @@ export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) 
   const [justRandomized, setJustRandomized] = React.useState(false);
   const generator = randomTestDataFor(store.get("fullname_to_render"));
 
-  const handleRandomize = () => {
+  const handleRandomize = React.useCallback(() => {
     if (!generator) return;
     const newVal = generator();
     setInputVal(newVal);
@@ -64,7 +64,14 @@ export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) 
     localStorage.setItem("gdbgui_program_input", newVal);
     setJustRandomized(true);
     if (onRandomize) onRandomize();
-  };
+  }, [generator, onRandomize]);
+
+  // 如果這題需要測資但目前是空的，自動幫老師產生一組，避免 C++ 讀到垃圾值而 bad_alloc
+  React.useEffect(() => {
+    if (generator && (!inputVal || !inputVal.trim())) {
+      handleRandomize();
+    }
+  }, [generator, inputVal, handleRandomize]);
 
   const lines = (inputVal || "").trim().split("\n");
 
@@ -802,7 +809,10 @@ export default function LiveQuizPanel({
                 const capturedContainers = question.captured_containers
                   ? Object.entries(question.captured_containers)
                   : Array.from((((global_variable as any).__latest_containers as Map<string, any> | undefined) || new Map()).entries());
-                const items = capturedContainers.filter(([name]) => name !== (question.table_spec?.var_hint || ""));
+                const items = capturedContainers.filter(([name, data]) => 
+                  name !== (question.table_spec?.var_hint || "") &&
+                  data && Array.isArray((data as any).values) && Array.isArray((data as any).values[0])
+                );
                 if (items.length === 0) return null;
                 return (
                   <div style={{ marginBottom: "10px" }}>
