@@ -190,7 +190,8 @@ def test_interrupted_0006_rolls_back_before_replay(tmp_path, monkeypatch, denied
         assert conn.execute("SELECT COUNT(*) FROM live_quiz_questions").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM live_quiz_responses").fetchone()[0] == 1
 
-    assert db.migrate() == 1
+    # 套了 0006（重跑中斷過的那個）加上之後新增的 0007，不是只有 1 個。
+    assert db.migrate() == 2
     with closing(db.connect()) as conn:
         question = conn.execute(
             "SELECT kind, options_json, correct_option_id, option_counts_json "
