@@ -31,10 +31,15 @@ COURSE = [
     ("DP課5_記憶化剪掉重複", "dp5_memo", "最大價值：9\n"),
     # 走方格：AtCoder dp_h。這一份讀標準輸入，預期輸出對應官方 Sample 1。
     ("走方格_AtCoder_Grid1", "grid_paths", "3\n"),
+    # 走方格 DP 推導：跟 grid_paths 同一組測資，教的是為什麼 up+left 這條式子成立。
+    ("走方格_DP推導", "grid_derivation", "3\n"),
 ]
 
 #: 需要標準輸入的教案：檔名 → 餵給程式的內容（必須與 bundle 的 program_input 相同）。
-STDIN = {"grid_paths": "3 4\n...#\n.#..\n....\n"}
+STDIN = {
+    "grid_paths": "3 4\n...#\n.#..\n....\n",
+    "grid_derivation": "3 4\n...#\n.#..\n....\n",
+}
 
 @pytest.mark.parametrize("folder, stem, expected_stdout", COURSE)
 def test_bundle_matches_its_source(folder, stem, expected_stdout):

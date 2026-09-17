@@ -6,6 +6,10 @@
     {
       "line": "17",
       "is_normal_breakpoint": true
+    },
+    {
+      "line": "35",
+      "is_normal_breakpoint": true
     }
   ],
   "program_input": "3 4\n...#\n.#..\n....\n",
