@@ -117,7 +117,14 @@ test("preferred variable previews a valid table and confirms it explicitly", () 
   expect(root.textContent).toContain("1");
   expect(root.textContent).toContain("4");
   act(() => Simulate.click(root.querySelector("button")!));
-  expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ rows: 2, cols: 2 }), "dp");
+  // 完整比對整個物件（不是 objectContaining）：伺服器對這個 payload 做嚴格 key-set
+  // 檢查（live_quiz.py），confirm 出去的容器 payload 若被原樣塞進來、多了 name/type
+  // 之類的欄位或少了 row_labels/col_labels，伺服器會直接拒收——這正是「確認出題」
+  // 曾經送出壞掉的 payload、按下去就出錯的那個 bug，objectContaining 抓不到。
+  expect(onConfirm).toHaveBeenCalledWith(
+    { rows: 2, cols: 2, row_labels: ["0", "1"], col_labels: ["0", "1"], values: [["1", "2"], ["3", "4"]] },
+    "dp"
+  );
 });
 
 test("invalid selected container shows the capture reason verbatim and never confirms", () => {

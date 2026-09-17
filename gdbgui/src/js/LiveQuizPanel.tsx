@@ -116,7 +116,7 @@ export function TableTriggerConfirm({
   pending: NonNullable<RuntimeState["pendingTable"]>;
   busy: boolean;
   isRerunning?: boolean;
-  onConfirm: (captured: any, varHint: string) => void;
+  onConfirm: (captured: CapturedTable, varHint: string) => void;
 }) {
   const [, forceUpdate] = React.useReducer(x => x + 1, 0);
   React.useEffect(() => {
@@ -139,16 +139,16 @@ export function TableTriggerConfirm({
 
   const activeKey = selected && containers.has(selected) ? selected : preferred;
   const selectedCaptured = containers.get(activeKey);
+  // 一定要經過 tableFromContainer：它是唯一會把容器原始 payload 正規化成伺服器
+  // 期待的 {rows, cols, row_labels, col_labels, values} 的地方（見 live_quiz.py 的
+  // 嚴格 key-set 檢查）。直接把容器 payload 拼一拼送出去，缺 row_labels/col_labels
+  // 又多了 name/type/isContainer 這些欄位，伺服器一定拒收——按下確認出題就會出錯。
+  const capture = activeKey
+    ? tableFromContainer(selectedCaptured, pending.tableSpec.max_cells)
+    : null;
+  const captureError = capture && capture.ok === false ? capture.reason : "";
 
-  let captureError = "";
-  if (selectedCaptured) {
-    if (selectedCaptured.reason) captureError = selectedCaptured.reason;
-    else if (selectedCaptured.values && (!Array.isArray(selectedCaptured.values) || (selectedCaptured.values.length > 0 && !Array.isArray(selectedCaptured.values[0])))) {
-      captureError = "填表題需要二維容器，這個是一維的。";
-    }
-  }
-
-  const disabled = busy || Boolean(isRerunning) || names.length === 0 || Boolean(captureError);
+  const disabled = busy || Boolean(isRerunning) || names.length === 0 || !capture || capture.ok !== true;
 
   return (
     <div style={{ marginTop: "10px", padding: "12px", background: "#fff", border: "1px solid #3b82f6", borderRadius: "6px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
@@ -207,13 +207,8 @@ export function TableTriggerConfirm({
         style={{ width: "100%", fontWeight: 600 }}
         disabled={disabled}
         onClick={() => {
-          const varHint = activeKey || pending.tableSpec.var_hint;
-          const capTable = selectedCaptured && selectedCaptured.values ? {
-            ...selectedCaptured,
-            rows: selectedCaptured.rows || (Array.isArray(selectedCaptured.values) ? selectedCaptured.values.length : 0),
-            cols: selectedCaptured.cols || (Array.isArray(selectedCaptured.values) && Array.isArray(selectedCaptured.values[0]) ? selectedCaptured.values[0].length : 0)
-          } : selectedCaptured;
-          onConfirm(capTable, varHint);
+          if (!capture || capture.ok !== true) return;
+          onConfirm(capture.table, activeKey || pending.tableSpec.var_hint);
         }}
       >
         {isRerunning ? "🔄 正在重跑程式並擷取 DP 表格..." : "確認出題"}
