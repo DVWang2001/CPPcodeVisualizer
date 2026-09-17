@@ -110,7 +110,8 @@ def test_grid_lesson_carries_the_live_quiz():
     quiz = validate_quiz_bundle(bundle)
 
     assert [question["kind"] for question in quiz["questions"]] == ["table"]
-    assert quiz["questions"][0]["table_spec"] == {"var_hint": "dp", "max_cells": 70}
+    # dp 表現在多墊一列一行；隨機測資最大 8x8，墊過變 9x9=81，90 留一點餘裕。
+    assert quiz["questions"][0]["table_spec"] == {"var_hint": "dp", "max_cells": 90}
 
 
 def test_the_other_lessons_carry_no_quiz():
