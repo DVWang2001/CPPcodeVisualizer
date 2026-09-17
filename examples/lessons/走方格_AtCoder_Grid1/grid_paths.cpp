@@ -29,7 +29,7 @@ int main() {
             }
             int up = (i > 0) ? dp[i - 1][j] : 0; //@ @guide 從上面來的走法有幾種\n{dp[i - 1][j]:orange}（在第 0 列就沒有上面，算 0）@tts [next] 能走到這一格的路只有兩種來源。先看從上面來的 | @2 [next] 從上面來的
             int left = (j > 0) ? dp[i][j - 1] : 0; //@ @guide 上面來的有 {up} 種\n再看從左邊來的\n{dp[i][j - 1]:lime} @tts [next] 上面來的有 {up} 種。再看從左邊來的 | @2 [next] 再看左邊
-            dp[i][j] = (up + left) % MOD;        //@ @guide 上面 {up} ＋ 左邊 {left}，寫進這一格\n{dp[i][j]:lightblue}\n{dp} @tts [next] 兩邊加起來就是這一格的答案：上面 {up} 加左邊 {left} | @2 [next] 上面 {up} 加左邊 {left}
+            dp[i][j] = (up + left) % MOD;        //@ @guide {dp[(i > 0) ? i - 1 : 99999][j]:orange} 上面 {up}\n{dp[i][(j > 0) ? j - 1 : 99999]:lime} 左邊 {left}\n{dp[i][j]:lightblue} 寫進這一格\n{dp} @tts [next] 兩邊加起來就是這一格的答案：上面 {up} 加左邊 {left} | @2 [next] 上面 {up} 加左邊 {left}
         }
     }
     std::cout << dp[h - 1][w - 1] << "\n";       //@ @guide 整張表填完了：{dp}\n答案在右下角\n{dp[h - 1][w - 1]:orange} @tts [next] 表填完了。答案就是右下角那一格
