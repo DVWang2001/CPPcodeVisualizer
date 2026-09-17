@@ -98,9 +98,19 @@ def test_the_grid_lesson_input_matches_its_bundle():
     assert bundle["program_input"] == STDIN["grid_paths"]
 
 
+def test_grid_lesson_carries_the_live_quiz():
+    folder = LESSONS / "走方格_AtCoder_Grid1"
+    bundle = json.loads((folder / "grid_paths.json").read_text(encoding="utf-8"))
+
+    quiz = validate_quiz_bundle(bundle)
+
+    assert [question["kind"] for question in quiz["questions"]] == ["table"]
+    assert quiz["questions"][0]["table_spec"] == {"var_hint": "dp", "max_cells": 70}
+
+
 def test_the_other_lessons_carry_no_quiz():
     for folder, stem, _ in COURSE:
-        if stem == "dp3_knapsack":
+        if stem in ("dp3_knapsack", "grid_paths"):
             continue
         bundle = json.loads((LESSONS / folder / f"{stem}.json").read_text(encoding="utf-8"))
         assert validate_quiz_bundle(bundle) is None

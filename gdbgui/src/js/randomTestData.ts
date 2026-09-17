@@ -1,0 +1,39 @@
+/**
+ * 課堂用隨機測資產生器：每個支援的教案對應一個產生器，用檔名（basename）配對。
+ * 邏輯跟 scripts/gen_grid_paths.py 同一套規則，寫在前端是因為上課現場更常用
+ * 這條路——按鈕直接換 Standard Input，不必切去終端機跑腳本再貼回來。
+ */
+
+type Generator = (rng?: () => number) => string;
+
+function randomGridPathsInput(rng: () => number = Math.random): string {
+  const wallRate = 0.25;
+  const h = 3 + Math.floor(rng() * 6); // 3~8
+  const w = 3 + Math.floor(rng() * 6); // 3~8
+
+  const rows: string[] = [];
+  for (let i = 0; i < h; i++) {
+    let row = "";
+    for (let j = 0; j < w; j++) row += rng() < wallRate ? "#" : ".";
+    rows.push(row);
+  }
+  // 起點與終點保證是通道：兩者是牆答案就是 0，拿來當課堂教材沒有意義。
+  rows[0] = "." + rows[0].slice(1);
+  rows[h - 1] = rows[h - 1].slice(0, w - 1) + ".";
+
+  return `${h} ${w}\n${rows.join("\n")}\n`;
+}
+
+const GENERATORS: Record<string, Generator> = {
+  "grid_paths.cpp": randomGridPathsInput
+};
+
+function basename(path: string): string {
+  return path.replace(/\\/g, "/").split("/").pop() || "";
+}
+
+/** 有支援的教案回傳它的產生器，否則回傳 null（按鈕就不該顯示）。 */
+export function randomTestDataFor(fullnameToRender: string | null | undefined): Generator | null {
+  if (!fullnameToRender) return null;
+  return GENERATORS[basename(fullnameToRender)] || null;
+}

@@ -180,6 +180,15 @@ button:focus-visible, input:focus-visible, .answer-option:focus-within { outline
 .table-answer-grid input.is-correct { border-color: var(--quiz-green); background: #edf8f0; }
 .table-answer-grid input.is-wrong { border-color: var(--quiz-red); background: #fff1f0; }
 
+/* 送出後、老師還沒關題：鎖住但還沒有對錯顏色，要跟上面兩條分開靠灰階標出來，
+   不然看起來跟能打字的格子一樣，學生會以為打字沒反應是當機。 */
+.table-answer-grid input.is-pending-lock {
+  opacity: .55;
+  -webkit-text-fill-color: var(--quiz-muted);
+  background: #f1f3f5;
+  cursor: not-allowed;
+}
+
 .status-line { min-height: 22px; margin: 18px 0 0; color: var(--quiz-muted); line-height: 1.5; }
 .ended-state { min-height: 190px; padding-top: 44px; text-align: center; }
 .ended-state p { color: var(--quiz-muted); }

@@ -8,5 +8,30 @@
       "is_normal_breakpoint": true
     }
   ],
-  "program_input": "3 4\n...#\n.#..\n....\n"
+  "program_input": "3 4\n...#\n.#..\n....\n",
+  "quiz": {
+    "schema_version": 1,
+    "questions": [
+      {
+        "id": "q1-fill-table",
+        "kind": "table",
+        "prompt": "把整張 dp 表格填出來：dp[0][0] = 1，其餘每一格＝上面一格 ＋ 左邊一格（超出邊界算 0，牆直接填 0）。",
+        "explanation": "每一格的走法數＝上面一格加左邊一格，牆填 0；dp[0][0] 是起點，先填 1，其餘照這個規則從左上角一路推到右下角。",
+        "table_spec": {
+          "var_hint": "dp",
+          "max_cells": 70
+        },
+        "trigger": {
+          "kind": "source_line",
+          "source_file": "grid_paths.cpp",
+          "line": 35,
+          "anchor": {
+            "line_text": "std::cout << dp[h - 1][w - 1] << \"\\n\";",
+            "before_text": "}",
+            "after_text": "return 0;"
+          }
+        }
+      }
+    ]
+  }
 }

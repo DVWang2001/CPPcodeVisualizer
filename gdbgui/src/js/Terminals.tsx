@@ -7,6 +7,7 @@ import "xterm/css/xterm.css";
 import constants from "./constants";
 import Actions from "./Actions";
 import MonacoEditor from "@monaco-editor/react";
+import { randomTestDataFor } from "./randomTestData";
 
 function customKeyEventHandler(config: {
   pty_name: string;
@@ -74,6 +75,7 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
     } as any;
 
     this.sendInputToPty = this.sendInputToPty.bind(this);
+    this.randomizeInput = this.randomizeInput.bind(this);
     // @ts-expect-error
     store.connectComponentState(this, ["tts_subtitle", "edit_mode", "program_input"]);
   }
@@ -90,6 +92,15 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
         data: { pty_name: "program_pty", key: input + "\n", action: "write" }
       });
     }
+  }
+
+  randomizeInput() {
+    const generator = randomTestDataFor(store.get("fullname_to_render"));
+    if (!generator) return;
+    const val = generator();
+    this.setState({ program_input: val });
+    store.set("program_input", val);
+    localStorage.setItem("gdbgui_program_input", val);
   }
 
   componentDidUpdate(prevProps: any, prevState: any) {
@@ -259,13 +270,24 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
                 <div className="flex-1 border-r-2 border-gray-300 flex flex-col">
                   <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 uppercase tracking-wider flex justify-between items-center">
                     <span>Standard Input</span>
-                    <button
-                      className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase"
-                      onClick={this.sendInputToPty}
-                      title="Send input to the running program"
-                    >
-                      send input
-                    </button>
+                    <span>
+                      {randomTestDataFor(store.get("fullname_to_render")) && (
+                        <button
+                          className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase mr-3"
+                          onClick={this.randomizeInput}
+                          title="換一組隨機測資"
+                        >
+                          🎲 隨機測資
+                        </button>
+                      )}
+                      <button
+                        className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase"
+                        onClick={this.sendInputToPty}
+                        title="Send input to the running program"
+                      >
+                        send input
+                      </button>
+                    </span>
                   </div>
                   <div className="flex-1 relative">
                     <MonacoEditor

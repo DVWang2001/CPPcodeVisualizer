@@ -134,7 +134,10 @@ test("Enter focuses the next cell in row-major order", () => {
 
 test("submitted grid is read-only without Android disabled-input rendering", () => {
   render({ submitted: true });
-  expect(Array.from(root.querySelectorAll("input")).every(input => input.readOnly && !input.disabled)).toBe(true);
+  const inputs = Array.from(root.querySelectorAll("input"));
+  expect(inputs.every(input => input.readOnly && !input.disabled)).toBe(true);
+  // 送出但還沒批改：要靠這個 class 灰階提示鎖住了，不然看起來跟能打字的格子一樣。
+  expect(inputs.every(input => input.classList.contains("is-pending-lock"))).toBe(true);
 });
 
 test("closed grid marks each owned answer as correct or wrong with readable hints", () => {
@@ -153,4 +156,6 @@ test("closed grid marks each owned answer as correct or wrong with readable hint
   expect(inputs[1].classList.contains("is-wrong")).toBe(true);
   expect(inputs[1].getAttribute("aria-label")).toContain("答案錯誤，正確答案 1");
   expect(inputs[3].classList.contains("is-wrong")).toBe(true);
+  // 已批改：灰階鎖住的樣式讓位給對錯顏色，不能兩個 class 疊在一起。
+  expect(inputs.some(input => input.classList.contains("is-pending-lock"))).toBe(false);
 });

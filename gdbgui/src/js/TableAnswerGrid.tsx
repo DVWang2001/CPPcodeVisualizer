@@ -105,7 +105,7 @@ export default function TableAnswerGrid({ question, onSubmit, submitted }: Props
                       type="number"
                       step="any"
                       name={`cell-${row}-${col}`}
-                      className={showResults ? correct ? "is-correct" : "is-wrong" : ""}
+                      className={showResults ? (correct ? "is-correct" : "is-wrong") : locked ? "is-pending-lock" : ""}
                       inputMode="numeric"
                       readOnly={locked}
                       aria-label={`${question.row_labels[row]}，${question.col_labels[col]}${result ? `，${result}` : ""}`}
