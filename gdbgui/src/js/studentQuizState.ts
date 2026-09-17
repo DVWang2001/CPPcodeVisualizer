@@ -25,6 +25,7 @@ export type StudentQuizTableResult = {
 type StudentQuizQuestionBase = {
   id: string;
   prompt: string;
+  test_input?: string | null;
   source_file: string;
   line: number;
   state: "open" | "closed";
@@ -141,6 +142,7 @@ export function reduceStudentState(
   const base = {
     id: text(raw.id),
     prompt: text(raw.prompt),
+    test_input: typeof raw.test_input === "string" ? raw.test_input : null,
     source_file: text(raw.source_file),
     line: positiveInteger(raw.line) || 0,
     state

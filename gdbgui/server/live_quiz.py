@@ -338,6 +338,7 @@ def student_question_payload(row) -> dict:
         "id": row["question_key"],
         "kind": row["kind"],
         "prompt": row["prompt"],
+        "test_input": row["test_input"] if "test_input" in row.keys() and row["test_input"] is not None else None,
         "state": row["state"],
         "source_file": row["source_file"],
         "line": int(row["trigger_line"]),
@@ -371,6 +372,7 @@ def _question_payload(row):
         "id": row["question_key"],
         "kind": row["kind"],
         "prompt": row["prompt"],
+        "test_input": row["test_input"] if "test_input" in row.keys() and row["test_input"] is not None else None,
         "explanation": row["explanation"],
         "source_file": row["source_file"],
         "line": int(row["trigger_line"]),
@@ -501,15 +503,16 @@ def create_session(owner_id: int, lesson_id: int) -> Optional[dict]:
                     now,
                 ),
             )
-            session_id = int(session.lastrowid)
+            prog_input = bundle.get("program_input")
+            default_test_input = prog_input if isinstance(prog_input, str) else None
             for position, question in enumerate(quiz["questions"]):
                 trigger = question["trigger"]
                 conn.execute(
                     "INSERT INTO live_quiz_questions "
                     "(session_id, question_key, kind, prompt, explanation, source_file, "
                     " trigger_line, trigger_anchor_json, position, state, "
-                    " options_json, correct_option_id, option_counts_json, table_spec_json) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?, ?)",
+                    " options_json, correct_option_id, option_counts_json, table_spec_json, test_input) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?, ?, ?)",
                     (
                         session_id,
                         question["id"],
@@ -524,6 +527,7 @@ def create_session(owner_id: int, lesson_id: int) -> Optional[dict]:
                         question["correct_option_id"] if question["kind"] == "choice" else None,
                         json.dumps({option["id"]: 0 for option in question["options"]}, ensure_ascii=False, separators=(",", ":")) if question["kind"] == "choice" else None,
                         json.dumps(question["table_spec"], ensure_ascii=False, separators=(",", ":")) if question["kind"] == "table" else None,
+                        default_test_input,
                     ),
                 )
             conn.commit()
@@ -572,6 +576,7 @@ def trigger_question(
     line: int,
     table=None,
     var_hint=None,
+    test_input=None,
 ) -> Optional[dict]:
     if not _valid_id(session_id) or not _valid_id(owner_id):
         return None
@@ -630,6 +635,11 @@ def trigger_question(
                 conn.execute(
                     "UPDATE live_quiz_questions SET state='open', opened_at=? WHERE id=?",
                     (db._now(), question["id"]),
+                )
+            if isinstance(test_input, str):
+                conn.execute(
+                    "UPDATE live_quiz_questions SET test_input=? WHERE id=?",
+                    (test_input, question["id"]),
                 )
             conn.commit()
         except BaseException:
@@ -1267,7 +1277,7 @@ def teacher_state(session_id):
 def trigger_question_route(session_id, question_key):
     try:
         body = _request_fields(
-            ("source_file", "line"), optional_keys=("table", "var_hint")
+            ("source_file", "line"), optional_keys=("table", "var_hint", "test_input")
         )
         updated = trigger_question(
             session_id,
@@ -1277,6 +1287,7 @@ def trigger_question_route(session_id, question_key):
             body["line"],
             table=body.get("table"),
             var_hint=body.get("var_hint"),
+            test_input=body.get("test_input"),
         )
         if updated is None:
             return _error("找不到課堂或題目。", 404)

@@ -50,14 +50,15 @@ export const triggerLiveQuestion = (
   questionId: string,
   sourceFile: string,
   line: number,
-  capture?: { table: CapturedTable; var_hint: string }
+  capture?: { table: CapturedTable; var_hint: string },
+  testInput?: string
 ): Promise<LiveQuizSession> =>
   request(
     "POST",
     `/api/live-quiz/sessions/${sessionId}/questions/${encodeURIComponent(questionId)}/trigger`,
     capture
-      ? { source_file: sourceFile, line, table: capture.table, var_hint: capture.var_hint }
-      : { source_file: sourceFile, line }
+      ? { source_file: sourceFile, line, table: capture.table, var_hint: capture.var_hint, test_input: testInput }
+      : { source_file: sourceFile, line, test_input: testInput }
   );
 
 export const closeLiveQuestion = (

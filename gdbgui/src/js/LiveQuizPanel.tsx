@@ -324,7 +324,8 @@ export default function LiveQuizPanel({
         lessonQuizRuntime.activate(current, {
           trigger: (sessionId, questionId, sourceFile, line, capture) => {
             const requestGeneration = triggerGenerationRef.current;
-            return triggerLiveQuestion(sessionId, questionId, sourceFile, line, capture).then(
+            const currentTestInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
+            return triggerLiveQuestion(sessionId, questionId, sourceFile, line, capture, currentTestInput).then(
               updated => updated,
               reason => {
                 if (!capture || !mountedRef.current || endedRef.current) throw reason;

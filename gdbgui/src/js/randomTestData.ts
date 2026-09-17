@@ -53,7 +53,10 @@ function getSourceCodeString(fullnameToRender?: string | null): string {
     }
   }
 
-  const cachedFiles = store.get("cached_source_files") || [];
+  let cachedFiles: any[] = [];
+  try {
+    cachedFiles = store.get("cached_source_files") || [];
+  } catch (_) {}
   if (Array.isArray(cachedFiles)) {
     for (const f of cachedFiles) {
       if (!f || !f.source_code) continue;
@@ -74,7 +77,10 @@ export function randomTestDataFor(fullnameToRender?: string | null): Generator |
     if (GENERATORS[base]) return GENERATORS[base];
   }
 
-  const userFn = store.get("user_source_fullname");
+  let userFn: string | null = null;
+  try {
+    userFn = store.get("user_source_fullname");
+  } catch (_) {}
   if (userFn) {
     const base = basename(userFn);
     if (GENERATORS[base]) return GENERATORS[base];

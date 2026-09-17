@@ -225,6 +225,15 @@ function StudentQuizApp({ data }: { data: InitialData }) {
               {question.source_file} · line {question.line}
             </p>
             <h2 className="question-prompt">{question.prompt}</h2>
+            {question.test_input ? (
+              <div className="test-input-card">
+                <div className="test-input-header">
+                  <span className="test-input-icon">📋</span>
+                  <span className="test-input-title">題目測資 (Standard Input)</span>
+                </div>
+                <pre className="test-input-body">{question.test_input}</pre>
+              </div>
+            ) : null}
             {question.kind === "choice" ? (
               <form onSubmit={answerChoice}>
                 <fieldset disabled={state.status !== "open" || submitting}>
