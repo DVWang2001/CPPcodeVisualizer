@@ -33,8 +33,42 @@ function basename(path: string): string {
   return path.replace(/\\/g, "/").split("/").pop() || "";
 }
 
+import { store } from "statorgfc";
+
 /** 有支援的教案回傳它的產生器，否則回傳 null（按鈕就不該顯示）。 */
-export function randomTestDataFor(fullnameToRender: string | null | undefined): Generator | null {
-  if (!fullnameToRender) return null;
-  return GENERATORS[basename(fullnameToRender)] || null;
+export function randomTestDataFor(fullnameToRender?: string | null): Generator | null {
+  if (fullnameToRender) {
+    const base = basename(fullnameToRender);
+    if (GENERATORS[base]) return GENERATORS[base];
+  }
+
+  const userFn = store.get("user_source_fullname");
+  if (userFn) {
+    const base = basename(userFn);
+    if (GENERATORS[base]) return GENERATORS[base];
+  }
+
+  // 靜態檔名如果被重命名成 main.cpp / __imported__ 等，檢查程式碼內容標頭
+  const cachedFiles = store.get("cached_source_files") || [];
+  let sourceContent = "";
+  if (fullnameToRender && Array.isArray(cachedFiles)) {
+    const found = cachedFiles.find((f: any) => f.fullname === fullnameToRender);
+    if (found && found.source_code) sourceContent = found.source_code;
+  }
+  if (!sourceContent && Array.isArray(cachedFiles) && cachedFiles.length > 0) {
+    sourceContent = cachedFiles[0].source_code || "";
+  }
+
+  if (sourceContent) {
+    if (
+      sourceContent.includes("走方格") ||
+      sourceContent.includes("Grid 1") ||
+      sourceContent.includes("grid_paths") ||
+      sourceContent.includes("grid_derivation")
+    ) {
+      return randomGridPathsInput;
+    }
+  }
+
+  return null;
 }

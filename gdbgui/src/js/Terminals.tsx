@@ -77,7 +77,14 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
     this.sendInputToPty = this.sendInputToPty.bind(this);
     this.randomizeInput = this.randomizeInput.bind(this);
     // @ts-expect-error
-    store.connectComponentState(this, ["tts_subtitle", "edit_mode", "program_input"]);
+    store.connectComponentState(this, [
+      "tts_subtitle",
+      "edit_mode",
+      "program_input",
+      "fullname_to_render",
+      "user_source_fullname",
+      "cached_source_files",
+    ]);
   }
 
   sendInputToPty() {
