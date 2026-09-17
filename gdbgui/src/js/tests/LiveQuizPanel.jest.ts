@@ -12,10 +12,8 @@ jest.mock("../liveQuizClient", () => ({
   liveQuizExportUrl: jest.fn((id: number) => `/api/live-quiz/sessions/${id}/export`),
   triggerLiveQuestion: jest.fn()
 }));
-jest.mock("../GdbApi", () => ({ __esModule: true, default: { click_run_button: jest.fn() } }));
 
 import LiveQuizPanel, { closeQuizContainer, restoreQuizContainer, TableTriggerConfirm } from "../LiveQuizPanel";
-import GdbApi from "../GdbApi";
 import { lessonQuizRuntime, PendingTable } from "../lessonQuizRuntime";
 import { global_variable } from "../global_variable";
 import * as liveQuizClient from "../liveQuizClient";
@@ -56,10 +54,6 @@ beforeEach(() => {
   sessionStorage.clear();
   lessonQuizRuntime.deactivate();
   jest.clearAllMocks();
-  // 這兩個旗標掛在 window 上、橫跨整份測試檔案的生命週期，任何一個測試忘記清
-  // 就會讓後面所有測試莫名其妙地走錯分支（confirm 該立刻出題卻被當成要重跑）。
-  (window as any).gdbgui_quiz_input_dirty = false;
-  (window as any).gdbgui_rerunning_for_quiz = false;
 });
 
 afterEach(() => {
@@ -197,38 +191,6 @@ test("table POST hides preview and container, then HTTP 400 restores both for re
   await act(async () => { await triggerPromise.catch(() => undefined); await Promise.resolve(); });
   expect(root.querySelector("select")).not.toBeNull();
   expect(open).toHaveBeenCalledTimes(1);
-});
-
-test("confirm reruns the program first when test data was randomized since the last run", async () => {
-  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
-  (window as any).gdbgui_quiz_input_dirty = true;
-  await mountPanel();
-
-  const confirm = Array.from(root.querySelectorAll("button"))
-    .find(button => button.textContent === "確認出題")!;
-  act(() => { Simulate.click(confirm); });
-  await act(async () => { await Promise.resolve(); });
-
-  // 髒旗標存在：不該立刻用眼前這份（換測資前留下的）容器值出題，
-  // 而是先重跑一次程式。
-  expect(GdbApi.click_run_button).toHaveBeenCalledTimes(1);
-  expect(liveQuizClient.triggerLiveQuestion).not.toHaveBeenCalled();
-  expect((window as any).gdbgui_rerunning_for_quiz).toBe(true);
-});
-
-test("confirm skips the rerun and issues immediately when test data was not touched", async () => {
-  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
-  (window as any).gdbgui_quiz_input_dirty = false;
-  (liveQuizClient.triggerLiveQuestion as jest.Mock).mockResolvedValue(panelSession());
-  await mountPanel();
-
-  const confirm = Array.from(root.querySelectorAll("button"))
-    .find(button => button.textContent === "確認出題")!;
-  act(() => { Simulate.click(confirm); });
-  await act(async () => { await Promise.resolve(); });
-
-  expect(GdbApi.click_run_button).not.toHaveBeenCalled();
-  expect(liveQuizClient.triggerLiveQuestion).toHaveBeenCalledTimes(1);
 });
 
 test("a socket-open snapshot before a statusless rejection keeps the table hidden", async () => {
@@ -468,21 +430,6 @@ test("restart 會結束舊課堂並建立新的", async () => {
 
   expect(liveQuizClient.endLiveSession).toHaveBeenCalledWith(7);
   expect(liveQuizClient.createLiveSession).toHaveBeenCalledWith(2);
-});
-
-test("出題觸發的重跑不結束、不新建即時課堂——學生連線不該被踢掉", async () => {
-  await mountPanel();
-  (window as any).gdbgui_rerunning_for_quiz = true;
-
-  await act(async () => {
-    await (window as any).gdbgui_live_quiz_restart();
-  });
-
-  // 這個重跑只是要讓 C++ 程式吃到新測資，session、已加入的學生、QR 都不該動——
-  // 動了的話學生手上的加入連結會立刻失效（「課堂已結束」），他們什麼都沒做，
-  // 卻在老師按下確認出題那一刻被踢下線。
-  expect(liveQuizClient.endLiveSession).not.toHaveBeenCalled();
-  expect(liveQuizClient.createLiveSession).not.toHaveBeenCalled();
 });
 
 test("面板卸載後 restart 橋接不再存在", async () => {

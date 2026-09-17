@@ -90,9 +90,6 @@ const Actions = {
   inferior_program_starting: function () {
     lessonQuizRuntime.clearGate();
     Actions.stop_tts();
-    // 程式真的要重新執行了，接下來這一輪一定會吃到目前的 program_input——
-    // 「測資換了但容器還沒跟上」這件事到這裡就不成立了。
-    (window as any).gdbgui_quiz_input_dirty = false;
     // 執行代數：只有真正重新執行才遞增。ContainerVisualizer 的輪詢用它判斷
     // 「該把 plugin 狀態清掉了」，而不能用 inferior_program === "running"
     // ——後者在每一次單步時都會短暫成立，輪詢只要剛好落在那個窗就會把已經
