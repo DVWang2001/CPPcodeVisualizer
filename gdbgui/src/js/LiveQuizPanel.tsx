@@ -46,6 +46,52 @@ export function restoreQuizContainer(closedByQuiz: boolean) {
   if (entry) entry.open();
 }
 
+import { randomTestDataFor } from "./randomTestData";
+
+export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) {
+  const [inputVal, setInputVal] = React.useState(
+    () => localStorage.getItem("gdbgui_program_input") || store.get("program_input") || ""
+  );
+  const generator = randomTestDataFor(store.get("fullname_to_render"));
+
+  const handleRandomize = () => {
+    if (!generator) return;
+    const newVal = generator();
+    setInputVal(newVal);
+    store.set("program_input", newVal);
+    localStorage.setItem("gdbgui_program_input", newVal);
+    if (onRandomize) onRandomize();
+  };
+
+  const lines = (inputVal || "").trim().split("\n");
+
+  return (
+    <div style={{ marginTop: "6px", marginBottom: "8px", padding: "8px 10px", background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: "4px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+        <strong style={{ fontSize: "12px", color: "#334155" }}>📋 題目測資 (Standard Input)</strong>
+        {generator && (
+          <button
+            type="button"
+            className="btn btn-default btn-xs text-blue-600"
+            style={{ fontSize: "11px", padding: "1px 6px", color: "#0284c7" }}
+            onClick={handleRandomize}
+            title="換一組隨機測資"
+          >
+            🎲 隨機測資
+          </button>
+        )}
+      </div>
+      {lines.length === 0 || !lines[0] ? (
+        <div style={{ color: "#94a3b8", fontSize: "12px" }}>(無設定測資)</div>
+      ) : (
+        <pre style={{ margin: 0, padding: "4px 8px", background: "#fff", border: "1px solid #e2e8f0", fontSize: "12px", fontFamily: "monospace", color: "#0f172a", borderRadius: "3px", overflowX: "auto", maxHeight: "120px" }}>
+          {lines.join("\n")}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 export function TableTriggerConfirm({
   pending,
   busy,
@@ -76,38 +122,48 @@ export function TableTriggerConfirm({
 
   return (
     <div style={{ marginTop: "10px", padding: "10px", background: "#fff", border: "1px solid #d8dee9" }}>
+      {/* 測資區塊 (優先顯示) */}
+      <TestInputPreview />
+
       {names.length === 0 ? (
         <div role="status">程式需先停在容器有值的位置</div>
       ) : (
         <React.Fragment>
-          <label>
-            正解容器
-            <select
-              className="form-control input-sm"
-              value={selected}
-              onChange={event => setSelected(event.target.value)}
-            >
-              {names.map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </label>
-          {capture && capture.ok === false && (
-            <div role="alert" style={{ color: "#a61b1b", marginTop: "8px" }}>{capture.reason}</div>
-          )}
-          {capture && capture.ok === true && (
-            <div style={{ overflow: "auto", marginTop: "8px" }}>
-              <table style={{ borderCollapse: "collapse" }}>
-                <tbody>
-                  {capture.table.values.map((row, rowIndex) => (
-                    <tr key={rowIndex}>
-                      {row.map((value, colIndex) => (
-                        <td key={colIndex} style={{ border: "1px solid #d8dee9", padding: "4px 8px" }}>{value}</td>
+          <details style={{ marginTop: "6px", marginBottom: "6px" }}>
+            <summary style={{ cursor: "pointer", fontSize: "12px", color: "#475569" }}>
+              正解容器檢視 ({selected || "選擇容器"})
+            </summary>
+            <div style={{ marginTop: "4px" }}>
+              <label style={{ fontSize: "12px" }}>
+                正解容器
+                <select
+                  className="form-control input-sm"
+                  value={selected}
+                  onChange={event => setSelected(event.target.value)}
+                >
+                  {names.map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </label>
+              {capture && capture.ok === false && (
+                <div role="alert" style={{ color: "#a61b1b", marginTop: "8px" }}>{capture.reason}</div>
+              )}
+              {capture && capture.ok === true && (
+                <div style={{ overflow: "auto", marginTop: "8px" }}>
+                  <table style={{ borderCollapse: "collapse" }}>
+                    <tbody>
+                      {capture.table.values.map((row, rowIndex) => (
+                        <tr key={rowIndex}>
+                          {row.map((value, colIndex) => (
+                            <td key={colIndex} style={{ border: "1px solid #d8dee9", padding: "4px 8px" }}>{value}</td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
+          </details>
         </React.Fragment>
       )}
       <button
@@ -661,6 +717,7 @@ export default function LiveQuizPanel({
                   ))}
                 </div>
               )}
+              <TestInputPreview />
               <strong>{question.prompt}</strong>
               <div style={{ display: "flex", gap: "18px", margin: "8px 0", color: muted }}>
                 <span>已作答 {answerCount}</span>

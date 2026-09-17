@@ -271,7 +271,7 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
               </div>}
 
               {/* ── Standard I/O（edit 模式時可見，否則被黑色字幕層覆蓋）── */}
-              <div style={{ display: "flex", width: "100%", height: "100%", visibility: editMode ? "visible" : "hidden" }}
+              <div style={{ display: "flex", width: "100%", height: "100%" }}
                 className="bg-white">
                 {/* Left: Standard Input */}
                 <div className="flex-1 border-r-2 border-gray-300 flex flex-col">
