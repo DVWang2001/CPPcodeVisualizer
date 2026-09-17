@@ -6,6 +6,10 @@
     {
       "line": "10",
       "is_normal_breakpoint": true
+    },
+    {
+      "line": "28",
+      "is_normal_breakpoint": true
     }
   ],
   "program_input": "",
