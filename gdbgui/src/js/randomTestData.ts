@@ -25,7 +25,8 @@ function randomGridPathsInput(rng: () => number = Math.random): string {
 }
 
 const GENERATORS: Record<string, Generator> = {
-  "grid_paths.cpp": randomGridPathsInput
+  "grid_paths.cpp": randomGridPathsInput,
+  "grid_derivation.cpp": randomGridPathsInput
 };
 
 function basename(path: string): string {

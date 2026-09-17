@@ -10,6 +10,7 @@ test("matches by basename regardless of path prefix", () => {
   expect(randomTestDataFor("grid_paths.cpp")).not.toBeNull();
   expect(randomTestDataFor("/workspace/grid_paths.cpp")).not.toBeNull();
   expect(randomTestDataFor("C:\\run\\grid_paths.cpp")).not.toBeNull();
+  expect(randomTestDataFor("grid_derivation.cpp")).not.toBeNull();
 });
 
 test("grid_paths generator matches its cin sequence: h w, then h lines of w chars", () => {
