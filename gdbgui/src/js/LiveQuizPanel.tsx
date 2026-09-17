@@ -596,6 +596,9 @@ export default function LiveQuizPanel({
       })
       .then(connect)
       .then(() => {
+        if ((window as any).gdbgui_rerunning_for_quiz) {
+          return;
+        }
         setShowQr(true);
         // 暫停播放，把「學生掃碼」的空檔交給老師控制。不暫停的話播放會直接往前跑，
         // 到達綁定行時題目就開了——而學生此刻連 QR 都還沒掃到。
