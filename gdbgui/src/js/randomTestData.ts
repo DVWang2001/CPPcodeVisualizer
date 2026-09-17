@@ -35,6 +35,38 @@ function basename(path: string): string {
 
 import { store } from "statorgfc";
 
+function getSourceCodeString(fullnameToRender?: string | null): string {
+  if (typeof window !== "undefined") {
+    const editor = (window as any).gdbgui_editor_instance;
+    if (editor && typeof editor.getValue === "function") {
+      const code = editor.getValue();
+      if (code) return code;
+    }
+  }
+
+  if (typeof localStorage !== "undefined") {
+    const imported = localStorage.getItem("gdbgui_editor_code___imported__");
+    if (imported) return imported;
+    if (fullnameToRender) {
+      const byName = localStorage.getItem("gdbgui_editor_code_" + fullnameToRender);
+      if (byName) return byName;
+    }
+  }
+
+  const cachedFiles = store.get("cached_source_files") || [];
+  if (Array.isArray(cachedFiles)) {
+    for (const f of cachedFiles) {
+      if (!f || !f.source_code) continue;
+      if (typeof f.source_code === "string") return f.source_code;
+      if (typeof f.source_code === "object") {
+        return Object.values(f.source_code).join("\n");
+      }
+    }
+  }
+
+  return "";
+}
+
 /** 有支援的教案回傳它的產生器，否則回傳 null（按鈕就不該顯示）。 */
 export function randomTestDataFor(fullnameToRender?: string | null): Generator | null {
   if (fullnameToRender) {
@@ -49,16 +81,7 @@ export function randomTestDataFor(fullnameToRender?: string | null): Generator |
   }
 
   // 靜態檔名如果被重命名成 main.cpp / __imported__ 等，檢查程式碼內容標頭
-  const cachedFiles = store.get("cached_source_files") || [];
-  let sourceContent = "";
-  if (fullnameToRender && Array.isArray(cachedFiles)) {
-    const found = cachedFiles.find((f: any) => f.fullname === fullnameToRender);
-    if (found && found.source_code) sourceContent = found.source_code;
-  }
-  if (!sourceContent && Array.isArray(cachedFiles) && cachedFiles.length > 0) {
-    sourceContent = cachedFiles[0].source_code || "";
-  }
-
+  const sourceContent = getSourceCodeString(fullnameToRender);
   if (sourceContent) {
     if (
       sourceContent.includes("走方格") ||
