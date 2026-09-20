@@ -6,8 +6,8 @@
 
 int main() {
     std::vector<int> row(7, 0);      //@ @guide 這一行要做一列七個格子，每一格先填 0\n格子的編號是 0 到 6\n（格子要等這一行執行完才長出來，下一步就看得到）@tts [next] 我們做一列七個格子，每一格現在都是零 @layout sidebar:55 open:container close:locals
-    for (int w = 0; w <= 6; ++w) {   //@ @guide 現在看的是第 {w} 格\n{row[w]:lightblue} @tts [next] w 是格子的編號，從零開始數 | @2 [next] w 往右移一格，現在是第 {w} 格 @layout sidebar:55 open:container
-        int value = w * 10;          //@ @guide 這一格要填的值，由編號 {w} 決定 @tts [next] 這一格要填什麼，是由它的編號算出來的 | @2 [next] 由編號 {w} 算出這一格的值
+    for (int w = 0; w <= 6; ++w) {   //@ @guide 用迴圈一格一格走過去\n{row} @tts [next] w 是格子的編號，從零開始數 | @2 [next] w 往右移一格，看還有沒有下一格 @layout sidebar:55 open:container
+        int value = w * 10;          //@ @guide 現在看的是第 {w} 格\n{row[w]:lightblue}\n這一格要填的值，由編號 {w} 決定 @tts [next] 現在是第 {w} 格。這一格要填什麼，是由它的編號算出來的 | @2 [next] 由編號 {w} 算出這一格的值
         row[w] = value;              //@ @guide 把 {value} 寫進第 {w} 格\n{row[w]:lightblue} @tts [next] 把 {value} 寫進第 {w} 格 | @2 [next] 寫進第 {w} 格，值是 {value}
     }
     int third = row[3];              //@ @guide 整列填完了：{row}\n現在要讀第 3 格\n{row[3]} @tts [next] 表填滿了。接下來讀第三格看看

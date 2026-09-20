@@ -22,13 +22,15 @@ int main() {
     int h, w;
     std::cin >> h >> w;                          //@ @guide 先讀地圖的大小：h 列、w 行 @tts [next] 先讀進地圖有幾列幾行 @layout sidebar:55 open:container close:locals
     std::vector<std::string> g(h);               //@ @guide 準備 {h} 個字串，一列地圖存一個\n（要等這一行執行完才建好）@tts [next] 準備好放地圖的空間
-    for (int i = 0; i < h; ++i) std::cin >> g[i]; //@ @guide 讀第 {i} 列地圖\n. 是通道、# 是牆 @tts [next] 一列一列把地圖讀進來。點是通道，井字號是牆 | @2 [next] 讀第 {i} 列
+    for (int i = 0; i < h; ++i) {                //@ @guide 一列一列把地圖讀進來 @tts [next] 一列一列把地圖讀進來 | @2 [next] 讀完一列，看還有沒有下一列
+        std::cin >> g[i];                        //@ @guide 讀第 {i} 列地圖\n. 是通道、# 是牆 @tts [next] 讀第 {i} 列。點是通道，井字號是牆 | @2 [next] 讀第 {i} 列
+    }
 
     std::vector<std::vector<int>> dp(h + 1, std::vector<int>(w + 1, 0)); //@ @guide 表開 (h+1) x (w+1)，多墊一列、一行\ndp[r][c] 對應地圖上的 (r-1, c-1)；第 0 列、第 0 行整排是墊片，永遠是 0\n（表要等這一行執行完才長出來） @tts [next] 這一行做一張表，故意比地圖多一列、多一行。多出來的那一圈全部先填 0，等一下就知道用途
     dp[1][1] = 1;                                //@ @guide 地圖起點 (0,0) 對應 dp[1][1]，只有一種走法：待在原地\n{dp}\n後面每一格都要靠「上面」或「左邊」推出來，只有這一格要手動指定——這是這條遞迴式的起點（base case） @tts [next] 起點對應 dp[1][1]，填 1。站在起點本身就是一種走法，這是整張表唯一手動填的格子，剩下的每一格都要靠推導算出來
-    for (int i = 1; i <= h; ++i) {               //@ @guide 外層迴圈選一列：現在填 dp 的第 {i} 列（對應地圖第 {i} - 1 列）\n{dp} @tts [next] 先看第 1 列，對應地圖的第 0 列 | @2 [next] 換到第 2 列，對應地圖的第 1 列 | @3 [fast @4] 第 3 列（地圖第 2 列）規則跟前面一模一樣，我們直接跳到算完，看最後的答案 | @4 [next] 第 3 列也用同樣的規則算完了，整張表都填好了 @layout sidebar:55 open:container
-        for (int j = 1; j <= w; ++j) {           //@ @guide 內層迴圈選一行：dp 第 {i} 列第 {j} 行\n{dp[i][j]:lightblue} @tts [next] 內層迴圈由左往右走完這一列 | @2 [next] 往右一格，現在是第 {j} 行
-            if (i == 1 && j == 1) continue;      //@ @guide 起點已經填過 1 了，跳過不要蓋掉 @tts [next] 起點剛才填過了，跳過 | @2 [next] 不是起點，繼續
+    for (int i = 1; i <= h; ++i) {               //@ @guide 外層迴圈：一列一列往下填\n{dp} @tts [next] 先看第 1 列，對應地圖的第 0 列 | @2 [next] 換到第 2 列，對應地圖的第 1 列 | @3 [fast @4] 第 3 列（地圖第 2 列）規則跟前面一模一樣，我們直接跳到算完，看最後的答案 | @4 [next] 第 3 列也用同樣的規則算完了，整張表都填好了 @layout sidebar:55 open:container
+        for (int j = 1; j <= w; ++j) {           //@ @guide 現在填 dp 的第 {i} 列（對應地圖第 {i} - 1 列）\n內層迴圈由左往右走完這一列\n{dp} @tts [next] 內層迴圈由左往右走完這一列 | @2 [next] 這一格算完了，看這一列還有沒有下一格
+            if (i == 1 && j == 1) continue;      //@ @guide dp 第 {i} 列第 {j} 行\n{dp[i][j]:lightblue}\n先看是不是起點：起點已經填過 1 了，跳過不要蓋掉 @tts [next] 起點剛才填過了，跳過 | @2 [next] 不是起點，繼續
             if (g[i - 1][j - 1] == '#') {        //@ @guide 先看地圖上這一格是不是牆（# 就是牆） @tts [next] 先問這一格是不是牆 | @2 [next] 是牆嗎
                 dp[i][j] = 0;                    //@ @guide 這一格是牆，走不進來\n{dp[i][j]:pink}\n不管上面或左邊算出多少，牆一律直接填 0——這格不會是任何路徑的最後一步 @tts [next] 這一格是牆，走不進來，所以走法直接算 0，不管上面或左邊有多少種走法都不算數 | @2 [next] 又是牆，一樣填 0
                 continue;                        //@ @guide 這一格處理完了 @tts [next] 這一格處理完了 | @2 [next] 換下一格
