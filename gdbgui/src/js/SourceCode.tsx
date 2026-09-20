@@ -178,6 +178,7 @@ class SourceCode extends React.Component<{}, State> {
   _autosaveTimer: any = null;
   panelZoneId: string | null = null;
   panelDomNode: HTMLDivElement | null = null;
+  panelListeners: { dispose: () => void }[] = [];
   annotWidget: any = null;
   annotWidgetDom: HTMLElement | null = null;
   annotWidgetLine: number | null = null;
@@ -809,10 +810,25 @@ class SourceCode extends React.Component<{}, State> {
     this.editorInstance.changeViewZones((acc: any) => {
       this.panelZoneId = acc.addZone({ afterLineNumber: lineNum, heightInPx: 120, domNode: dom });
     });
+    // view zone 預設跟整份內容一樣寬（含橫向捲動），✕ 會被推到畫面外；
+    // 讓面板只佔編輯器可見寬度，並隨橫向捲動貼在左緣。
+    this.fitPanelToViewport();
+    this.panelListeners = [
+      this.editorInstance.onDidScrollChange(this.fitPanelToViewport),
+      this.editorInstance.onDidLayoutChange(this.fitPanelToViewport),
+    ];
     this.setState({ linePanel: { lineNum, mode, draft, candidates: this.candidatesFor(lineNum) } });
   };
 
+  fitPanelToViewport = () => {
+    const ed = this.editorInstance, dom = this.panelDomNode;
+    if (!ed || !dom) return;
+    dom.style.width = `${ed.getLayoutInfo().contentWidth}px`;
+    dom.style.transform = `translateX(${ed.getScrollLeft()}px)`;
+  };
+
   closeLinePanel = () => {
+    this.panelListeners.forEach(d => d.dispose()); this.panelListeners = [];
     if (this.panelZoneId && this.editorInstance) {
       const id = this.panelZoneId;
       this.editorInstance.changeViewZones((acc: any) => acc.removeZone(id));
