@@ -283,7 +283,9 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
     // ── Container shape renderer ──────────────────────────────────────────────
 
-    renderContainerShape(name: string, data: any, highlights: HighlightEntry[] | undefined) {
+    /** bare=true：省略外框/背景/陰影（並排時整組共用一個外框，見 render() 的 pair 分支），
+     *  其餘（標題、切換鈕、圖形本體）不變。 */
+    renderContainerShape(name: string, data: any, highlights: HighlightEntry[] | undefined, bare: boolean = false) {
         const { type, values } = data;
         const len = values.length;
         let shape = null;
@@ -443,8 +445,12 @@ class ContainerVisualizer extends React.Component<{}, State> {
         const chip: React.CSSProperties = { color: "var(--accent)", fontSize: "0.8em", backgroundColor: "var(--accent-soft)", padding: "2px 8px", borderRadius: "999px", fontFamily: "var(--font-mono)", fontWeight: 500 };
         const toggleLabel = (on: boolean): React.CSSProperties => ({ display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", fontWeight: on ? 600 : 400, fontSize: "0.85em", color: on ? "var(--accent)" : "var(--ink-soft)", userSelect: "none" });
 
+        const cardStyle: React.CSSProperties = bare
+            ? { flex: "1 1 0", minWidth: 0 }
+            : { marginBottom: "16px", padding: "12px", border: "1px solid var(--line)", borderRadius: "12px", backgroundColor: "var(--surface)", boxShadow: "0 1px 2px rgba(27,31,36,0.04)" };
+
         return (
-            <div key={name} data-testid={`container-${name}`} data-container-type={type} style={{ marginBottom: "16px", padding: "12px", border: "1px solid var(--line)", borderRadius: "12px", backgroundColor: "var(--surface)", boxShadow: "0 1px 2px rgba(27,31,36,0.04)" }}>
+            <div key={name} data-testid={`container-${name}`} data-container-type={type} style={cardStyle}>
                 <div style={{ marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
                     <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--ink)" }}>
                         {name}{" "}
@@ -494,11 +500,13 @@ class ContainerVisualizer extends React.Component<{}, State> {
         return (
             <div style={{ padding: "10px", backgroundColor: "var(--paper)" }}>
                 {paired && (
-                    <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
-                        {paired.map(name => (
-                            <div key={name} style={{ flex: "1 1 0", minWidth: 0 }}>
-                                {this.renderContainerShape(name, latestContainers.get(name), latestHighlights.get(name))}
-                            </div>
+                    // 兩個容器共用同一個外框區塊（不是各自一張卡片並排），中間一條分隔線。
+                    <div style={{ marginBottom: "16px", padding: "12px", border: "1px solid var(--line)", borderRadius: "12px", backgroundColor: "var(--surface)", boxShadow: "0 1px 2px rgba(27,31,36,0.04)", display: "flex", gap: "16px", alignItems: "stretch" }}>
+                        {paired.map((name, idx) => (
+                            <React.Fragment key={name}>
+                                {idx === 1 && <div style={{ alignSelf: "stretch", width: "1px", backgroundColor: "var(--line)" }} />}
+                                {this.renderContainerShape(name, latestContainers.get(name), latestHighlights.get(name), true)}
+                            </React.Fragment>
                         ))}
                     </div>
                 )}
