@@ -40,6 +40,7 @@ export interface HighlightEntry {
 export interface PullOffsets {
   aKey: string;
   bKey: string;
+  targetKey: string;
   deltaA: { dRow: number; dCol: number };
   deltaB: { dRow: number; dCol: number };
 }
@@ -72,7 +73,25 @@ export function computePullOffsets(
   return {
     aKey: `${a.row},${a.col}`,
     bKey: `${b.row},${b.col}`,
+    targetKey: `${t.row},${t.col}`,
     deltaA: { dRow: t.row - a.row, dCol: t.col - a.col },
     deltaB: { dRow: t.row - b.row, dCol: t.col - b.col },
   };
+}
+
+/**
+ * 目標格在真正的值被 GDB 寫入之前（停在賦值那一行時，變數通常還沒被指派），
+ * 先算一個「暫時的計算結果」浮在目標格上——目前只做「兩個來源值相加」，
+ * 這是走格子 DP 這類教案最常見的組合方式。
+ *
+ * ponytail: 只支援加法；之後如果有教案要秀非加法的暫時值（例如 min/gcd），
+ * 才需要真的接 GDB 運算式求值（@layout 目前只有 @guide/@tts 那層有 {expr}
+ * 插值，@layout 本身沒有），不要現在為了假想需求先做。
+ */
+export function formatPullPreview(valueA: string, valueB: string): string | null {
+  if (valueA.trim() === "" || valueB.trim() === "") return null;
+  const a = Number(valueA);
+  const b = Number(valueB);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return String(a + b);
 }

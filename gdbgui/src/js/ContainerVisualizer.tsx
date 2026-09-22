@@ -8,7 +8,7 @@ import { linearPlugin, uniformCellWidth } from "./LinearPlugin";
 import { mazePlugin } from "./MazePlugin";
 import { splitForPairing } from "./containerPairing";
 import { popCellKey, popGenKey, effectivePopGen, prefersReducedMotion } from "./cellPopKey";
-import { computePullOffsets } from "./pullAnim";
+import { computePullOffsets, formatPullPreview } from "./pullAnim";
 import { delay } from "./anim";
 
 // Register all plugins once at module load.
@@ -46,6 +46,10 @@ type State = {
      *  來源格（key 是 "row,col"）該往哪個方向飄。動畫播完就從這個 Map 移除，
      *  見 pullAnim.ts。 */
     pullState: Map<string, Map<string, { dRow: number; dCol: number }>>;
+    /** 同一次 pull 觸發時，目標格在真正的值被 GDB 寫入前，先浮一個「暫時的
+     *  計算結果」（兩個來源值相加，見 pullAnim.ts 的 formatPullPreview）。
+     *  key 是容器名，value 是目標格位置＋要顯示的文字。 */
+    pullPreview: Map<string, { key: string; text: string }>;
 };
 
 class ContainerVisualizer extends React.Component<{}, State> {
@@ -61,6 +65,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             pairNames: null,
             popGen: new Map<string, number>(),
             pullState: new Map(),
+            pullPreview: new Map(),
         };
         // @ts-expect-error ts-migrate(2339)
         store.connectComponentState(this, ["inferior_program", "rbtree_updated", "container_font_size"]);
@@ -127,21 +132,38 @@ class ContainerVisualizer extends React.Component<{}, State> {
             // 目標格借用既有的 pop 機制亮一下，表示「結果落在這裡」，不用再造一套。
             (window as any).gdbgui_bump_pop_gen?.(containerName, targetColor);
 
+            // 停在賦值那一行時，GDB 通常還沒真的把值寫進去（斷點停在執行前），
+            // 目標格底下顯示的還是舊值。先把兩個來源值加起來，浮在目標格上面
+            // 當「暫時的計算結果」，等下一次真的停到新的一行，畫面自然會換成
+            // GDB 給的真實值——這個暫時值只是先讓大家看到答案怎麼來的。
+            const [rA, cA] = offsets.aKey.split(",").map(Number);
+            const [rB, cB] = offsets.bKey.split(",").map(Number);
+            const preview = formatPullPreview(String(data.values[rA][cA]), String(data.values[rB][cB]));
+
             if (!prefersReducedMotion()) {
                 this.setState(prev => {
-                    const next = new Map(prev.pullState);
+                    const nextPull = new Map(prev.pullState);
                     const m = new Map<string, { dRow: number; dCol: number }>();
                     m.set(offsets.aKey, offsets.deltaA);
                     m.set(offsets.bKey, offsets.deltaB);
-                    next.set(containerName, m);
-                    return { pullState: next };
+                    nextPull.set(containerName, m);
+
+                    const nextPreview = new Map(prev.pullPreview);
+                    if (preview !== null) {
+                        nextPreview.set(containerName, { key: offsets.targetKey, text: preview });
+                    } else {
+                        nextPreview.delete(containerName);
+                    }
+                    return { pullState: nextPull, pullPreview: nextPreview };
                 });
             }
             await delay(450);
             this.setState(prev => {
-                const next = new Map(prev.pullState);
-                next.delete(containerName);
-                return { pullState: next };
+                const nextPull = new Map(prev.pullState);
+                nextPull.delete(containerName);
+                const nextPreview = new Map(prev.pullPreview);
+                nextPreview.delete(containerName);
+                return { pullState: nextPull, pullPreview: nextPreview };
             });
         };
 
@@ -359,6 +381,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
         const isBSTMode  = this.state.bstMode.has(name);
         const popGen     = this.state.popGen;
         const pullMap    = this.state.pullState.get(name);
+        const pullPreview = this.state.pullPreview.get(name);
         const is2D = len > 0 && Array.isArray(values[0]);
 
         const fs     = (store.get("container_font_size") as number) || 1.1;
@@ -427,19 +450,33 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                 {values.map((row: any[], rowIdx: number) => (
                                     <div key={`row-${rowIdx}`} style={{ display: "flex", gap: "4px" }}>
                                         {(row as any[]).map((colVal: string, colIdx: number) => {
-                                            const hl2D = hlPosMap2D.get(`${rowIdx},${colIdx}`) || null;
+                                            const cellKey = `${rowIdx},${colIdx}`;
+                                            const hl2D = hlPosMap2D.get(cellKey) || null;
                                             const pop = popCellKey(`col-${rowIdx}-${colIdx}`, effectivePopGen(popGen, name, hl2D?.bg), hl2D);
-                                            const pull = pullMap?.get(`${rowIdx},${colIdx}`);
-                                            const pullStyle: React.CSSProperties = pull ? {
+                                            const pull = pullMap?.get(cellKey);
+                                            // 只有數字飛出去，格子本身（外框、底色）留在原地不動。
+                                            const numberStyle: React.CSSProperties = pull ? {
+                                                display: "inline-block",
                                                 transform: `translate(calc((100% + 4px) * ${pull.dCol}), calc((100% + 4px) * ${pull.dRow}))`,
                                                 opacity: 0,
                                                 transition: "transform 0.45s ease, opacity 0.45s ease",
-                                                position: "relative",
-                                                zIndex: 2,
-                                            } : {};
+                                            } : { display: "inline-block" };
+                                            const preview = pullPreview?.key === cellKey ? pullPreview.text : null;
                                             return (
-                                                <div key={pop.key} className={pop.className} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW, ...pullStyle }}>
-                                                    {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
+                                                <div key={pop.key} className={pop.className} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW, position: "relative" }}>
+                                                    <span style={numberStyle}>
+                                                        {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
+                                                    </span>
+                                                    {preview !== null && (
+                                                        <span style={{
+                                                            position: "absolute", top: "-10px", left: "50%", transform: "translate(-50%, -100%)",
+                                                            background: "var(--paper)", border: "1px dashed var(--accent)", borderRadius: "6px",
+                                                            padding: "1px 6px", fontSize: "0.75em", color: "var(--accent)", whiteSpace: "nowrap",
+                                                            fontStyle: "italic", pointerEvents: "none",
+                                                        }}>
+                                                            {preview}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             );
                                         })}

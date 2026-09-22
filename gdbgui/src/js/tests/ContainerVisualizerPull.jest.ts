@@ -1,0 +1,130 @@
+// 真的掛載 ContainerVisualizer，驗證 pull: 的兩個新行為：
+// 1. 只有數字（span）飛出去、淡出，格子本身的外框/底色不跟著動。
+// 2. 目標格在動畫期間浮出「暫時的計算結果」（兩個來源值相加），動畫結束後收掉。
+// 純函式邏輯（parsePullToken/computePullOffsets/formatPullPreview）已經在
+// pullAnim.jest.ts 驗過；這裡補的是「元件真的照這個邏輯串起來」這一層。
+import React from "react";
+import * as TestRenderer from "react-test-renderer";
+const { act } = TestRenderer;
+import ContainerVisualizer from "../ContainerVisualizer";
+import { global_variable } from "../global_variable";
+import { store } from "statorgfc";
+import initialStoreData from "../InitialStoreData";
+
+beforeAll(() => {
+  // @ts-expect-error statorgfc's old declarations omit initialize.
+  store.initialize({ ...initialStoreData }, { immutable: false, debounce_ms: 0 });
+});
+
+function seedDp() {
+  // 3x3 dp 表：(0,1)=orange「上面」=3，(1,0)=lime「左邊」=5，(1,1)=lightblue 目標（舊值 0）
+  (global_variable as any).__latest_containers = new Map([
+    ["dp", { name: "dp", type: "vector", isContainer: true, values: [[0, 3, 0], [5, 0, 0], [0, 0, 0]] }],
+  ]);
+  (global_variable as any).__latest_highlights = new Map([
+    ["dp", [{ index: 1, color: "orange" }, { index: 3, color: "lime" }, { index: 4, color: "lightblue" }]],
+  ]);
+}
+
+/** 只有動畫中的數字 span 會帶 opacity（見 ContainerVisualizer.tsx 的 numberStyle）。 */
+function findFlyingNumbers(json: any): any[] {
+  const found: any[] = [];
+  const walk = (n: any) => {
+    if (!n || typeof n !== "object") return;
+    if (n.type === "span" && n.props?.style && "opacity" in n.props.style) found.push(n);
+    (n.children || []).forEach(walk);
+  };
+  walk(json);
+  return found;
+}
+
+/** 暫時計算結果的浮動小標籤：唯一一個 position: absolute 的 span。 */
+function findPreviewBadge(json: any): any | null {
+  let found: any = null;
+  const walk = (n: any) => {
+    if (!n || typeof n !== "object") return;
+    if (n.type === "span" && n.props?.style?.position === "absolute") found = n;
+    (n.children || []).forEach(walk);
+  };
+  walk(json);
+  return found;
+}
+
+// 不能用 jest.runAllTimers()：ContainerVisualizer 自己的 setInterval(輪詢容器，
+// 1000ms 一次) 在假時鐘底下會無限重排程，runAllTimers 會直接判定成無窮迴圈而中止。
+// 只推進剛好蓋過 pull 的 450ms 延遲、推進到 1000ms 那個輪詢節點之前就好。
+const flushAll = async (ms = 500, step = 50) => {
+  for (let elapsed = 0; elapsed < ms; elapsed += step) {
+    jest.advanceTimersByTime(step);
+    await Promise.resolve();
+  }
+};
+
+describe("pull:dp:orange,lime->lightblue", () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it("觸發時只有數字飛出去，目標格浮出兩數相加的暫時結果；動畫結束後都收掉", async () => {
+    seedDp();
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(ContainerVisualizer as any));
+    });
+
+    expect(findFlyingNumbers(renderer.toJSON())).toHaveLength(0);
+    expect(findPreviewBadge(renderer.toJSON())).toBeNull();
+
+    act(() => {
+      (window as any).gdbgui_trigger_pull("dp", "orange", "lime", "lightblue");
+    });
+
+    const flying = findFlyingNumbers(renderer.toJSON());
+    expect(flying).toHaveLength(2);
+    flying.forEach(s => {
+      expect(s.props.style.opacity).toBe(0);
+      expect(String(s.props.style.transform)).toContain("translate(");
+    });
+
+    const badge = findPreviewBadge(renderer.toJSON());
+    expect(badge).not.toBeNull();
+    expect(badge.children).toEqual(["8"]);
+
+    await act(async () => {
+      await flushAll();
+    });
+
+    expect(findFlyingNumbers(renderer.toJSON())).toHaveLength(0);
+    expect(findPreviewBadge(renderer.toJSON())).toBeNull();
+
+    act(() => {
+      renderer.unmount();
+    });
+  });
+
+  it("來源值不是數字時：照樣飛，但沒有暫時結果", async () => {
+    (global_variable as any).__latest_containers = new Map([
+      ["dp", { name: "dp", type: "string", isContainer: true, values: [["", "ab", ""], ["cd", "", ""], ["", "", ""]] }],
+    ]);
+    (global_variable as any).__latest_highlights = new Map([
+      ["dp", [{ index: 1, color: "orange" }, { index: 3, color: "lime" }, { index: 4, color: "lightblue" }]],
+    ]);
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(ContainerVisualizer as any));
+    });
+
+    act(() => {
+      (window as any).gdbgui_trigger_pull("dp", "orange", "lime", "lightblue");
+    });
+
+    expect(findFlyingNumbers(renderer.toJSON())).toHaveLength(2);
+    expect(findPreviewBadge(renderer.toJSON())).toBeNull();
+
+    await act(async () => {
+      await flushAll();
+    });
+    act(() => {
+      renderer.unmount();
+    });
+  });
+});

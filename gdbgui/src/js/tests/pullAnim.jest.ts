@@ -1,4 +1,4 @@
-import { parsePullToken, computePullOffsets } from "../pullAnim";
+import { parsePullToken, computePullOffsets, formatPullPreview } from "../pullAnim";
 
 describe("parsePullToken", () => {
   test("解析 dp:orange,lime->lightblue", () => {
@@ -51,6 +51,7 @@ describe("computePullOffsets", () => {
     expect(result).toEqual({
       aKey: "0,1",
       bKey: "1,0",
+      targetKey: "1,1",
       deltaA: { dRow: 1, dCol: 0 },
       deltaB: { dRow: 0, dCol: 1 },
     });
@@ -86,5 +87,24 @@ describe("computePullOffsets", () => {
     const result = computePullOffsets(highlights, cols, "orange", "lime", "lightblue");
     expect(result!.deltaA).toEqual({ dRow: 1, dCol: 1 });
     expect(result!.deltaB).toEqual({ dRow: 1, dCol: 1 });
+  });
+});
+
+describe("formatPullPreview", () => {
+  test("兩個數字相加", () => {
+    expect(formatPullPreview("3", "5")).toBe("8");
+  });
+
+  test("負數、小數也算", () => {
+    expect(formatPullPreview("-2", "2.5")).toBe("0.5");
+  });
+
+  test("任一邊不是數字回 null（例如字串容器的值）", () => {
+    expect(formatPullPreview("abc", "5")).toBeNull();
+    expect(formatPullPreview("3", "xyz")).toBeNull();
+  });
+
+  test("空字串回 null", () => {
+    expect(formatPullPreview("", "5")).toBeNull();
   });
 });
