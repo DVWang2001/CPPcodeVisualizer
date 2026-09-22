@@ -8,6 +8,7 @@ import { getPlugin } from "./ContainerPlugin";
 import { bstPlugin } from "./BSTPlugin";
 import { resolveChildValues } from "./containerParsers/index";
 import { buildUmlPayload } from "./umlPayload";
+import { HighlightStage } from "./highlightStage";
 import {
   parseFastDirective,
   stripFastDirective,
@@ -736,16 +737,22 @@ class VisualizerHelper {
     // 避免因 {maze} 抓取 11 個子列時間過長，導致 TTS 結束後 autoplay 觸發
     // 新的 graphics_instruction，取消仍在等待中的 {q} 等後續 token。
 
-    // 預先掃描本次 instruction 中所有帶索引的容器，將其高亮陣列清空，
-    // 確保 {arr[i]} 與 {arr[j]} 能各自疊加，且不殘留上一步驟的高亮。
+    // 預先掃描本次 instruction 中所有帶索引的容器，登記「這個容器要等幾個 token」。
+    // 高亮不在這裡清空：新的結果先進暫存區，該容器的 token 全部算完才一次換上
+    // （見 highlightStage.ts）。這樣 {arr[i]} 與 {arr[j]} 仍能各自疊加、不殘留上一步的
+    // 高亮，而前後兩步亮同樣的格子時，畫面上不會出現「清空再重新亮」的中間狀態。
     if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
+    const _hlStage = new HighlightStage(
+      global_variable.__latest_highlights,
+      () => window.gdbgui_request_render?.()
+    );
     for (const _inst of instruction) {
       if (!(_inst.startsWith('{') && _inst.endsWith('}'))) continue;
       const _t = _inst.slice(1, -1).trim();
       const _m2D = _t.match(/^([^\[\]]+)\[([^\[\]]+)\]\[([^\[\]]+)\](?::(.+))?$/);
       const _m1D = !_m2D && _t.match(/^([^\[\]]+)\[([^\[\]]+)\](?::(.+))?$/);
       const _cName = _m2D ? _m2D[1].trim() : (_m1D ? _m1D[1].trim() : null);
-      if (_cName) global_variable.__latest_highlights.set(_cName, []);
+      if (_cName) _hlStage.expect(_cName);
     }
 
     const outputArray = await Promise.all(instruction.map((inst) => {
@@ -803,10 +810,7 @@ class VisualizerHelper {
 
           const baseContainerKey = baseContainer;
           global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parseInt(indexExpr);
-          if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
-          const hl0 = global_variable.__latest_highlights.get(baseContainerKey) || [];
-          hl0.push({ index: parseInt(indexExpr), color: highlightColor });
-          global_variable.__latest_highlights.set(baseContainerKey, hl0);
+          _hlStage.add(baseContainerKey, { index: parseInt(indexExpr), color: highlightColor });
           indexExpr = null;
         } else {
           idxDisplayKey = funcName ? `${funcName}::${indexExpr}` : indexExpr;
@@ -939,10 +943,9 @@ class VisualizerHelper {
                 if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
                 if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
                 global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parsedIdx;
-                if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
-                const hl2D = global_variable.__latest_highlights.get(baseContainerKey) || [];
-                hl2D.push({ index: parsedIdx, color: highlightColor });
-                global_variable.__latest_highlights.set(baseContainerKey, hl2D);
+                _hlStage.add(baseContainerKey, { index: parsedIdx, color: highlightColor });
+              } else {
+                _hlStage.skip(baseContainer);
               }
               rowExpr = null;
               colExpr = null;
@@ -958,10 +961,9 @@ class VisualizerHelper {
                 if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
                 const baseContainerKey = baseContainer;
                 global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parsedIdx;
-                if (!global_variable.__latest_highlights) global_variable.__latest_highlights = new Map();
-                const hl1D = global_variable.__latest_highlights.get(baseContainerKey) || [];
-                hl1D.push({ index: parsedIdx, color: highlightColor });
-                global_variable.__latest_highlights.set(baseContainerKey, hl1D);
+                _hlStage.add(baseContainerKey, { index: parsedIdx, color: highlightColor });
+              } else {
+                _hlStage.skip(baseContainer);
               }
               indexExpr = null;
             }
@@ -1151,6 +1153,9 @@ class VisualizerHelper {
         setTimeout(checkStore, 0);
       });
     }));
+    // 逾時等沒有結果的 token：讓還沒湊齊的容器照現有的換上，不讓舊高亮永遠殘留。
+    // 已被更新的任務取代的話不動——新任務有自己的暫存區，別用過期的結果覆蓋。
+    if (_graphics_task_id === myGraphicsTaskId) _hlStage.flush();
     const outputString = outputArray.join('');
     // 將字面上的 \n 替換為實際的換行符 \n
     const processedString = outputString.replace(/\\n/g, '\n');
