@@ -71,6 +71,10 @@ class SourceCode extends React.Component<{}, State> {
 
   private initialFullname: string | null = null;
 
+  /** pop:/pull: 動畫類 @layout token 若被 [anim] 標記延後，暫存在這裡等 TTS
+   *  播到那個點再一起觸發（見 applyLayout 跟 _flushPendingAnimTokens）。 */
+  private _pendingAnimTokens: Array<{ key: string; val: string }> = [];
+
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
@@ -140,6 +144,13 @@ class SourceCode extends React.Component<{}, State> {
     // 側欄的即時課堂掛載點是兄弟元件畫出來的，掛載順序不保證。第一次 render 時
     // 它可能還不存在，portal 會被略過；排一次重畫把面板補上去。
     setTimeout(() => this.forceUpdate(), 0);
+
+    // @tts 裡的 [anim] 標記播到時，VisualizerHelper 呼叫這裡把延後的 pop:/pull:
+    // 一次觸發（見 applyLayout 怎麼判斷要不要延後）。gdbgui_flush_pending_anim
+    // 是保險：如果這次選中的 tts 變體其實沒有 [anim]（例如多次進入語法 @N 選到
+    // 別的分支），播放正常結束時還是要把延後的動畫補放出來，不能讓它憑空消失。
+    (window as any).gdbgui_on_tts_anim_marker = () => this._flushPendingAnimTokens();
+    (window as any).gdbgui_flush_pending_anim = () => this._flushPendingAnimTokens();
     // /?lesson=<id>：從教案庫或個人檔案頁點進來的。伺服器上的那一篇優先於
     // localStorage 的 autosave——使用者剛剛才明確選了要開哪一篇教案。
     const requestedLesson = this.lessonIdFromUrl();
@@ -875,6 +886,15 @@ class SourceCode extends React.Component<{}, State> {
 
     console.log("[applyLayout] line:", lineNum, "layout:", layoutStr);
 
+    // 換到新的一行了：上一行如果有 [anim] 延後、但標記一直沒播到（例如中途
+    // 被打斷、跳去別的行）就留在原地沒用了，丟掉，不要留到這一行才誤觸發。
+    this._pendingAnimTokens = [];
+    // 這一行的 @tts 原始文字（跟 VisualizerHelper.play_tts 讀的是同一份，見
+    // refreshAnnotationGlobals）裡只要出現 [anim]，pop:/pull: 就改成等 TTS
+    // 播到那裡才觸發，而不是像其他 @layout token 一樣一停到這行就立刻動。
+    const ttsStr: string = ((global_variable as any).__tts || {})[String(lineNum)] || "";
+    const hasAnimMarker = /\[anim\]/.test(ttsStr);
+
     const registry = (window as any).gdbgui_collapser_registry || {};
     console.log("[applyLayout] registry keys:", Object.keys(registry));
 
@@ -960,29 +980,16 @@ class SourceCode extends React.Component<{}, State> {
           const names = val.split(",").map((s: string) => s.trim()).filter(Boolean);
           if (names.length === 2) setPair(names[0], names[1]);
         }
-      } else if (key === "pop") {
-        // pop:容器名1,容器名2 → 這些容器目前有高亮的格子放大再縮小一次。
-        // pop:容器名:顏色 → 只有這個顏色的格子跳（例如 pop:dp:orange 只跳橘色的
-        // 「上面」那格，同容器裡的綠色「左邊」不受影響）。
-        // 這裡只在真的停到新的一行時執行（見本函式的呼叫端），不管高亮的顏色
-        // 有沒有變──要在好幾行都有效果，就每一行都要寫 pop:容器名。
-        const bumpPop = (window as any).gdbgui_bump_pop_gen;
-        if (bumpPop) {
-          val.split(",").forEach((entry: string) => {
-            const c = entry.indexOf(":");
-            const containerName = (c < 0 ? entry : entry.slice(0, c)).trim();
-            const color = c < 0 ? undefined : entry.slice(c + 1).trim() || undefined;
-            if (containerName) bumpPop(containerName, color);
-          });
-        }
-      } else if (key === "pull") {
-        // pull:容器名:來源色1,來源色2->目標色 → 這兩個顏色標的格子飛向目標色的
-        // 格子、變成結果（例如 dp 表填值時，上面/左邊兩個來源格飛進當前格）。
-        // 只對 2D 容器有意義，且跟 pop: 一樣只在真的停到新的一行時觸發一次。
-        const triggerPull = (window as any).gdbgui_trigger_pull;
-        const parsed = parsePullToken(val);
-        if (triggerPull && parsed) {
-          triggerPull(parsed.containerName, parsed.colorA, parsed.colorB, parsed.targetColor);
+      } else if (key === "pop" || key === "pull") {
+        // pop:/pull: 預設在真的停到新的一行時立刻觸發（見本函式的呼叫端）。
+        // 但如果這一行的 @tts 裡寫了 [anim] 標記，代表作者想「等 TTS 講到那裡
+        // 才動」——這裡先記下來，改由 _flushPendingAnimTokens 在標記播到時觸發
+        // （見下方 hasAnimMarker 的判斷、以及 componentDidMount 註冊的
+        // gdbgui_on_tts_anim_marker）。
+        if (hasAnimMarker) {
+          this._pendingAnimTokens.push({ key, val });
+        } else {
+          this._runAnimLayoutToken(key, val);
         }
       } else if (key === "font") {
         // font:1.5 → 設定 Container Visualizer 字體大小（em）
@@ -994,6 +1001,43 @@ class SourceCode extends React.Component<{}, State> {
       }
     }
   };
+
+  /** pop:/pull: 實際的觸發動作，applyLayout 立即執行跟延後執行共用同一份。 */
+  private _runAnimLayoutToken(key: string, val: string) {
+    if (key === "pop") {
+      // pop:容器名1,容器名2 → 這些容器目前有高亮的格子放大再縮小一次。
+      // pop:容器名:顏色 → 只有這個顏色的格子跳（例如 pop:dp:orange 只跳橘色的
+      // 「上面」那格，同容器裡的綠色「左邊」不受影響）。
+      const bumpPop = (window as any).gdbgui_bump_pop_gen;
+      if (bumpPop) {
+        val.split(",").forEach((entry: string) => {
+          const c = entry.indexOf(":");
+          const containerName = (c < 0 ? entry : entry.slice(0, c)).trim();
+          const color = c < 0 ? undefined : entry.slice(c + 1).trim() || undefined;
+          if (containerName) bumpPop(containerName, color);
+        });
+      }
+    } else if (key === "pull") {
+      // pull:容器名:來源色1,來源色2->目標色 → 這兩個顏色標的格子飛向目標色的
+      // 格子、變成結果（例如 dp 表填值時，上面/左邊兩個來源格飛進當前格）。
+      // 只對 2D 容器有意義。
+      const triggerPull = (window as any).gdbgui_trigger_pull;
+      const parsed = parsePullToken(val);
+      if (triggerPull && parsed) {
+        triggerPull(parsed.containerName, parsed.colorA, parsed.colorB, parsed.targetColor);
+      }
+    }
+  }
+
+  /** [anim] 延後的 pop:/pull: 一次全部觸發（見 applyLayout 的 hasAnimMarker）。
+   *  由 VisualizerHelper 在 TTS 真的播到 [anim] 那一點，或播放正常結束卻始終
+   *  沒播到（保險，見 gdbgui_flush_pending_anim 的註冊處）時呼叫。 */
+  private _flushPendingAnimTokens() {
+    if (this._pendingAnimTokens.length === 0) return;
+    const tokens = this._pendingAnimTokens;
+    this._pendingAnimTokens = [];
+    tokens.forEach(({ key, val }) => this._runAnimLayoutToken(key, val));
+  }
 
   clearAllBreakpoints = () => {
     store.set("breakpoints", []);

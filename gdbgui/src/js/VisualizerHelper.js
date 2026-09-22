@@ -22,6 +22,7 @@ import {
   FAST_FORWARD_STEP_LIMIT,
 } from "./fastForward";
 import { buildJumpCommand } from "./fastForwardJump";
+import { parseTtsPlaylist } from "./ttsPlaylist";
 import { parseSwapCall } from "./swapDetect";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
@@ -207,6 +208,9 @@ function _tts_play_next(taskId) {
     window._gdbgui_tts_playing = null;
     window._gdbgui_tts_resume = null;
     if (typeof window.gdbgui_on_tts_end === 'function') window.gdbgui_on_tts_end();
+    // 保險：這次選中的 tts 變體如果沒有 [anim]（例如 @N 多次進入語法選到別的
+    // 分支），播放正常結束時把延後的 pop:/pull: 補放出來，不能讓它憑空消失。
+    if (typeof window.gdbgui_flush_pending_anim === 'function') window.gdbgui_flush_pending_anim();
     if (_tts_autoplay_command && typeof window.gdbgui_execute_autoplay_command === 'function') {
       window.gdbgui_execute_autoplay_command(_tts_autoplay_command);
     }
@@ -215,7 +219,13 @@ function _tts_play_next(taskId) {
 
   const item = _tts_playlist[_tts_playlist_index];
 
-  if (item.type === 'wait') {
+  if (item.type === 'anim') {
+    // [anim] 標記：不是語音、不用等待，播到這裡立刻觸發延後的 pop:/pull:，
+    // 再馬上接著播下一個項目。
+    if (typeof window.gdbgui_on_tts_anim_marker === 'function') window.gdbgui_on_tts_anim_marker();
+    _tts_playlist_index++;
+    _tts_play_next(taskId);
+  } else if (item.type === 'wait') {
     _tts_current_audio = null;
     _tts_wait_start_time = Date.now();
     const ms = item.duration * 1000;
@@ -584,7 +594,7 @@ class VisualizerHelper {
     // 變數替換完成後確認任務是否仍有效（非同步查詢期間可能有新任務進來）
     if (myTaskId !== _tts_task_id) return;
 
-    // 產生全局字幕文字：去除所有 [wait:X]、[pause:X] 以及讀音標記 [音]
+    // 產生全局字幕文字：去除所有 [wait:X]、[pause:X]、[anim] 以及讀音標記 [音]
     const displayText = evaluateSpokenText
       .replace(/\[(?:wait|pause):[\d.]+\]/g, '')
       .replace(/\[([^\[\]]+)\]/g, '')
@@ -594,38 +604,19 @@ class VisualizerHelper {
     _tts_subtitle_text = displayText;
     _tts_autoplay_command = autoplayCommand;
 
-    // 使用 Regex 分割字串，同時捕獲停頓標籤指定的秒數
-    // 例如字串被分割成 ["語音段1", "1.5", "語音段2", "0.5", "語音段3"]
-    const parts = evaluateSpokenText.split(/\[(?:wait|pause):([\d.]+)\]/g);
-    const playlist = [];
-
-    for (let i = 0; i < parts.length; i++) {
-      if (i % 2 === 0) {
-        // 語音文字段落
-        const segText = parts[i];
-        // 處理自定義發音 "字[音]"：替換讀音（白[柏] → 柏），讓 TTS 讀對
-        const regexPronounce = /([^\[\]]+)\[([^\[\]]+)\]/g;
-        const spokenSegText = segText.replace(regexPronounce, (_match, prefix, pronunciation) => {
-          return prefix.slice(0, -1) + pronunciation;
-        }).replace(/⟦/g, '[').replace(/⟧/g, ']');
-        if (spokenSegText.trim()) {
-          const url = `/tts_audio?text=${encodeURIComponent(spokenSegText.trim())}`;
-          playlist.push({ type: 'audio', text: spokenSegText.trim(), url: url, currentTime: 0 });
-        }
-      } else {
-        // 停頓秒數
-        const duration = parseFloat(parts[i]);
-        if (!isNaN(duration) && duration > 0) {
-          playlist.push({ type: 'wait', duration: duration });
-        }
-      }
-    }
+    // 把 [wait:N]/[pause:N]（停頓）跟 [anim]（播到這裡才觸發延後的 pop:/pull:
+    // 動畫，見 SourceCode.tsx 的 applyLayout/hasAnimMarker）切成播放清單裡的
+    // 獨立項目，中間夾著的才是要送 TTS 合成的語音段落——純字串邏輯抽到
+    // ttsPlaylist.ts，方便單元測試。
+    const playlist = parseTtsPlaylist(evaluateSpokenText);
 
     // 若清單為空（如純 [continue] 指令或全空白），直接執行 autoplayCommand，跳過 TTS 播放
     if (playlist.length === 0) {
       window._gdbgui_tts_playing = null;
       window._gdbgui_tts_resume = null;
       if (typeof window.gdbgui_on_tts_end === 'function') window.gdbgui_on_tts_end();
+      // 保險同上：見 _tts_play_next 清單播完那邊的註解。
+      if (typeof window.gdbgui_flush_pending_anim === 'function') window.gdbgui_flush_pending_anim();
       if (autoplayCommand && typeof window.gdbgui_execute_autoplay_command === 'function') {
         window.gdbgui_execute_autoplay_command(autoplayCommand);
       }
