@@ -959,6 +959,14 @@ class SourceCode extends React.Component<{}, State> {
           const names = val.split(",").map((s: string) => s.trim()).filter(Boolean);
           if (names.length === 2) setPair(names[0], names[1]);
         }
+      } else if (key === "pop") {
+        // pop:容器名1,容器名2 → 這些容器的高亮格改成「亮起／換色時放大再縮小」
+        const setPop = (window as any).gdbgui_set_pop_mode;
+        if (setPop) {
+          val.split(",").forEach((containerName: string) => {
+            setPop(containerName.trim(), true);
+          });
+        }
       } else if (key === "font") {
         // font:1.5 → 設定 Container Visualizer 字體大小（em）
         const size = parseFloat(val);

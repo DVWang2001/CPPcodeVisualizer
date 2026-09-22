@@ -291,6 +291,21 @@ td.line_num {
     animation: none;
   }
 }
+/* 容器高亮格「放大再縮小」（@layout pop:容器名 開啟，見 AUTHORING_GUIDE §4.10）。
+   只在格子剛亮起／換色那一刻播一次，不是持續存在的狀態——見 cellPopKey.ts。 */
+@keyframes cell-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.cell-pop {
+  animation: cell-pop 0.32s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cell-pop {
+    animation: none;
+  }
+}
 .dropdown-btn {
   vertical-align: top;
   height: 30px;

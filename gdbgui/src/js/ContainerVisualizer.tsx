@@ -7,6 +7,7 @@ import { bstPlugin } from "./BSTPlugin";
 import { linearPlugin, uniformCellWidth } from "./LinearPlugin";
 import { mazePlugin } from "./MazePlugin";
 import { splitForPairing } from "./containerPairing";
+import { popCellKey } from "./cellPopKey";
 
 // Register all plugins once at module load.
 // To add a new container type: create a plugin file and call registerPlugin() here.
@@ -36,6 +37,8 @@ type State = {
     bstMode: Set<string>;
     /** @layout 的 pair:A,B 設定的一組並排容器名；null = 沒有設定。 */
     pairNames: [string, string] | null;
+    /** @layout 的 pop:A,B 開啟「高亮格放大再縮小」的容器名集合。 */
+    popMode: Set<string>;
 };
 
 class ContainerVisualizer extends React.Component<{}, State> {
@@ -49,6 +52,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             mazeRuleInput: new Map(),
             bstMode: new Set<string>(),
             pairNames: null,
+            popMode: new Set<string>(),
         };
         // @ts-expect-error ts-migrate(2339)
         store.connectComponentState(this, ["inferior_program", "rbtree_updated", "container_font_size"]);
@@ -78,6 +82,18 @@ class ContainerVisualizer extends React.Component<{}, State> {
         // 排版由 render() 的 splitForPairing 判斷（兩者都要有資料才算數）。
         (window as any).gdbgui_set_pair_mode = (nameA: string, nameB: string) => {
             this.setState({ pairNames: [nameA, nameB] });
+        };
+
+        // pop:容器名 → 這個容器的高亮格「放大再縮小」（見 §4.10）。跟 mazeMode/
+        // bstMode 走同一種 Set 開關；LinearPlugin 不是這個元件的子節點、讀不到
+        // this.state，所以額外開一個唯讀 bridge 給它查（gdbgui_is_bst_mode 的先例）。
+        (window as any).gdbgui_is_pop_mode = (containerName: string) => this.state.popMode.has(containerName);
+        (window as any).gdbgui_set_pop_mode = (containerName: string, enabled: boolean) => {
+            this.setState(prev => {
+                const next = new Set<string>(prev.popMode);
+                if (enabled) next.add(containerName); else next.delete(containerName);
+                return { popMode: next };
+            });
         };
 
         (window as any).gdbgui_set_maze_mode = (containerName: string, enabled: boolean, defaultColorRules?: ColorRule[]) => {
@@ -292,6 +308,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
         const isMazeMode = this.state.mazeMode.has(name);
         const isBSTMode  = this.state.bstMode.has(name);
+        const isPopMode  = this.state.popMode.has(name);
         const is2D = len > 0 && Array.isArray(values[0]);
 
         const fs     = (store.get("container_font_size") as number) || 1.1;
@@ -361,8 +378,9 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                     <div key={`row-${rowIdx}`} style={{ display: "flex", gap: "4px" }}>
                                         {(row as any[]).map((colVal: string, colIdx: number) => {
                                             const hl2D = hlPosMap2D.get(`${rowIdx},${colIdx}`) || null;
+                                            const pop = popCellKey(`col-${rowIdx}-${colIdx}`, isPopMode, hl2D);
                                             return (
-                                                <div key={`col-${rowIdx}-${colIdx}`} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW }}>
+                                                <div key={pop.key} className={pop.className} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW }}>
                                                     {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
                                                 </div>
                                             );

@@ -594,7 +594,26 @@ if (g[i - 1][j - 1] == '#') {  //@ @guide {dp[i][j]:lightblue} {g[i - 1][j - 1]:
 - 沒有 `unpair` 語法；停止並排的做法是換一組 `pair:`（或乾脆不用這個功能）。
 - 跟 `font:` 一樣，只能寫在 `.cpp` 的 `//@` 註解裡，行內註解編輯面板（✎）目前沒有對應的輸入框。
 
-### 4.10 組合範例
+### 4.10 高亮格動畫 `pop:容器名稱`
+
+指定容器的高亮格改成**亮起或換色時放大再縮小一下**，而不是直接無過渡地變色。適合想特別強調「注意看這一格」的步驟：
+
+```
+pop:dp
+pop:dp,g
+```
+
+```cpp
+dp[i][j] = (up + left) % MOD;  //@ @guide {dp[i][j]:lightblue} 寫進這一格 @layout pop:dp
+```
+
+- 可同時指定多個容器（逗號分隔）。
+- 只在格子**這一刻真的亮起，或亮起的顏色換了**才播；同一格連續用同一個顏色亮著（例如輪詢重繪）不會每次都跳一下。格子暗下去（不再高亮）也不會播——目前只做「亮起」的強調，不做「熄滅」的動畫。
+- 目前只支援 vector / array / string / list / queue / stack / deque 這類容器（含 2D 格狀視圖）；`set`／`map` 的整列高亮（未切換紅黑樹視圖時）暫不支援。
+- 跟 `pair:` 一樣是**設定值**、跟 `font:` 一樣只能寫在 `.cpp` 的 `//@` 註解裡。
+- 尊重瀏覽器的「減少動態效果」設定（`prefers-reduced-motion: reduce`）：使用者開了這個系統設定，動畫會直接關掉，格子仍會正常變色，只是不跳。
+
+### 4.11 組合範例
 
 ```
 sidebar:50 open:container close:locals
@@ -603,6 +622,7 @@ sidebar:0 close:container,callgraph
 sidebar:55 open:container maze:maze
 sidebar:60 open:container bst:s font:1.2
 sidebar:55 open:container pair:dp,g
+sidebar:55 open:container pop:dp,g
 ```
 
 ---
@@ -765,6 +785,7 @@ wrapper 呼叫 `setpriv --reuid=65534 --regid=65534 --clear-groups` 將使用者
 - **程式結束**：`sidebar:60 open:watch_table`
 - **set/map 紅黑樹教學**：`sidebar:60 open:container bst:容器名`（自動切換紅黑樹視圖）
 - **兩個容器要對照著看**（例如原始資料 vs. 推導出的表）：`sidebar:60 open:container pair:容器A,容器B`（見 4.9 節）
+- **關鍵一步想特別強調**（例如答案終於寫進表格的那一行）：加 `pop:容器名`，格子會放大再縮小一下（見 4.10 節）。不要每一行都加，物極必反——留給真正值得停下來看的那一兩步就好
 
 ### 8.4 紅黑樹（RB-tree）教案設計提示
 
