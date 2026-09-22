@@ -18,12 +18,26 @@ interface ErasePayload  { index: number; value: string; cellId: string; }
 interface ValueChangePayload { index: number; oldValue: string; newValue: string; cellId: string; }
 interface SwapPayload   { indexA: number; indexB: number; cellIdA: string; cellIdB: string; }
 
+/** 一格目前正在播哪種動畫。swap 是 FLIP 技巧的兩個階段：
+ *  start＝先無過渡地畫在「原本位置」（deltaIndex 格外），settle＝拿掉位移、打開 transition，
+ *  瀏覽器就會把這段「從原位滑到新位」畫成動畫。deltaIndex 是格數差，不是像素。 */
+type CellAnimKind =
+    | { kind: "value" }
+    | { kind: "swap"; deltaIndex: number; phase: "start" | "settle" };
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 let _cellId = 0;
 
 function afterFrame(): Promise<void> {
     return new Promise(resolve => requestAnimationFrame(() => resolve()));
+}
+
+// swap 的平移是用 inline style 直接算出來的，不是 CSS class，所以「減少動態效果」
+// 這條系統設定沒辦法像 cell-pop 那樣交給 @media 處理，這裡直接查一次。
+function prefersReducedMotion(): boolean {
+    return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 // ponytail: O(n²) diff — upgrade to LCS if containers exceed ~1000 elements
@@ -85,10 +99,14 @@ class LinearPluginImpl implements ContainerPlugin {
     private entering    = new Map<string, Set<string>>();
     private fadingOut   = new Map<string, Set<string>>();
     private highlighted = new Map<string, Set<string>>();
-    /** valueChange 跟 swap 都借用 highlighted 的琥珀色高亮，但使用者要它們的動作看起來不一樣
-     *  （覆蓋/變更為某數＝原本的放大再縮小；交換＝額外帶一點搖擺，一眼就能跟單純變更分開）。
-     *  cellId → 這次是哪種變化，只有 valueChange/swap 會寫，erase 的高亮跟這個無關。 */
-    private highlightKind = new Map<string, Map<string, "value" | "swap">>();
+    /** valueChange 跟 swap 都借用 highlighted 的琥珀色高亮，但使用者要它們的動作看起來不一樣：
+     *  覆蓋/變更為某數＝放大再縮小（cell-pop）；交換＝真的平移過去（FLIP 技巧，見 _animateSwap）。
+     *  cellId → 這次是哪種變化，只有 valueChange/swap 會寫，erase 的高亮跟這個無關。
+     *
+     *  swap 用 % 相對位移（calc((100% + gap) * N)）不用算絕對像素——cellWidth 本身是
+     *  `calc(Nch + Mpx)` 這種吃字型才算得出來的 CSS 運算式，JS 這邊量不到實際像素，但
+     *  用同一個 100% 基準乘上格數差，CSS 自己會算對，不管兩格隔多遠都準。 */
+    private highlightKind = new Map<string, Map<string, CellAnimKind>>();
 
     // ── diffOps ───────────────────────────────────────────────────────────────
 
@@ -275,8 +293,8 @@ class LinearPluginImpl implements ContainerPlugin {
         const hlSet = this.highlighted.get(containerName) ?? new Set<string>();
         hlSet.add(payload.cellId);
         this.highlighted.set(containerName, hlSet);
-        const kindMap = this.highlightKind.get(containerName) ?? new Map();
-        kindMap.set(payload.cellId, "value");
+        const kindMap: Map<string, CellAnimKind> = this.highlightKind.get(containerName) ?? new Map();
+        kindMap.set(payload.cellId, { kind: "value" });
         this.highlightKind.set(containerName, kindMap);
         requestRender();
         await delay(400);
@@ -287,17 +305,28 @@ class LinearPluginImpl implements ContainerPlugin {
 
     private async _animateSwap(
         containerName: string,
-        payload: { cellIdA: string; cellIdB: string },
+        payload: SwapPayload,
         requestRender: () => void
     ): Promise<void> {
         const hlSet = this.highlighted.get(containerName) ?? new Set<string>();
         hlSet.add(payload.cellIdA);
         hlSet.add(payload.cellIdB);
         this.highlighted.set(containerName, hlSet);
-        const kindMap = this.highlightKind.get(containerName) ?? new Map();
-        kindMap.set(payload.cellIdA, "swap");
-        kindMap.set(payload.cellIdB, "swap");
+
+        // diffOps 呼叫這裡之前已經把 cells 陣列裡的物件互換了，所以 cellIdA 現在坐在
+        // indexB 的位置、cellIdB 坐在 indexA。要讓它們「看起來從原本的格子滑過來」，
+        // 就讓它們先headless無過渡地畫在「差幾格」的偏移量，下一影格才拿掉偏移、
+        // 打開 transition——這段落差瀏覽器就會畫成滑動。
+        const deltaA = payload.indexA - payload.indexB; // A 現在在 B 的位置，來自 A（差幾格）
+        const deltaB = payload.indexB - payload.indexA; // B 現在在 A 的位置，來自 B
+        const kindMap: Map<string, CellAnimKind> = this.highlightKind.get(containerName) ?? new Map();
+        kindMap.set(payload.cellIdA, { kind: "swap", deltaIndex: deltaA, phase: "start" });
+        kindMap.set(payload.cellIdB, { kind: "swap", deltaIndex: deltaB, phase: "start" });
         this.highlightKind.set(containerName, kindMap);
+        requestRender();
+        await afterFrame(); // 逼瀏覽器先畫一次「還在原位」，下一步才有 transition 可畫
+        kindMap.set(payload.cellIdA, { kind: "swap", deltaIndex: deltaA, phase: "settle" });
+        kindMap.set(payload.cellIdB, { kind: "swap", deltaIndex: deltaB, phase: "settle" });
         requestRender();
         await delay(400);
         hlSet.delete(payload.cellIdA);
@@ -367,10 +396,20 @@ class LinearPluginImpl implements ContainerPlugin {
             const isHighlighted = highlightSet.has(cell.id);
             const extHL = getHighlight(idx, externalHL, cells.length);
 
+            // swap 的「start」影格要無過渡地先畫在偏移位置，下一影格才拿掉偏移、
+            // 打開 transition——那一步 transition 一定要是 none，不然位移一開始就被
+            // 動畫掉，看不到「從原位滑過來」的效果（見 _animateSwap 的兩段式呼叫）。
+            const cellKind = kindMap?.get(cell.id);
+            const isSwapStart = cellKind?.kind === 'swap' && cellKind.phase === 'start';
+            const swapOffsetSlots = (isSwapStart && !prefersReducedMotion()) ? (cellKind as any).deltaIndex : 0;
+
             const opacity = (isEntering || isFadingOut) ? 0 : 1;
             const scale   = (isEntering || isFadingOut) ? 0.5 : isHighlighted ? 1.05 : 1;
-            const transition = isEntering ? 'none'
+            const transition = (isEntering || isSwapStart) ? 'none'
                 : 'opacity 400ms cubic-bezier(0.4,0,0.2,1), transform 400ms cubic-bezier(0.4,0,0.2,1)';
+            const transform = swapOffsetSlots !== 0
+                ? `scale(${scale}) translateX(calc((100% + 4px) * ${swapOffsetSlots}))`
+                : `scale(${scale})`;
 
             const bg = isHighlighted ? 'var(--highlight-soft)'
                      : extHL ? extHL.bg
@@ -386,7 +425,7 @@ class LinearPluginImpl implements ContainerPlugin {
                 fontFamily: 'var(--font-mono)', fontSize: fsPx, color: 'var(--ink)',
                 boxSizing: 'border-box', background: bg, border, borderRadius: '6px',
                 fontWeight: (isHighlighted || extHL) ? 700 : 500,
-                opacity, transform: `scale(${scale})`, transition,
+                opacity, transform, transition,
                 ...(isHighlighted ? { boxShadow: '0 0 0 1px var(--highlight)' } : {}),
             };
 
@@ -395,11 +434,10 @@ class LinearPluginImpl implements ContainerPlugin {
             const displayValue = display(cell.value);
             const pop = popCellKey(cell.id, effectivePopGen(popGenMap, containerName, extHL?.bg), extHL);
             // valueChange（覆蓋/變更為某數）跟 swap（交換）自動偵測，動作要看得出差別：
-            // value 沿用 cell-pop（放大再縮小），swap 另一個 keyframe（多一點搖擺）。
-            // 這兩個 class 開/關是靠 highlightKind 直接 toggle，不需要跟 pop.key 一樣
-            // 換 key 強迫重掛——瀏覽器對「class 被拿掉又加回來」本來就會重播動畫。
-            const kind = kindMap?.get(cell.id);
-            const animClassName = kind === 'value' ? 'cell-pop' : kind === 'swap' ? 'cell-swap' : pop.className;
+            // value 沿用 cell-pop（放大再縮小，class 觸發的 keyframe）；swap 是上面算好的
+            // translateX 位移本身就是動作，不需要另外掛 class——class 開/關是靠
+            // highlightKind 直接 toggle，不需要跟 pop.key 一樣換 key 強迫重掛。
+            const animClassName = cellKind?.kind === 'value' ? 'cell-pop' : pop.className;
 
             return React.createElement('div', {
                 key: pop.key,

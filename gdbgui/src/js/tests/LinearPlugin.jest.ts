@@ -220,6 +220,25 @@ function findClassNames(node: any): string[] {
     return found;
 }
 
+/** 找出每個 data-testid="container-cell" 節點的 className/style，
+ *  給需要檢查 transform/transition（swap 的位移不是靠 className）的測試用。 */
+function findCellStyles(node: any): { className: any; style: any }[] {
+    const found: { className: any; style: any }[] = [];
+    const walk = (n: any) => {
+        if (!n || typeof n !== 'object') return;
+        if (n.props) {
+            if (n.props['data-testid'] === 'container-cell') {
+                found.push({ className: n.props.className, style: n.props.style || {} });
+            }
+            const children = n.props.children;
+            if (Array.isArray(children)) children.forEach(walk);
+            else walk(children);
+        }
+    };
+    walk(node);
+    return found;
+}
+
 describe('animateOp — insert', () => {
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());
@@ -279,7 +298,7 @@ describe('animateOp — valueChange', () => {
         await expect(p).resolves.toBeUndefined();
     });
 
-    it('播動畫期間套用 cell-pop（覆蓋/變更為某數，不是 swap 的 cell-swap）', async () => {
+    it('播動畫期間套用 cell-pop（覆蓋/變更為某數，不是靠位移的 swap 動畫）', async () => {
         linearPlugin.diffOps('v', { type: 'vector', values: ['1', '2'] });
         const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '9'] });
         // render() 讀 global_variable.__latest_containers，跟 diffOps 追蹤的內部狀態是分開的
@@ -288,9 +307,9 @@ describe('animateOp — valueChange', () => {
         const p = linearPlugin.animateOp('v', ops[0], jest.fn());
         // animateOp 進第一個 await delay() 之前就已同步寫入 highlightKind，這裡的 render()
         // 讀到的正是「動畫播放中」那一刻的樣子。
-        const classNames = findClassNames(linearPlugin.render('v'));
-        expect(classNames).toContain('cell-pop');
-        expect(classNames).not.toContain('cell-swap');
+        const cells = findCellStyles(linearPlugin.render('v'));
+        expect(cells.some(c => c.className === 'cell-pop')).toBe(true);
+        expect(cells.every(c => !String(c.style.transform).includes('translateX'))).toBe(true);
         await flushAll();
         await p;
     });
@@ -308,14 +327,20 @@ describe('animateOp — swap', () => {
         await expect(p).resolves.toBeUndefined();
     });
 
-    it('播動畫期間套用 cell-swap，兩顆交換的格子都要有，且不是 cell-pop', async () => {
+    it('start 影格：兩顆交換的格子往反方向偏移，且 transition 是 none（不然位移會被動畫掉）', async () => {
+        // index 1 跟 2 交換：'5' 跟 '3' 對調
         linearPlugin.diffOps('v', { type: 'vector', values: ['1', '5', '3'] });
         const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '3', '5'] });
         (global_variable as any).__latest_containers = new Map([['v', { type: 'vector', values: ['1', '3', '5'] }]]);
         const p = linearPlugin.animateOp('v', ops[0], jest.fn());
-        const classNames = findClassNames(linearPlugin.render('v'));
-        expect(classNames.filter(c => c === 'cell-swap')).toHaveLength(2);
-        expect(classNames).not.toContain('cell-pop');
+        const cells = findCellStyles(linearPlugin.render('v'));
+        const swapped = cells.filter(c => String(c.style.transform).includes('translateX'));
+        expect(swapped).toHaveLength(2);
+        expect(swapped.every(c => c.className !== 'cell-pop')).toBe(true);
+        expect(swapped.every(c => c.style.transition === 'none')).toBe(true);
+        // 兩個位移方向要相反（一個是 * 1，另一個是 * -1），不是同方向平移
+        const signs = swapped.map(c => /\* -1\)/.test(String(c.style.transform)) ? -1 : 1);
+        expect(signs[0]).toBe(-signs[1]);
         await flushAll();
         await p;
     });
