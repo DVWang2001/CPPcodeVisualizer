@@ -652,21 +652,47 @@ class GdbVariable extends React.Component {
     }
   }
   /**
-   * 清空 ChildVarFetcher 與 VarCreator 的待處理佇列。
-   * 用於 graphics_instruction 新任務開始時，丟棄前一個任務遺留的所有待建立/待展開請求，
-   * 避免舊請求堵塞新任務的 maze 等大型結構的抓取。
-   * 注意：若 VarCreator/ChildVarFetcher 正在執行中的那筆（in-flight）請求無法中斷，
-   * 但完成後會因找不到對應 expression 而被忽略。
+   * 清空 ChildVarFetcher 與 VarCreator 尚未送出的待處理佇列。
+   *
+   * @param hard 要不要連「正在等 GDB 回應」的狀態也一起重置。
+   *
+   * - `false`（預設，graphics_instruction 每次真的停到新的一行都會呼叫這裡）：
+   *   GDB process 還活著，前一個任務若真的有一筆 -var-create / -var-list-children
+   *   已經送出去，GDB 一定會回應（成功用 created_variable，失敗用 fetch_failed，
+   *   兩者最後都會呼叫 _fetch_complete）。這裡只清掉「還沒送出」的排隊項目，讓
+   *   in-flight 那筆自然收尾、正確歸屬到它原本的 expression，佇列會在那之後才
+   *   開始處理新任務排進來的項目。
+   *
+   *   以前這裡不分青紅皂白把 _is_fetching 也重置成 false，等於謊報「現在沒有
+   *   請求在等回應」——新任務會立刻送出下一筆 -var-create，這筆跟前一筆共用
+   *   同一個「目前這筆是誰」欄位（expr_being_created /
+   *   expr_gdb_parent_var_currently_fetching_children）。GDB 回應一到，
+   *   created_variable() 只看這個欄位目前是誰，就會把前一筆的回應誤植到後來
+   *   排進來的 expression 上，後來那筆自己的回應反而因為欄位已經被清空
+   *   （expr_being_created = null）而被當成「非預期的變數」直接丟棄，永遠不會
+   *   解析出來。這就是 step-in 按太快、容器/變數顯示錯亂的成因：值錯位、
+   *   有些變數卡住不會更新，而且錯誤的關聯會一路殘留到那個 displayKey 的 varobj
+   *   自然出 scope 才會消失。
+   *
+   * - `true`（Actions.inferior_program_starting，Run/重啟時用）：舊 GDB process
+   *   被殺掉了，in-flight 的請求永遠不會有回應，不強制重置就會讓 _is_fetching
+   *   卡在 true，之後所有變數建立都排不進去。
    */
-  static clear_visualizer_queues() {
+  static clear_visualizer_queues(hard: boolean = false) {
     // @ts-ignore
     ChildVarFetcher._queue = [];
     // @ts-ignore
-    ChildVarFetcher._is_fetching = false;
-    // @ts-ignore
     VarCreator._queue = [];
-    // @ts-ignore
-    VarCreator._is_fetching = false;
+    if (hard) {
+      // @ts-ignore
+      ChildVarFetcher._is_fetching = false;
+      // @ts-ignore
+      ChildVarFetcher.expr_gdb_parent_var_currently_fetching_children = null;
+      // @ts-ignore
+      VarCreator._is_fetching = false;
+      // @ts-ignore
+      VarCreator.expr_being_created = null;
+    }
   }
 
   static fetch_and_show_children_for_var(gdb_var_name: any) {
@@ -897,7 +923,8 @@ class GdbVariable extends React.Component {
 
 // Actions.ts 已被 GdbVariable import，為避免循環依賴，透過 window 橋接 reset 入口。
 // inferior_program_starting() 在每次 Run 時呼叫，確保舊 GDB session 的 in-flight
-// -var-create 不會讓 _is_fetching 永遠卡死。
-(window as any).gdbgui_reset_var_queue = () => GdbVariable.clear_visualizer_queues();
+// -var-create 不會讓 _is_fetching 永遠卡死——這裡舊 process 真的被殺了，
+// 所以要 hard reset（見 clear_visualizer_queues 的參數說明）。
+(window as any).gdbgui_reset_var_queue = () => GdbVariable.clear_visualizer_queues(true);
 
 export default GdbVariable;

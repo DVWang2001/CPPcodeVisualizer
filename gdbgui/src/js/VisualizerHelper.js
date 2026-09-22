@@ -731,9 +731,14 @@ class VisualizerHelper {
 
   static async graphics_instruction(instruction, frame_line, funcName) {
     const myGraphicsTaskId = ++_graphics_task_id; // 新任務 ID，舊任務自動放棄
-    // 清空前一個任務遺留的所有 VarCreator / ChildVarFetcher 佇列，
-    // 讓新任務的 varobj 建立和子節點抓取能立即排在最前面
-    GdbVariable.clear_visualizer_queues();
+    // 清空前一個任務遺留、但「還沒送出」的 VarCreator / ChildVarFetcher 排隊項目，
+    // 讓新任務的 varobj 建立和子節點抓取能立即排在最前面。
+    // 不能 hard reset：GDB process 還活著，若前一個任務真的有一筆請求已經送出去
+    // （in-flight），GDB 之後一定會回應——hard reset 會讓新任務誤以為「現在沒人在
+    // 等回應」而搶著送出下一筆，兩筆請求共用同一個「目前這筆是誰」欄位，回應一到
+    // 就會互相錯位（step-in 按太快、容器/變數顯示錯亂的成因，見
+    // GdbVariable.clear_visualizer_queues 的參數說明）。
+    GdbVariable.clear_visualizer_queues(false);
     if (!("__guide" in global_variable)) global_variable.__guide = new Map();
     // 所有 {expr} token 同時送出並行處理（Promise.all），
     // 避免因 {maze} 抓取 11 個子列時間過長，導致 TTS 結束後 autoplay 觸發
