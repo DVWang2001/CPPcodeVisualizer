@@ -26,6 +26,7 @@ import LessonCommitDialog from "./LessonCommitDialog";
 import LessonHistoryDialog from "./LessonHistoryDialog";
 import QuizAuthoringDialog from "./QuizAuthoringDialog";
 import LessonSaveDialog from "./LessonSaveDialog";
+import AutosavePromptDialog from "./AutosavePromptDialog";
 import LiveQuizPanel from "./LiveQuizPanel";
 import { cloneQuiz, QuizSpec, validateQuiz } from "./quizSchema";
 import {
@@ -75,6 +76,11 @@ class SourceCode extends React.Component<{}, State> {
    *  播到那個點再一起觸發（見 applyLayout 跟 _flushPendingAnimTokens）。 */
   private _pendingAnimTokens: Array<{ key: string; val: string }> = [];
 
+  /** componentDidMount 發現本機有自動存檔時，先存在這裡、彈 AutosavePromptDialog
+   *  問使用者要不要用，不直接套用（見那邊的註解為什麼）。使用者選「繼續」才由
+   *  _continueAutosaveDraft 真的套進編輯器；選「捨棄」就丟掉，維持空白範本。 */
+  private _pendingAutosaveBundle: LessonBundle | null = null;
+
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
@@ -91,6 +97,8 @@ class SourceCode extends React.Component<{}, State> {
       showLessonGen: false,
       showLessonCommit: false,
       showLessonHistory: false,
+      showAutosavePrompt: false,
+      autosaveSavedAt: null as number | null,
       showQuizAuthoring: false,
       // 預設勾選：面板一開始就在側欄等著，教師按「重新執行」就能開課。
       // 勾選只是「顯示面板」，不會自己建立課堂——建立課堂會產 QR、讓學生加入、
@@ -160,17 +168,23 @@ class SourceCode extends React.Component<{}, State> {
       return;
     }
 
-    // 優先從 autosave JSON 還原（最可靠，格式同 Export JSON）
+    // 本機有自動存檔：不要默默套用。它跟教案庫載入的畫面長得一模一樣，
+    // 使用者沒有任何辦法從畫面上分辨現在看到的是本機草稿還是教案庫的哪一篇
+    // ——這正是「教案明明更新了，重新整理卻還是看到舊的」那類回報的根源
+    // （Ctrl+Shift+R 只清 HTTP cache，不會清這份 localStorage）。改成明確問
+    // 一次：安全網還在，但「要不要用它」變成看得到、自己選的動作（見
+    // AutosavePromptDialog、_continueAutosaveDraft/_discardAutosaveDraft）。
     try {
       const raw = JSON.parse(localStorage.getItem("gdbgui_autosave") || "null");
       if (raw && (raw.source_code || raw.line_data)) {
         const v2 = normalizeBundle(raw);
         // if we upgraded a v1 bundle, persist the v2 form back
         if (raw.line_data) localStorage.setItem("gdbgui_autosave", JSON.stringify(v2));
-        if (v2.fullname_to_render) this.setState({ fullname_to_render: v2.fullname_to_render } as any);
-        (global_variable as any).__pending_source_code = v2.source_code;
-        if (v2.breakpoints) store.set("breakpoints", v2.breakpoints);
-        if (v2.program_input) store.set("program_input", v2.program_input);
+        this._pendingAutosaveBundle = v2;
+        this.setState({
+          showAutosavePrompt: true,
+          autosaveSavedAt: typeof raw.savedAt === "number" ? raw.savedAt : null,
+        } as any);
         window.addEventListener("beforeunload", this.saveAutosave);
         return;
       }
@@ -260,8 +274,33 @@ class SourceCode extends React.Component<{}, State> {
         source_code,
         breakpoints: store.get("breakpoints") || [],
         program_input: store.get("program_input") || "",
+        // 下次沒有 ?lesson= 開啟時，AutosavePromptDialog 要秀給使用者看，
+        // 讓「要不要繼續用這份草稿」是看得到時間點的選擇，不是憑空猜。
+        savedAt: Date.now(),
       }));
     } catch (_) {}
+  };
+
+  /** AutosavePromptDialog「繼續編輯這份草稿」：真的把暫存的自動存檔套進編輯器
+   *  （以前 componentDidMount 找到自動存檔時直接做的事，現在要使用者自己選）。 */
+  _continueAutosaveDraft = () => {
+    const v2 = this._pendingAutosaveBundle;
+    this._pendingAutosaveBundle = null;
+    this.setState({ showAutosavePrompt: false } as any);
+    if (!v2) return;
+    if (v2.fullname_to_render) this.setState({ fullname_to_render: v2.fullname_to_render } as any);
+    (global_variable as any).__pending_source_code = v2.source_code;
+    if (v2.breakpoints) store.set("breakpoints", v2.breakpoints);
+    if (v2.program_input) store.set("program_input", v2.program_input);
+    this.forceUpdate();
+  };
+
+  /** AutosavePromptDialog「捨棄，用空白範本」：丟掉暫存的自動存檔，編輯器
+   *  維持掛載時的預設空白內容（Monaco 還沒讀過 __pending_source_code，
+   *  所以不用另外清什麼）。使用者可以自己按「從教案庫開啟」選一篇。 */
+  _discardAutosaveDraft = () => {
+    this._pendingAutosaveBundle = null;
+    this.setState({ showAutosavePrompt: false } as any);
   };
 
   _debouncedSaveAutosave = () => {
@@ -1975,6 +2014,14 @@ class SourceCode extends React.Component<{}, State> {
                 this.setState({ showLessonGen: false } as any);
               }}
               onClose={() => this.setState({ showLessonGen: false } as any)}
+            />
+          )}
+          {(this.state as any).showAutosavePrompt && (
+            <AutosavePromptDialog
+              savedAt={(this.state as any).autosaveSavedAt}
+              filename={this._pendingAutosaveBundle?.fullname_to_render || null}
+              onContinue={this._continueAutosaveDraft}
+              onDiscard={this._discardAutosaveDraft}
             />
           )}
           {(this.state as any).showLessonSave && (
