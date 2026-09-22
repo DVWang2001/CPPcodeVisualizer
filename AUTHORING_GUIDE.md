@@ -576,7 +576,25 @@ font:1.5
 font:0.8
 ```
 
-### 4.9 組合範例
+### 4.9 兩個容器並排顯示 `pair:容器A,容器B`
+
+讓指定的兩個容器在 Container 面板裡**並排**（左右各佔一半），而不是照預設上下堆疊。適合需要對照著看的兩個結構——例如走方格教案的 `dp` 表跟原始地圖 `g`，同一格是不是牆、算出來的值對不對，並排看一眼就能比：
+
+```
+pair:dp,g
+```
+
+```cpp
+if (g[i - 1][j - 1] == '#') {  //@ @guide {dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格 @layout pair:dp,g
+```
+
+- 只接受**剛好兩個**名字，用逗號分隔；不是這個形狀就整條 `pair:` 沒有作用。
+- 兩個容器都要**目前確實有資料**（該行或更早之前的 `@guide` 有引用過）才會真的並排；缺一個時照舊上下堆疊顯示那個有資料的，不會漏畫。
+- 跟 `sidebar:N` 一樣是**設定值**：一旦生效就持續到下一次不同的 `pair:` 出現，不需要每一行都重複寫。
+- 沒有 `unpair` 語法；停止並排的做法是換一組 `pair:`（或乾脆不用這個功能）。
+- 跟 `font:` 一樣，只能寫在 `.cpp` 的 `//@` 註解裡，行內註解編輯面板（✎）目前沒有對應的輸入框。
+
+### 4.10 組合範例
 
 ```
 sidebar:50 open:container close:locals
@@ -584,6 +602,7 @@ sidebar:40 open:callgraph,container close:visualizer
 sidebar:0 close:container,callgraph
 sidebar:55 open:container maze:maze
 sidebar:60 open:container bst:s font:1.2
+sidebar:55 open:container pair:dp,g
 ```
 
 ---
@@ -745,6 +764,7 @@ wrapper 呼叫 `setpriv --reuid=65534 --regid=65534 --clear-groups` 將使用者
 - **不重要的行**（僅宣告、空行）：不填或 `sidebar:30 close:container`
 - **程式結束**：`sidebar:60 open:watch_table`
 - **set/map 紅黑樹教學**：`sidebar:60 open:container bst:容器名`（自動切換紅黑樹視圖）
+- **兩個容器要對照著看**（例如原始資料 vs. 推導出的表）：`sidebar:60 open:container pair:容器A,容器B`（見 4.9 節）
 
 ### 8.4 紅黑樹（RB-tree）教案設計提示
 

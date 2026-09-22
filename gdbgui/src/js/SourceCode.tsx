@@ -951,6 +951,14 @@ class SourceCode extends React.Component<{}, State> {
             setBstMode(containerName.trim(), true);
           });
         }
+      } else if (key === "pair") {
+        // pair:nameA,nameB → 讓這兩個容器並排顯示，方便比較兩個資料結構
+        // （例如走方格教案的 dp 表跟原始地圖）
+        const setPair = (window as any).gdbgui_set_pair_mode;
+        if (setPair) {
+          const names = val.split(",").map((s: string) => s.trim()).filter(Boolean);
+          if (names.length === 2) setPair(names[0], names[1]);
+        }
       } else if (key === "font") {
         // font:1.5 → 設定 Container Visualizer 字體大小（em）
         const size = parseFloat(val);

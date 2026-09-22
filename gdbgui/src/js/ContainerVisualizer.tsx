@@ -6,6 +6,7 @@ import { registerPlugin, getPlugin, allPlugins } from "./ContainerPlugin";
 import { bstPlugin } from "./BSTPlugin";
 import { linearPlugin, uniformCellWidth } from "./LinearPlugin";
 import { mazePlugin } from "./MazePlugin";
+import { splitForPairing } from "./containerPairing";
 
 // Register all plugins once at module load.
 // To add a new container type: create a plugin file and call registerPlugin() here.
@@ -33,6 +34,8 @@ type State = {
     mazeColorRules: Map<string, ColorRule[]>;
     mazeRuleInput: Map<string, { value: string; color: string }>;
     bstMode: Set<string>;
+    /** @layout 的 pair:A,B 設定的一組並排容器名；null = 沒有設定。 */
+    pairNames: [string, string] | null;
 };
 
 class ContainerVisualizer extends React.Component<{}, State> {
@@ -45,6 +48,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             mazeColorRules: new Map(),
             mazeRuleInput: new Map(),
             bstMode: new Set<string>(),
+            pairNames: null,
         };
         // @ts-expect-error ts-migrate(2339)
         store.connectComponentState(this, ["inferior_program", "rbtree_updated", "container_font_size"]);
@@ -68,6 +72,12 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 }
                 return { bstMode: next };
             });
+        };
+
+        // pair:A,B → 這兩個容器並排顯示（見 §4.10）。只記名字，真正要不要
+        // 排版由 render() 的 splitForPairing 判斷（兩者都要有資料才算數）。
+        (window as any).gdbgui_set_pair_mode = (nameA: string, nameB: string) => {
+            this.setState({ pairNames: [nameA, nameB] });
         };
 
         (window as any).gdbgui_set_maze_mode = (containerName: string, enabled: boolean, defaultColorRules?: ColorRule[]) => {
@@ -479,10 +489,21 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
         const latestHighlights = (global_variable as any).__latest_highlights as Map<string, HighlightEntry[]> || new Map<string, HighlightEntry[]>();
 
+        const { paired, rest } = splitForPairing(Array.from(latestContainers.keys()), this.state.pairNames);
+
         return (
             <div style={{ padding: "10px", backgroundColor: "var(--paper)" }}>
-                {Array.from(latestContainers.entries()).map(([name, data]) =>
-                    this.renderContainerShape(name, data, latestHighlights.get(name))
+                {paired && (
+                    <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                        {paired.map(name => (
+                            <div key={name} style={{ flex: "1 1 0", minWidth: 0 }}>
+                                {this.renderContainerShape(name, latestContainers.get(name), latestHighlights.get(name))}
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {rest.map(name =>
+                    this.renderContainerShape(name, latestContainers.get(name), latestHighlights.get(name))
                 )}
             </div>
         );
