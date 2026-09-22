@@ -45,3 +45,12 @@ export function effectivePopGen(
   const scoped = cellColor ? popGen.get(popGenKey(containerName, cellColor)) || 0 : 0;
   return Math.max(whole, scoped);
 }
+
+// ── 減少動態效果 ────────────────────────────────────────────────────────────
+// swap（LinearPlugin）、pull（ContainerVisualizer）的位移都是用 inline style
+// 直接算出來的，不是 CSS class，沒辦法像 cell-pop 那樣交給 @media 處理，兩邊
+// 都要在觸發動畫前查一次，所以共用同一份。
+export function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}

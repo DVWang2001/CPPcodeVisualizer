@@ -4,7 +4,7 @@ import { store } from "statorgfc";
 import { ContainerPlugin, ContainerData } from "./ContainerPlugin";
 import { PluginOp } from "./AnimScheduler";
 import { delay } from "./anim";
-import { popCellKey, effectivePopGen } from "./cellPopKey";
+import { popCellKey, effectivePopGen, prefersReducedMotion } from "./cellPopKey";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,13 +31,6 @@ let _cellId = 0;
 
 function afterFrame(): Promise<void> {
     return new Promise(resolve => requestAnimationFrame(() => resolve()));
-}
-
-// swap 的平移是用 inline style 直接算出來的，不是 CSS class，所以「減少動態效果」
-// 這條系統設定沒辦法像 cell-pop 那樣交給 @media 處理，這裡直接查一次。
-function prefersReducedMotion(): boolean {
-    return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 // ponytail: O(n²) diff — upgrade to LCS if containers exceed ~1000 elements

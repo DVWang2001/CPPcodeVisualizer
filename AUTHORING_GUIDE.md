@@ -633,7 +633,23 @@ int left = dp[i][j - 1];  //@ @guide {dp[i][j - 1]:lime} 左邊 @tts [next] 再�
 - 跟 `font:` 一樣只能寫在 `.cpp` 的 `//@` 註解裡，✎ 面板目前沒有對應的輸入框。
 - 尊重瀏覽器的「減少動態效果」設定（`prefers-reduced-motion: reduce`）：使用者開了這個系統設定，動畫會直接關掉，格子仍會正常變色，只是不跳。
 
-### 4.11 組合範例
+### 4.11 兩格飛進目標格 `pull:容器名:來源色1,來源色2->目標色`
+
+DP 填表常見的敘事是「這一格的值，是從上面跟左邊兩個格子算出來的」。`pull:` 讓這兩個「相對位置」的來源格**飛向目標格、淡出**，直觀表達「這兩個數字被吸收、變成了結果」，跟 `pop:` 的「原地放大縮小」是不同的強調方式。
+
+```cpp
+int up = dp[i - 1][j];    //@ @guide {dp[i - 1][j]:orange} 上面 @tts [next] 先看從上面來的 @layout pop:dp:orange
+int left = dp[i][j - 1];  //@ @guide {dp[i][j - 1]:lime} 左邊 @tts [next] 再看從左邊來的 @layout pop:dp:lime
+dp[i][j] = up + left;     //@ @guide {dp[i][j]:lightblue} 兩個數字飛進來，變成這一格的值 @layout pull:dp:orange,lime->lightblue
+```
+
+- 三個顏色（來源色1、來源色2、目標色）都要是**這一行 `@guide` 當下真的有高亮**的顏色，`pull:` 只是在既有高亮上加一段飛行動畫，不會自己生出高亮。上例中 `orange`/`lime` 是前兩行留下的高亮，`lightblue` 是這一行 `@guide` 自己標的目標格。
+- 跟 `pop:` 一樣是**逐行的動作**，只有這一行 `@layout` 寫了才會播一次，不會延續到下一行。
+- 只對 2D 格狀視圖有意義（1D 容器「兩格變一格」語意含糊，暫不支援）。
+- 目標格會借用 `pop:` 的放大動畫亮一下，表示「結果落在這裡」，不用另外再寫一個 `pop:`。
+- 尊重「減少動態效果」設定：開了 `prefers-reduced-motion: reduce` 就不飛，格子照樣變色。
+
+### 4.12 組合範例
 
 ```
 sidebar:50 open:container close:locals
@@ -643,6 +659,7 @@ sidebar:55 open:container maze:maze
 sidebar:60 open:container bst:s font:1.2
 sidebar:55 open:container pair:dp,g
 sidebar:55 open:container pop:dp,g
+sidebar:55 open:container pull:dp:orange,lime->lightblue
 ```
 
 ---
@@ -806,6 +823,7 @@ wrapper 呼叫 `setpriv --reuid=65534 --regid=65534 --clear-groups` 將使用者
 - **set/map 紅黑樹教學**：`sidebar:60 open:container bst:容器名`（自動切換紅黑樹視圖）
 - **兩個容器要對照著看**（例如原始資料 vs. 推導出的表）：`sidebar:60 open:container pair:容器A,容器B`（見 4.9 節）
 - **關鍵一步想特別強調**（例如答案終於寫進表格的那一行）：加 `pop:容器名`，格子會放大再縮小一下（見 4.10 節）。不要每一行都加，物極必反——留給真正值得停下來看的那一兩步就好
+- **這一格的值是從另外兩格算出來的**（DP 填表最常見的敘事）：寫值的那一行加 `pull:容器名:來源色1,來源色2->目標色`，兩個來源格會飛進目標格（見 4.11 節）。三個顏色都要在同一行的 `@guide` 裡真的亮著
 
 ### 8.4 紅黑樹（RB-tree）教案設計提示
 

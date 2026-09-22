@@ -7,7 +7,9 @@ import { bstPlugin } from "./BSTPlugin";
 import { linearPlugin, uniformCellWidth } from "./LinearPlugin";
 import { mazePlugin } from "./MazePlugin";
 import { splitForPairing } from "./containerPairing";
-import { popCellKey, popGenKey, effectivePopGen } from "./cellPopKey";
+import { popCellKey, popGenKey, effectivePopGen, prefersReducedMotion } from "./cellPopKey";
+import { computePullOffsets } from "./pullAnim";
+import { delay } from "./anim";
 
 // Register all plugins once at module load.
 // To add a new container type: create a plugin file and call registerPlugin() here.
@@ -40,6 +42,10 @@ type State = {
     /** @layout 的 pop:A,B 每次真的停在有這個 token 的行，對應容器的世代號就 +1
      *  （不是「開關」——見 cellPopKey.ts 為什麼不能用顏色變了沒判斷）。 */
     popGen: Map<string, number>;
+    /** @layout 的 pull:容器名:來源色1,來源色2->目標色 觸發時，正在飛向目標格的
+     *  來源格（key 是 "row,col"）該往哪個方向飄。動畫播完就從這個 Map 移除，
+     *  見 pullAnim.ts。 */
+    pullState: Map<string, Map<string, { dRow: number; dCol: number }>>;
 };
 
 class ContainerVisualizer extends React.Component<{}, State> {
@@ -54,6 +60,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             bstMode: new Set<string>(),
             pairNames: null,
             popGen: new Map<string, number>(),
+            pullState: new Map(),
         };
         // @ts-expect-error ts-migrate(2339)
         store.connectComponentState(this, ["inferior_program", "rbtree_updated", "container_font_size"]);
@@ -101,6 +108,40 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 const next = new Map<string, number>(prev.popGen);
                 next.set(key, (next.get(key) || 0) + 1);
                 return { popGen: next };
+            });
+        };
+
+        // pull:容器名:來源色1,來源色2->目標色（見 §4.1x）→ 兩個來源格飛向目標格、
+        // 變成結果。跟 swap 不同：來源格邏輯上的 (row,col) 沒有搬動，只是多套一層
+        // 位移+淡出，一般的 CSS transition 就能播，不需要 swap 那套 FLIP 雙 rAF
+        // （見 pullAnim.ts 檔頭）。位置/位移換算交給純函式 computePullOffsets，
+        // 這裡只負責：讀目前的資料、寫 state 觸發動畫、時間到了收尾。
+        (window as any).gdbgui_trigger_pull = async (containerName: string, colorA: string, colorB: string, targetColor: string) => {
+            const data = (global_variable as any).__latest_containers?.get(containerName);
+            const highlights = (global_variable as any).__latest_highlights?.get(containerName) as HighlightEntry[] | undefined;
+            if (!data || !Array.isArray(data.values) || data.values.length === 0 || !Array.isArray(data.values[0])) return;
+            const cols = data.values[0].length;
+            const offsets = computePullOffsets(highlights, cols, colorA, colorB, targetColor);
+            if (!offsets) return;
+
+            // 目標格借用既有的 pop 機制亮一下，表示「結果落在這裡」，不用再造一套。
+            (window as any).gdbgui_bump_pop_gen?.(containerName, targetColor);
+
+            if (!prefersReducedMotion()) {
+                this.setState(prev => {
+                    const next = new Map(prev.pullState);
+                    const m = new Map<string, { dRow: number; dCol: number }>();
+                    m.set(offsets.aKey, offsets.deltaA);
+                    m.set(offsets.bKey, offsets.deltaB);
+                    next.set(containerName, m);
+                    return { pullState: next };
+                });
+            }
+            await delay(450);
+            this.setState(prev => {
+                const next = new Map(prev.pullState);
+                next.delete(containerName);
+                return { pullState: next };
             });
         };
 
@@ -317,6 +358,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
         const isMazeMode = this.state.mazeMode.has(name);
         const isBSTMode  = this.state.bstMode.has(name);
         const popGen     = this.state.popGen;
+        const pullMap    = this.state.pullState.get(name);
         const is2D = len > 0 && Array.isArray(values[0]);
 
         const fs     = (store.get("container_font_size") as number) || 1.1;
@@ -387,8 +429,16 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                         {(row as any[]).map((colVal: string, colIdx: number) => {
                                             const hl2D = hlPosMap2D.get(`${rowIdx},${colIdx}`) || null;
                                             const pop = popCellKey(`col-${rowIdx}-${colIdx}`, effectivePopGen(popGen, name, hl2D?.bg), hl2D);
+                                            const pull = pullMap?.get(`${rowIdx},${colIdx}`);
+                                            const pullStyle: React.CSSProperties = pull ? {
+                                                transform: `translate(calc((100% + 4px) * ${pull.dCol}), calc((100% + 4px) * ${pull.dRow}))`,
+                                                opacity: 0,
+                                                transition: "transform 0.45s ease, opacity 0.45s ease",
+                                                position: "relative",
+                                                zIndex: 2,
+                                            } : {};
                                             return (
-                                                <div key={pop.key} className={pop.className} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW }}>
+                                                <div key={pop.key} className={pop.className} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW, ...pullStyle }}>
                                                     {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
                                                 </div>
                                             );

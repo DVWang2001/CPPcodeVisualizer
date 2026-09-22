@@ -20,6 +20,7 @@ import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
 import { lineIdentifiers } from "./lineIdentifiers";
 import { parseForHeader, segRange } from "./forHeader";
+import { parsePullToken } from "./pullAnim";
 import LessonGenPanel from "./LessonGenPanel";
 import LessonCommitDialog from "./LessonCommitDialog";
 import LessonHistoryDialog from "./LessonHistoryDialog";
@@ -973,6 +974,15 @@ class SourceCode extends React.Component<{}, State> {
             const color = c < 0 ? undefined : entry.slice(c + 1).trim() || undefined;
             if (containerName) bumpPop(containerName, color);
           });
+        }
+      } else if (key === "pull") {
+        // pull:容器名:來源色1,來源色2->目標色 → 這兩個顏色標的格子飛向目標色的
+        // 格子、變成結果（例如 dp 表填值時，上面/左邊兩個來源格飛進當前格）。
+        // 只對 2D 容器有意義，且跟 pop: 一樣只在真的停到新的一行時觸發一次。
+        const triggerPull = (window as any).gdbgui_trigger_pull;
+        const parsed = parsePullToken(val);
+        if (triggerPull && parsed) {
+          triggerPull(parsed.containerName, parsed.colorA, parsed.colorB, parsed.targetColor);
         }
       } else if (key === "font") {
         // font:1.5 → 設定 Container Visualizer 字體大小（em）
