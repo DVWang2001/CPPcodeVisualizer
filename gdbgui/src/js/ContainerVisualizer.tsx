@@ -48,8 +48,9 @@ type State = {
     pullState: Map<string, Map<string, { dRow: number; dCol: number }>>;
     /** 同一次 pull 觸發時，目標格在真正的值被 GDB 寫入前，先浮一個「暫時的
      *  計算結果」（兩個來源值相加，見 pullAnim.ts 的 formatPullPreview）。
-     *  key 是容器名，value 是目標格位置＋要顯示的文字。 */
-    pullPreview: Map<string, { key: string; text: string }>;
+     *  key 是容器名，value 是目標格位置＋要顯示的文字＋觸發當下那格的舊值
+     *  （beforeValue，見 _pollContainers 怎麼用它判斷該不該收掉）。 */
+    pullPreview: Map<string, { key: string; text: string; beforeValue: string }>;
 };
 
 class ContainerVisualizer extends React.Component<{}, State> {
@@ -134,11 +135,14 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
             // 停在賦值那一行時，GDB 通常還沒真的把值寫進去（斷點停在執行前），
             // 目標格底下顯示的還是舊值。先把兩個來源值加起來，浮在目標格上面
-            // 當「暫時的計算結果」，等下一次真的停到新的一行，畫面自然會換成
-            // GDB 給的真實值——這個暫時值只是先讓大家看到答案怎麼來的。
+            // 當「暫時的計算結果」——這個暫時值不是限時的，是用「目標格的真實
+            // 值有沒有變」判斷該不該收掉（見 _pollContainers），不然計時一到
+            // 就收掉、底下露出的還是舊值，看起來像「合併完又變回原樣」的問題。
             const [rA, cA] = offsets.aKey.split(",").map(Number);
             const [rB, cB] = offsets.bKey.split(",").map(Number);
+            const [rT, cT] = offsets.targetKey.split(",").map(Number);
             const preview = formatPullPreview(String(data.values[rA][cA]), String(data.values[rB][cB]));
+            const beforeValue = String(data.values[rT][cT]);
 
             if (!prefersReducedMotion()) {
                 this.setState(prev => {
@@ -150,20 +154,20 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
                     const nextPreview = new Map(prev.pullPreview);
                     if (preview !== null) {
-                        nextPreview.set(containerName, { key: offsets.targetKey, text: preview });
+                        nextPreview.set(containerName, { key: offsets.targetKey, text: preview, beforeValue });
                     } else {
                         nextPreview.delete(containerName);
                     }
                     return { pullState: nextPull, pullPreview: nextPreview };
                 });
             }
+            // 只有飛行動畫（來源格數字位移+淡出）限時，450ms 後讓來源格的數字
+            // 恢復原本的樣子——目標格的暫時結果不在這裡收，交給輪詢收尾。
             await delay(450);
             this.setState(prev => {
                 const nextPull = new Map(prev.pullState);
                 nextPull.delete(containerName);
-                const nextPreview = new Map(prev.pullPreview);
-                nextPreview.delete(containerName);
-                return { pullState: nextPull, pullPreview: nextPreview };
+                return { pullState: nextPull };
             });
         };
 
@@ -195,6 +199,25 @@ class ContainerVisualizer extends React.Component<{}, State> {
         const latestContainers = (global_variable as any).__latest_containers as Map<string, any>;
         if (!latestContainers) { this.forceUpdate(); return; }
 
+        // pull: 的暫時計算結果不是限時收掉（見 gdbgui_trigger_pull 為什麼），
+        // 而是每次輪詢都檢查一次：目標格現在的真實值還跟觸發當下（beforeValue）
+        // 一樣，代表 GDB 還沒真的執行那行賦值，暫時結果繼續蓋著；真實值變了
+        // （不管有沒有剛好等於暫時結果），就收掉暫時結果、讓真實值露出來。
+        if (this.state.pullPreview.size > 0) {
+            let changed = false;
+            const nextPreview = new Map(this.state.pullPreview);
+            for (const [containerName, preview] of this.state.pullPreview) {
+                const data = latestContainers.get(containerName);
+                const [r, c] = preview.key.split(",").map(Number);
+                const liveValue = data?.values?.[r]?.[c];
+                if (liveValue === undefined || String(liveValue) !== preview.beforeValue) {
+                    nextPreview.delete(containerName);
+                    changed = true;
+                }
+            }
+            if (changed) this.setState({ pullPreview: nextPreview });
+        }
+
         // 只有真正重新執行才清 plugin 狀態。先前這裡看的是
         // inferior_program === "running"，但單步時程式也會短暫進入 running，
         // 而這是個輪詢——只要有一次剛好落在那個窗，就會把累積好的 BST 插入
@@ -206,7 +229,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             allPlugins().forEach(p => p.resetAll());
             mazePlugin.resetAll();
             animScheduler.resetAll();
-            this.forceUpdate();
+            this.setState({ pullState: new Map(), pullPreview: new Map() });
             return;
         }
 

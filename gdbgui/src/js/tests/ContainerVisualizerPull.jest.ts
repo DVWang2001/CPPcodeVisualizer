@@ -1,6 +1,9 @@
-// 真的掛載 ContainerVisualizer，驗證 pull: 的兩個新行為：
+// 真的掛載 ContainerVisualizer，驗證 pull: 的幾個行為：
 // 1. 只有數字（span）飛出去、淡出，格子本身的外框/底色不跟著動。
-// 2. 目標格在動畫期間浮出「暫時的計算結果」（兩個來源值相加），動畫結束後收掉。
+// 2. 目標格浮出「暫時的計算結果」（兩個來源值相加），且**不是限時收掉**——
+//    450ms 的飛行動畫結束後仍要繼續蓋著，等輪詢偵測到目標格的真實值真的變了
+//    才收掉（不然會出現「合併完又變回舊值」的閃爍，這是這個測試檔案要顧的
+//    使用者回報情境）。
 // 純函式邏輯（parsePullToken/computePullOffsets/formatPullPreview）已經在
 // pullAnim.jest.ts 驗過；這裡補的是「元件真的照這個邏輯串起來」這一層。
 import React from "react";
@@ -64,7 +67,7 @@ describe("pull:dp:orange,lime->lightblue", () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it("觸發時只有數字飛出去，目標格浮出兩數相加的暫時結果；動畫結束後都收掉", async () => {
+  it("觸發時只有數字飛出去，目標格浮出兩數相加的暫時結果；450ms 飛行動畫結束後暫時結果還在（真實值沒變）", async () => {
     seedDp();
     let renderer: any;
     act(() => {
@@ -89,11 +92,45 @@ describe("pull:dp:orange,lime->lightblue", () => {
     expect(badge).not.toBeNull();
     expect(badge.children).toEqual(["8"]);
 
+    // 過了 450ms：飛行動畫（來源格數字位移）結束，但目標格的真實值
+    // （dp[1][1]）在 __latest_containers 裡還是原本的 0，暫時結果不能收掉。
     await act(async () => {
-      await flushAll();
+      await flushAll(500);
     });
 
     expect(findFlyingNumbers(renderer.toJSON())).toHaveLength(0);
+    const badgeAfter = findPreviewBadge(renderer.toJSON());
+    expect(badgeAfter).not.toBeNull();
+    expect(badgeAfter.children).toEqual(["8"]);
+
+    act(() => {
+      renderer.unmount();
+    });
+  });
+
+  it("目標格的真實值後來真的變了（下一次輪詢）：暫時結果才收掉", async () => {
+    seedDp();
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(ContainerVisualizer as any));
+    });
+
+    act(() => {
+      (window as any).gdbgui_trigger_pull("dp", "orange", "lime", "lightblue");
+    });
+    expect(findPreviewBadge(renderer.toJSON())).not.toBeNull();
+
+    // 模擬使用者步進到下一行，GDB 真的把 dp[1][1] 寫成 8 了。
+    (global_variable as any).__latest_containers = new Map([
+      ["dp", { name: "dp", type: "vector", isContainer: true, values: [[0, 3, 0], [5, 8, 0], [0, 0, 0]] }],
+    ]);
+
+    // 推進到下一次輪詢節點（1000ms）：_pollContainers 應該發現目標格的值
+    // 從 0 變成 8，跟觸發當下記錄的 beforeValue 不一樣，收掉暫時結果。
+    await act(async () => {
+      await flushAll(1100);
+    });
+
     expect(findPreviewBadge(renderer.toJSON())).toBeNull();
 
     act(() => {
