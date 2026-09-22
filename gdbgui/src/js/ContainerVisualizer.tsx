@@ -37,8 +37,9 @@ type State = {
     bstMode: Set<string>;
     /** @layout 的 pair:A,B 設定的一組並排容器名；null = 沒有設定。 */
     pairNames: [string, string] | null;
-    /** @layout 的 pop:A,B 開啟「高亮格放大再縮小」的容器名集合。 */
-    popMode: Set<string>;
+    /** @layout 的 pop:A,B 每次真的停在有這個 token 的行，對應容器的世代號就 +1
+     *  （不是「開關」——見 cellPopKey.ts 為什麼不能用顏色變了沒判斷）。 */
+    popGen: Map<string, number>;
 };
 
 class ContainerVisualizer extends React.Component<{}, State> {
@@ -52,7 +53,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             mazeRuleInput: new Map(),
             bstMode: new Set<string>(),
             pairNames: null,
-            popMode: new Set<string>(),
+            popGen: new Map<string, number>(),
         };
         // @ts-expect-error ts-migrate(2339)
         store.connectComponentState(this, ["inferior_program", "rbtree_updated", "container_font_size"]);
@@ -84,15 +85,19 @@ class ContainerVisualizer extends React.Component<{}, State> {
             this.setState({ pairNames: [nameA, nameB] });
         };
 
-        // pop:容器名 → 這個容器的高亮格「放大再縮小」（見 §4.10）。跟 mazeMode/
-        // bstMode 走同一種 Set 開關；LinearPlugin 不是這個元件的子節點、讀不到
-        // this.state，所以額外開一個唯讀 bridge 給它查（gdbgui_is_bst_mode 的先例）。
-        (window as any).gdbgui_is_pop_mode = (containerName: string) => this.state.popMode.has(containerName);
-        (window as any).gdbgui_set_pop_mode = (containerName: string, enabled: boolean) => {
+        // pop:容器名 → 這個容器的高亮格「放大再縮小」（見 §4.10）。世代號而不是
+        // 開關：applyLayout 只在 GDB 真的停到新的一行、且那行有 pop: token 時呼叫
+        // 這個 bump，跟「這格的高亮顏色有沒有變」無關——見 cellPopKey.ts 為什麼
+        // 顏色比對會漏掉「連續幾行都用同一個顏色標同一格，最後一行才寫入真正的
+        // 值」這種常見寫法（實測案例：走方格教案的 dp[i][j]）。
+        // LinearPlugin 不是這個元件的子節點、讀不到 this.state，所以額外開一個
+        // 唯讀 bridge 給它查（gdbgui_is_bst_mode 的先例）。
+        (window as any).gdbgui_get_pop_gen = (containerName: string) => this.state.popGen.get(containerName) || 0;
+        (window as any).gdbgui_bump_pop_gen = (containerName: string) => {
             this.setState(prev => {
-                const next = new Set<string>(prev.popMode);
-                if (enabled) next.add(containerName); else next.delete(containerName);
-                return { popMode: next };
+                const next = new Map<string, number>(prev.popGen);
+                next.set(containerName, (next.get(containerName) || 0) + 1);
+                return { popGen: next };
             });
         };
 
@@ -308,7 +313,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
         const isMazeMode = this.state.mazeMode.has(name);
         const isBSTMode  = this.state.bstMode.has(name);
-        const isPopMode  = this.state.popMode.has(name);
+        const popGen     = this.state.popGen.get(name) || 0;
         const is2D = len > 0 && Array.isArray(values[0]);
 
         const fs     = (store.get("container_font_size") as number) || 1.1;
@@ -378,7 +383,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                     <div key={`row-${rowIdx}`} style={{ display: "flex", gap: "4px" }}>
                                         {(row as any[]).map((colVal: string, colIdx: number) => {
                                             const hl2D = hlPosMap2D.get(`${rowIdx},${colIdx}`) || null;
-                                            const pop = popCellKey(`col-${rowIdx}-${colIdx}`, isPopMode, hl2D);
+                                            const pop = popCellKey(`col-${rowIdx}-${colIdx}`, popGen, hl2D);
                                             return (
                                                 <div key={pop.key} className={pop.className} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW }}>
                                                     {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}

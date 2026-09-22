@@ -331,9 +331,9 @@ class LinearPluginImpl implements ContainerPlugin {
         const highlightSet  = this.highlighted.get(containerName) ?? new Set<string>();
 
         const externalHL = ((global_variable as any).__latest_highlights as Map<string, HighlightEntry[]>)?.get(containerName);
-        // ContainerVisualizer 元件才有 popMode 這個 React state；LinearPlugin 是
+        // ContainerVisualizer 元件才有 popGen 這個 React state；LinearPlugin 是
         // 獨立的 singleton，不在它底下，靠 window bridge 讀（gdbgui_is_bst_mode 的先例）。
-        const isPopMode = typeof window !== "undefined" && !!(window as any).gdbgui_is_pop_mode?.(containerName);
+        const popGen = typeof window !== "undefined" ? ((window as any).gdbgui_get_pop_gen?.(containerName) || 0) : 0;
 
         const fs     = (store.get("container_font_size") as number) || 1.1;
         const fsPx   = `${fs}em`;
@@ -377,7 +377,7 @@ class LinearPluginImpl implements ContainerPlugin {
             if (type === 'list') style.borderRadius = '999px';
 
             const displayValue = display(cell.value);
-            const pop = popCellKey(cell.id, isPopMode, extHL);
+            const pop = popCellKey(cell.id, popGen, extHL);
 
             return React.createElement('div', {
                 key: pop.key,

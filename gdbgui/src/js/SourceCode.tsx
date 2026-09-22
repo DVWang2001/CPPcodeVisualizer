@@ -960,11 +960,13 @@ class SourceCode extends React.Component<{}, State> {
           if (names.length === 2) setPair(names[0], names[1]);
         }
       } else if (key === "pop") {
-        // pop:容器名1,容器名2 → 這些容器的高亮格改成「亮起／換色時放大再縮小」
-        const setPop = (window as any).gdbgui_set_pop_mode;
-        if (setPop) {
+        // pop:容器名1,容器名2 → 這些容器目前有高亮的格子放大再縮小一次。
+        // 這裡只在真的停到新的一行時執行（見本函式的呼叫端），不管高亮的顏色
+        // 有沒有變──要在好幾行都有效果，就每一行都要寫 pop:容器名。
+        const bumpPop = (window as any).gdbgui_bump_pop_gen;
+        if (bumpPop) {
           val.split(",").forEach((containerName: string) => {
-            setPop(containerName.trim(), true);
+            bumpPop(containerName.trim());
           });
         }
       } else if (key === "font") {
