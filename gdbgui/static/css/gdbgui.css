@@ -306,6 +306,23 @@ td.line_num {
     animation: none;
   }
 }
+/* 一維容器 swap（交換）自動偵測到的動畫——跟 valueChange 共用的 cell-pop
+   （放大再縮小）刻意做出區別，多一點左右搖擺，一眼就看得出「這兩格換了位置」
+   跟「這一格的值被改了」不是同一件事。見 LinearPlugin.tsx 的 highlightKind。 */
+@keyframes cell-swap {
+  0% { transform: scale(1) rotate(0deg); }
+  30% { transform: scale(1.12) rotate(-8deg); }
+  70% { transform: scale(1.12) rotate(8deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+.cell-swap {
+  animation: cell-swap 0.4s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cell-swap {
+    animation: none;
+  }
+}
 .dropdown-btn {
   vertical-align: top;
   height: 30px;

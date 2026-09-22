@@ -85,6 +85,10 @@ class LinearPluginImpl implements ContainerPlugin {
     private entering    = new Map<string, Set<string>>();
     private fadingOut   = new Map<string, Set<string>>();
     private highlighted = new Map<string, Set<string>>();
+    /** valueChange 跟 swap 都借用 highlighted 的琥珀色高亮，但使用者要它們的動作看起來不一樣
+     *  （覆蓋/變更為某數＝原本的放大再縮小；交換＝額外帶一點搖擺，一眼就能跟單純變更分開）。
+     *  cellId → 這次是哪種變化，只有 valueChange/swap 會寫，erase 的高亮跟這個無關。 */
+    private highlightKind = new Map<string, Map<string, "value" | "swap">>();
 
     // ── diffOps ───────────────────────────────────────────────────────────────
 
@@ -271,9 +275,13 @@ class LinearPluginImpl implements ContainerPlugin {
         const hlSet = this.highlighted.get(containerName) ?? new Set<string>();
         hlSet.add(payload.cellId);
         this.highlighted.set(containerName, hlSet);
+        const kindMap = this.highlightKind.get(containerName) ?? new Map();
+        kindMap.set(payload.cellId, "value");
+        this.highlightKind.set(containerName, kindMap);
         requestRender();
         await delay(400);
         hlSet.delete(payload.cellId);
+        kindMap.delete(payload.cellId);
         requestRender();
     }
 
@@ -286,10 +294,16 @@ class LinearPluginImpl implements ContainerPlugin {
         hlSet.add(payload.cellIdA);
         hlSet.add(payload.cellIdB);
         this.highlighted.set(containerName, hlSet);
+        const kindMap = this.highlightKind.get(containerName) ?? new Map();
+        kindMap.set(payload.cellIdA, "swap");
+        kindMap.set(payload.cellIdB, "swap");
+        this.highlightKind.set(containerName, kindMap);
         requestRender();
         await delay(400);
         hlSet.delete(payload.cellIdA);
         hlSet.delete(payload.cellIdB);
+        kindMap.delete(payload.cellIdA);
+        kindMap.delete(payload.cellIdB);
         requestRender();
     }
 
@@ -329,6 +343,7 @@ class LinearPluginImpl implements ContainerPlugin {
         const enteringSet   = this.entering.get(containerName)    ?? new Set<string>();
         const fadingOutSet  = this.fadingOut.get(containerName)   ?? new Set<string>();
         const highlightSet  = this.highlighted.get(containerName) ?? new Set<string>();
+        const kindMap       = this.highlightKind.get(containerName);
 
         const externalHL = ((global_variable as any).__latest_highlights as Map<string, HighlightEntry[]>)?.get(containerName);
         // ContainerVisualizer 元件才有 popGen 這個 React state；LinearPlugin 是
@@ -379,10 +394,16 @@ class LinearPluginImpl implements ContainerPlugin {
 
             const displayValue = display(cell.value);
             const pop = popCellKey(cell.id, effectivePopGen(popGenMap, containerName, extHL?.bg), extHL);
+            // valueChange（覆蓋/變更為某數）跟 swap（交換）自動偵測，動作要看得出差別：
+            // value 沿用 cell-pop（放大再縮小），swap 另一個 keyframe（多一點搖擺）。
+            // 這兩個 class 開/關是靠 highlightKind 直接 toggle，不需要跟 pop.key 一樣
+            // 換 key 強迫重掛——瀏覽器對「class 被拿掉又加回來」本來就會重播動畫。
+            const kind = kindMap?.get(cell.id);
+            const animClassName = kind === 'value' ? 'cell-pop' : kind === 'swap' ? 'cell-swap' : pop.className;
 
             return React.createElement('div', {
                 key: pop.key,
-                className: pop.className,
+                className: animClassName,
                 'data-testid': 'container-cell',
                 'data-value': String(cell.value),
                 style,
@@ -505,6 +526,7 @@ class LinearPluginImpl implements ContainerPlugin {
         this.entering.clear();
         this.fadingOut.clear();
         this.highlighted.clear();
+        this.highlightKind.clear();
     }
 
     trackedNames(): string[] {
@@ -518,6 +540,7 @@ class LinearPluginImpl implements ContainerPlugin {
         this.entering.delete(containerName);
         this.fadingOut.delete(containerName);
         this.highlighted.delete(containerName);
+        this.highlightKind.delete(containerName);
     }
 }
 

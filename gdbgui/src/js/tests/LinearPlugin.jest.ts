@@ -1,4 +1,14 @@
 import { linearPlugin, uniformCellWidth } from '../LinearPlugin';
+import { global_variable } from '../global_variable';
+import { store } from 'statorgfc';
+import initialStoreData from '../InitialStoreData';
+
+beforeAll(() => {
+    // render() 讀 store.get("container_font_size")，跟其餘只呼叫 diffOps/animateOp 的
+    // 測試不同——這裡才第一次真的需要 store 已經 initialize 過。
+    // @ts-expect-error statorgfc 的舊型別宣告漏了 initialize。
+    store.initialize({ ...initialStoreData }, { immutable: false, debounce_ms: 0 });
+});
 
 beforeEach(() => {
     linearPlugin.resetAll();
@@ -193,6 +203,23 @@ const flushAll = async (iterations = 15) => {
     }
 };
 
+/** render() 回傳的是尚未實際掛載的 React element 樹（React.createElement 呼叫），
+ *  直接走 props.children 收集每個節點的 className，不需要真的渲染。 */
+function findClassNames(node: any): string[] {
+    const found: string[] = [];
+    const walk = (n: any) => {
+        if (!n || typeof n !== 'object') return;
+        if (n.props) {
+            if (n.props.className) found.push(n.props.className);
+            const children = n.props.children;
+            if (Array.isArray(children)) children.forEach(walk);
+            else walk(children);
+        }
+    };
+    walk(node);
+    return found;
+}
+
 describe('animateOp — insert', () => {
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());
@@ -251,6 +278,22 @@ describe('animateOp — valueChange', () => {
         await flushAll();
         await expect(p).resolves.toBeUndefined();
     });
+
+    it('播動畫期間套用 cell-pop（覆蓋/變更為某數，不是 swap 的 cell-swap）', async () => {
+        linearPlugin.diffOps('v', { type: 'vector', values: ['1', '2'] });
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '9'] });
+        // render() 讀 global_variable.__latest_containers，跟 diffOps 追蹤的內部狀態是分開的
+        // 兩件事——真的 GDB 流程會由 VisualizerHelper 同步寫入，這裡手動補上。
+        (global_variable as any).__latest_containers = new Map([['v', { type: 'vector', values: ['1', '9'] }]]);
+        const p = linearPlugin.animateOp('v', ops[0], jest.fn());
+        // animateOp 進第一個 await delay() 之前就已同步寫入 highlightKind，這裡的 render()
+        // 讀到的正是「動畫播放中」那一刻的樣子。
+        const classNames = findClassNames(linearPlugin.render('v'));
+        expect(classNames).toContain('cell-pop');
+        expect(classNames).not.toContain('cell-swap');
+        await flushAll();
+        await p;
+    });
 });
 
 describe('animateOp — swap', () => {
@@ -263,6 +306,18 @@ describe('animateOp — swap', () => {
         const p = linearPlugin.animateOp('v', ops[0], jest.fn());
         await flushAll();
         await expect(p).resolves.toBeUndefined();
+    });
+
+    it('播動畫期間套用 cell-swap，兩顆交換的格子都要有，且不是 cell-pop', async () => {
+        linearPlugin.diffOps('v', { type: 'vector', values: ['1', '5', '3'] });
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '3', '5'] });
+        (global_variable as any).__latest_containers = new Map([['v', { type: 'vector', values: ['1', '3', '5'] }]]);
+        const p = linearPlugin.animateOp('v', ops[0], jest.fn());
+        const classNames = findClassNames(linearPlugin.render('v'));
+        expect(classNames.filter(c => c === 'cell-swap')).toHaveLength(2);
+        expect(classNames).not.toContain('cell-pop');
+        await flushAll();
+        await p;
     });
 });
 
