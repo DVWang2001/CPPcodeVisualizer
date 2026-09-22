@@ -35,8 +35,8 @@ int main() {
                 dp[i][j] = 0;                    //@ @guide 這一格是牆，走不進來\n{dp[i][j]:pink} {g[i - 1][j - 1]:pink}\n不管上面或左邊算出多少，牆一律直接填 0——這格不會是任何路徑的最後一步 @tts [next] 這一格是牆，走不進來，所以走法直接算 0，不管上面或左邊有多少種走法都不算數 | @2 [next] 又是牆，一樣填 0
                 continue;                        //@ @guide 這一格處理完了 @tts [next] 這一格處理完了 | @2 [next] 換下一格
             }
-            int up = dp[i - 1][j];               //@ @guide 從上面來的走法有幾種？\n{dp[i - 1][j]:orange}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n上面一定是合法的格子——如果 {i} 是 1，上面就是墊片列，本來就是 0，不用特別判斷 @tts [next] 能走到這一格的路，要先看兩個方向的來源。先看上面：dp[i 減 1][j]，直接把上面那一格算好的走法數抄過來 | @2 [next] 上面是 dp[i 減 1][j]，值是 {dp[i - 1][j]}
-            int left = dp[i][j - 1];             //@ @guide 再看左邊來的走法有幾種？\n{dp[i][j - 1]:lime}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n左邊也一定是合法的格子——如果 {j} 是 1，左邊就是墊片行，本來就是 0，不用特別判斷 @tts [next] 再看左邊：dp[i][j 減 1]，直接把左邊那一格算好的走法數抄過來 | @2 [next] 左邊是 dp[i][j 減 1]，值是 {dp[i][j - 1]}
+            int up = dp[i - 1][j];               //@ @guide 從上面來的走法有幾種？\n{dp[i - 1][j]:orange}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n上面一定是合法的格子——如果 {i} 是 1，上面就是墊片列，本來就是 0，不用特別判斷 @tts [next] 能走到這一格的路，要先看兩個方向的來源。先看上面：dp[i 減 1][j]，直接把上面那一格算好的走法數抄過來 | @2 [next] 上面是 dp[i 減 1][j]，值是 {dp[i - 1][j]} @layout pop:dp:orange
+            int left = dp[i][j - 1];             //@ @guide 再看左邊來的走法有幾種？\n{dp[i][j - 1]:lime}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n左邊也一定是合法的格子——如果 {j} 是 1，左邊就是墊片行，本來就是 0，不用特別判斷 @tts [next] 再看左邊：dp[i][j 減 1]，直接把左邊那一格算好的走法數抄過來 | @2 [next] 左邊是 dp[i][j 減 1]，值是 {dp[i][j - 1]} @layout pop:dp:lime
             dp[i][j] = (up + left) % MOD;        //@ @guide 把兩個來源加起來，就是這一格的走法數\n{dp[i - 1][j]:orange} 上面\n{dp[i][j - 1]:lime} 左邊\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n為什麼用加的：走到這一格的路，最後一步只有兩種可能——從上面走下來，或從左邊走過來，兩種路徑不會重複，所以把兩邊的走法數直接加起來 @tts [next] 為什麼是用加的：走到這一格的最後一步，只有從上面下來、或從左邊過來這兩種可能，兩種不會重複，所以把兩邊的走法數加起來，就是這一格的答案：上面 {up} 加左邊 {left} | @2 [next] 上面 {up} 加左邊 {left}，寫進這一格 @layout pop:dp
         }
     }
