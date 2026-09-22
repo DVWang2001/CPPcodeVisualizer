@@ -28,8 +28,8 @@ int main() {
                 dp[i][j] = 0;                    //@ @guide 是牆，走不到，填 0\n{dp[i][j]:pink} {g[i - 1][j - 1]:pink} @tts [next] 是牆。走不進來，所以走法有 0 種 | @2 [next] 又是牆，填 0
                 continue;                        //@ @guide 這一格處理完了 @tts [next] 換下一格 | @2 [next] 換下一格
             }
-            int up = dp[i - 1][j];               //@ @guide 不是牆。能走到這一格的路有兩種來源，先讀上面那格\n{dp[i - 1][j]:orange} 上面\n{dp[i][j - 1]:lime} 左邊\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格 @tts [next] 能走到這一格的路只有兩種來源。先看從上面來的 | @2 [next] 從上面來的 @layout pop:dp:orange
-            int left = dp[i][j - 1];             //@ @guide 上面來的有 {up} 種\n{dp[i - 1][j]:orange} 上面\n{dp[i][j - 1]:lime} 再讀左邊\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格 @tts [next] 上面來的有 {up} 種。再看從左邊來的 | @2 [next] 再看左邊 @layout pop:dp:lime
+            int up = dp[i - 1][j];               //@ @guide 不是牆。能走到這一格的路有兩種來源，先讀上面那格\n{dp[i - 1][j]:orange} 上面\n{dp[i][j - 1]:lime} 左邊\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格 @tts [next] 能走到這一格的路只有兩種來源。先看從[anim]上面來的 | @2 [next] 從[anim]上面來的 @layout pop:dp:orange
+            int left = dp[i][j - 1];             //@ @guide 上面來的有 {up} 種\n{dp[i - 1][j]:orange} 上面\n{dp[i][j - 1]:lime} 再讀左邊\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格 @tts [next] 上面來的有 {up} 種。再看從[anim]左邊來的 | @2 [next] 再看[anim]左邊 @layout pop:dp:lime
             dp[i][j] = (up + left) % MOD;        //@ @guide {dp[i - 1][j]:orange} 上面 {up}\n{dp[i][j - 1]:lime} 左邊 {left}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 寫進這一格\n{dp} @tts [next] 兩邊加起來就是這一格的答案：上面 {up} 加左邊 {left}[anim] | @2 [next] 上面 {up} 加左邊 {left}[anim] @layout pull:dp:orange,lime->lightblue
         }
     }
