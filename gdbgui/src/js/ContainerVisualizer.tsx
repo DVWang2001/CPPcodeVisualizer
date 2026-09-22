@@ -7,7 +7,7 @@ import { bstPlugin } from "./BSTPlugin";
 import { linearPlugin, uniformCellWidth } from "./LinearPlugin";
 import { mazePlugin } from "./MazePlugin";
 import { splitForPairing } from "./containerPairing";
-import { popCellKey } from "./cellPopKey";
+import { popCellKey, popGenKey, effectivePopGen } from "./cellPopKey";
 
 // Register all plugins once at module load.
 // To add a new container type: create a plugin file and call registerPlugin() here.
@@ -85,18 +85,21 @@ class ContainerVisualizer extends React.Component<{}, State> {
             this.setState({ pairNames: [nameA, nameB] });
         };
 
-        // pop:容器名 → 這個容器的高亮格「放大再縮小」（見 §4.10）。世代號而不是
-        // 開關：applyLayout 只在 GDB 真的停到新的一行、且那行有 pop: token 時呼叫
-        // 這個 bump，跟「這格的高亮顏色有沒有變」無關——見 cellPopKey.ts 為什麼
-        // 顏色比對會漏掉「連續幾行都用同一個顏色標同一格，最後一行才寫入真正的
-        // 值」這種常見寫法（實測案例：走方格教案的 dp[i][j]）。
+        // pop:容器名（可選 :顏色）→ 這個容器（或只有這個顏色）的高亮格「放大再
+        // 縮小」（見 §4.10）。世代號而不是開關：applyLayout 只在 GDB 真的停到
+        // 新的一行、且那行有 pop: token 時呼叫這個 bump，跟「這格的高亮顏色有
+        // 沒有變」無關——見 cellPopKey.ts 為什麼顏色比對會漏掉「連續幾行都用
+        // 同一個顏色標同一格，最後一行才寫入真正的值」這種常見寫法（實測案例：
+        // 走方格教案的 dp[i][j]）。加 :顏色 可以只點名容器裡的某個顏色（例如
+        // 「講上面時只跳橘色那格」），key 格式見 cellPopKey.ts 的 popGenKey。
         // LinearPlugin 不是這個元件的子節點、讀不到 this.state，所以額外開一個
         // 唯讀 bridge 給它查（gdbgui_is_bst_mode 的先例）。
-        (window as any).gdbgui_get_pop_gen = (containerName: string) => this.state.popGen.get(containerName) || 0;
-        (window as any).gdbgui_bump_pop_gen = (containerName: string) => {
+        (window as any).gdbgui_get_pop_gen = () => this.state.popGen;
+        (window as any).gdbgui_bump_pop_gen = (containerName: string, color?: string) => {
+            const key = popGenKey(containerName, color);
             this.setState(prev => {
                 const next = new Map<string, number>(prev.popGen);
-                next.set(containerName, (next.get(containerName) || 0) + 1);
+                next.set(key, (next.get(key) || 0) + 1);
                 return { popGen: next };
             });
         };
@@ -313,7 +316,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
         const isMazeMode = this.state.mazeMode.has(name);
         const isBSTMode  = this.state.bstMode.has(name);
-        const popGen     = this.state.popGen.get(name) || 0;
+        const popGen     = this.state.popGen;
         const is2D = len > 0 && Array.isArray(values[0]);
 
         const fs     = (store.get("container_font_size") as number) || 1.1;
@@ -383,7 +386,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                     <div key={`row-${rowIdx}`} style={{ display: "flex", gap: "4px" }}>
                                         {(row as any[]).map((colVal: string, colIdx: number) => {
                                             const hl2D = hlPosMap2D.get(`${rowIdx},${colIdx}`) || null;
-                                            const pop = popCellKey(`col-${rowIdx}-${colIdx}`, popGen, hl2D);
+                                            const pop = popCellKey(`col-${rowIdx}-${colIdx}`, effectivePopGen(popGen, name, hl2D?.bg), hl2D);
                                             return (
                                                 <div key={pop.key} className={pop.className} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW }}>
                                                     {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}

@@ -24,3 +24,24 @@ export function popCellKey(
   }
   return { key: baseKey, className: undefined };
 }
+
+// ── 只讓「這個顏色」的格子跳，其他顏色不動 ─────────────────────────────────
+// `pop:dp` 全容器共用一個世代號；`pop:dp:orange` 只點名 orange 這個顏色，
+// 開在自己的 key 底下，跟 `pop:dp` 的世代號互不影響——這樣「講上面時只跳
+// 上面那格、講左邊時只跳左邊那格」才做得到，不會每次都整個容器一起跳。
+// 兩者可以並存：一格若同時符合「全容器」跟「這個顏色專屬」兩個世代號，取
+// 較新（較大）的那個，一樣是「世代號變了才重播」的邏輯。
+
+export function popGenKey(containerName: string, color?: string): string {
+  return color ? `${containerName}:${color}` : containerName;
+}
+
+export function effectivePopGen(
+  popGen: Map<string, number>,
+  containerName: string,
+  cellColor: string | undefined
+): number {
+  const whole = popGen.get(popGenKey(containerName)) || 0;
+  const scoped = cellColor ? popGen.get(popGenKey(containerName, cellColor)) || 0 : 0;
+  return Math.max(whole, scoped);
+}

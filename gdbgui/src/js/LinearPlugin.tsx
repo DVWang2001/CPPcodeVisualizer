@@ -4,7 +4,7 @@ import { store } from "statorgfc";
 import { ContainerPlugin, ContainerData } from "./ContainerPlugin";
 import { PluginOp } from "./AnimScheduler";
 import { delay } from "./anim";
-import { popCellKey } from "./cellPopKey";
+import { popCellKey, effectivePopGen } from "./cellPopKey";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -333,7 +333,8 @@ class LinearPluginImpl implements ContainerPlugin {
         const externalHL = ((global_variable as any).__latest_highlights as Map<string, HighlightEntry[]>)?.get(containerName);
         // ContainerVisualizer 元件才有 popGen 這個 React state；LinearPlugin 是
         // 獨立的 singleton，不在它底下，靠 window bridge 讀（gdbgui_is_bst_mode 的先例）。
-        const popGen = typeof window !== "undefined" ? ((window as any).gdbgui_get_pop_gen?.(containerName) || 0) : 0;
+        const popGenMap: Map<string, number> =
+            (typeof window !== "undefined" && (window as any).gdbgui_get_pop_gen?.()) || new Map();
 
         const fs     = (store.get("container_font_size") as number) || 1.1;
         const fsPx   = `${fs}em`;
@@ -377,7 +378,7 @@ class LinearPluginImpl implements ContainerPlugin {
             if (type === 'list') style.borderRadius = '999px';
 
             const displayValue = display(cell.value);
-            const pop = popCellKey(cell.id, popGen, extHL);
+            const pop = popCellKey(cell.id, effectivePopGen(popGenMap, containerName, extHL?.bg), extHL);
 
             return React.createElement('div', {
                 key: pop.key,

@@ -961,12 +961,17 @@ class SourceCode extends React.Component<{}, State> {
         }
       } else if (key === "pop") {
         // pop:容器名1,容器名2 → 這些容器目前有高亮的格子放大再縮小一次。
+        // pop:容器名:顏色 → 只有這個顏色的格子跳（例如 pop:dp:orange 只跳橘色的
+        // 「上面」那格，同容器裡的綠色「左邊」不受影響）。
         // 這裡只在真的停到新的一行時執行（見本函式的呼叫端），不管高亮的顏色
         // 有沒有變──要在好幾行都有效果，就每一行都要寫 pop:容器名。
         const bumpPop = (window as any).gdbgui_bump_pop_gen;
         if (bumpPop) {
-          val.split(",").forEach((containerName: string) => {
-            bumpPop(containerName.trim());
+          val.split(",").forEach((entry: string) => {
+            const c = entry.indexOf(":");
+            const containerName = (c < 0 ? entry : entry.slice(0, c)).trim();
+            const color = c < 0 ? undefined : entry.slice(c + 1).trim() || undefined;
+            if (containerName) bumpPop(containerName, color);
           });
         }
       } else if (key === "font") {

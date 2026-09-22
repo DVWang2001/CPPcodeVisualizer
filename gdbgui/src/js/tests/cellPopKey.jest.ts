@@ -1,4 +1,4 @@
-import { popCellKey } from "../cellPopKey";
+import { popCellKey, popGenKey, effectivePopGen } from "../cellPopKey";
 
 describe("popCellKey", () => {
   test("no generation (0/undefined) — never pops, no matter the highlight", () => {
@@ -43,5 +43,49 @@ describe("popCellKey", () => {
 
   test("cell becomes unhighlighted: reverts to the bare key, no className, even if generation is set", () => {
     expect(popCellKey("2,3", 5, undefined)).toEqual({ key: "2,3", className: undefined });
+  });
+});
+
+describe("popGenKey", () => {
+  test("no color: the whole-container key is just the name", () => {
+    expect(popGenKey("dp")).toBe("dp");
+  });
+
+  test("with color: scoped to that color, distinct from the whole-container key", () => {
+    expect(popGenKey("dp", "orange")).toBe("dp:orange");
+    expect(popGenKey("dp", "orange")).not.toBe(popGenKey("dp"));
+  });
+});
+
+describe("effectivePopGen", () => {
+  // 使用者的實際情境：講「上面」時只有 orange（up）那格要跳，講「左邊」時
+  // 只有 lime（left）那格要跳——同一個容器裡，不同顏色的格子要各自獨立。
+  test("pop:dp:orange only bumps orange cells; lime cells in the same container are unaffected", () => {
+    const gen = new Map([["dp:orange", 1]]);
+    expect(effectivePopGen(gen, "dp", "orange")).toBe(1);
+    expect(effectivePopGen(gen, "dp", "lime")).toBe(0);
+  });
+
+  test("pop:dp (no color) bumps every color in that container", () => {
+    const gen = new Map([["dp", 1]]);
+    expect(effectivePopGen(gen, "dp", "orange")).toBe(1);
+    expect(effectivePopGen(gen, "dp", "lime")).toBe(1);
+    expect(effectivePopGen(gen, "dp", undefined)).toBe(1);
+  });
+
+  test("whole-container and color-scoped generations combine: the more recent (larger) one wins", () => {
+    const gen = new Map([["dp", 3], ["dp:orange", 5]]);
+    expect(effectivePopGen(gen, "dp", "orange")).toBe(5);
+    expect(effectivePopGen(gen, "dp", "lime")).toBe(3); // lime has no scoped entry, falls back to whole
+  });
+
+  test("different containers never share a generation, even with the same color", () => {
+    const gen = new Map([["dp:orange", 2]]);
+    expect(effectivePopGen(gen, "g", "orange")).toBe(0);
+  });
+
+  test("no cell color (e.g. not currently highlighted): only the whole-container generation applies", () => {
+    const gen = new Map([["dp", 1], ["dp:orange", 9]]);
+    expect(effectivePopGen(gen, "dp", undefined)).toBe(1);
   });
 });
