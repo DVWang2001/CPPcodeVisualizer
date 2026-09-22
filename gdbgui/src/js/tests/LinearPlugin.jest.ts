@@ -135,6 +135,45 @@ describe('diffOps — same length', () => {
     });
 });
 
+// ── diffOps: __expected_swap（detect_swap_call 的確定訊號，見 VisualizerHelper.js）──
+
+describe('diffOps — __expected_swap 訊號', () => {
+    beforeEach(() => {
+        linearPlugin.diffOps('v', { type: 'vector', values: ['1', '2', '3'] });
+        delete (global_variable as any).__expected_swap;
+    });
+
+    it('值不是巧合對調（一般猜法只會判成兩個 valueChange），但訊號說是 swap 就判 swap', () => {
+        (global_variable as any).__expected_swap = { containerName: 'v', indexA: 1, indexB: 2 };
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '5', '7'] });
+        expect(ops).toHaveLength(1);
+        expect(ops[0].type).toBe('swap');
+    });
+
+    it('訊號用過一次就清掉，不會留到下一次 diffOps', () => {
+        (global_variable as any).__expected_swap = { containerName: 'v', indexA: 1, indexB: 2 };
+        linearPlugin.diffOps('v', { type: 'vector', values: ['1', '5', '7'] });
+        expect((global_variable as any).__expected_swap).toBeUndefined();
+    });
+
+    it('訊號指定的容器名對不上：不採用，退回猜的（這次值也不巧合，判成 valueChange）', () => {
+        (global_variable as any).__expected_swap = { containerName: 'other', indexA: 1, indexB: 2 };
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '5', '7'] });
+        expect(ops.every(o => o.type === 'valueChange')).toBe(true);
+    });
+
+    it('訊號指定的索引對不上這次實際變動的位置：不採用', () => {
+        (global_variable as any).__expected_swap = { containerName: 'v', indexA: 0, indexB: 1 };
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '5', '7'] });
+        expect(ops.every(o => o.type === 'valueChange')).toBe(true);
+    });
+
+    it('沒有訊號時，值剛好對調還是照舊判成 swap（原本的猜法沒被拔掉）', () => {
+        const ops = linearPlugin.diffOps('v', { type: 'vector', values: ['1', '3', '2'] });
+        expect(ops[0].type).toBe('swap');
+    });
+});
+
 // ── diffOps: bulk change ─────────────────────────────────────────────────────
 
 describe('diffOps — bulk change', () => {

@@ -143,7 +143,18 @@ class LinearPluginImpl implements ContainerPlugin {
 
             if (changed.length === 2) {
                 const [a, b] = changed;
-                if (oldVals[a] === newVals[b] && oldVals[b] === newVals[a]) {
+                // detect_swap_call（VisualizerHelper.js）認得出 swap(arr[i], arr[j]) 這種
+                // 語法時，會先把索引求值好記在這裡——比「兩格值剛好對調」的猜測準，兩者
+                // 並存：認得出這行語法就用這個確定結果，認不出來就照舊用猜的兜底。
+                // 一次性訊號，不管這次有沒有用到都要清掉，不留到下一次 diffOps。
+                const expected = (global_variable as any).__expected_swap as
+                    { containerName: string; indexA: number; indexB: number } | undefined;
+                const expectedMatches = !!expected && expected.containerName === containerName &&
+                    ((expected.indexA === a && expected.indexB === b) || (expected.indexA === b && expected.indexB === a));
+                if (expected && expected.containerName === containerName) {
+                    delete (global_variable as any).__expected_swap;
+                }
+                if (expectedMatches || (oldVals[a] === newVals[b] && oldVals[b] === newVals[a])) {
                     // Swap: exchange cells in the display
                     const c = this.cells.get(containerName)!;
                     const cellIdA = c[a].id;

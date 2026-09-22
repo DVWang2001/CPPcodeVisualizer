@@ -183,6 +183,10 @@ const Actions = {
     // 前瞻偵測 BST 容器 find/count 操作，在 TTS 開始前設好動畫 barrier
     // @ts-expect-error
     VisualizerHelper.detect_container_op(frame.line, frame.func);
+    // 認得出 swap(arr[i], arr[j]) 這種語法就先把索引求值好，供下一次 LinearPlugin
+    // 的 diffOps 確定分類成 swap，取代「兩格值剛好對調」的猜測（見該函式註解）。
+    // @ts-expect-error
+    VisualizerHelper.detect_swap_call(frame.line, frame.func);
     
     // 出題自動重跑模式：中途停駐點不播 TTS，稍等 150ms (確保 PTY 測資寫入) 後一瞬間衝到題目行
     const isRerunningForQuiz = (window as any).gdbgui_rerunning_for_quiz === true;

@@ -22,6 +22,7 @@ import {
   FAST_FORWARD_STEP_LIMIT,
 } from "./fastForward";
 import { buildJumpCommand } from "./fastForwardJump";
+import { parseSwapCall } from "./swapDetect";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
@@ -38,6 +39,7 @@ let _tts_subtitle_text = "";    // 去除所有標記後的純淨字幕文字
 // ── graphics_instruction 取消 token（模組級）──────────────────────────
 let _graphics_task_id = 0;      // 每次 graphics_instruction 遞增，舊任務自動放棄
 let _bst_op_task_id = 0;        // 每次 detect_container_op 遞增，舊任務自動放棄
+let _swap_detect_task_id = 0;   // 每次 detect_swap_call 遞增，舊任務自動放棄
 const _uml_task_ids = {};       // 每個變數名各自的任務 ID 計數器（key=name），避免同一行多個 uml: 互相取消
 const _uml_fetched_nodes = new Set(); // 已補抓 children 的節點 varobj 名稱，避免重複送 -var-list-children
 // ── UML 遞迴展開參數（須與 umlPayload.ts 的 MAX_DEPTH/MAX_FANOUT 一致）──
@@ -1217,6 +1219,59 @@ class VisualizerHelper {
     GdbApi.run_gdb_command(
       `-interpreter-exec console "python import base64; exec(base64.b64decode('${b64}').decode())"`
     );
+  }
+
+  /**
+   * 停在 swap(arr[i], arr[j]) 這種形狀的行時，把兩個索引求值出來，記一筆「下一次
+   * arr 的 diffOps 如果剛好看到這兩格的值變了，直接判定是交換」的提示——取代
+   * LinearPlugin.diffOps 原本「兩格值剛好對調」的猜測，兩者並存：認得出這行語法
+   * 就用這裡的確定結果，認不出來（手寫三段式交換、iter_swap……）就照舊用猜的。
+   *
+   * 純解析（認不認得出這行）交給 swapDetect.ts；這裡只負責讀原始碼那一行的文字、
+   * 跟 GDB 要索引表達式的值。跟 detect_container_op 一樣在 inferior_program_paused
+   * 的早期同步部分呼叫，但這個函式本身不建立動畫 barrier——真正的動畫仍然是
+   * LinearPlugin 在下一次 diffOps 看到值真的變了才播，這裡只是先備妥「怎麼分類」。
+   */
+  static detect_swap_call(frame_line, funcName) {
+    const myTaskId = ++_swap_detect_task_id;
+
+    const lineNum = parseInt(frame_line);
+    if (isNaN(lineNum)) return;
+
+    const fullname = store.get("fullname_to_render");
+    if (!fullname) return;
+
+    const rawLineHtml = FileOps.get_line_from_file(fullname, lineNum);
+    if (!rawLineHtml) return;
+    const rawLine = String(rawLineHtml)
+      .replace(/<[^>]+>/g, '')
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+
+    const match = parseSwapCall(rawLine);
+    if (!match) return;
+
+    const evalIndex = (expr) => {
+      const displayKey = funcName ? `swapdet::${funcName}::${expr}` : `swapdet::${expr}`;
+      const existing = store.get("expressions").find(o => o.expression === displayKey && o.in_scope === "true");
+      if (existing) GdbVariable.delete_gdb_variable(existing.name);
+      GdbVariable.create_variable(expr, "expr", displayKey);
+      return new Promise(resolve => {
+        let tries = 0;
+        const poll = setInterval(() => {
+          if (myTaskId !== _swap_detect_task_id) { clearInterval(poll); resolve(null); return; }
+          if (++tries > 20) { clearInterval(poll); resolve(null); return; } // ~1 秒等不到就放棄，退回猜的
+          const v = store.get("expressions").find(o => o.expression === displayKey && o.in_scope === "true");
+          if (v && v.value !== undefined) { clearInterval(poll); resolve(parseInt(v.value, 10)); }
+        }, 50);
+      });
+    };
+
+    (async () => {
+      const [idxA, idxB] = await Promise.all([evalIndex(match.indexExprA), evalIndex(match.indexExprB)]);
+      if (myTaskId !== _swap_detect_task_id) return; // 這期間又停到別的行了，這筆已經過期
+      if (idxA == null || idxB == null || isNaN(idxA) || isNaN(idxB)) return;
+      global_variable.__expected_swap = { containerName: match.containerName, indexA: idxA, indexB: idxB };
+    })();
   }
 
   /**
