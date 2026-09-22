@@ -30,7 +30,7 @@ int main() {
             }
             int up = dp[i - 1][j];               //@ @guide 不是牆。能走到這一格的路有兩種來源，先讀上面那格\n{dp[i - 1][j]:orange} 上面\n{dp[i][j - 1]:lime} 左邊\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格 @tts [next] 能走到這一格的路只有兩種來源。先看從上面來的 | @2 [next] 從上面來的
             int left = dp[i][j - 1];             //@ @guide 上面來的有 {up} 種\n{dp[i - 1][j]:orange} 上面\n{dp[i][j - 1]:lime} 再讀左邊\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格 @tts [next] 上面來的有 {up} 種。再看從左邊來的 | @2 [next] 再看左邊
-            dp[i][j] = (up + left) % MOD;        //@ @guide {dp[i - 1][j]:orange} 上面 {up}\n{dp[i][j - 1]:lime} 左邊 {left}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 寫進這一格\n{dp} @tts [next] 兩邊加起來就是這一格的答案：上面 {up} 加左邊 {left} | @2 [next] 上面 {up} 加左邊 {left}
+            dp[i][j] = (up + left) % MOD;        //@ @guide {dp[i - 1][j]:orange} 上面 {up}\n{dp[i][j - 1]:lime} 左邊 {left}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 寫進這一格\n{dp} @tts [next] 兩邊加起來就是這一格的答案：上面 {up} 加左邊 {left} | @2 [next] 上面 {up} 加左邊 {left} @layout pop:dp
         }
     }
     std::cout << dp[h][w] << "\n";               //@ @guide 整張表填完了：{dp}\n答案在右下角\n{dp[h][w]:orange} @tts [next] 表填完了。答案就是右下角那一格
