@@ -1825,7 +1825,29 @@ class SourceCode extends React.Component<{}, State> {
       return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", position: "relative" }}>
           <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong>{(this.state.fullname_to_render || "").split(/[\\/]/).pop() || this.state.fullname_to_render}</strong>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+              <strong>{(this.state.fullname_to_render || "").split(/[\\/]/).pop() || this.state.fullname_to_render}</strong>
+              {/* 內容來源指示：不管教案在正式機上怎麼更新，這個編輯器顯示的其實是
+                  哪一份，永遠一眼就看得出來——「未載入教案」是本機自動存檔（見
+                  componentDidMount 的 autosave 還原邏輯），重新整理只會回到自己
+                  上次編輯的內容，不會拿到教案庫最新版本。這正是「教案明明更新了、
+                  重新整理卻還是看到舊的」這類回報的根源：以前完全沒有畫面上的提示，
+                  兩種狀態長得一模一樣。 */}
+              {this.currentLessonId !== null ? (
+                <span
+                  title={`從教案庫載入：${this.currentLessonTitle}`}
+                  style={{ fontSize: "12px", color: "var(--ink-soft, #666)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  教案：{this.currentLessonTitle}
+                  {this.currentLessonVersion !== null ? ` · v${this.currentLessonVersion}` : ""}
+                </span>
+              ) : (
+                <span
+                  title="這是瀏覽器本機自動存檔的內容，不是教案庫裡的任何一篇。重新整理不會拿到教案庫的最新版本——要看最新內容，請按「從教案庫開啟」重新選一次。"
+                  style={{ fontSize: "12px", color: "#8a5a00", background: "#fff3cd", border: "1px solid #ffe08a", borderRadius: "4px", padding: "1px 6px", whiteSpace: "nowrap" }}>
+                  ⚠ 本機草稿（未載入教案）
+                </span>
+              )}
+            </div>
             <div>
               <button
                 onClick={this.startNewDraft}
