@@ -31,7 +31,7 @@ int main() {
     for (int i = 1; i <= h; ++i) {               //@ @guide 外層迴圈：一列一列往下填\n{dp} @tts [next] 先看第 1 列，對應地圖的第 0 列 | @2 [next] 換到第 2 列，對應地圖的第 1 列 | @3 [fast @4] 第 3 列（地圖第 2 列）規則跟前面一模一樣，我們直接跳到算完，看最後的答案 | @4 [next] 第 3 列也用同樣的規則算完了，整張表都填好了 @layout sidebar:55 open:container
         for (int j = 1; j <= w; ++j) {           //@ @guide 現在填 dp 的第 {i} 列（對應地圖第 {i} - 1 列）\n內層迴圈由左往右走完這一列\n{dp} @tts [next] 內層迴圈由左往右走完這一列 | @2 [next] 這一格算完了，看這一列還有沒有下一格
             if (i == 1 && j == 1) continue;      //@ @guide dp 第 {i} 列第 {j} 行\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue}\n先看是不是起點：起點已經填過 1 了，跳過不要蓋掉 @tts [next] 起點剛才填過了，跳過 | @2 [next] 不是起點，繼續
-            if (g[i - 1][j - 1] == '#') {        //@ @guide {dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 先看地圖上這一格是不是牆（# 就是牆） @tts [next] 先問這一格是不是牆 | @2 [next] 是牆嗎
+            if (g[i - 1][j - 1] == '#') {        //@ @guide {dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 先看地圖上這一格是不是牆（# 就是牆） @tts [next] 先問這一格是不是牆 | @2 [next] 是牆嗎 @layout pair:dp,g
                 dp[i][j] = 0;                    //@ @guide 這一格是牆，走不進來\n{dp[i][j]:pink} {g[i - 1][j - 1]:pink}\n不管上面或左邊算出多少，牆一律直接填 0——這格不會是任何路徑的最後一步 @tts [next] 這一格是牆，走不進來，所以走法直接算 0，不管上面或左邊有多少種走法都不算數 | @2 [next] 又是牆，一樣填 0
                 continue;                        //@ @guide 這一格處理完了 @tts [next] 這一格處理完了 | @2 [next] 換下一格
             }
