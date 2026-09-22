@@ -99,7 +99,9 @@ class ContainerVisualizer extends React.Component<{}, State> {
             const key = popGenKey(containerName, color);
             this.setState(prev => {
                 const next = new Map<string, number>(prev.popGen);
-                next.set(key, (next.get(key) || 0) + 1);
+                const newVal = (next.get(key) || 0) + 1;
+                next.set(key, newVal);
+                console.log('[POP] gen bumped', key, '->', newVal, 'whole map now:', Object.fromEntries(next));
                 return { popGen: next };
             });
         };
@@ -386,7 +388,9 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                     <div key={`row-${rowIdx}`} style={{ display: "flex", gap: "4px" }}>
                                         {(row as any[]).map((colVal: string, colIdx: number) => {
                                             const hl2D = hlPosMap2D.get(`${rowIdx},${colIdx}`) || null;
-                                            const pop = popCellKey(`col-${rowIdx}-${colIdx}`, effectivePopGen(popGen, name, hl2D?.bg), hl2D);
+                                            const _gen = effectivePopGen(popGen, name, hl2D?.bg);
+                                            const pop = popCellKey(`col-${rowIdx}-${colIdx}`, _gen, hl2D);
+                                            if (hl2D) console.log('[POP] cell', name, rowIdx, colIdx, 'color=', hl2D.bg, 'gen=', _gen, 'key=', pop.key);
                                             return (
                                                 <div key={pop.key} className={pop.className} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW }}>
                                                     {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
