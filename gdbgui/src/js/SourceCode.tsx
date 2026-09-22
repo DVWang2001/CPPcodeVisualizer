@@ -971,7 +971,6 @@ class SourceCode extends React.Component<{}, State> {
             const c = entry.indexOf(":");
             const containerName = (c < 0 ? entry : entry.slice(0, c)).trim();
             const color = c < 0 ? undefined : entry.slice(c + 1).trim() || undefined;
-            console.log('[POP] applyLayout bump', { line: lineNum, containerName, color });
             if (containerName) bumpPop(containerName, color);
           });
         }
