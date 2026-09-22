@@ -335,7 +335,13 @@ class LinearPluginImpl implements ContainerPlugin {
         kindMap.set(payload.cellIdB, { kind: "swap", deltaIndex: deltaB, phase: "start" });
         this.highlightKind.set(containerName, kindMap);
         requestRender();
-        await afterFrame(); // 逼瀏覽器先畫一次「還在原位」，下一步才有 transition 可畫
+        // 逼瀏覽器先畫一次「還在原位」，下一步才有 transition 可畫。一次 rAF 只保證
+        // 「在下一次重繪前執行」，不保證這次重繪真的被畫出來過——如果緊接著在同一個
+        // rAF callback 裡又改一次狀態，兩次更新可能被瀏覽器合併成同一次重繪，
+        // 「偏移、無 transition」那一幀就直接被跳過，只看得到最終定住的位置。
+        // 兩次 rAF 才能確保中間真的有一次完整的繪製週期。
+        await afterFrame();
+        await afterFrame();
         kindMap.set(payload.cellIdA, { kind: "swap", deltaIndex: deltaA, phase: "settle" });
         kindMap.set(payload.cellIdB, { kind: "swap", deltaIndex: deltaB, phase: "settle" });
         requestRender();
