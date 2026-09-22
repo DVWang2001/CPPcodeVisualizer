@@ -1,5 +1,6 @@
 import StringParser from "./StringParser";
 import InnerContainerParser from "./InnerContainerParser";
+import StringGridParser from "./StringGridParser";
 import ArrayParser from "./ArrayParser";
 import MapParser from "./MapParser";
 import DefaultParser from "./DefaultParser";
@@ -8,6 +9,7 @@ import DefaultParser from "./DefaultParser";
 const parserChain = [
   new StringParser(),
   new InnerContainerParser(), // must precede ArrayParser (inner-container check runs first)
+  new StringGridParser(),     // vector<string> 文字地圖：拆字元才能給 ArrayParser 的容器命中前先攔下
   new ArrayParser(),
   new MapParser(),
   new DefaultParser(),        // catch-all — must stay last

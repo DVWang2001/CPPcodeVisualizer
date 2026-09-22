@@ -7,6 +7,7 @@ import DefaultParser from "../containerParsers/DefaultParser";
 import MapParser from "../containerParsers/MapParser";
 import ArrayParser from "../containerParsers/ArrayParser";
 import InnerContainerParser from "../containerParsers/InnerContainerParser";
+import StringGridParser from "../containerParsers/StringGridParser";
 import { resolveChildValues } from "../containerParsers/index";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -84,6 +85,54 @@ describe("StringParser", () => {
   it("S4: undefined value gives []", () => {
     const r = p.parse({ value: undefined } as any, makeContext("string"));
     expect(r).toEqual({ done: true, values: [] });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// StringGridParser
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("StringGridParser", () => {
+  const p = new StringGridParser();
+  const row = (s: string) => ({ value: `"${s}"` });
+
+  it("canHandle: vector/array/deque/list of all-quoted-string children", () => {
+    const varObj = { children: [row("..#"), row(".#.")] };
+    expect(p.canHandle("vector", varObj as any)).toBe(true);
+    expect(p.canHandle("array", varObj as any)).toBe(true);
+    expect(p.canHandle("deque", varObj as any)).toBe(true);
+    expect(p.canHandle("list", varObj as any)).toBe(true);
+  });
+
+  it("canHandle: false for other container kinds", () => {
+    const varObj = { children: [row("..#")] };
+    expect(p.canHandle("map", varObj as any)).toBe(false);
+    expect(p.canHandle("set", varObj as any)).toBe(false);
+  });
+
+  it("canHandle: false when children aren't all quoted strings (e.g. vector<int>)", () => {
+    const varObj = { children: [intElem("1"), intElem("2")] };
+    expect(p.canHandle("vector", varObj as any)).toBe(false);
+  });
+
+  it("canHandle: false for an empty container", () => {
+    expect(p.canHandle("vector", { children: [] } as any)).toBe(false);
+  });
+
+  it("G1: splits each row string into a 2D array of characters", () => {
+    const varObj = { children: [row("..#"), row(".#.")] };
+    expect(p.parse(varObj as any, makeContext("vector"))).toEqual({
+      done: true,
+      values: [["." , "." , "#"], ["." , "#" , "."]],
+    });
+  });
+
+  it("G2: an empty row string becomes an empty inner array", () => {
+    const varObj = { children: [row(""), row("#")] };
+    expect(p.parse(varObj as any, makeContext("vector"))).toEqual({
+      done: true,
+      values: [[], ["#"]],
+    });
   });
 });
 
@@ -369,6 +418,18 @@ describe("resolveChildValues (chain)", () => {
     const varObj = { children: [{ value: "x" }, { value: "y" }] };
     const r = resolveChildValues("set", varObj as any, makeContext("set"));
     expect(r).toEqual({ done: true, values: ["x", "y"] });
+  });
+
+  it("routes 'vector' of quoted-string children (a text map) to StringGridParser", () => {
+    const varObj = { children: [{ value: '"..#"' }, { value: '".#."' }] };
+    const r = resolveChildValues("vector", varObj as any, makeContext("vector"));
+    expect(r).toEqual({ done: true, values: [["." , "." , "#"], ["." , "#" , "."]] });
+  });
+
+  it("an ordinary vector<int> still falls through to DefaultParser (not mistaken for a text map)", () => {
+    const varObj = { children: [intElem("1"), intElem("2")] };
+    const r = resolveChildValues("vector", varObj as any, makeContext("vector"));
+    expect(r).toEqual({ done: true, values: ["1", "2"] });
   });
 
   it("InnerContainerParser takes precedence over DefaultParser when inner children present", () => {
