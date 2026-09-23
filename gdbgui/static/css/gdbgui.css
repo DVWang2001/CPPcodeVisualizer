@@ -676,14 +676,25 @@ tr.compile-warning-tr td {
   padding-right: 0;
 }
 /* 拿掉「清空中斷點」那組之後，左邊三組擠在一起、右邊留一大片空白，
-   很像沒做完。改成 space-between 讓幾組平均攤開撐滿整排寬度；
-   視窗窄到放不下時照樣 wrap，wrap 之後的每一行各自平均分配。 */
+   很像沒做完。改成等寬欄位平均攤開撐滿整排寬度，每一組內的按鈕
+   在自己那欄裡置中，不是整組貼著分隔線的一側——只限定在這個
+   toolbar-row 底下的分組，不動 TopBar 那邊單顆按鈕用的 toolbar-group
+   （那些不需要、也不該被撐成等寬欄）。 */
 .toolbar-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   flex-wrap: wrap;
   row-gap: 6px;
+}
+.toolbar-row > .toolbar-group {
+  flex: 1 1 0;
+  justify-content: center;
+}
+.toolbar-row > .toolbar-group:first-child {
+  padding-left: 10px;
+}
+.toolbar-row > .toolbar-group:last-child {
+  padding-right: 10px;
 }
 .toolbar-btn {
   height: 26px;
