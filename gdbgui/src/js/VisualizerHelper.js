@@ -24,6 +24,7 @@ import {
 import { buildJumpCommand } from "./fastForwardJump";
 import { parseTtsPlaylist } from "./ttsPlaylist";
 import { findLatestExpr } from "./exprLookup";
+import { resolve2DHighlightIndex } from "./gridHighlightIndex";
 import { parseSwapCall } from "./swapDetect";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
@@ -928,24 +929,28 @@ class VisualizerHelper {
 
             if (rowVal === undefined || colVal === undefined) {
               highlightIndexReady = false;
-            } else {
-              if (!isNaN(rowVal) && !isNaN(colVal)) {
-                let cols = 1;
-                const baseContainerKey = baseContainer;
-                if (global_variable.__latest_containers && global_variable.__latest_containers.has(baseContainerKey)) {
-                  const data = global_variable.__latest_containers.get(baseContainerKey);
-                  if (data.values && data.values.length > 0 && Array.isArray(data.values[0])) {
-                    cols = data.values[0].length;
-                  }
-                }
-                const parsedIdx = rowVal * cols + colVal;
+            } else if (!isNaN(rowVal) && !isNaN(colVal)) {
+              const baseContainerKey = baseContainer;
+              const containerData = global_variable.__latest_containers && global_variable.__latest_containers.get(baseContainerKey);
+              const idxResult = resolve2DHighlightIndex(rowVal, colVal, containerData);
+              if (!idxResult.ready) {
+                // 容器本身的資料（例如 {dp} 這個 token 抓回來的欄數）還沒備妥，
+                // 保持 highlightIndexReady=false 讓外層重試；rowExpr/colExpr
+                // 先別清掉，不然下一輪 tick 會直接跳過這個 if 區塊，永遠等不到
+                // 欄數備妥的那一刻（見 gridHighlightIndex.ts 檔頭為什麼不能
+                // 像舊版一樣假設欄數＝1）。
+                highlightIndexReady = false;
+              } else {
+                const parsedIdx = idxResult.index;
                 if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
                 if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
                 global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parsedIdx;
                 _hlStage.add(baseContainerKey, { index: parsedIdx, color: highlightColor });
-              } else {
-                _hlStage.skip(baseContainer);
+                rowExpr = null;
+                colExpr = null;
               }
+            } else {
+              _hlStage.skip(baseContainer);
               rowExpr = null;
               colExpr = null;
             }
