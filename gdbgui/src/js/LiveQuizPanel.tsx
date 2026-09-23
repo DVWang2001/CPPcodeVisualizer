@@ -165,92 +165,114 @@ export function TableTriggerConfirm({
   const disabled = busy || Boolean(isRerunning) ||
     (!inputStale && (names.length === 0 || !capture || capture.ok !== true));
 
+  // 跟 QR 全螢幕彈窗同一套視覺語言：這一步（確認測資、出題）跟「讓學生掃碼」
+  // 一樣重要，理當佔滿整個畫面讓老師專心處理，不該埋在側欄一張小卡片裡，
+  // 旁邊還有程式碼、資料結構視覺化在搶注意力。
   return (
-    <div style={{ marginTop: "10px", padding: "12px", background: "#fff", border: "1px solid #3b82f6", borderRadius: "6px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-      <div style={{ color: "#1e40af", fontWeight: 600, fontSize: "13px", marginBottom: "6px" }}>
-        🎯 即將觸發題目 (請確認測資)
-      </div>
-
-      {names.length === 0 ? (
-        <div style={{ color: "#a61b1b", fontSize: "12px", marginBottom: "6px" }}>
-          程式需先停在容器有值的位置
-        </div>
-      ) : (
-        <div style={{ marginBottom: "8px" }}>
-          <select
-            className="form-control input-sm"
-            value={activeKey}
-            onChange={e => setSelected(e.target.value)}
-          >
-            {names.map(name => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* 測資不新鮮時這張表格反正要被丟掉重擷取，畫出來只會誤導老師以為
-          這是新測資的結果——不畫，等重跑完再畫新的。
-          資料新鮮時：一定要畫 capture.table.values（經過 tableFromContainer
-          驗證過的），不能直接畫 selectedCaptured.values 這個容器原始
-          payload：容器輪詢是逐列更新的，擷取到的那一瞬間可能有的列還是
-          舊欄數、有的列已經是新欄數，直接畫原始資料會出現鋸齒狀、格數
-          對不齊的表格（這正是「超出格子」的根因）。tableFromContainer
-          已經檢查過每列欄數一致，不一致就會回 ok:false，交給下面的
-          captureError 訊息處理，不會把半新半舊的資料端出來給老師看。 */}
-      {!inputStale && capture && capture.ok === true && (
-        <table style={{ borderCollapse: "collapse", margin: "6px 0" }}>
-          <tbody>
-            {capture.table.values.map((row, r) => (
-              <tr key={r}>
-                {row.map((cell, c) => (
-                  <td key={c} style={{ border: "1px solid #ccc", padding: "2px 6px" }}>{cell}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {!inputStale && captureError ? (
-        <div style={{ color: "#a61b1b", fontSize: "12px", marginBottom: "6px" }}>
-          {captureError}
-        </div>
-      ) : null}
-
-      {/* 測資區塊 (主要顯示與調整區) */}
-      <TestInputPreview />
-
-      {inputStale ? (
-        <div style={{ fontSize: "12px", color: "#0284c7", margin: "8px 0 10px", background: "#eff6ff", padding: "6px 8px", borderRadius: "4px" }}>
-          💡 測資已更新。按下面的按鈕會自動帶入新測資重新執行程式，停在題目行後直接擷取新的
-          DP 表格出題——不用自己手動按 Run。
-        </div>
-      ) : (
-        <div style={{ fontSize: "12px", color: "#475569", margin: "8px 0 10px", background: "#eff6ff", padding: "6px 8px", borderRadius: "4px" }}>
-          💡 上面的表格是<strong>目前這次執行</strong>算出來的結果。按下面的<strong>「確認出題」</strong>就會用它出題。
-        </div>
-      )}
-
-      <button
-        type="button"
-        className="btn btn-primary btn-sm"
-        style={{ width: "100%", fontWeight: 600 }}
-        disabled={disabled}
-        onClick={() => {
-          if (!inputStale && (!capture || capture.ok !== true)) return;
-          onConfirm(
-            !inputStale && capture && capture.ok === true ? capture.table : null,
-            activeKey || pending.tableSpec.var_hint
-          );
+    <div
+      role="dialog"
+      aria-label="確認出題"
+      data-testid="table-trigger-confirm-overlay"
+      style={{
+        position: "fixed", inset: 0, zIndex: 1060, background: "rgba(15, 23, 42, .62)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: "20px"
+      }}
+    >
+      <div
+        style={{
+          background: "#fff", borderRadius: "12px", boxShadow: "0 16px 48px rgba(0,0,0,.28)",
+          width: "min(720px, 96vw)", maxHeight: "92vh", overflowY: "auto",
+          padding: "26px 30px"
         }}
       >
-        {isRerunning
-          ? "🔄 正在重跑程式並擷取 DP 表格..."
-          : inputStale
-          ? "🔄 帶入新測資重新執行並出題"
-          : "確認出題"}
-      </button>
+        <div style={{ color: "#1e40af", fontWeight: 700, fontSize: "20px", marginBottom: "16px" }}>
+          🎯 即將觸發題目（請確認測資）
+        </div>
+
+        {names.length === 0 ? (
+          <div style={{ color: "#a61b1b", fontSize: "14px", marginBottom: "10px" }}>
+            程式需先停在容器有值的位置
+          </div>
+        ) : (
+          <div style={{ marginBottom: "14px" }}>
+            <select
+              className="form-control"
+              style={{ fontSize: "14px", height: "36px" }}
+              value={activeKey}
+              onChange={e => setSelected(e.target.value)}
+            >
+              {names.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* 測資不新鮮時這張表格反正要被丟掉重擷取，畫出來只會誤導老師以為
+            這是新測資的結果——不畫，等重跑完再畫新的。
+            資料新鮮時：一定要畫 capture.table.values（經過 tableFromContainer
+            驗證過的），不能直接畫 selectedCaptured.values 這個容器原始
+            payload：容器輪詢是逐列更新的，擷取到的那一瞬間可能有的列還是
+            舊欄數、有的列已經是新欄數，直接畫原始資料會出現鋸齒狀、格數
+            對不齊的表格（這正是「超出格子」的根因）。tableFromContainer
+            已經檢查過每列欄數一致，不一致就會回 ok:false，交給下面的
+            captureError 訊息處理，不會把半新半舊的資料端出來給老師看。 */}
+        {!inputStale && capture && capture.ok === true && (
+          <div style={{ overflowX: "auto", marginBottom: "14px" }}>
+            <table style={{ borderCollapse: "collapse", fontSize: "15px" }}>
+              <tbody>
+                {capture.table.values.map((row, r) => (
+                  <tr key={r}>
+                    {row.map((cell, c) => (
+                      <td key={c} style={{ border: "1px solid #cbd5e1", padding: "6px 12px", textAlign: "center" }}>{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!inputStale && captureError ? (
+          <div style={{ color: "#a61b1b", fontSize: "13px", marginBottom: "10px" }}>
+            {captureError}
+          </div>
+        ) : null}
+
+        {/* 測資區塊 (主要顯示與調整區) */}
+        <TestInputPreview />
+
+        {inputStale ? (
+          <div style={{ fontSize: "13px", color: "#0284c7", margin: "10px 0 14px", background: "#eff6ff", padding: "8px 10px", borderRadius: "4px" }}>
+            💡 測資已更新。按下面的按鈕會自動帶入新測資重新執行程式，停在題目行後直接擷取新的
+            DP 表格出題——不用自己手動按 Run。
+          </div>
+        ) : (
+          <div style={{ fontSize: "13px", color: "#475569", margin: "10px 0 14px", background: "#eff6ff", padding: "8px 10px", borderRadius: "4px" }}>
+            💡 上面的表格是<strong>目前這次執行</strong>算出來的結果。按下面的<strong>「確認出題」</strong>就會用它出題。
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={{ width: "100%", fontWeight: 600, fontSize: "16px", padding: "10px" }}
+          disabled={disabled}
+          onClick={() => {
+            if (!inputStale && (!capture || capture.ok !== true)) return;
+            onConfirm(
+              !inputStale && capture && capture.ok === true ? capture.table : null,
+              activeKey || pending.tableSpec.var_hint
+            );
+          }}
+        >
+          {isRerunning
+            ? "🔄 正在重跑程式並擷取 DP 表格..."
+            : inputStale
+            ? "🔄 帶入新測資重新執行並出題"
+            : "確認出題"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -807,6 +829,45 @@ export default function LiveQuizPanel({
           </div>
         </div>
       )}
+      {/* 確認出題也是全螢幕彈窗，跟上面的 QR 同一個位置：不能放在下面
+          panelCollapsed 收合的那個 div 裡——面板收合著的話會被 display:none
+          連帶蓋掉，這一步（該不該用這份測資出題）不該因為使用者剛好收合了
+          面板就悄悄消失，跟 QR 一樣，該跳出來的時候一定要跳出來。 */}
+      {runtimeState.pendingTable && runtimeState.inFlightQuestionId === null &&
+        !(window as any).gdbgui_table_quiz_hides_container && (
+        <TableTriggerConfirm
+          key={runtimeState.pendingTable.questionId}
+          pending={runtimeState.pendingTable}
+          busy={busy}
+          isRerunning={isRerunningForTrigger}
+          onConfirm={(captured, varHint) => {
+            if (!runtimeState.pendingTable) return;
+            const questionId = runtimeState.pendingTable.questionId;
+
+            // 1. 確保最新測資寫入 store & localStorage
+            const currentInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
+            store.set("program_input", currentInput);
+
+            // captured 是 null：TableTriggerConfirm 判定測資不新鮮（換了隨機
+            // 測資但還沒真的重跑過），手上那份是要丟掉的舊資料，交給這裡觸發
+            // 重跑，在題目行自動擷取新的（見下面 reRunningForTriggerRef 那個
+            // useEffect，跟「重試」共用同一條路）。
+            if (captured === null) {
+              lessonQuizRuntime.prepareReRunForQuestion(questionId);
+              reRunningForTriggerRef.current = { questionId, varHint };
+              setIsRerunningForTrigger(true);
+              (window as any).gdbgui_rerunning_for_quiz = true;
+              GdbApi.click_run_button();
+            } else {
+              const cap = captured || (((global_variable as any).__latest_containers as Map<string, any> | undefined)?.get(varHint));
+              if (cap) {
+                containerClosedRef.current = closeQuizContainer() || containerClosedRef.current;
+                lessonQuizRuntime.confirmTable(cap, varHint);
+              }
+            }
+          }}
+        />
+      )}
       {/* 面板本體收合與否不影響上面的全螢幕 QR——QR 是另一回事，該跳出來的
           時候一定要跳出來，不能因為這裡收合著就被連帶蓋掉。 */}
       <div
@@ -953,42 +1014,6 @@ export default function LiveQuizPanel({
             </React.Fragment>
           ) : (
             <div style={{ color: muted, padding: "24px 0" }}>等待播放到下一個題目綁定行。</div>
-          )}
-
-          {runtimeState.pendingTable && runtimeState.inFlightQuestionId === null &&
-            !(window as any).gdbgui_table_quiz_hides_container && (
-            <TableTriggerConfirm
-              key={runtimeState.pendingTable.questionId}
-              pending={runtimeState.pendingTable}
-              busy={busy}
-              isRerunning={isRerunningForTrigger}
-              onConfirm={(captured, varHint) => {
-                if (!runtimeState.pendingTable) return;
-                const questionId = runtimeState.pendingTable.questionId;
-
-                // 1. 確保最新測資寫入 store & localStorage
-                const currentInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
-                store.set("program_input", currentInput);
-
-                // captured 是 null：TableTriggerConfirm 判定測資不新鮮（換了隨機
-                // 測資但還沒真的重跑過），手上那份是要丟掉的舊資料，交給這裡觸發
-                // 重跑，在題目行自動擷取新的（見下面 reRunningForTriggerRef 那個
-                // useEffect，跟「重試」共用同一條路）。
-                if (captured === null) {
-                  lessonQuizRuntime.prepareReRunForQuestion(questionId);
-                  reRunningForTriggerRef.current = { questionId, varHint };
-                  setIsRerunningForTrigger(true);
-                  (window as any).gdbgui_rerunning_for_quiz = true;
-                  GdbApi.click_run_button();
-                } else {
-                  const cap = captured || (((global_variable as any).__latest_containers as Map<string, any> | undefined)?.get(varHint));
-                  if (cap) {
-                    containerClosedRef.current = closeQuizContainer() || containerClosedRef.current;
-                    lessonQuizRuntime.confirmTable(cap, varHint);
-                  }
-                }
-              }}
-            />
           )}
 
           {(runtimeState.error || error) && (

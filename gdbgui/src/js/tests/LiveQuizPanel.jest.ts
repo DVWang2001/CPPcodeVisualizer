@@ -691,6 +691,22 @@ test("面板本體預設收合，點標題列可以展開/收合，不影響全�
   expect(body.className).toContain("hidden");
 });
 
+// 確認出題現在是全螢幕彈窗，跟 QR 全螢幕彈窗放在同一個位置（panelCollapsed
+// 收合的那個 div 外面）——不然面板收合著的時候，題目觸發了也會被
+// display:none 連帶蓋掉，使用者完全看不到「確認出題」，跟 QR 該跳出來
+// 卻被蓋掉是同一種 bug。
+test("即使面板本體收合著，題目觸發時「確認出題」全螢幕彈窗還是會跳出來", async () => {
+  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1, 2], [3, 4]] }]]);
+  await mountPanel();
+
+  const body = root.querySelector(".titlebar")?.nextElementSibling as HTMLElement;
+  expect(body.className).toContain("hidden"); // 預設收合，確認前提成立
+
+  const overlay = root.querySelector('[data-testid="table-trigger-confirm-overlay"]');
+  expect(overlay).not.toBeNull();
+  expect(overlay?.textContent).toContain("確認出題");
+});
+
 test("gdbgui_collapser_registry.live_quiz 可以被教案的 @layout open:/close: 開關", async () => {
   await mountPanel();
 
