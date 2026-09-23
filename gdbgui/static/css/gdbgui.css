@@ -140,13 +140,25 @@ td {
 .titlebar--primary .glyphicon {
   color: var(--accent);
 }
-/* 即時課堂面板（掛在側欄最上面）本身沒有高度上限，題目一開、熱區圖/
-   個別作答一長，會把下面的「資料結構視覺化」擠到捲很遠才看得到——
-   而視覺化才是學生上課該盯著看的東西。蓋個高度上限＋自己捲動，
-   面板內容再長也不會吃掉下面區塊的可見空間。 */
-#live-quiz-slot {
-  max-height: 30vh;
+/* 即時課堂面板（掛在側欄最上面）原本沒有高度上限，題目一開、熱區圖/
+   個別作答一長，會把下面的「資料結構視覺化」擠到捲很遠才看得到——而
+   視覺化才是學生上課該盯著看的東西。改成跟下面整塊收合面板分成 flex
+   的兩截：面板全收起來（例如最後測驗那一刻，資料結構視覺化被 @layout
+   收掉）時，即時課堂自動吃滿側欄剩下的所有高度；面板展開、佔的高度
+   變大，即時課堂才會被自然擠小、退回自己的捲動區。不是固定比例，是
+   「其他東西不需要的空間都給即時課堂」。 */
+.right-sidebar-content {
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
+}
+.live-quiz-slot-flex {
+  flex: 1 1 auto;
+  min-height: 40px;
+  overflow-y: auto;
+}
+.sidebar-collapsers {
+  flex: 0 0 auto;
 }
 .pointer {
   cursor: pointer;

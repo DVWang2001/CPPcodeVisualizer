@@ -228,7 +228,7 @@ class RightSidebar extends React.Component<any, any> {
 
     return (
       <div
-        className="content"
+        className="content right-sidebar-content"
         onMouseUp={onmouseup_in_parent_callback}
         onMouseMove={onmousemove_in_parent_callback}
       >
@@ -239,34 +239,41 @@ class RightSidebar extends React.Component<any, any> {
 
           放在側欄最上面而不是常駐橫幅，是因為它以前佔著程式碼上方約 250px 整堂課
           不放，而 QR 只有開場那 30 秒有人看。做法沿用下面 grid-container 的先例。
+
+          跟下面收合面板那一大塊分成 flex 的兩截（見 gdbgui.css 的
+          .right-sidebar-content）：資料結構視覺化等面板全收起來時，這裡自動吃滿
+          側欄剩下的高度；面板一多、佔的高度變大，這裡才會被自然擠小、退回自己
+          的捲動區——不是固定比例，是「其他東西不需要的空間都給它」。
         */}
-        <div id="live-quiz-slot" />
+        <div id="live-quiz-slot" className="live-quiz-slot-flex" />
 
-        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="compile_errors" title="編譯錯誤" collapsed={true} play_mode={play_mode} content={<CompileErrors />} />
+        <div className="sidebar-collapsers">
+          {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+          <Collapser id="compile_errors" title="編譯錯誤" collapsed={true} play_mode={play_mode} content={<CompileErrors />} />
 
-        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="memory_watch" title="記憶體與指標追蹤" play_mode={play_mode} content={<MemoryWatch />} />
+          {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+          <Collapser id="memory_watch" title="記憶體與指標追蹤" play_mode={play_mode} content={<MemoryWatch />} />
 
-        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="callgraph" title="呼叫歷史圖" play_mode={play_mode} content={<CallGraph />} />
-        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="visualizer" primary title="程式追蹤表" play_mode={play_mode} content={<Visualizer />} />
-        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="container" primary title="資料結構視覺化" play_mode={play_mode} content={<ContainerVisualizer />} />
+          {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+          <Collapser id="callgraph" title="呼叫歷史圖" play_mode={play_mode} content={<CallGraph />} />
+          {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+          <Collapser id="visualizer" primary title="程式追蹤表" play_mode={play_mode} content={<Visualizer />} />
+          {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+          <Collapser id="container" primary title="資料結構視覺化" play_mode={play_mode} content={<ContainerVisualizer />} />
 
-        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="uml_visualizer" title="UML 物件圖" collapsed={false} play_mode={play_mode} content={<UMLVisualizer />} />
+          {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+          <Collapser id="uml_visualizer" title="UML 物件圖" collapsed={false} play_mode={play_mode} content={<UMLVisualizer />} />
 
-        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="locals" title="區域變數" collapsed={true} play_mode={play_mode} content={<Locals />} />
-        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser id="watch_table" title="教學儀表板" play_mode={play_mode} content={<WatchTable />} />
-        {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-        <Collapser title="中斷點" collapsed={true} play_mode={play_mode} content={<Breakpoints />} />
+          {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+          <Collapser id="locals" title="區域變數" collapsed={true} play_mode={play_mode} content={<Locals />} />
+          {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+          <Collapser id="watch_table" title="教學儀表板" play_mode={play_mode} content={<WatchTable />} />
+          {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
+          <Collapser title="中斷點" collapsed={true} play_mode={play_mode} content={<Breakpoints />} />
 
-        <div id="grid-container"></div>
-        {mi_output}
+          <div id="grid-container"></div>
+          {mi_output}
+        </div>
       </div>
     );
   }
