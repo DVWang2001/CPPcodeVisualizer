@@ -99,7 +99,7 @@ export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) 
       {lines.length === 0 || !lines[0] ? (
         <div style={{ color: "#94a3b8", fontSize: "12px" }}>(無設定測資)</div>
       ) : (
-        <pre style={{ margin: 0, padding: "4px 8px", background: "#fff", border: "1px solid #e2e8f0", fontSize: "12px", fontFamily: "monospace", color: "#0f172a", borderRadius: "3px", overflowX: "auto", maxHeight: "120px" }}>
+        <pre style={{ margin: 0, padding: "4px 8px", background: "#fff", border: "1px solid #e2e8f0", fontSize: "12px", fontFamily: "monospace", color: "#0f172a", borderRadius: "3px", overflow: "auto", maxHeight: "180px" }}>
           {lines.join("\n")}
         </pre>
       )}
