@@ -613,6 +613,53 @@ test("gateRun 開課失敗、QR 沒跳出來時直接兜底送出，不留著等
   expect(root.querySelector('[data-testid="live-quiz-qr-overlay"]')).toBeNull();
 });
 
+// ── 面板收合：跟 RightSidebar 的 Collapser 共用同一套登記簿 ──────────────────
+//
+// 面板本體（連線狀態、題目內容那一大塊）預設收合，不常駐佔側欄版面；
+// 教案可以用跟 open:container 一樣的 //@ @layout open:live_quiz / close:live_quiz
+// 語法開關它——applyLayout 只認 gdbgui_collapser_registry 裡的 open/close/isOpen，
+// 不管背後是哪個元件實作的。
+
+test("面板本體預設收合，點標題列可以展開/收合，不影響全螢幕 QR 的顯示", async () => {
+  await mountPanel();
+
+  const body = root.querySelector(".titlebar")?.nextElementSibling as HTMLElement;
+  expect(body.className).toContain("hidden");
+
+  const titlebar = root.querySelector(".titlebar") as HTMLElement;
+  act(() => { Simulate.click(titlebar); });
+  expect(body.className).not.toContain("hidden");
+
+  act(() => { Simulate.click(titlebar); });
+  expect(body.className).toContain("hidden");
+});
+
+test("gdbgui_collapser_registry.live_quiz 可以被教案的 @layout open:/close: 開關", async () => {
+  await mountPanel();
+
+  const registry = (window as any).gdbgui_collapser_registry;
+  expect(typeof registry?.live_quiz?.open).toBe("function");
+  expect(registry.live_quiz.isOpen()).toBe(false);
+
+  act(() => { registry.live_quiz.open(); });
+  expect(registry.live_quiz.isOpen()).toBe(true);
+  const body = root.querySelector(".titlebar")?.nextElementSibling as HTMLElement;
+  expect(body.className).not.toContain("hidden");
+
+  act(() => { registry.live_quiz.close(); });
+  expect(registry.live_quiz.isOpen()).toBe(false);
+  expect(body.className).toContain("hidden");
+});
+
+test("面板卸載後 live_quiz 也從登記簿移除，跟 restart 橋接一樣乾淨", async () => {
+  await mountPanel();
+  expect((window as any).gdbgui_collapser_registry?.live_quiz).toBeDefined();
+
+  act(() => { ReactDOM.unmountComponentAtNode(root); });
+
+  expect((window as any).gdbgui_collapser_registry?.live_quiz).toBeUndefined();
+});
+
 // ⚠️ 這條是**紅的**，記錄一個尚未修好的產品 bug，不是不穩定的測試。
 // 換課時舊課堂的 ended 事件會關掉剛為新課堂啟用的 runtime，播放到綁定行時不再開題。
 // 試過兩種守衛（restartingRef、以 session id 比對、connect 內同步更新 ref）都沒生效，

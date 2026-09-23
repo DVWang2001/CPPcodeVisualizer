@@ -260,6 +260,10 @@ export default function LiveQuizPanel({
   sessionRef.current = session;
   /** QR 放大層。開新課堂時自動打開，讓學生馬上重掃。 */
   const [showQr, setShowQr] = React.useState(false);
+  /** 面板本體（連線狀態、題目內容那一大塊，不含全螢幕 QR）收合狀態。
+   *  預設收合——這塊東西展開時可以很長（熱區圖、個別作答清單），沒事不用
+   *  一直佔著側欄版面，跟資料結構視覺化搶學生的注意力。 */
+  const [panelCollapsed, setPanelCollapsed] = React.useState(true);
   /** 出題當下捕獲的「題目資料」容器（正解以外的那些）。
    *
    * 圖論題需要老師的投影畫面上留著鄰接矩陣，學生才有依據作答；把它塞進手機題幹會
@@ -624,6 +628,23 @@ export default function LiveQuizPanel({
     };
   }, [gateRun]);
 
+  // 註冊進跟 RightSidebar 那些 Collapser 共用的同一個登記簿，讓教案的
+  // //@ @layout open:live_quiz / close:live_quiz 也能開關這個面板——
+  // 跟 open:container、open:callgraph 是同一套機制，applyLayout 那邊
+  // 不用另外認得這個面板，寫法完全一樣。
+  React.useEffect(() => {
+    const registry = (window as any).gdbgui_collapser_registry || {};
+    (window as any).gdbgui_collapser_registry = registry;
+    registry["live_quiz"] = {
+      open: () => setPanelCollapsed(false),
+      close: () => setPanelCollapsed(true),
+      isOpen: () => !panelCollapsed,
+    };
+    return () => {
+      delete (window as any).gdbgui_collapser_registry?.["live_quiz"];
+    };
+  }, [panelCollapsed]);
+
   const handleCloseQr = React.useCallback(() => {
     setShowQr(false);
     store.set("autoplay_paused", false);
@@ -748,8 +769,22 @@ export default function LiveQuizPanel({
           </div>
         </div>
       )}
+      {/* 面板本體收合與否不影響上面的全螢幕 QR——QR 是另一回事，該跳出來的
+          時候一定要跳出來，不能因為這裡收合著就被連帶蓋掉。 */}
+      <div
+        className="pointer titlebar"
+        onClick={() => setPanelCollapsed(!panelCollapsed)}
+        style={{ margin: "-12px -14px 0", cursor: "pointer" }}
+      >
+        <span
+          className={`glyphicon glyphicon-chevron-${panelCollapsed ? "right" : "down"}`}
+          style={{ marginRight: "6px" }}
+        />
+        <span className="lighttext">即時課堂</span>
+      </div>
+      <div className={panelCollapsed ? "hidden" : ""}>
       {/* 側欄只有一欄寬，原本的三欄 grid 會把每欄擠成不可讀的細條。 */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "12px" }}>
         <div>
           {/* QR 圖與加入連結不再常駐在這裡——190px 見方的圖加上一整塊連結區，
               把側欄下面的教學引導內容全部往下擠。需要再給學生看 QR（例如有人
@@ -957,6 +992,7 @@ export default function LiveQuizPanel({
             </button>
           </div>
         </div>
+      </div>
       </div>
     </section>
   );

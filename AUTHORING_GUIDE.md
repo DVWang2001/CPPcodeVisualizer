@@ -558,6 +558,7 @@ close:locals,watch_table
 | `container` | 容器視覺化（Container） |
 | `locals` | 區域變數（Local Variables） |
 | `watch_table` | Teaching Dashboard（Table） |
+| `live_quiz` | 即時課堂面板（連線狀態、題目內容、個別作答；不含全螢幕 QR，那個由 restart 觸發，不受這裡開關影響）。預設收合，用 `open:live_quiz`/`close:live_quiz` 在題目要開/收的那一行控制它出現 |
 
 ### 4.5 編譯錯誤面板 `open:compile_errors`
 
@@ -1041,7 +1042,7 @@ python scripts/gen_grid_paths.py --seed 42           # 固定種子，重播同�
 | `sidebar:50 open:container close:locals` | 組合使用（空格分隔） |
 
 ### 可用面板 ID
-`compile_errors` / `memory_watch` / `callgraph` / `visualizer` / `container` / `locals` / `watch_table`
+`compile_errors` / `memory_watch` / `callgraph` / `visualizer` / `container` / `locals` / `watch_table` / `live_quiz`
 
 ### 編輯器操作
 | 操作 | 功能 |
