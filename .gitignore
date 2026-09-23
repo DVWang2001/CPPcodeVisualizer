@@ -27,6 +27,7 @@ __pycache__
 *.in
 *.a
 *.png
+!gdbgui/static/apple-touch-icon.png
 *.exe
 *.txt
 *.pptx

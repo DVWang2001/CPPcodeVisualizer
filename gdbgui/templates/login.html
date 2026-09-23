@@ -1,5 +1,52 @@
 {% extends "_auth_base.html" %}
-{% block title %}登入 - gdbgui{% endblock %}
+{% block title %}登入 · VGDB{% endblock %}
+{% block hero %}
+  <p class="lede" style="margin: 0;">把 GDB 的黑盒子，攤開在白板上。</p>
+
+  {# 跟 ContainerVisualizer.tsx／LinearPlugin.tsx 實際的渲染規則對齊：frame、
+     cell、「↑ top」標籤、{ } 括號的樣式都是同一份 token，不是另外畫的插畫。 #}
+  <div class="demo-card" aria-hidden="true">
+    <div class="demo-head">
+      <span class="demo-name">s <span class="demo-type">stack</span></span>
+      <span class="demo-chip">size 4</span>
+    </div>
+    <div class="demo-row">
+      <div class="demo-frame">
+        <div class="demo-cell">3</div>
+        <div class="demo-cell">12</div>
+        <div class="demo-cell">7</div>
+        <div class="demo-cell is-current">9</div>
+      </div>
+      <span class="demo-tag">&#8593; top</span>
+    </div>
+    <div class="demo-caption">s.push(9)</div>
+  </div>
+
+  <div class="demo-card" aria-hidden="true">
+    <div class="demo-head">
+      <span class="demo-name">seen <span class="demo-type">set</span></span>
+      <span style="display: flex; align-items: center; gap: 6px;">
+        <span class="demo-toggle">&#9745; BST模式</span>
+        <span class="demo-chip">size 4</span>
+      </span>
+    </div>
+    <svg width="100%" height="150" viewBox="0 0 260 150" style="display: block;">
+      <line x1="130" y1="30" x2="70" y2="90" stroke="#999" stroke-width="1.5"/>
+      <line x1="130" y1="30" x2="190" y2="90" stroke="#999" stroke-width="1.5"/>
+      <line x1="190" y1="90" x2="230" y2="140" stroke="#999" stroke-width="1.5"/>
+      <circle cx="130" cy="30" r="22" fill="#ff9800" stroke="#e65100" stroke-width="2"/>
+      <text x="130" y="34" text-anchor="middle" fill="#222" font-size="11" font-family="var(--font-mono)" font-weight="bold">5</text>
+      <circle cx="70" cy="90" r="22" fill="#ffffff" stroke="#333" stroke-width="2"/>
+      <text x="70" y="94" text-anchor="middle" fill="#222" font-size="11" font-family="var(--font-mono)" font-weight="bold">2</text>
+      <circle cx="190" cy="90" r="22" fill="#ffffff" stroke="#333" stroke-width="2"/>
+      <text x="190" y="94" text-anchor="middle" fill="#222" font-size="11" font-family="var(--font-mono)" font-weight="bold">8</text>
+      <circle cx="230" cy="140" r="22" fill="#ffffff" stroke="#333" stroke-width="2"/>
+      <text x="230" y="144" text-anchor="middle" fill="#222" font-size="11" font-family="var(--font-mono)" font-weight="bold">9</text>
+    </svg>
+    <div class="demo-tree-note">傳統二元搜尋樹（按插入順序建樹，無旋轉）</div>
+    <div class="demo-caption">seen.find(9)</div>
+  </div>
+{% endblock %}
 {% block body %}
   <h1>登入</h1>
   <p class="lede">回到你的教案。</p>

@@ -1,5 +1,5 @@
 {% extends "_auth_base.html" %}
-{% block title %}{{ display_name }} - gdbgui{% endblock %}
+{% block title %}{{ display_name }} · VGDB{% endblock %}
 {% block body %}
   {# Jinja 的 autoescape 是開著的，display_name / title 都是使用者輸入，
      一律靠它轉義；這裡沒有任何 |safe。 #}
