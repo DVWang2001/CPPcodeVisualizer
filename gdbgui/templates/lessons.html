@@ -27,6 +27,22 @@
     .listing-card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 0 1rem; }
     .listing-card .library-columns { padding: 0.6rem 0; }
     .listing-card .listing .row:last-child { border-bottom: 0; }
+
+    /* 分頁參考 Google 搜尋結果的排法：置中一排頁碼，目前頁是深色粗體、
+       不是連結，其餘頁碼是可點的連結，頁碼太多時中間縮成刪節號，
+       上一頁／下一頁放在兩端。 */
+    .pager { display: flex; align-items: center; justify-content: center; gap: 0.15rem; margin-top: 1.75rem; font-size: 0.9rem; }
+    .pager .page-nav { color: var(--accent); text-decoration: none; padding: 0.35rem 0.7rem; border-radius: 6px; }
+    .pager .page-nav:hover { background: var(--accent-soft); }
+    .pager .page-nav.is-disabled { color: var(--ink-faint); }
+    .pager .page-num {
+      display: inline-block; min-width: 1.7rem; text-align: center;
+      padding: 0.35rem 0.4rem; margin: 0 0.1rem; border-radius: 6px;
+      color: var(--accent); text-decoration: none; font-family: var(--font-mono);
+    }
+    .pager a.page-num:hover { background: var(--accent-soft); }
+    .pager .page-num.is-current { color: var(--ink); font-weight: 700; background: var(--accent-soft); }
+    .pager .page-ellipsis { color: var(--ink-faint); padding: 0 0.3rem; }
   </style>
 
   {# 目前的篩選條件，用來組「加上／拿掉一個標籤」的連結。 #}
@@ -127,21 +143,41 @@
   {% endif %}
   </div>
 
-  <p class="pager">
-    <span>
+  {% if last_page > 1 %}
+    {% set win = 2 %}
+    {% set nums = [] %}
+    {% for p in range(1, last_page + 1) %}
+      {% if p == 1 or p == last_page or (page - win <= p and p <= page + win) %}
+        {% set _ = nums.append(p) %}
+      {% endif %}
+    {% endfor %}
+    <nav class="pager" aria-label="分頁" data-testid="lesson-browse-page">
       {% if page > 1 %}
-        <a href="{{ url_for('http_routes.lesson_library', q=q or None, tag=selected_tags or None, page=page - 1) }}"
-           data-testid="lesson-browse-prev">← 上一頁</a>
+        <a class="page-nav" href="{{ url_for('http_routes.lesson_library', q=q or None, tag=selected_tags or None, page=page - 1) }}"
+           data-testid="lesson-browse-prev">上一頁</a>
+      {% else %}
+        <span class="page-nav is-disabled" aria-disabled="true">上一頁</span>
       {% endif %}
-    </span>
-    <span data-testid="lesson-browse-page">第 {{ page }} / {{ last_page }} 頁</span>
-    <span>
+
+      {% set ns = namespace(prev=0) %}
+      {% for p in nums %}
+        {% if p - ns.prev > 1 %}<span class="page-ellipsis">&hellip;</span>{% endif %}
+        {% if p == page %}
+          <span class="page-num is-current" aria-current="page">{{ p }}</span>
+        {% else %}
+          <a class="page-num" href="{{ url_for('http_routes.lesson_library', q=q or None, tag=selected_tags or None, page=p) }}">{{ p }}</a>
+        {% endif %}
+        {% set ns.prev = p %}
+      {% endfor %}
+
       {% if page < last_page %}
-        <a href="{{ url_for('http_routes.lesson_library', q=q or None, tag=selected_tags or None, page=page + 1) }}"
-           data-testid="lesson-browse-next">下一頁 →</a>
+        <a class="page-nav" href="{{ url_for('http_routes.lesson_library', q=q or None, tag=selected_tags or None, page=page + 1) }}"
+           data-testid="lesson-browse-next">下一頁</a>
+      {% else %}
+        <span class="page-nav is-disabled" aria-disabled="true">下一頁</span>
       {% endif %}
-    </span>
-  </p>
+    </nav>
+  {% endif %}
 
   {# csrf_token 是伺服器產生的 hex，經由 data- 屬性交給下面的腳本讀取。
      刻意不把它（或任何值）插進 JS 原始碼字串裡。 #}
