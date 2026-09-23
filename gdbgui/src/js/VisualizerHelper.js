@@ -23,6 +23,7 @@ import {
 } from "./fastForward";
 import { buildJumpCommand } from "./fastForwardJump";
 import { parseTtsPlaylist } from "./ttsPlaylist";
+import { findLatestExpr } from "./exprLookup";
 import { parseSwapCall } from "./swapDetect";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
@@ -373,7 +374,7 @@ class VisualizerHelper {
     const displayKey = funcName ? `tts::${funcName}::${expr}` : `tts::${expr}`;
 
     const expressions = store.get("expressions");
-    const existingVar = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
+    const existingVar = findLatestExpr(expressions, displayKey);
     if (existingVar) {
       GdbVariable.delete_gdb_variable(existingVar.name);
     }
@@ -784,7 +785,7 @@ class VisualizerHelper {
           // static
         } else {
           rowDisplayKey = funcName ? `${funcName}::${rowExpr}` : rowExpr;
-          const existingRowVar = expressions.find(obj => obj.expression === rowDisplayKey && obj.in_scope === "true");
+          const existingRowVar = findLatestExpr(expressions, rowDisplayKey);
           if (existingRowVar) GdbVariable.delete_gdb_variable(existingRowVar.name);
           GdbVariable.create_variable(rowExpr, "expr", rowDisplayKey);
         }
@@ -793,7 +794,7 @@ class VisualizerHelper {
           // static
         } else {
           colDisplayKey = funcName ? `${funcName}::${colExpr}` : colExpr;
-          const existingColVar = expressions.find(obj => obj.expression === colDisplayKey && obj.in_scope === "true");
+          const existingColVar = findLatestExpr(expressions, colDisplayKey);
           if (existingColVar) GdbVariable.delete_gdb_variable(existingColVar.name);
           GdbVariable.create_variable(colExpr, "expr", colDisplayKey);
         }
@@ -812,7 +813,7 @@ class VisualizerHelper {
           indexExpr = null;
         } else {
           idxDisplayKey = funcName ? `${funcName}::${indexExpr}` : indexExpr;
-          const existingIdxVar = expressions.find(obj => obj.expression === idxDisplayKey && obj.in_scope === "true");
+          const existingIdxVar = findLatestExpr(expressions, idxDisplayKey);
           if (existingIdxVar) {
             GdbVariable.delete_gdb_variable(existingIdxVar.name);
           }
@@ -907,7 +908,7 @@ class VisualizerHelper {
               if (/^\d+$/.test(rowExpr)) {
                 rowVal = parseInt(rowExpr);
               } else {
-                const rowObj = expressions.find(obj => obj.expression === rowDisplayKey && obj.in_scope === "true");
+                const rowObj = findLatestExpr(expressions, rowDisplayKey);
                 if (rowObj && rowObj.value !== undefined) rowVal = parseInt(rowObj.value);
               }
             } else {
@@ -918,7 +919,7 @@ class VisualizerHelper {
               if (/^\d+$/.test(colExpr)) {
                 colVal = parseInt(colExpr);
               } else {
-                const colObj = expressions.find(obj => obj.expression === colDisplayKey && obj.in_scope === "true");
+                const colObj = findLatestExpr(expressions, colDisplayKey);
                 if (colObj && colObj.value !== undefined) colVal = parseInt(colObj.value);
               }
             } else {
@@ -949,7 +950,7 @@ class VisualizerHelper {
               colExpr = null;
             }
           } else if (indexExpr) {
-            const idxObj = expressions.find(obj => obj.expression === idxDisplayKey && obj.in_scope === "true");
+            const idxObj = findLatestExpr(expressions, idxDisplayKey);
             if (!idxObj || idxObj.value === undefined) {
               highlightIndexReady = false;
             } else {
