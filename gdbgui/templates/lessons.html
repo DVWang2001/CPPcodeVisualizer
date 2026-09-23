@@ -1,12 +1,15 @@
 {% extends "_auth_base.html" %}
 {% block title %}教案庫 · VGDB{% endblock %}
+{# 導覽列的「新建教案」跟下面的實心按鈕是同一個動作，這頁已經有按鈕了，
+   導覽列那份留著就是純粹的重複——拿掉。 #}
+{% block nav_new_lesson %}{% endblock %}
 {% block body %}
   {# Jinja 的 autoescape 是開著的。title、display_name、標籤名都是使用者輸入，
      一律靠它轉義；這一頁沒有任何 |safe，也沒有任何使用者字串被插進 <script>
      或 HTML 屬性裡——底下那段 JS 只讀 data-lesson-id（整數）。 #}
   <style>
     .card { --card-width: 74rem; }
-    /* 首頁該有首頁的份量：h1 比其他頁面大一號，「開啟除錯器」從純文字連結
+    /* 首頁該有首頁的份量：h1 比其他頁面大一號，「新建教案」從純文字連結
        升格成實心按鈕——這是整頁唯一的主要動作，不該跟其他連結長得一樣。 */
     .library-heading h1 { font-size: 1.9rem; }
     .btn-primary {
@@ -44,7 +47,7 @@
         {% endif %}
       </p>
     </div>
-    <a class="btn-primary" href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
+    <a class="btn-primary" href="{{ url_for('http_routes.gdbgui') }}">新建教案</a>
   </div>
 
   <form class="search-form" method="get" action="{{ url_for('http_routes.lesson_library') }}">
@@ -118,7 +121,7 @@
       {% if q or selected_tags %}
         沒有符合的教案。<a href="{{ url_for('http_routes.lesson_library') }}">清除條件</a>看全部。
       {% else %}
-        還沒有任何教案。<a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>寫第一篇。
+        還沒有任何教案。<a href="{{ url_for('http_routes.gdbgui') }}">新建教案</a>，寫下第一篇。
       {% endif %}
     </p>
   {% endif %}

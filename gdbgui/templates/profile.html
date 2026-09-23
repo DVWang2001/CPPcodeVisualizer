@@ -51,7 +51,7 @@
   {% else %}
     <p class="empty" data-testid="profile-no-lessons">
       {% if is_self %}
-        還沒有教案。<a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>寫一段程式，存成第一篇。
+        還沒有教案。<a href="{{ url_for('http_routes.gdbgui') }}">新建教案</a>，寫下第一篇。
       {% else %}
         {{ display_name }} 還沒有公開任何教案。
       {% endif %}
@@ -60,7 +60,7 @@
 
   <p class="nav">
     <a href="{{ url_for('http_routes.lesson_library') }}">教案庫</a>
-    <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
+    <a href="{{ url_for('http_routes.gdbgui') }}">新建教案</a>
     {% if is_self %}<a href="{{ url_for('auth.logout') }}">登出</a>{% endif %}
   </p>
 
