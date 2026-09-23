@@ -28,6 +28,7 @@ import QuizAuthoringDialog from "./QuizAuthoringDialog";
 import LessonSaveDialog from "./LessonSaveDialog";
 import AutosavePromptDialog from "./AutosavePromptDialog";
 import LiveQuizPanel from "./LiveQuizPanel";
+import { resolveContainerAutoOpenSuppression } from "./containerAutoOpenGate";
 import { cloneQuiz, QuizSpec, validateQuiz } from "./quizSchema";
 import {
   hasSnapshotChanges,
@@ -956,6 +957,15 @@ class SourceCode extends React.Component<{}, State> {
       Object.keys(registry).forEach((id: string) => {
         if (!idsToOpen.has(id) && registry[id]) registry[id].close();
       });
+    }
+
+    // ContainerVisualizer 的輪詢會在有資料時自動把 container 面板撐回來，
+    // 跟這裡的 close:container 打架（applyLayout 剛關掉，下一次輪詢馬上又
+    // 開回去，使用者連手動收合都收不住）——借用既有的
+    // gdbgui_table_quiz_hides_container 旗標壓住輪詢，見 containerAutoOpenGate.ts。
+    const containerSuppression = resolveContainerAutoOpenSuppression(tokens, idsToOpen, resolveId);
+    if (containerSuppression !== null) {
+      (window as any).gdbgui_table_quiz_hides_container = containerSuppression;
     }
 
     for (const token of tokens) {
