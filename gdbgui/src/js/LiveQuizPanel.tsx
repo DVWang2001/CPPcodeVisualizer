@@ -174,13 +174,20 @@ export function TableTriggerConfirm({
         </div>
       )}
 
-      {selectedCaptured && selectedCaptured.values && Array.isArray(selectedCaptured.values) && (
+      {/* 一定要畫 capture.table.values（經過 tableFromContainer 驗證過的），不能
+          直接畫 selectedCaptured.values 這個容器原始 payload：換測資重跑之後，
+          容器輪詢是逐列更新的，中間某一瞬間可能有的列還是舊測資的欄數、有的列
+          已經是新測資的欄數，直接畫原始資料就會出現鋸齒狀、格數對不齊的表格
+          （這正是「超出格子」的根因）。tableFromContainer 已經檢查過每列欄數
+          一致，不一致就會回 ok:false，畫面上交給下面的 captureError 訊息處理，
+          不會把半新半舊的資料端出來給老師看。 */}
+      {capture && capture.ok === true && (
         <table style={{ borderCollapse: "collapse", margin: "6px 0" }}>
           <tbody>
-            {selectedCaptured.values.map((row: any, r: number) => (
+            {capture.table.values.map((row, r) => (
               <tr key={r}>
-                {Array.isArray(row) && row.map((cell: any, c: number) => (
-                  <td key={c} style={{ border: "1px solid #ccc", padding: "2px 6px" }}>{String(cell)}</td>
+                {row.map((cell, c) => (
+                  <td key={c} style={{ border: "1px solid #ccc", padding: "2px 6px" }}>{cell}</td>
                 ))}
               </tr>
             ))}

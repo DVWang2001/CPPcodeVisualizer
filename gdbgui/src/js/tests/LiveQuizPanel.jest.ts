@@ -142,6 +142,23 @@ test("invalid selected container shows the capture reason verbatim and never con
   expect(onConfirm).not.toHaveBeenCalled();
 });
 
+// 換測資重跑後，容器輪詢是逐列更新的，中間某一瞬間可能有的列還是舊測資的
+// 欄數、有的列已經是新測資的欄數——實測過的真實 bug：預覽表格直接畫容器
+// 原始 payload，鋸齒狀（某一列格數跟其他列對不上）的資料會原樣畫出來，
+// 使用者看到的表格「超出格子」。預覽必須改畫 tableFromContainer 驗證過的
+// 資料，鋸齒狀的原始資料驗證會失敗，畫面上只該看到錯誤訊息，不該看到
+// 一張格數對不齊的表格。
+test("鋸齒狀的容器資料（某一列格數跟其他列不一致）不會被畫成表格，只顯示錯誤訊息", () => {
+  (global_variable as any).__latest_containers = new Map([
+    ["dp", { values: [[0, 1, 0, 0], [0, 1, 1, 0], [0, 1, 0, 1], [0, 1, 1, 2, 3]] }]
+  ]);
+  render();
+
+  expect(root.textContent).toContain("第 4 列有 5 格，與第 1 列的 4 格不一致。");
+  expect(root.querySelector("table")).toBeNull();
+  expect((root.querySelector("button") as HTMLButtonElement).disabled).toBe(true);
+});
+
 test("container visibility is restored only when the quiz flow closed an open panel", () => {
   const open = jest.fn();
   const close = jest.fn();
