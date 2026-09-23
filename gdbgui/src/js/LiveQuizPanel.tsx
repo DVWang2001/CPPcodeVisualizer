@@ -285,7 +285,6 @@ export default function LiveQuizPanel({
   /** 正在把舊課堂換成新的：收課的收尾（載回最新教案）此時是有害的。 */
   const restartingRef = React.useRef(false);
   const restorationRef = React.useRef<Promise<void> | null>(null);
-  const urlRef = React.useRef<HTMLInputElement | null>(null);
   const containerClosedRef = React.useRef(false);
   const mountedRef = React.useRef(true);
   const triggerGenerationRef = React.useRef(0);
@@ -685,19 +684,6 @@ export default function LiveQuizPanel({
       .then(() => setBusy(false));
   };
 
-  const copyUrl = () => {
-    const url = session && session.join_url;
-    if (!url) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).catch(() => undefined);
-      return;
-    }
-    if (urlRef.current) {
-      urlRef.current.select();
-      document.execCommand("copy");
-    }
-  };
-
   // 還沒有 session：不再顯示「開始即時課堂」啟動卡片——按「重新執行」就會
   // 自動開課並跳出全螢幕 QR（見 restartSession），這張卡片本來就多餘。
   // 只有自動開課失敗時才需要露出錯誤，讓老師知道發生了什麼事。
@@ -729,12 +715,6 @@ export default function LiveQuizPanel({
   const answerCount = (stats && stats.answer_count) || (question && question.answer_count) || 0;
   const correctCount = (stats && stats.correct_count) || (question && question.correct_count) || 0;
   const cellStats = (stats && stats.cell_stats) || (question && question.cell_stats) || [];
-  let joinHost = "";
-  try {
-    joinHost = new URL(session.join_url || "").host;
-  } catch (_) {}
-
-
 
   return (
     <section
@@ -771,34 +751,17 @@ export default function LiveQuizPanel({
       {/* 側欄只有一欄寬，原本的三欄 grid 會把每欄擠成不可讀的細條。 */}
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <div>
-          <img
-            src={session.qr_url}
-            alt="學生加入課堂的 QR Code"
-            data-testid="live-quiz-qr"
-            title="點一下放大"
-            onClick={() => setShowQr(true)}
-            style={{
-              display: "block", width: "100%", maxWidth: "190px", aspectRatio: "1",
-              margin: "0 auto", cursor: "zoom-in",
-              background: "#fff", border: "1px solid #d8dee9"
-            }}
-          />
-          <div style={{ marginTop: "7px", fontSize: "12px", color: connected ? "#237a3b" : "#a65f00" }}>
-            {connected ? "● 即時連線中" : "● 重新連線中"}
+          {/* QR 圖與加入連結不再常駐在這裡——190px 見方的圖加上一整塊連結區，
+              把側欄下面的教學引導內容全部往下擠。需要再給學生看 QR（例如有人
+              遲到）就點這顆小按鈕重新跳全螢幕，不用整堂課佔位置。 */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+            <span style={{ fontSize: "12px", color: connected ? "#237a3b" : "#a65f00" }}>
+              {connected ? "● 即時連線中" : "● 重新連線中"}
+            </span>
+            <button type="button" className="btn btn-default btn-sm" style={{ fontSize: "11px", padding: "1px 8px" }}
+              onClick={() => setShowQr(true)}>顯示 QR</button>
           </div>
-          <div style={{ marginTop: "7px", fontSize: "12px", color: muted }}>
-            <div>連線主機：{joinHost}</div>
-            <div>請用一支非教師手機測試</div>
-          </div>
-        </div>
-
-        <div>
-          <div style={{ color: muted, fontSize: "12px" }}>學生加入連結</div>
-          <div style={{ display: "flex", gap: "6px", margin: "5px 0 14px" }}>
-            <input ref={urlRef} className="form-control input-sm" readOnly value={session.join_url || ""} />
-            <button type="button" className="btn btn-default btn-sm" onClick={copyUrl}>複製</button>
-          </div>
-          <div style={{ fontSize: "26px", fontWeight: 700 }}>{session.joined_count || 0}</div>
+          <div style={{ marginTop: "7px", fontSize: "26px", fontWeight: 700 }}>{session.joined_count || 0}</div>
           <div style={{ color: muted, fontSize: "12px" }}>位學生已加入</div>
           {question && (
             <code style={{ display: "inline-block", marginTop: "14px", padding: "5px 8px", color: ink, background: "#fff7df", border: "1px solid #f2d38b" }}>

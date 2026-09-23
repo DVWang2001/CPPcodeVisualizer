@@ -179,7 +179,6 @@ test('student scans rendered QR and answers when playback reaches the bound line
       teacherPage.locator("img[alt='學生加入課堂的 QR Code']")
     );
     expect(new URL(decodedUrl).pathname).toMatch(/^\/join\/[^/]+$/);
-    await expect(teacherPage.getByText('連線主機：app:5000')).toBeVisible();
 
     await joinStudent(studentPage, decodedUrl, '小明');
     await resumeToBoundLine(teacherPage);
