@@ -353,6 +353,16 @@ class TopBar extends React.Component<{}, State> {
       >
         <div className="flexrow" style={{ alignItems: "center" }}>
 
+          <span className="toolbar-group">
+            <button
+              onClick={() => { window.location.href = "/"; }}
+              data-testid="go-home"
+              className="btn btn-default btn-sm toolbar-btn"
+              title="回首頁，瀏覽所有人的教案">
+              <span className="glyphicon glyphicon-home" />回首頁
+            </button>
+          </span>
+
           {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'initial_user_input' does not exist on ty... Remove this comment to see the full error message */}
 
           <BinaryLoader initial_user_input={this.props.initial_user_input} />

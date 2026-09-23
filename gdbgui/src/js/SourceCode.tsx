@@ -297,7 +297,7 @@ class SourceCode extends React.Component<{}, State> {
 
   /** AutosavePromptDialog「捨棄，用空白範本」：丟掉暫存的自動存檔，編輯器
    *  維持掛載時的預設空白內容（Monaco 還沒讀過 __pending_source_code，
-   *  所以不用另外清什麼）。使用者可以自己按「從教案庫開啟」選一篇。 */
+   *  所以不用另外清什麼）。使用者可以自己按左上角「回首頁」選一篇。 */
   _discardAutosaveDraft = () => {
     this._pendingAutosaveBundle = null;
     this.setState({ showAutosavePrompt: false } as any);
@@ -1169,7 +1169,7 @@ class SourceCode extends React.Component<{}, State> {
    *
    * 走 applyProjectBundle 是為了繼承它已經處理好的事（殺掉執行中的 gdb、清空
    * 課堂題目、重設斷點與程式輸入）。但那條路徑不會動 currentLessonId——那是
-   * 「從教案庫開啟」在外層設的。不在這裡清掉的話，接著按「儲存教案」會覆蓋掉
+   * 從首頁選教案進來（?lesson= 網址）在外層設的。不在這裡清掉的話，接著按「儲存教案」會覆蓋掉
    * 使用者剛才開著的那一篇。
    */
   startNewDraft = () => {
@@ -1198,7 +1198,7 @@ class SourceCode extends React.Component<{}, State> {
     event.target.value = '';
   };
 
-  // 把一份 bundle 套進編輯器。「Import JSON」（本機檔案）與「從教案庫開啟」
+  // 把一份 bundle 套進編輯器。「Import JSON」（本機檔案）與從首頁選教案開啟
   // （伺服器上的教案）走同一條路徑：兩邊拿到的是同一種 bundle 物件，拆成兩份
   // 實作就會有一天只有其中一邊懂新的欄位。
   applyProjectBundle = (projectData: any): LessonBundle => {
@@ -1347,7 +1347,7 @@ class SourceCode extends React.Component<{}, State> {
   // ── 教案分享 ───────────────────────────────────────────────────────────────
   //
   // Import JSON / Export JSON（本機檔案）保留不動——備份與離線交換仍然有用。
-  // 底下這兩顆是另一條路：存進自己的帳號、從教案庫開啟別人的。
+  // 底下這顆是另一條路：存進自己的帳號。開別人的教案改從首頁的教案庫選。
   //
   // 擁有權仍由伺服器決定；前端的 is_mine 只用來決定是否先顯示差異確認。
 
@@ -1800,11 +1800,6 @@ class SourceCode extends React.Component<{}, State> {
     this.setState({ showLessonHistory: false } as any);
   };
 
-  openLessonLibrary = () => {
-    // 教案庫換到主頁了；/lessons 還在但只是一個轉址，直接打 / 省一趟往返。
-    window.location.href = "/";
-  };
-
   tempFullname = '';
   lastLoadedFilename: string | null = null;
   render() {
@@ -1881,7 +1876,7 @@ class SourceCode extends React.Component<{}, State> {
                 </span>
               ) : (
                 <span
-                  title="這是瀏覽器本機自動存檔的內容，不是教案庫裡的任何一篇。重新整理不會拿到教案庫的最新版本——要看最新內容，請按「從教案庫開啟」重新選一次。"
+                  title="這是瀏覽器本機自動存檔的內容，不是教案庫裡的任何一篇。重新整理不會拿到教案庫的最新版本——要看最新內容，請按左上角「回首頁」重新選一次。"
                   style={{ fontSize: "12px", color: "#8a5a00", background: "#fff3cd", border: "1px solid #ffe08a", borderRadius: "4px", padding: "1px 6px", whiteSpace: "nowrap" }}>
                   ⚠ 本機草稿（未載入教案）
                 </span>
@@ -1982,13 +1977,6 @@ class SourceCode extends React.Component<{}, State> {
                     <span className="glyphicon glyphicon-time" />版本歷史
                   </button>
                 )}
-                <button
-                  onClick={this.openLessonLibrary}
-                  data-testid="open-lesson-library"
-                  className="btn btn-default btn-sm toolbar-btn"
-                  title="瀏覽所有人的教案">
-                  <span className="glyphicon glyphicon-book" />從教案庫開啟
-                </button>
               </span>
               <span className="toolbar-group">
                 <button
