@@ -704,6 +704,13 @@ const GdbApi = {
   },
   click_continue_button: function (reverse = false) {
     if (isQuizPlaybackBlocked(store)) return;
+    // 按鈕在 UI 上沒有依 inferior_is_paused() 停用，連點（或自動播放疊加手動點擊）
+    // 會在 GDB 還沒回應上一個 exec 命令時又送一個新的。GDB 在還沒真的停下來前
+    // 不接受新的 exec 命令，輕則被忽略、重則整個 session 卡死（使用者實測回報：
+    // step-out 連點會出現「10 秒沒有回應」）。同一組競態也是「按太快亮錯格」的
+    // 根源——一次真正的停駐點本來就只該有一個 graphics_instruction 在跑，是這裡
+    // 讓兩個疊在一起。擋在源頭比事後修每個下游的競態更直接、更難漏。
+    if (!GdbApi.inferior_is_paused()) return;
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-continue" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
@@ -718,6 +725,9 @@ const GdbApi = {
   // 手動點擊不排接續（使用者自己按下一步）。
   click_next_button: function (reverse = false, opts: { autoplay?: boolean } = {}) {
     if (isQuizPlaybackBlocked(store)) return;
+    // 連點/自動播放疊加手動點擊會在 GDB 還沒回應上一個 exec 命令時又送一個新的
+    // （見 click_continue_button 的完整說明）。
+    if (!GdbApi.inferior_is_paused()) return;
     // 快轉期間完全繞過 for 虛步：否則每個 for 行要多花一個虛步（多一次 dwell），
     // B 段高亮還會在無聲快轉中閃爍。
     if (!reverse && !store.get("debug_in_reverse") && !isFastForwarding()) {
@@ -751,6 +761,9 @@ const GdbApi = {
   },
   click_step_button: function (reverse = false) {
     if (isQuizPlaybackBlocked(store)) return;
+    // 連點會在 GDB 還沒回應上一個 exec 命令時又送一個新的（見
+    // click_continue_button 的完整說明；這正是「step-in 按太快」那類回報的根源）。
+    if (!GdbApi.inferior_is_paused()) return;
     Actions.inferior_program_resuming();
     watchStep("步入");
     GdbApi.run_gdb_command(
@@ -763,11 +776,17 @@ const GdbApi = {
     // which caused a race condition and React UI crashes (black screen) because `paused`
     // was forcefully triggered before GDB replied. Now uses the proper Step Out
     // implementation `-exec-finish` which executes the rest of the frame.
+    //
+    // 連點會在 GDB 還沒回應上一個 exec 命令時又送一個新的（見 click_continue_button
+    // 的完整說明；這正是「step-out 按太快跳到某一行亮錯格、甚至整個卡死」的根源）。
+    if (!GdbApi.inferior_is_paused()) return;
     Actions.inferior_program_resuming();
     watchStep("步出");
     GdbApi.run_gdb_command("-exec-finish");
   },
   click_next_instruction_button: function (reverse = false) {
+    // 連點會在 GDB 還沒回應上一個 exec 命令時又送一個新的（見 click_continue_button）。
+    if (!GdbApi.inferior_is_paused()) return;
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-next-instruction" +
@@ -775,6 +794,8 @@ const GdbApi = {
     );
   },
   click_step_instruction_button: function (reverse = false) {
+    // 連點會在 GDB 還沒回應上一個 exec 命令時又送一個新的（見 click_continue_button）。
+    if (!GdbApi.inferior_is_paused()) return;
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command(
       "-exec-step-instruction" +
