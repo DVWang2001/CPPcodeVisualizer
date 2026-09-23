@@ -137,7 +137,7 @@ class ControlButtons extends React.Component<{}, State> {
           className={btn_class_text + (this.state.edit_mode ? " active" : "")}
           style={this.state.edit_mode ? { color: "#f0ad4e", fontWeight: "bold" } : { color: "#999" }}
         >
-          Edit
+          <span className="glyphicon glyphicon-pencil" style={{ color: "inherit" }} />Edit
         </button>
 
         <button
@@ -158,7 +158,7 @@ class ControlButtons extends React.Component<{}, State> {
           className={btn_class_text + (this.state.autoplay_enabled ? " active" : "")}
           style={this.state.autoplay_enabled ? { color: "#5cb85c", fontWeight: "bold" } : {}}
         >
-          Auto
+          <span className="glyphicon glyphicon-play-circle" style={{ color: "inherit" }} />Auto
         </button>
 
         {this.state.autoplay_enabled && (

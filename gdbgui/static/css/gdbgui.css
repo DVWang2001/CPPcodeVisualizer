@@ -687,6 +687,19 @@ tr.compile-warning-tr td {
   font-size: 12px;
   line-height: 24px;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* 文字按鈕自己的圖示：跟 --ink-soft 同一個層級的視覺重量（比文字淡一階），
+   一眼掃過去先認圖示、文字是確認用的，不是圖示比文字搶眼。 */
+.toolbar-btn > .glyphicon {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.toolbar-btn:hover > .glyphicon,
+.toolbar-toggle:has(input:checked) > .glyphicon {
+  color: inherit;
 }
 .toolbar-btn-icon {
   width: 26px;

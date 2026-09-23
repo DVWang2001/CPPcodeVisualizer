@@ -1895,20 +1895,20 @@ class SourceCode extends React.Component<{}, State> {
                   data-testid="new-draft"
                   className="btn btn-default btn-sm toolbar-btn"
                   title="清空編輯器，從一份空白的程式開始（不影響教案庫裡已儲存的教案）">
-                  ＋ 新草稿
+                  <span className="glyphicon glyphicon-file" />新草稿
                 </button>
                 <button
                   onClick={() => this.setState({ showLessonGen: !(this.state as any).showLessonGen } as any)}
                   disabled={this.liveQuizVersionLock}
                   className="btn btn-default btn-sm toolbar-btn"
                   title="用 AI 模型為目前程式碼生成 //@ 教案註解">
-                  AI 生成教案
+                  <span className="glyphicon glyphicon-magic" />AI 生成教案
                 </button>
                 <button
                   onClick={this.triggerImport}
                   disabled={this.liveQuizVersionLock}
                   className="btn btn-default btn-sm toolbar-btn">
-                  Import JSON
+                  <span className="glyphicon glyphicon-import" />Import JSON
                 </button>
                 <input
                   type="file"
@@ -1920,7 +1920,7 @@ class SourceCode extends React.Component<{}, State> {
                 <button
                   onClick={this.exportProject}
                   className="btn btn-default btn-sm toolbar-btn">
-                  Export JSON
+                  <span className="glyphicon glyphicon-export" />Export JSON
                 </button>
               </span>
               {/* Import/Export JSON 讀寫本機檔案（備份與離線交換）；下一組是
@@ -1936,7 +1936,7 @@ class SourceCode extends React.Component<{}, State> {
                       ? "檢視這篇教案的課堂題目（別人的教案不能修改）"
                       : "編輯播放時自動出現的課堂單選題"
                   }>
-                  課堂題目
+                  <span className="glyphicon glyphicon-question-sign" />課堂題目
                 </button>
                 {this.currentLessonId !== null &&
                   this.currentLessonIsMine &&
@@ -1959,7 +1959,7 @@ class SourceCode extends React.Component<{}, State> {
                           this.setState({ showLiveQuiz: event.target.checked } as any)
                         }
                       />
-                      即時課堂
+                      <span className="glyphicon glyphicon-qrcode" />即時課堂
                     </label>
                   )}
               </span>
@@ -1970,7 +1970,7 @@ class SourceCode extends React.Component<{}, State> {
                   data-testid="save-lesson-to-account"
                   className="btn btn-default btn-sm toolbar-btn"
                   title="把目前的程式碼與斷點存成你帳號底下的一篇教案">
-                  存到我的帳號
+                  <span className="glyphicon glyphicon-floppy-save" />存到我的帳號
                 </button>
                 {this.currentLessonId !== null && this.currentLessonIsMine && (
                   <button
@@ -1979,7 +1979,7 @@ class SourceCode extends React.Component<{}, State> {
                     data-testid="lesson-history-open"
                     className="btn btn-default btn-sm toolbar-btn"
                     title="檢視自己的教案版本歷史">
-                    版本歷史
+                    <span className="glyphicon glyphicon-time" />版本歷史
                   </button>
                 )}
                 <button
@@ -1987,7 +1987,7 @@ class SourceCode extends React.Component<{}, State> {
                   data-testid="open-lesson-library"
                   className="btn btn-default btn-sm toolbar-btn"
                   title="瀏覽所有人的教案">
-                  從教案庫開啟
+                  <span className="glyphicon glyphicon-book" />從教案庫開啟
                 </button>
               </span>
               <span className="toolbar-group">
@@ -1996,7 +1996,7 @@ class SourceCode extends React.Component<{}, State> {
                   className="btn btn-default btn-sm toolbar-btn"
                   title="Clear all breakpoints"
                   style={{ color: "#c0392b" }}>
-                  ✕ Breakpoints
+                  <span className="glyphicon glyphicon-trash" />Breakpoints
                 </button>
               </span>
             </div>
