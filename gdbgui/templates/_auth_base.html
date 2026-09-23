@@ -292,6 +292,11 @@
         gap: 0.5rem;
       }
       .row-meta a { color: var(--ink-soft); }
+      /* .row-title／.row-meta 也被 profile.html 的教案清單借用，那邊沒有
+         .lesson-row（也沒有 position:relative 的撐滿層）——下面這些規則
+         全部要鎖在 .lesson-row 底下，不然 profile 頁那個「儲存標籤」
+         按鈕會被一層看不見的連結蓋住，按不到。 */
+      .lesson-row .row-meta { position: relative; z-index: 1; }
 
       .library-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: start; margin-bottom: 1.4rem; }
       .library-columns, .listing .lesson-row { display: grid; grid-template-columns: 3.25rem minmax(0, 1fr) minmax(7rem, .34fr) 7.5rem 3.375rem; }
@@ -299,8 +304,26 @@
       .listing .lesson-row { align-items: center; min-height: 4.5rem; }
       .listing .lesson-row .row-main { padding-right: .9rem; }
       .lesson-row .row-author, .lesson-row .row-updated { color: var(--ink-soft); font-size: .82rem; min-width: 0; overflow-wrap: anywhere; }
-      .lesson-row .row-actions { padding-right: .75rem; text-align: right; }
+      .lesson-row .row-author { position: relative; z-index: 1; }
+      .lesson-row .row-actions { padding-right: .75rem; text-align: right; position: relative; z-index: 1; }
       .lesson-row .tag { overflow-wrap: anywhere; white-space: normal; }
+
+      /* 整列都是一個大按鈕：標題連結的 ::after 撐滿整列（stretched link）
+         點空白處一樣會開啟教案；作者、標籤、刪除鈕疊在撐滿層上面
+         （position:relative + z-index:1），各自仍然可以獨立點。hover 或
+         鍵盤 focus 到列裡任何東西，整列飄起 2px、外框亮起來，跟按鈕
+         hover 是同一種語言——這一列本身就是按鈕，不是「裝了連結的列」。 */
+      .lesson-row {
+        position: relative;
+        border-radius: 8px;
+        transition: transform 140ms ease, box-shadow 140ms ease;
+      }
+      .lesson-row:hover, .lesson-row:focus-within {
+        transform: translateY(-2px);
+        box-shadow: 0 0 0 1px var(--accent), 0 4px 10px rgba(27, 31, 36, 0.08);
+        z-index: 1;
+      }
+      .lesson-row .row-title::after { content: ""; position: absolute; inset: 0; }
 
       .lesson-delete {
         width: auto;
