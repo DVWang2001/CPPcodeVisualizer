@@ -204,9 +204,12 @@
         font: inherit;
         font-weight: 600;
         cursor: pointer;
-        transition: filter 140ms ease;
+        transition: filter 140ms ease, transform 140ms ease;
       }
-      button:hover { filter: brightness(1.08); }
+      /* 只有「按鈕」會飄——連結、卡片、列表行都不加，不然整頁的動態
+         元素就不只 wordmark 那顆游標一個了。飄起幅度刻意很小（2px），
+         是確認可以按，不是裝飾。 */
+      button:hover { filter: brightness(1.08); transform: translateY(-2px); }
       button:focus-visible, a:focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: 2px;
