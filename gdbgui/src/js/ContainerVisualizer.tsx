@@ -491,11 +491,14 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                                         {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
                                                     </span>
                                                     {preview !== null && (
+                                                        // 蓋在目標格「裡面」（inset:0，同一個 position:relative 父層），
+                                                        // 不是浮在上方——浮在上方在直向排列的表格裡會伸進正上方那格
+                                                        // 的範圍，看起來像是暫時結果長在來源格上，而不是目標格。
                                                         <span style={{
-                                                            position: "absolute", top: "-10px", left: "50%", transform: "translate(-50%, -100%)",
+                                                            position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
                                                             background: "var(--paper)", border: "1px dashed var(--accent)", borderRadius: "6px",
-                                                            padding: "1px 6px", fontSize: "0.75em", color: "var(--accent)", whiteSpace: "nowrap",
-                                                            fontStyle: "italic", pointerEvents: "none",
+                                                            fontSize: "0.9em", color: "var(--accent)", whiteSpace: "nowrap",
+                                                            fontStyle: "italic", pointerEvents: "none", zIndex: 3,
                                                         }}>
                                                             {preview}
                                                         </span>

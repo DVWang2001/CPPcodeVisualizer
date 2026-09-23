@@ -91,6 +91,13 @@ describe("pull:dp:orange,lime->lightblue", () => {
     const badge = findPreviewBadge(renderer.toJSON());
     expect(badge).not.toBeNull();
     expect(badge.children).toEqual(["8"]);
+    // 回歸測試：badge 曾經用 top:"-10px" + translate(-50%,-100%) 浮在目標格
+    // 上方，在直向排列的表格裡會伸進正上方那一格的範圍，看起來像長在來源格
+    // 上而不是目標格（使用者實測回報）。inset:0 才是待在目標格「裡面」，不會
+    // 溢出到別格——react-test-renderer 不跑真的排版，這條斷言是唯一能擋住
+    // 這類「資料是對的、但視覺位置溢出到別格」的地方。
+    expect(badge.props.style.inset).toBe(0);
+    expect(badge.props.style.top).toBeUndefined();
 
     // 過了 450ms：飛行動畫（來源格數字位移）結束，但目標格的真實值
     // （dp[1][1]）在 __latest_containers 裡還是原本的 0，暫時結果不能收掉。
