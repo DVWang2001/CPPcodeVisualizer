@@ -190,9 +190,11 @@ class ControlButtons extends React.Component<{}, State> {
             className={btn_class + (this.state.autoplay_paused ? " active" : "")}
             style={this.state.autoplay_paused ? { color: "#f0ad4e", fontWeight: "bold" } : { color: "#5cb85c" }}
           >
-            {/* 用喇叭圖案（音量開/關）取代跟 GDB 原生 play/pause 一樣的三角形/長條，
-                避免跟上面那排執行控制按鈕撞臉。 */}
-            <span className={this.state.autoplay_paused ? "glyphicon glyphicon-volume-off" : "glyphicon glyphicon-volume-up"} />
+            {/* 這顆按鈕管的是「自動朗讀＋自動下一步」這條線，不是聲音大小，
+                喇叭圖案語意不準。改用耳機圖案標記「這是 TTS 那條線的控制」，
+                跟 GDB 原生 play/pause 的三角形/長條區隔開；播放/暫停狀態
+                跟旁邊的 Auto 按鈕一樣，交給顏色（橘/綠）表示，圖案本身固定。 */}
+            <span className="glyphicon glyphicon-headphones" style={{ color: "inherit" }} />
           </button>
         )}
 
