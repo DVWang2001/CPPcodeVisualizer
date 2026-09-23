@@ -961,11 +961,14 @@ class SourceCode extends React.Component<{}, State> {
 
     // ContainerVisualizer 的輪詢會在有資料時自動把 container 面板撐回來，
     // 跟這裡的 close:container 打架（applyLayout 剛關掉，下一次輪詢馬上又
-    // 開回去，使用者連手動收合都收不住）——借用既有的
-    // gdbgui_table_quiz_hides_container 旗標壓住輪詢，見 containerAutoOpenGate.ts。
+    // 開回去，使用者連手動收合都收不住）——用獨立的
+    // gdbgui_container_auto_open_suppressed 旗標壓住輪詢，見
+    // containerAutoOpenGate.ts。不能借用 gdbgui_table_quiz_hides_container：
+    // 那支旗標同時門控「確認出題」對話框，借用會在題目還沒確認出來之前
+    // 就把對話框壓住（曾經是真的線上 bug）。
     const containerSuppression = resolveContainerAutoOpenSuppression(tokens, idsToOpen, resolveId);
     if (containerSuppression !== null) {
-      (window as any).gdbgui_table_quiz_hides_container = containerSuppression;
+      (window as any).gdbgui_container_auto_open_suppressed = containerSuppression;
     }
 
     for (const token of tokens) {

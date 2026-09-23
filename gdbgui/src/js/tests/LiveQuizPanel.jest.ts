@@ -704,3 +704,31 @@ test("出題時連題目資料一起捕獲，畫在課堂面板上", async () =>
   expect(shown).toContain("題目資料");
   expect(shown).toContain("w");
 });
+
+// 這條是實測過的真實 bug 的回歸測試：教案在出題那一行順便寫了
+// @layout close:container，applyLayout 把 gdbgui_container_auto_open_suppressed
+// 設成 true——這支旗標只該壓住 ContainerVisualizer 的自動重開輪詢，不該連帶
+// 壓住「確認出題」對話框（那支對話框只認 gdbgui_table_quiz_hides_container）。
+// 曾經誤把兩支旗標合併成一支，結果變成：題目還沒確認出來，對話框就先被
+// close:container 壓住，老師永遠看不到「確認出題」。
+test("close:container 的旗標（gdbgui_container_auto_open_suppressed）不會連帶壓住確認出題對話框", async () => {
+  (window as any).gdbgui_container_auto_open_suppressed = true;
+  await mountPanel();
+
+  const confirmBtn = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題");
+  expect(confirmBtn).toBeDefined();
+
+  (window as any).gdbgui_container_auto_open_suppressed = false;
+});
+
+test("對照組：gdbgui_table_quiz_hides_container 是真的會壓住確認出題對話框的那支旗標", async () => {
+  (window as any).gdbgui_table_quiz_hides_container = true;
+  await mountPanel();
+
+  const confirmBtn = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題");
+  expect(confirmBtn).toBeUndefined();
+
+  (window as any).gdbgui_table_quiz_hides_container = false;
+});

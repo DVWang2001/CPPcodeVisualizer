@@ -278,7 +278,16 @@ class ContainerVisualizer extends React.Component<{}, State> {
             }
         }
 
-        if (latestContainers.size > 0 && !(window as any).gdbgui_table_quiz_hides_container) {
+        // 兩支旗標各管各的：gdbgui_table_quiz_hides_container 是出題流程「已確認、
+        // 正在秀預覽」在壓；gdbgui_container_auto_open_suppressed 是教案 @layout
+        // close:container 在壓（見 SourceCode.applyLayout、containerAutoOpenGate.ts）。
+        // 兩支都不能忽略，但也不能合併成一支——合併過，會導致題目還沒確認出來
+        // 就被連帶壓住「確認出題」對話框，是實測過的真實 bug。
+        if (
+            latestContainers.size > 0 &&
+            !(window as any).gdbgui_table_quiz_hides_container &&
+            !(window as any).gdbgui_container_auto_open_suppressed
+        ) {
             const registry = (window as any).gdbgui_collapser_registry || {};
             if (registry["container"]) registry["container"].open();
         }
