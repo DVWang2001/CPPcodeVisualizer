@@ -87,12 +87,44 @@ class DebugSession:
         # /send_signal 不再接受呼叫端送 pid 上來，所以要送訊號給 inferior，
         # 伺服器必須自己知道它是誰。沒有正在跑的 inferior 時是 None。
         self.inferior_pid: Optional[int] = None
+        # inferior 目前是不是「正在跑」（*running，還沒停下來）而不是「停在
+        # 中斷點/單步之後」（*stopped）。跟 inferior_pid 是不是 None 是兩件事：
+        # 停在中斷點時 inferior 仍活著（pid 還在），只是不在執行。見
+        # observe_gdb_response 怎麼維護、app.py 的 client_connected 怎麼用它
+        # （同一個使用者重新整理、接回既有 session 時，只殺還在跑的 inferior，
+        # 停在中斷點的則保留，不動使用者的除錯進度）。
+        self.inferior_running: bool = False
         self.start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.client_ids: Set[str] = set()
         # Token tied to the current compilation/run session; validated on every GDB command.
         self.run_token: Optional[str] = None
         self.last_request_id: int = 0
         self.packet_seq_num: int = 0
+
+    def kill_running_inferior_if_any(self) -> bool:
+        """如果目前有一個「還在跑」的 inferior（*running、還沒停下來），把它殺掉。
+
+        用在同一個使用者重新整理頁面、接回既有 session 的時候（見 app.py 的
+        client_connected）：使用者的心智模型是「我重新整理了，這次操作應該
+        結束」，但舊設計是無條件接回既有 session，卡住/還在跑的程式會一路
+        跟著活下去，使用者除了 SSH 進去手動 kill 別無他法（這個函式存在的
+        直接原因）。只殺「還在跑」的，不動「已經停在中斷點」的——後者是
+        這個接回既有 session 設計本來要保護的東西（意外重新整理不丟進度），
+        不該被這個修法一起拿掉。
+
+        回傳是不是真的殺了東西，讓呼叫端決定要不要記 log／通知前端。
+        """
+        if not self.inferior_running or not self.inferior_pid:
+            return False
+        pid = self.inferior_pid
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError as e:
+            logger.warning(f"[reattach] failed to kill running inferior {pid}: {e}")
+        # 不在這裡樂觀地清 inferior_pid/inferior_running——GDB 偵測到子行程死亡後
+        # 會自己送 thread-group-exited，observe_gdb_response 那條既有路徑會處理，
+        # 單一事實來源維持在那裡，這裡不重複維護一份可能不同步的狀態。
+        return True
 
     def terminate(self):
         if self.pid:
@@ -147,6 +179,14 @@ class DebugSession:
                     self.inferior_pid = pid
             elif message == "thread-group-exited":
                 self.inferior_pid = None
+                self.inferior_running = False
+            elif message == "running":
+                # *running：GDB 剛送出去執行（-exec-run/-continue/-step/...），
+                # 還沒停下來。
+                self.inferior_running = True
+            elif message == "stopped":
+                # *stopped：中斷點命中、單步落地、或程式結束前的最後一次停駐。
+                self.inferior_running = False
 
     def is_owned_by(self, owner_key: Optional[str]) -> bool:
         """這個 debug session 是不是屬於 owner_key？

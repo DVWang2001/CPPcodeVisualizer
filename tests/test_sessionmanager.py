@@ -300,6 +300,7 @@ def _bare_debug_session():
     """只要 observe_gdb_response 的那一小塊狀態，不用 fork 一個 GDB。"""
     debug_session = sessionmanager.DebugSession.__new__(sessionmanager.DebugSession)
     debug_session.inferior_pid = None
+    debug_session.inferior_running = False
     return debug_session
 
 
@@ -335,3 +336,79 @@ def test_garbage_in_the_mi_stream_never_becomes_a_signal_target():
     for junk in (None, "string", 7, [None], [{"message": None}], [{}]):
         debug_session.observe_gdb_response(junk)
         assert debug_session.inferior_pid == 4321, junk
+
+
+# ---------------------------------------------------------------------------
+# 回報：使用者重新整理頁面、接回既有 session 時，一個卡住／還在執行的
+# inferior 會無限期活下去，唯一的逃脫方式是 SSH 進正式機手動 kill。
+# inferior_running 追蹤「還在跑」vs「已經停在中斷點」，
+# kill_running_inferior_if_any 只殺前者——後者是「重新整理不丟進度」這個
+# 既有設計本來要保護的東西，不該被這次的修法一起拿掉。
+# ---------------------------------------------------------------------------
+
+
+def test_inferior_running_tracks_star_running_and_star_stopped():
+    debug_session = _bare_debug_session()
+    debug_session.inferior_pid = 4321
+
+    debug_session.observe_gdb_response([{"message": "running", "payload": None}])
+    assert debug_session.inferior_running is True
+
+    debug_session.observe_gdb_response(
+        [{"message": "stopped", "payload": {"reason": "breakpoint-hit"}}]
+    )
+    assert debug_session.inferior_running is False
+
+
+def test_thread_group_exited_also_clears_inferior_running():
+    debug_session = _bare_debug_session()
+    debug_session.inferior_pid = 4321
+    debug_session.inferior_running = True
+
+    debug_session.observe_gdb_response(
+        [{"message": "thread-group-exited", "payload": {"id": "i1"}}]
+    )
+    assert debug_session.inferior_running is False
+
+
+def test_kill_running_inferior_if_any_kills_a_running_one(monkeypatch):
+    debug_session = _bare_debug_session()
+    debug_session.inferior_pid = 4321
+    debug_session.inferior_running = True
+
+    killed = []
+    monkeypatch.setattr(
+        sessionmanager.os, "kill", lambda pid, sig: killed.append((pid, sig))
+    )
+
+    assert debug_session.kill_running_inferior_if_any() is True
+    assert killed == [(4321, sessionmanager.signal.SIGKILL)]
+
+
+def test_kill_running_inferior_if_any_leaves_a_stopped_one_alone(monkeypatch):
+    """停在中斷點的 inferior：不能被這個重新整理的修法一起殺掉。"""
+    debug_session = _bare_debug_session()
+    debug_session.inferior_pid = 4321
+    debug_session.inferior_running = False
+
+    killed = []
+    monkeypatch.setattr(
+        sessionmanager.os, "kill", lambda pid, sig: killed.append((pid, sig))
+    )
+
+    assert debug_session.kill_running_inferior_if_any() is False
+    assert killed == []
+
+
+def test_kill_running_inferior_if_any_is_a_noop_with_no_inferior(monkeypatch):
+    debug_session = _bare_debug_session()
+    debug_session.inferior_pid = None
+    debug_session.inferior_running = True  # 不該發生，但確保仍然安全
+
+    killed = []
+    monkeypatch.setattr(
+        sessionmanager.os, "kill", lambda pid, sig: killed.append((pid, sig))
+    )
+
+    assert debug_session.kill_running_inferior_if_any() is False
+    assert killed == []

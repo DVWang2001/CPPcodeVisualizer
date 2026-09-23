@@ -278,17 +278,26 @@ def client_connected():
                 client_id=request.sid,
                 owner_key=session_key,
             )
+            # 使用者重新整理頁面、接回既有 session：如果這個 session 目前有一個
+            # 還在跑的 inferior（不是停在中斷點），把它殺掉——使用者重新整理的
+            # 心智模型是「這次操作結束了」，讓卡住/還在跑的程式繼續活著只會
+            # 讓人沒辦法用重新整理逃脫。已經停在中斷點的不受影響，仍然接回去
+            # （見 DebugSession.kill_running_inferior_if_any 的完整說明）。
+            killed_running_inferior = debug_session.kill_running_inferior_if_any()
             # attach 不佔用新的併發額度，但要讓 jail 的閒置計時器知道這個
             # session 還活著，否則長時間只有第二個分頁在用會被 reap 掉。
             if session_key:
                 jail_manager.touch(session_key)
+            message = f"Connected to existing gdb process {debug_session.pid}"
+            if killed_running_inferior:
+                message += "（原本還在執行的程式已因重新整理而中止，請重新執行）"
             emit(
                 "debug_session_connection_event",
                 {
                     "ok": True,
                     "started_new_gdb_process": False,
                     "pid": debug_session.pid,
-                    "message": f"Connected to existing gdb process {debug_session.pid}",
+                    "message": message,
                 },
             )
         else:
