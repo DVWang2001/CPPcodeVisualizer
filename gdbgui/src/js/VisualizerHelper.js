@@ -755,6 +755,16 @@ class VisualizerHelper {
       if (_cName) _hlStage.expect(_cName);
     }
 
+    // 2D 索引高亮（{dp[i][j]:color} 這種）的 flat index 要靠容器自己的欄數才
+    // 算得出來，而欄數是「容器資料」這個各自獨立的非同步 token 才抓得到的。
+    // 同一行常有好幾個 2D 索引 token 平行跑，各自要抓的又常是同一個容器
+    // （dp[i][j]/dp[i-1][j]/dp[i][j-1] 都要抓 "dp"）——如果在各自的輪詢裡
+    // 「邊等容器資料邊算 index」，順序完全看 GDB 回應先後，不同次執行結果
+    // 不穩定（實測踩過三種變形：亮錯格 → 改完變整行不亮 → 改完變只有部分
+    // 格子亮）。改成每個 token 只記錄自己已知的 (row, col)，真正換算成 index
+    // 延後到全部 token 都跑完（或逾時放棄）之後、在下面 Promise.all 後一次
+    // 算——那時候 __latest_containers 已經是這次停駐點能拿到的最終狀態。
+    const _pending2DHighlights = [];
     const outputArray = await Promise.all(instruction.map((inst) => {
       if (!(inst.startsWith('{') && inst.endsWith('}'))) {
         return Promise.resolve(inst);
@@ -930,25 +940,13 @@ class VisualizerHelper {
             if (rowVal === undefined || colVal === undefined) {
               highlightIndexReady = false;
             } else if (!isNaN(rowVal) && !isNaN(colVal)) {
-              const baseContainerKey = baseContainer;
-              const containerData = global_variable.__latest_containers && global_variable.__latest_containers.get(baseContainerKey);
-              const idxResult = resolve2DHighlightIndex(rowVal, colVal, containerData);
-              if (!idxResult.ready) {
-                // 容器本身的資料（例如 {dp} 這個 token 抓回來的欄數）還沒備妥，
-                // 保持 highlightIndexReady=false 讓外層重試；rowExpr/colExpr
-                // 先別清掉，不然下一輪 tick 會直接跳過這個 if 區塊，永遠等不到
-                // 欄數備妥的那一刻（見 gridHighlightIndex.ts 檔頭為什麼不能
-                // 像舊版一樣假設欄數＝1）。
-                highlightIndexReady = false;
-              } else {
-                const parsedIdx = idxResult.index;
-                if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
-                if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
-                global_variable.__container_highlights.get(frame_line)[baseContainerKey] = parsedIdx;
-                _hlStage.add(baseContainerKey, { index: parsedIdx, color: highlightColor });
-                rowExpr = null;
-                colExpr = null;
-              }
+              // row/col 都已知了，但還不在這裡把 index 算出來、寫進 _hlStage——
+              // 欄數要等容器資料備妥，而那份資料常常是「同一行的另一個 token」
+              // 才抓得到的，各 token 各自輪詢的先後順序不穩定。記下來，等全部
+              // token 都跑完（下面 Promise.all 之後）一次算，見那裡的完整說明。
+              _pending2DHighlights.push({ baseContainerKey: baseContainer, rowVal, colVal, color: highlightColor });
+              rowExpr = null;
+              colExpr = null;
             } else {
               _hlStage.skip(baseContainer);
               rowExpr = null;
@@ -973,16 +971,24 @@ class VisualizerHelper {
             }
           }
 
+          // highlightIndexReady 在這裡只代表「這個 token 如果是索引高亮，自己的
+          // 列/欄（或一維索引）有沒有求值完成」——跟容器欄數完全無關（欄數的
+          // 換算延後到 Promise.all 之後才一次做，見上面 _pending2DHighlights）。
+          // 沒求值完成就先 return、下一輪 tick 再試，還不要往下走到抓容器資料
+          // 那一段：如果讓它跟著往下跑，容器資料一旦剛好在這一輪就緒、resolve
+          // 掉這個 token 的 promise，這個 token 就再也沒有機會回來把列/欄記進
+          // _pending2DHighlights 了（同一行別的 token 可能也要抓同一個容器，
+          // 誰先誰後純看 GDB 回應順序，不穩定——這正是「只有部分格子亮」這個
+          // regression 的成因）。反過來，一旦列/欄已經確定（不管是算出來、還是
+          // 判定沒救 skip 掉），容器資料的抓取本身完全不應該被這件事卡住，才能
+          // 讓欄數在 Promise.all 之後真的等得到（見上一輪修的死結）。兩件事
+          // 因此在這裡明確拆成先後兩步，不再互相牽連。
+          if (!highlightIndexReady) {
+            setTimeout(checkStore, 100);
+            return;
+          }
+
           const varObj = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
-          // 容器本身的抓取／建立 payload 不能被 highlightIndexReady 卡住：resolve2DHighlightIndex
-          // 要用的欄數，正是這段程式碼自己（下面 __latest_containers.set(...) 那幾處）
-          // 才填得進去的。如果拿 highlightIndexReady 當這段的閘門，同一行只要全部的
-          // 2D 索引高亮都還在等欄數，就沒有人的欄位抓取跑得動——欄數永遠等不到、
-          // highlightIndexReady 永遠是 false，兩邊互等的死結（這正是「快速點到某一
-          // 行時什麼都不會顯示」這個 regression 的成因：舊版曾經因為同一原因把
-          // highlightIndexReady 一起放進這個閘門，拿掉它才能讓欄位抓取自己先跑完）。
-          // highlightIndexReady 仍然正確地只決定「這一輪 tick 要不要真的寫入高亮」
-          // （見上面 resolve2DHighlightIndex 那段），跟容器抓取解耦。
           if (varObj) {
             // ── 快取命中：同一 stop 內重複解析同容器直接返回 ──
             const _ck = `${displayKey}:${frame_line}`;
@@ -1168,7 +1174,27 @@ class VisualizerHelper {
     }));
     // 逾時等沒有結果的 token：讓還沒湊齊的容器照現有的換上，不讓舊高亮永遠殘留。
     // 已被更新的任務取代的話不動——新任務有自己的暫存區，別用過期的結果覆蓋。
-    if (_graphics_task_id === myGraphicsTaskId) _hlStage.flush();
+    if (_graphics_task_id === myGraphicsTaskId) {
+      // 所有 token 都跑完了（或逾時放棄），__latest_containers 已經是這次停駐點
+      // 能拿到的最終狀態，這裡才把之前記下來的 2D 索引高亮一次換算成 flat
+      // index、寫進 _hlStage——見上面宣告 _pending2DHighlights 那段為什麼不在
+      // 各 token 自己的輪詢裡就地算。
+      for (const pending of _pending2DHighlights) {
+        const containerData = global_variable.__latest_containers && global_variable.__latest_containers.get(pending.baseContainerKey);
+        const idxResult = resolve2DHighlightIndex(pending.rowVal, pending.colVal, containerData);
+        if (idxResult.ready) {
+          if (!global_variable.__container_highlights) global_variable.__container_highlights = new Map();
+          if (!global_variable.__container_highlights.has(frame_line)) global_variable.__container_highlights.set(frame_line, {});
+          global_variable.__container_highlights.get(frame_line)[pending.baseContainerKey] = idxResult.index;
+          _hlStage.add(pending.baseContainerKey, { index: idxResult.index, color: pending.color });
+        } else {
+          // 這次停駐點容器資料始終沒抓到（不是順序問題，是真的沒有，例如逾時）
+          // ——沒有更多可以重試的時機了，放棄這一個高亮，不讓整行卡住。
+          console.warn(`[GI] 2D highlight for "${pending.baseContainerKey}" line=${frame_line} never got container data`);
+        }
+      }
+      _hlStage.flush();
+    }
     const outputString = outputArray.join('');
     // 將字面上的 \n 替換為實際的換行符 \n
     const processedString = outputString.replace(/\\n/g, '\n');
