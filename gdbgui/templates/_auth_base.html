@@ -53,7 +53,7 @@
       .site-header { width: min(74rem, 100%); margin: 0 auto; }
       .site-nav { display: flex; align-items: center; gap: 0.9rem; min-height: 3.75rem; }
       .site-nav-spacer { flex: 1; }
-      .site-brand { color: var(--ink); font-family: var(--font-display); font-weight: 650; text-decoration: none; }
+      .site-nav .wordmark { font-size: 1.1rem; }
       .site-account { font-family: var(--font-mono); }
       body.app-shell .card { margin: 1.25rem auto 0; }
 
@@ -394,7 +394,7 @@
 
       @media (max-width: 640px) {
         .site-nav { flex-wrap: wrap; }
-        .site-brand { order: -1; }
+        .site-nav .wordmark { order: -1; }
         .library-heading { align-items: stretch; flex-direction: column; }
         .library-columns { display: none; }
         .listing .lesson-row { grid-template-columns: 2.6rem minmax(0, 1fr) auto; align-items: start; }
@@ -407,7 +407,7 @@
     {% if navigation_user %}
       <header class="site-header" data-testid="site-header">
         <nav class="site-nav" aria-label="主要導覽">
-          <a class="site-brand" href="{{ url_for('http_routes.lesson_library') }}">教案庫</a>
+          <a class="wordmark" href="{{ url_for('http_routes.lesson_library') }}"><span class="wordmark-caret">&#9656;</span>VGDB</a>
           <span class="site-nav-spacer"></span>
           <a href="{{ url_for('http_routes.gdbgui') }}">開啟除錯器</a>
           <a class="site-account"
