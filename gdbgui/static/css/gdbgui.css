@@ -140,6 +140,14 @@ td {
 .titlebar--primary .glyphicon {
   color: var(--accent);
 }
+/* 即時課堂面板（掛在側欄最上面）本身沒有高度上限，題目一開、熱區圖/
+   個別作答一長，會把下面的「資料結構視覺化」擠到捲很遠才看得到——
+   而視覺化才是學生上課該盯著看的東西。蓋個高度上限＋自己捲動，
+   面板內容再長也不會吃掉下面區塊的可見空間。 */
+#live-quiz-slot {
+  max-height: 30vh;
+  overflow-y: auto;
+}
 .pointer {
   cursor: pointer;
 }
