@@ -33,17 +33,10 @@ const initial_store_data = {
   modal_header: null,
   modal_body: null,
 
-  show_tour_guide: true,
-  tour_guide_step: 0,
-  num_tour_guide_steps: 0,
   tooltip: { hidden: false, content: "placeholder", node: null, show_for_n_sec: null },
   textarea_to_copy_to_clipboard: {}, // will be replaced with textarea dom node
 
   // preferences
-  // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'initial_data'.
-  themes: initial_data.themes,
-  // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'initial_data'.
-  current_theme: localStorage.getItem("theme") || initial_data.themes[0],
   highlight_source_code: true, // get saved boolean to highlight source code
   max_lines_of_code_to_fetch: constants.default_max_lines_of_code_to_fetch,
   auto_add_breakpoint_to_main: true,

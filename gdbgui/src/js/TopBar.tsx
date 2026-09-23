@@ -5,7 +5,6 @@ import BinaryLoader from "./BinaryLoader";
 import ControlButtons from "./ControlButtons";
 import Settings from "./Settings";
 import SourceCodeHeading from "./SourceCodeHeading";
-import ToolTipTourguide from "./ToolTipTourguide";
 import FileOps from "./FileOps";
 import GdbApi from "./GdbApi";
 import Actions from "./Actions";
@@ -99,15 +98,6 @@ const menu = (
           </a>
         </li>
         <li>
-          <a
-            title="show guide"
-            className="pointer"
-            onClick={ToolTipTourguide.start_guide}
-          >
-            Show Guide
-          </a>
-        </li>
-        <li>
           <a onClick={show_session_info} className="pointer">
             Session Information
           </a>
@@ -115,24 +105,6 @@ const menu = (
         <li>
           <a href="/docs/authoring-guide" target="_blank" className="pointer">
             教案撰寫指南 (AI)
-          </a>
-        </li>
-
-        <li role="separator" className="divider" />
-        <li>
-          <a href="https://github.com/cs01/gdbgui" className="pointer">
-            GitHub
-          </a>
-        </li>
-        <li>
-          <a href="http://gdbgui.com" className="pointer">
-            Homepage
-          </a>
-        </li>
-
-        <li>
-          <a href="https://www.youtube.com/channel/UCUCOSclB97r9nd54NpXMV5A">
-            YouTube Channel
           </a>
         </li>
 
@@ -148,23 +120,6 @@ const menu = (
           </a>
         </li>
       </ul>
-
-      <ToolTipTourguide
-        // @ts-expect-error ts-migrate(2322) FIXME: Property 'top' does not exist on type 'IntrinsicAt... Remove this comment to see the full error message
-        top={"100%"}
-        left={"-300px"}
-        step_num={0}
-        content={
-          <div>
-            <h5>Welcome to gdbgui.</h5>
-            <p>
-              This guide can be shown at any time by clicking the menu button,
-              <span className="glyphicon glyphicon-menu-hamburger"> </span>, then clicking
-              "Show Guide".
-            </p>
-          </div>
-        }
-      />
     </li>
   </ul>
 );
@@ -235,29 +190,6 @@ class TopBar extends React.Component<{}, State> {
         style={{ display: "flex", alignItems: "center" }}
         className="btn-group btn-group"
       >
-        <ToolTipTourguide
-          // @ts-expect-error ts-migrate(2322) FIXME: Property 'step_num' does not exist on type 'Intrin... Remove this comment to see the full error message
-          step_num={3}
-          position={"bottomleft"}
-          onClick={(e: any) => e.stopPropagation()}
-          content={
-            <div>
-              <h5>
-                These buttons allow you to control execution of the target you are
-                debugging.
-              </h5>
-              <p>
-                Hover over these buttons to see a description of their action. For
-                example, the <span className="glyphicon glyphicon-repeat" /> button starts
-                (or restarts) a program from the beginning.
-              </p>
-              <p>
-                Each button has a keyboard shortcut. For example, you can press "r" to
-                start running.
-              </p>
-            </div>
-          }
-        />
         <ControlButtons />
       </div>
     );

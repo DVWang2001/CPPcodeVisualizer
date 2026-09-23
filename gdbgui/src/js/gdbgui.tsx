@@ -28,7 +28,6 @@ import RightSidebar from "./RightSidebar";
 import Settings from "./Settings";
 import ToolTip from "./ToolTip";
 import TopBar from "./TopBar";
-import ToolTipTourguide from "./ToolTipTourguide";
 
 import "../../static/css/gdbgui.css";
 import "../../static/css/splitjs-gdbgui.css";
@@ -88,19 +87,6 @@ class Gdbgui extends React.PureComponent {
           className="split split-horizontal"
           style={{ width: "100%", height: "100%" }}
         >
-          <ToolTipTourguide
-            // @ts-expect-error ts-migrate(2322) FIXME: Property 'step_num' does not exist on type 'Intrin... Remove this comment to see the full error message
-            step_num={4}
-            position={"topleft"}
-            content={
-              <div>
-                <h5>You can view gdb's output here.</h5>
-                You usually don't need to enter commands here, but you have the option to
-                if there is something you can't do in the UI.
-              </div>
-            }
-          />
-
           <div id="bottom_content" className="split content">
             <Terminals />
           </div>

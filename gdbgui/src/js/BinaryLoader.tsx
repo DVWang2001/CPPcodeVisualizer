@@ -2,7 +2,6 @@ import React from "react";
 import constants from "./constants";
 import Actions from "./Actions";
 import Util from "./Util";
-import ToolTipTourguide from "./ToolTipTourguide";
 
 const TARGET_TYPES = {
   file: "file",

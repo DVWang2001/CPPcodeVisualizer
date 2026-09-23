@@ -14,7 +14,6 @@ import InferiorProgramInfo from "./InferiorProgramInfo";
 import Locals from "./Locals";
 import Memory from "./Memory";
 import Registers from "./Registers";
-import ToolTipTourguide from "./ToolTipTourguide";
 import "../../static/css/reserch.css";
 import Visualizer from "./Visualizer";
 import ContainerVisualizer from "./ContainerVisualizer";
@@ -242,33 +241,6 @@ class RightSidebar extends React.Component<any, any> {
           不放，而 QR 只有開場那 30 秒有人看。做法沿用下面 grid-container 的先例。
         */}
         <div id="live-quiz-slot" />
-        <ToolTipTourguide
-          // @ts-expect-error ts-migrate(2322) FIXME: Property 'position' does not exist on type 'Intrin... Remove this comment to see the full error message
-          position={"topleft"}
-          content={
-            <div>
-              <h5>
-                This sidebar contains a visual, interactive representation of the state of
-                your program
-              </h5>
-              <p>
-                You can see which function the process is stopped in, explore variables,
-                and much more.
-              </p>
-              <p>
-                There is more to discover, but this should be enough to get you started.
-              </p>
-              <p>
-                Something missing? Found a bug?{" "}
-                <a href="https://github.com/cs01/gdbgui/issues/">Create an issue</a> on
-                github.
-              </p>
-
-              <p>Happy debugging!</p>
-            </div>
-          }
-          step_num={5}
-        />
 
         {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
         <Collapser id="compile_errors" title="編譯錯誤" collapsed={true} play_mode={play_mode} content={<CompileErrors />} />

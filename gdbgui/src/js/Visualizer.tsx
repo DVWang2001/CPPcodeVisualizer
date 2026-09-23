@@ -20,7 +20,6 @@ class Visualizer extends React.Component<{}, State> {
     super();
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, [
-      "current_theme",
       "expressions",
       "inferior_program",
       "monaco_font_size",
@@ -180,7 +179,7 @@ class Visualizer extends React.Component<{}, State> {
       prog === constants.inferior_states.paused;
 
     return (
-      <div className={this.state.current_theme} style={{ height: "100%" }}>
+      <div style={{ height: "100%" }}>
         {isActive
           ? this.renderSourceCode()
           : <div style={{ padding: "10px 12px", color: "var(--ink-soft)", fontStyle: "italic", fontSize: "0.88em" }}>

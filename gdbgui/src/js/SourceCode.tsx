@@ -117,7 +117,6 @@ class SourceCode extends React.Component<{}, State> {
       "source_code_state",
       "make_current_line_visible",
       "source_code_selection_state",
-      "current_theme",
       "inferior_binary_path",
       "source_linenum_to_display_start",
       "source_linenum_to_display_end",
@@ -1851,7 +1850,6 @@ class SourceCode extends React.Component<{}, State> {
     }
     this.lastLoadedFilename = ftrForMonaco;
 
-      const theme = this.state.current_theme === 'dark' ? 'vs-dark' : 'light';
       const monacoFontSize: number = (this.state as any).monaco_font_size || 14;
       const LINE_HEIGHT = Math.round(monacoFontSize * 1.5);
       const liveQuizStartError = this.liveQuizStartError();
@@ -2109,12 +2107,12 @@ class SourceCode extends React.Component<{}, State> {
               onClose={this.closeLessonHistory}
             />
           )}
-          <div className={this.state.current_theme} style={{ flex: 1, width: "100%", display: "flex", overflow: 'hidden' }}>
+          <div style={{ flex: 1, width: "100%", display: "flex", overflow: 'hidden' }}>
             <div style={{ flex: 1, height: "100%", position: 'relative' }}>
               <MonacoEditor
                 height="100%"
                 language="cpp"
-                theme={theme}
+                theme="light"
                 value={value}
                 editorDidMount={(getValue: any, editor: any) => {
                   this.handleEditorDidMount(getValue, editor);
