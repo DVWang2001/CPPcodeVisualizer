@@ -797,6 +797,54 @@ export default function LiveQuizPanel({
   const correctCount = (stats && stats.correct_count) || (question && question.correct_count) || 0;
   const cellStats = (stats && stats.cell_stats) || (question && question.cell_stats) || [];
 
+  // 題目進行中／閒置兩種畫面各自獨立（題目進行中是全螢幕彈窗，蓋住側欄，
+  // 閒置時退回側欄的精簡版），但這兩顆按鈕兩邊都要能按到——閒置時要能
+  // 結束課堂／匯出資料，題目進行中也要能結束作答。抽成共用的 JSX，
+  // 避免同一段按鈕在兩個地方各寫一次、改一次忘記改另一次。
+  const actionButtons = (
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" }}>
+      {/* 結束課堂會刪光逐筆作答，所以匯出擺在它旁邊——要按錯之前先看到。 */}
+      <a
+        className="btn btn-default btn-sm"
+        data-testid="live-quiz-export"
+        href={liveQuizExportUrl(session.id)}
+        title="下載逐筆作答。結束課堂後這些資料就會被清除。"
+      >
+        匯出作答
+      </a>
+      <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={end}>結束課堂</button>
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        disabled={busy || !session.active_question}
+        onClick={closeQuestion}
+      >
+        結束作答並繼續
+      </button>
+    </div>
+  );
+
+  const errorBanner = (runtimeState.error || error) && (
+    <div role="alert" style={{ color: "#a61b1b", marginTop: "8px" }}>
+      {runtimeState.error || error}
+      {runtimeState.error && (
+        <button
+          type="button"
+          className="btn btn-default btn-xs"
+          style={{ marginLeft: "8px" }}
+          onClick={() => {
+            if (runtimeState.pendingTable) {
+              containerClosedRef.current = closeQuizContainer() || containerClosedRef.current;
+              if (!lessonQuizRuntime.retryTrigger()) restoreHiddenContainer();
+            } else lessonQuizRuntime.retryTrigger();
+          }}
+        >
+          重試
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <section
       aria-label="即時課堂控制"
@@ -868,93 +916,87 @@ export default function LiveQuizPanel({
           }}
         />
       )}
-      {/* 面板本體收合與否不影響上面的全螢幕 QR——QR 是另一回事，該跳出來的
-          時候一定要跳出來，不能因為這裡收合著就被連帶蓋掉。 */}
-      <div
-        className="pointer titlebar"
-        onClick={() => setPanelCollapsed(!panelCollapsed)}
-        style={{ margin: "-12px -14px 0", cursor: "pointer" }}
-      >
-        <span
-          className={`glyphicon glyphicon-chevron-${panelCollapsed ? "right" : "down"}`}
-          style={{ marginRight: "6px" }}
-        />
-        <span className="lighttext">即時課堂</span>
-      </div>
-      <div className={panelCollapsed ? "hidden" : ""}>
-      {/* 側欄只有一欄寬，原本的三欄 grid 會把每欄擠成不可讀的細條。 */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "12px" }}>
-        <div>
-          {/* QR 圖與加入連結不再常駐在這裡——190px 見方的圖加上一整塊連結區，
-              把側欄下面的教學引導內容全部往下擠。需要再給學生看 QR（例如有人
-              遲到）就點這顆小按鈕重新跳全螢幕，不用整堂課佔位置。 */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-            <span style={{ fontSize: "12px", color: connected ? "#237a3b" : "#a65f00" }}>
-              {connected ? "● 即時連線中" : "● 重新連線中"}
-            </span>
-            <button type="button" className="btn btn-default btn-sm" style={{ fontSize: "11px", padding: "1px 8px" }}
-              onClick={() => setShowQr(true)}>顯示 QR</button>
-          </div>
-          <div style={{ marginTop: "7px", fontSize: "26px", fontWeight: 700 }}>{session.joined_count || 0}</div>
-          <div style={{ color: muted, fontSize: "12px" }}>位學生已加入</div>
-          {question && (
-            <code style={{ display: "inline-block", marginTop: "14px", padding: "5px 8px", color: ink, background: "#fff7df", border: "1px solid #f2d38b" }}>
+      {/* 題目一開（不管是還在作答、還是已經收卷等著檢討），畫面也整個
+          蓋掉——跟確認出題、QR 同一套視覺語言：這是老師此刻該專心盯著的
+          東西，不該只是側欄裡一小塊、旁邊還有程式碼在搶注意力。閒置時
+          （沒有 question）才退回下面 panelCollapsed 那個精簡的側欄版本。 */}
+      {question && (
+        <div
+          role="dialog"
+          aria-label="即時課堂進行中"
+          data-testid="live-quiz-active-overlay"
+          style={{
+            position: "fixed", inset: 0, zIndex: 1055, background: "rgba(15, 23, 42, .62)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: "20px"
+          }}
+        >
+          <div
+            style={{
+              background: "#fff", borderRadius: "12px", boxShadow: "0 16px 48px rgba(0,0,0,.28)",
+              width: "min(820px, 96vw)", maxHeight: "92vh", overflowY: "auto",
+              padding: "26px 30px", color: ink
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "14px" }}>
+              <span style={{ fontSize: "14px", color: connected ? "#237a3b" : "#a65f00" }}>
+                {connected ? "● 即時連線中" : "● 重新連線中"}
+              </span>
+              <span style={{ fontSize: "14px", color: muted }}>{session.joined_count || 0} 位學生已加入</span>
+              <button type="button" className="btn btn-default btn-sm" onClick={() => setShowQr(true)}>顯示 QR</button>
+            </div>
+            <code style={{ display: "inline-block", marginBottom: "14px", padding: "5px 8px", fontSize: "13px", color: ink, background: "#fff7df", border: "1px solid #f2d38b" }}>
               {question.source_file} · L{question.line}
             </code>
-          )}
-        </div>
 
-        <div style={{ borderLeft: `4px solid ${amber}`, paddingLeft: "16px" }}>
-          {question ? (
-            <React.Fragment>
-              {(() => {
-                const capturedContainers = question.captured_containers
-                  ? Object.entries(question.captured_containers)
-                  : Array.from((((global_variable as any).__latest_containers as Map<string, any> | undefined) || new Map()).entries());
-                const items = capturedContainers.filter(([name, data]) => 
-                  name !== (question.table_spec?.var_hint || "") &&
-                  data && Array.isArray((data as any).values) && Array.isArray((data as any).values[0])
-                );
-                if (items.length === 0) return null;
-                return (
-                  <div style={{ marginBottom: "10px" }}>
-                    <div style={{ color: muted, fontSize: "12px", marginBottom: "3px" }}>
-                      題目資料（投影給學生看，正解不在其中）
-                    </div>
-                    {items.map(([name, data]: [string, any]) => {
-                      const values: any[][] = data && data.values ? data.values : [];
-                      return (
-                        <div key={name} style={{ marginBottom: "6px" }}>
-                          <code style={{ fontSize: "11px", color: ink }}>{name}</code>
-                          <table style={{ borderCollapse: "collapse", marginTop: "2px" }}>
-                            <tbody>
-                              {values.map((row, r) => (
-                                <tr key={r}>
-                                  {row.map((cell, c) => (
-                                    <td key={c} style={{
-                                      border: "1px solid #d8dee9", padding: "2px 6px",
-                                      font: "600 11px/1.2 ui-monospace, Menlo, Consolas, monospace",
-                                      textAlign: "center", background: "#fff", color: ink
-                                    }}>{cell}</td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      );
-                    })}
+            {(() => {
+              const capturedContainers = question.captured_containers
+                ? Object.entries(question.captured_containers)
+                : Array.from((((global_variable as any).__latest_containers as Map<string, any> | undefined) || new Map()).entries());
+              const items = capturedContainers.filter(([name, data]) =>
+                name !== (question.table_spec?.var_hint || "") &&
+                data && Array.isArray((data as any).values) && Array.isArray((data as any).values[0])
+              );
+              if (items.length === 0) return null;
+              return (
+                <div style={{ marginBottom: "16px" }}>
+                  <div style={{ color: muted, fontSize: "13px", marginBottom: "4px" }}>
+                    題目資料（投影給學生看，正解不在其中）
                   </div>
-                );
-              })()}
-              <TestInputPreview />
-              <strong>{question.prompt}</strong>
-              <div style={{ display: "flex", gap: "18px", margin: "8px 0", color: muted }}>
-                <span>已作答 {answerCount}</span>
-                <span>答對 {correctCount}</span>
-              </div>
-              {question.kind === "table" ? (
-                <React.Fragment>
+                  {items.map(([name, data]: [string, any]) => {
+                    const values: any[][] = data && data.values ? data.values : [];
+                    return (
+                      <div key={name} style={{ marginBottom: "8px" }}>
+                        <code style={{ fontSize: "13px", color: ink }}>{name}</code>
+                        <table style={{ borderCollapse: "collapse", marginTop: "4px" }}>
+                          <tbody>
+                            {values.map((row, r) => (
+                              <tr key={r}>
+                                {row.map((cell, c) => (
+                                  <td key={c} style={{
+                                    border: "1px solid #d8dee9", padding: "4px 10px",
+                                    font: "600 14px/1.3 ui-monospace, Menlo, Consolas, monospace",
+                                    textAlign: "center", background: "#fff", color: ink
+                                  }}>{cell}</td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            <TestInputPreview />
+            <strong style={{ fontSize: "16px" }}>{question.prompt}</strong>
+            <div style={{ display: "flex", gap: "18px", margin: "10px 0", color: muted, fontSize: "14px" }}>
+              <span>已作答 {answerCount}</span>
+              <span>答對 {correctCount}</span>
+            </div>
+            {question.kind === "table" ? (
+              <React.Fragment>
                 <TableHeatmap
                   rows={question.rows}
                   cols={question.cols}
@@ -964,20 +1006,20 @@ export default function LiveQuizPanel({
                   answerCount={answerCount}
                 />
                 {question.state === "closed" && reviews !== null && (
-                  <div style={{ marginTop: "12px" }}>
-                    <div style={{ color: muted, fontSize: "12px", marginBottom: "4px" }}>
+                  <div style={{ marginTop: "14px" }}>
+                    <div style={{ color: muted, fontSize: "13px", marginBottom: "5px" }}>
                       個別作答（{reviews.length}）· 答對最少的排最前
                     </div>
                     {reviews.length === 0 && (
-                      <div style={{ fontSize: "12px", color: muted }}>沒有人送出作答。</div>
+                      <div style={{ fontSize: "13px", color: muted }}>沒有人送出作答。</div>
                     )}
                     {reviews.map(item => (
-                      <div key={item.nickname} style={{ marginBottom: "6px" }}>
+                      <div key={item.nickname} style={{ marginBottom: "7px" }}>
                         <button
                           type="button"
                           className="btn btn-default btn-sm"
                           data-testid="live-quiz-review-item"
-                          style={{ width: "100%", textAlign: "left", fontSize: "12px" }}
+                          style={{ width: "100%", textAlign: "left", fontSize: "13px" }}
                           onClick={() =>
                             setOpenReview(openReview === item.nickname ? null : item.nickname)
                           }
@@ -996,67 +1038,71 @@ export default function LiveQuizPanel({
                     ))}
                   </div>
                 )}
-                </React.Fragment>
-              ) : (question.options || []).map((option: any) => {
-                const value = Number(counts[option.id]) || 0;
-                const width = answerCount ? Math.round((value / answerCount) * 100) : 0;
-                return (
-                  <div key={option.id} style={{ marginBottom: "7px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
-                      <span>{option.text}</span><span>{value}</span>
-                    </div>
-                    <div style={{ height: "6px", background: "#e6eaf0" }}>
-                      <div style={{ width: `${width}%`, height: "100%", background: "#4676b8" }} />
-                    </div>
+              </React.Fragment>
+            ) : (question.options || []).map((option: any) => {
+              const value = Number(counts[option.id]) || 0;
+              const width = answerCount ? Math.round((value / answerCount) * 100) : 0;
+              return (
+                <div key={option.id} style={{ marginBottom: "8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
+                    <span>{option.text}</span><span>{value}</span>
                   </div>
-                );
-              })}
-            </React.Fragment>
-          ) : (
-            <div style={{ color: muted, padding: "24px 0" }}>等待播放到下一個題目綁定行。</div>
-          )}
+                  <div style={{ height: "8px", background: "#e6eaf0" }}>
+                    <div style={{ width: `${width}%`, height: "100%", background: "#4676b8" }} />
+                  </div>
+                </div>
+              );
+            })}
 
-          {(runtimeState.error || error) && (
-            <div role="alert" style={{ color: "#a61b1b", marginTop: "8px" }}>
-              {runtimeState.error || error}
-              {runtimeState.error && (
-                <button
-                  type="button"
-                  className="btn btn-default btn-xs"
-                  style={{ marginLeft: "8px" }}
-                  onClick={() => {
-                    if (runtimeState.pendingTable) {
-                      containerClosedRef.current = closeQuizContainer() || containerClosedRef.current;
-                      if (!lessonQuizRuntime.retryTrigger()) restoreHiddenContainer();
-                    } else lessonQuizRuntime.retryTrigger();
-                  }}
-                >
-                  重試
-                </button>
-              )}
-            </div>
-          )}
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" }}>
-            {/* 結束課堂會刪光逐筆作答，所以匯出擺在它旁邊——要按錯之前先看到。 */}
-            <a
-              className="btn btn-default btn-sm"
-              data-testid="live-quiz-export"
-              href={liveQuizExportUrl(session.id)}
-              title="下載逐筆作答。結束課堂後這些資料就會被清除。"
-            >
-              匯出作答
-            </a>
-            <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={end}>結束課堂</button>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={busy || !session.active_question}
-              onClick={closeQuestion}
-            >
-              結束作答並繼續
-            </button>
+            {errorBanner}
+            {actionButtons}
           </div>
+        </div>
+      )}
+      {/* 面板本體收合與否不影響上面的全螢幕 QR——QR 是另一回事，該跳出來的
+          時候一定要跳出來，不能因為這裡收合著就被連帶蓋掉。 */}
+      <div
+        className="pointer titlebar"
+        onClick={() => setPanelCollapsed(!panelCollapsed)}
+        style={{ margin: "-12px -14px 0", cursor: "pointer" }}
+      >
+        <span
+          className={`glyphicon glyphicon-chevron-${panelCollapsed ? "right" : "down"}`}
+          style={{ marginRight: "6px" }}
+        />
+        <span className="lighttext">即時課堂</span>
+      </div>
+      <div className={panelCollapsed ? "hidden" : ""}>
+      {/* 側欄只有一欄寬，原本的三欄 grid 會把每欄擠成不可讀的細條。 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "12px" }}>
+        <div>
+          {/* 題目進行中的內容（統計、熱區圖、個別作答……）搬到上面的全螢幕
+              彈窗了；這裡閒置時（沒有 question）才會看到，只留連線狀態、
+              QR 快捷鈕、以及管理整堂課用的按鈕（結束課堂／匯出），維持
+              精簡——不需要因為只是想看一眼連線狀態，就被一整組題目資料
+              擋住視野。 */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+            <span style={{ fontSize: "12px", color: connected ? "#237a3b" : "#a65f00" }}>
+              {connected ? "● 即時連線中" : "● 重新連線中"}
+            </span>
+            <button type="button" className="btn btn-default btn-sm" style={{ fontSize: "11px", padding: "1px 8px" }}
+              onClick={() => setShowQr(true)}>顯示 QR</button>
+          </div>
+          <div style={{ marginTop: "7px", fontSize: "26px", fontWeight: 700 }}>{session.joined_count || 0}</div>
+          <div style={{ color: muted, fontSize: "12px" }}>位學生已加入</div>
+        </div>
+
+        <div style={{ borderLeft: `4px solid ${amber}`, paddingLeft: "16px" }}>
+          {/* 題目進行中時，errorBanner/actionButtons 已經畫在上面的全螢幕
+              彈窗裡了；這裡只在閒置（沒有 question）時才顯示同一份，
+              避免兩邊同時掛著同一顆「結束課堂」按鈕、同一個匯出連結。 */}
+          {!question && (
+            <React.Fragment>
+              <div style={{ color: muted, padding: "24px 0" }}>等待播放到下一個題目綁定行。</div>
+              {errorBanner}
+              {actionButtons}
+            </React.Fragment>
+          )}
         </div>
       </div>
       </div>

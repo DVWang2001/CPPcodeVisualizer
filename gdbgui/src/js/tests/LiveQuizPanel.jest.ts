@@ -707,6 +707,29 @@ test("即使面板本體收合著，題目觸發時「確認出題」全螢幕�
   expect(overlay?.textContent).toContain("確認出題");
 });
 
+// 確認出題後進入「課堂進行中」畫面，同樣改成全螢幕彈窗（跟確認出題、QR
+// 用同一個位置，放在 panelCollapsed 收合的 div 外面）——理由跟上面那條
+// 確認出題的回歸測試一樣：面板收合著時，題目相關內容不能被 display:none
+// 連帶蓋掉。舊的側欄內容已經拿掉，只留這一份，所以也順便確認題目相關的
+// data-testid 元素（例如作答清單按鈕）在畫面上只出現一次，不會重複。
+test("即使面板本體收合著，確認出題後的「課堂進行中」全螢幕彈窗還是會顯示，且內容不重複", async () => {
+  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1, 2], [3, 4]] }]]);
+  await mountPanel();
+
+  const confirm = Array.from(root.querySelectorAll("button"))
+    .find(button => button.textContent === "確認出題")!;
+  act(() => { Simulate.click(confirm); });
+  await act(async () => { await Promise.resolve(); });
+
+  const body = root.querySelector(".titlebar")?.nextElementSibling as HTMLElement;
+  expect(body.className).toContain("hidden"); // 預設收合，確認前提成立
+
+  const overlay = root.querySelector('[data-testid="live-quiz-active-overlay"]');
+  expect(overlay).not.toBeNull();
+
+  expect(root.querySelectorAll('[data-testid="live-quiz-export"]')).toHaveLength(1);
+});
+
 test("gdbgui_collapser_registry.live_quiz 可以被教案的 @layout open:/close: 開關", async () => {
   await mountPanel();
 
