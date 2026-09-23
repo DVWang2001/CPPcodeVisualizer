@@ -1978,6 +1978,7 @@ class SourceCode extends React.Component<{}, State> {
                   </button>
                 )}
               </span>
+              {/* 「清空全部中斷點」先收起來，之後真的需要再打開。
               <span className="toolbar-group">
                 <button
                   onClick={this.clearAllBreakpoints}
@@ -1987,6 +1988,7 @@ class SourceCode extends React.Component<{}, State> {
                   <span className="glyphicon glyphicon-trash" />Breakpoints
                 </button>
               </span>
+              */}
             </div>
           </div>
           {(this.state as any).showLessonGen && (

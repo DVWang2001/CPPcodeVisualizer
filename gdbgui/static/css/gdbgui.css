@@ -675,9 +675,13 @@ tr.compile-warning-tr td {
   border-right: none;
   padding-right: 0;
 }
+/* 拿掉「清空中斷點」那組之後，左邊三組擠在一起、右邊留一大片空白，
+   很像沒做完。改成 space-between 讓幾組平均攤開撐滿整排寬度；
+   視窗窄到放不下時照樣 wrap，wrap 之後的每一行各自平均分配。 */
 .toolbar-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
   row-gap: 6px;
 }
