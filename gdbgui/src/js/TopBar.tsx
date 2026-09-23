@@ -232,7 +232,7 @@ class TopBar extends React.Component<{}, State> {
     return (
       <div
         role="group"
-        style={{ marginBottom: 6, height: 25 }}
+        style={{ display: "flex", alignItems: "center" }}
         className="btn-group btn-group"
       >
         <ToolTipTourguide
@@ -342,9 +342,16 @@ class TopBar extends React.Component<{}, State> {
     return (
       <div
         id="top"
-        style={{ background: "var(--paper)", position: "absolute", width: "100%" }}
+        style={{
+          background: "var(--surface)",
+          borderBottom: "1px solid var(--line)",
+          position: "absolute",
+          width: "100%",
+          padding: "6px 8px",
+          boxSizing: "border-box",
+        }}
       >
-        <div className="flexrow">
+        <div className="flexrow" style={{ alignItems: "center" }}>
 
           {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'initial_user_input' does not exist on ty... Remove this comment to see the full error message */}
 
@@ -358,10 +365,10 @@ class TopBar extends React.Component<{}, State> {
           <span
             onClick={() => Settings.toggle_key("show_settings")}
             title="settings"
-            className="pointer glyphicon glyphicon-cog"
-            style={{ marginRight: "10px", fontSize: "1.3em" }}
+            className="pointer glyphicon glyphicon-cog toolbar-group"
+            style={{ fontSize: "1.1em", color: "var(--ink-soft)" }}
           />
-          {menu}
+          <span style={{ paddingLeft: "10px" }}>{menu}</span>
         </div>
 
         {/* @ts-expect-error ts-migrate(2322) FIXME: Object literal may only specify known properties, ... Remove this comment to see the full error message */}

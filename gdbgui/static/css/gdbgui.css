@@ -656,3 +656,71 @@ tr.compile-warning-tr td {
   margin-left: -1px;
 }
 
+/* ── 工具列分組 ──────────────────────────────────────────────────────────
+   頂部工具列（播放控制、教案動作）原本是一整排長相一樣的按鈕，靠 marginRight
+   硬擠間距、溢出就隨便換行，看不出哪些按鈕是一組。用一條細分隔線＋固定間距
+   把「邏輯上算同一組」的按鈕圈起來，跟容器視覺化那邊的白板風格（--struct-border
+   細框、--accent 互動色）用同一套語言，不是另外發明一套。 */
+.toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border-right: 1px solid var(--line);
+}
+.toolbar-group:first-child {
+  padding-left: 0;
+}
+.toolbar-group:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.toolbar-btn {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 24px;
+  white-space: nowrap;
+}
+.toolbar-btn-icon {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 「即時課堂」原本是裸的 checkbox+label，跟旁邊的按鈕站在一起視覺重量差太多。
+   包成跟按鈕同高、同邊框的藥丸形狀，checkbox 本身當成勾選狀態的視覺提示。 */
+.toolbar-toggle {
+  height: 26px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--struct-border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: normal;
+  margin: 0;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.toolbar-toggle:has(input:checked) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.toolbar-toggle input {
+  margin: 0;
+}
+

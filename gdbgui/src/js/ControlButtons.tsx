@@ -16,10 +16,12 @@ class ControlButtons extends React.Component<{}, State> {
     store.connectComponentState(this, ["gdb_pid", "reverse_supported", "autoplay_enabled", "autoplay_paused", "edit_mode", "inferior_program", "tts_speed", "quiz_playback_gate"]);
   }
   render() {
-    let btn_class = "btn btn-default btn-sm";
+    let btn_class = "btn btn-default btn-sm toolbar-btn toolbar-btn-icon";
+    let btn_class_text = "btn btn-default btn-sm toolbar-btn";
 
     return (
       <React.Fragment>
+        <span className="toolbar-group">
         <button
           id="run_button"
           onClick={() => GdbApi.click_run_button()}
@@ -59,7 +61,9 @@ class ControlButtons extends React.Component<{}, State> {
         >
           <span className="glyphicon glyphicon-pause" />
         </button>
+        </span>
 
+        <span className="toolbar-group">
         <button
           id="next_button"
           onClick={() => GdbApi.click_next_button()}
@@ -98,6 +102,9 @@ class ControlButtons extends React.Component<{}, State> {
         >
           <span className="glyphicon glyphicon-arrow-up" />
         </button>
+        </span>
+
+        <span className="toolbar-group">
         <button
           id="edit_mode_button"
           onClick={() => {
@@ -127,7 +134,7 @@ class ControlButtons extends React.Component<{}, State> {
           title={this.state.edit_mode
             ? "編輯模式（點擊結束程式並切換至播放模式）"
             : "點擊終止程式並開啟編輯模式，顯示 Guide/TTS 輸入欄"}
-          className={btn_class + (this.state.edit_mode ? " active" : "")}
+          className={btn_class_text + (this.state.edit_mode ? " active" : "")}
           style={this.state.edit_mode ? { color: "#f0ad4e", fontWeight: "bold" } : { color: "#999" }}
         >
           Edit
@@ -148,7 +155,7 @@ class ControlButtons extends React.Component<{}, State> {
           title={this.state.autoplay_enabled
             ? "自動播放已啟用：TTS 結束後自動執行下一步 (點擊關閉)"
             : "自動播放已關閉：開啟後 TTS 結束自動執行 [next]/[step-in] 等指令"}
-          className={btn_class + (this.state.autoplay_enabled ? " active" : "")}
+          className={btn_class_text + (this.state.autoplay_enabled ? " active" : "")}
           style={this.state.autoplay_enabled ? { color: "#5cb85c", fontWeight: "bold" } : {}}
         >
           Auto
@@ -190,9 +197,9 @@ class ControlButtons extends React.Component<{}, State> {
         {this.state.autoplay_enabled && (
           <span
             title="TTS 播放速度"
-            style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginLeft: "4px", verticalAlign: "middle" }}
+            style={{ display: "inline-flex", alignItems: "center", gap: "4px", verticalAlign: "middle" }}
           >
-            <span style={{ fontSize: "11px", color: "#aaa", userSelect: "none" }}>
+            <span style={{ fontSize: "11px", color: "var(--ink-faint)", userSelect: "none" }}>
               {Number(this.state.tts_speed).toFixed(1)}x
             </span>
             <input
@@ -213,6 +220,7 @@ class ControlButtons extends React.Component<{}, State> {
             />
           </span>
         )}
+        </span>
 
         {/* <div role="group" className="btn-group btn-group-xs">
           <button

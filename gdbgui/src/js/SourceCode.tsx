@@ -1863,8 +1863,8 @@ class SourceCode extends React.Component<{}, State> {
 
       return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", position: "relative" }}>
-          <div style={{ padding: "4px 8px", backgroundColor: "#f5f5f5", borderBottom: "1px solid #ddd", fontSize: "14px", fontFamily: "monospace", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ padding: "6px 8px", backgroundColor: "var(--surface)", borderBottom: "1px solid var(--line)", fontSize: "14px", fontFamily: "var(--font-body)", flexShrink: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, fontFamily: "var(--font-mono)" }}>
               <strong>{(this.state.fullname_to_render || "").split(/[\\/]/).pop() || this.state.fullname_to_render}</strong>
               {/* 內容來源指示：不管教案在正式機上怎麼更新，這個編輯器顯示的其實是
                   哪一份，永遠一眼就看得出來——「未載入教案」是本機自動存檔（見
@@ -1887,123 +1887,118 @@ class SourceCode extends React.Component<{}, State> {
                 </span>
               )}
             </div>
-            <div>
-              <button
-                onClick={this.startNewDraft}
-                disabled={this.liveQuizVersionLock}
-                data-testid="new-draft"
-                className="btn btn-default btn-sm"
-                title="清空編輯器，從一份空白的程式開始（不影響教案庫裡已儲存的教案）"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                ＋ 新草稿
-              </button>
-              <button
-                onClick={() => this.setState({ showLessonGen: !(this.state as any).showLessonGen } as any)}
-                disabled={this.liveQuizVersionLock}
-                className="btn btn-default btn-sm"
-                title="用 AI 模型為目前程式碼生成 //@ 教案註解"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                🤖 AI 生成教案
-              </button>
-              <button
-                onClick={this.triggerImport}
-                disabled={this.liveQuizVersionLock}
-                className="btn btn-default btn-sm"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                Import JSON
-              </button>
-              <input
-                type="file"
-                accept=".json"
-                style={{ display: "none" }}
-                ref={this.fileInputRef}
-                onChange={this.handleImport}
-              />
-              <button
-                onClick={this.exportProject}
-                className="btn btn-default btn-sm"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                Export JSON
-              </button>
-              {/* Import/Export JSON 讀寫本機檔案（備份與離線交換）；底下兩顆是
-                  帳號那條路：存進伺服器、以及瀏覽別人的教案。 */}
-              <button
-                onClick={() => this.setState({ showQuizAuthoring: true } as any)}
-                disabled={this.liveQuizVersionLock}
-                data-testid="quiz-authoring-open"
-                className="btn btn-default btn-sm"
-                title={
-                  this.isReadOnlyLesson()
-                    ? "檢視這篇教案的課堂題目（別人的教案不能修改）"
-                    : "編輯播放時自動出現的課堂單選題"
-                }
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                課堂題目
-              </button>
-              {this.currentLessonId !== null &&
-                this.currentLessonIsMine &&
-                this.lessonQuizDraft &&
-                this.lessonQuizDraft.questions.length > 0 && (
-                  // 從按鈕改成預設勾選的勾選框：面板本來就該在側欄等著，不必先按一次
-                  // 才出現。勾選只控制「面板顯不顯示」——真正開課（產 QR、學生可加入、
-                  // 寫進資料庫）由「重新執行」觸發。
-                  // data-testid 沿用舊值：那是 e2e 的契約，改名會靜默地讓測試失去目標。
-                  <label
-                    title={liveQuizStartError || "重新執行時開一堂新課；播放停在綁定行時自動出題"}
-                    style={{
-                      height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px",
-                      display: "inline-flex", alignItems: "center", gap: "4px",
-                      fontWeight: "normal", marginBottom: 0,
-                      opacity: liveQuizStartError ? 0.5 : 1
-                    }}>
-                    <input
-                      type="checkbox"
-                      data-testid="live-quiz-open"
-                      checked={Boolean((this.state as any).showLiveQuiz)}
-                      disabled={Boolean(liveQuizStartError)}
-                      onChange={event =>
-                        this.setState({ showLiveQuiz: event.target.checked } as any)
-                      }
-                      style={{ margin: 0 }}
-                    />
-                    即時課堂
-                  </label>
-                )}
-              <button
-                onClick={this.saveLessonToAccount}
-                disabled={this.liveQuizVersionLock}
-                data-testid="save-lesson-to-account"
-                className="btn btn-default btn-sm"
-                title="把目前的程式碼與斷點存成你帳號底下的一篇教案"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                存到我的帳號
-              </button>
-              {this.currentLessonId !== null && this.currentLessonIsMine && (
+            <div className="toolbar-row">
+              <span className="toolbar-group">
                 <button
-                  onClick={this.openLessonHistory}
+                  onClick={this.startNewDraft}
                   disabled={this.liveQuizVersionLock}
-                  data-testid="lesson-history-open"
-                  className="btn btn-default btn-sm"
-                  title="檢視自己的教案版本歷史"
-                  style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                  版本歷史
+                  data-testid="new-draft"
+                  className="btn btn-default btn-sm toolbar-btn"
+                  title="清空編輯器，從一份空白的程式開始（不影響教案庫裡已儲存的教案）">
+                  ＋ 新草稿
                 </button>
-              )}
-              <button
-                onClick={this.openLessonLibrary}
-                data-testid="open-lesson-library"
-                className="btn btn-default btn-sm"
-                title="瀏覽所有人的教案"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", marginRight: "4px" }}>
-                從教案庫開啟
-              </button>
-              <button
-                onClick={this.clearAllBreakpoints}
-                className="btn btn-default btn-sm"
-                title="Clear all breakpoints"
-                style={{ height: "24px", padding: "2px 8px", fontSize: "12px", color: "#c00" }}>
-                ✕ Breakpoints
-              </button>
+                <button
+                  onClick={() => this.setState({ showLessonGen: !(this.state as any).showLessonGen } as any)}
+                  disabled={this.liveQuizVersionLock}
+                  className="btn btn-default btn-sm toolbar-btn"
+                  title="用 AI 模型為目前程式碼生成 //@ 教案註解">
+                  AI 生成教案
+                </button>
+                <button
+                  onClick={this.triggerImport}
+                  disabled={this.liveQuizVersionLock}
+                  className="btn btn-default btn-sm toolbar-btn">
+                  Import JSON
+                </button>
+                <input
+                  type="file"
+                  accept=".json"
+                  style={{ display: "none" }}
+                  ref={this.fileInputRef}
+                  onChange={this.handleImport}
+                />
+                <button
+                  onClick={this.exportProject}
+                  className="btn btn-default btn-sm toolbar-btn">
+                  Export JSON
+                </button>
+              </span>
+              {/* Import/Export JSON 讀寫本機檔案（備份與離線交換）；下一組是
+                  帳號那條路：存進伺服器、以及瀏覽別人的教案。 */}
+              <span className="toolbar-group">
+                <button
+                  onClick={() => this.setState({ showQuizAuthoring: true } as any)}
+                  disabled={this.liveQuizVersionLock}
+                  data-testid="quiz-authoring-open"
+                  className="btn btn-default btn-sm toolbar-btn"
+                  title={
+                    this.isReadOnlyLesson()
+                      ? "檢視這篇教案的課堂題目（別人的教案不能修改）"
+                      : "編輯播放時自動出現的課堂單選題"
+                  }>
+                  課堂題目
+                </button>
+                {this.currentLessonId !== null &&
+                  this.currentLessonIsMine &&
+                  this.lessonQuizDraft &&
+                  this.lessonQuizDraft.questions.length > 0 && (
+                    // 從按鈕改成預設勾選的勾選框：面板本來就該在側欄等著，不必先按一次
+                    // 才出現。勾選只控制「面板顯不顯示」——真正開課（產 QR、學生可加入、
+                    // 寫進資料庫）由「重新執行」觸發。
+                    // data-testid 沿用舊值：那是 e2e 的契約，改名會靜默地讓測試失去目標。
+                    <label
+                      className="toolbar-toggle"
+                      title={liveQuizStartError || "重新執行時開一堂新課；播放停在綁定行時自動出題"}
+                      style={{ opacity: liveQuizStartError ? 0.5 : 1 }}>
+                      <input
+                        type="checkbox"
+                        data-testid="live-quiz-open"
+                        checked={Boolean((this.state as any).showLiveQuiz)}
+                        disabled={Boolean(liveQuizStartError)}
+                        onChange={event =>
+                          this.setState({ showLiveQuiz: event.target.checked } as any)
+                        }
+                      />
+                      即時課堂
+                    </label>
+                  )}
+              </span>
+              <span className="toolbar-group">
+                <button
+                  onClick={this.saveLessonToAccount}
+                  disabled={this.liveQuizVersionLock}
+                  data-testid="save-lesson-to-account"
+                  className="btn btn-default btn-sm toolbar-btn"
+                  title="把目前的程式碼與斷點存成你帳號底下的一篇教案">
+                  存到我的帳號
+                </button>
+                {this.currentLessonId !== null && this.currentLessonIsMine && (
+                  <button
+                    onClick={this.openLessonHistory}
+                    disabled={this.liveQuizVersionLock}
+                    data-testid="lesson-history-open"
+                    className="btn btn-default btn-sm toolbar-btn"
+                    title="檢視自己的教案版本歷史">
+                    版本歷史
+                  </button>
+                )}
+                <button
+                  onClick={this.openLessonLibrary}
+                  data-testid="open-lesson-library"
+                  className="btn btn-default btn-sm toolbar-btn"
+                  title="瀏覽所有人的教案">
+                  從教案庫開啟
+                </button>
+              </span>
+              <span className="toolbar-group">
+                <button
+                  onClick={this.clearAllBreakpoints}
+                  className="btn btn-default btn-sm toolbar-btn"
+                  title="Clear all breakpoints"
+                  style={{ color: "#c0392b" }}>
+                  ✕ Breakpoints
+                </button>
+              </span>
             </div>
           </div>
           {(this.state as any).showLessonGen && (
