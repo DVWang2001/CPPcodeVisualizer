@@ -208,7 +208,14 @@
         outline-offset: 2px;
       }
 
-      a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+      /* 底線預設關掉：導覽列、教案標題、分頁這些連結本來就長在「這裡可以
+         點」的位置（清單一行、導覽列一格），底線只是讓整頁看起來像沒套過
+         樣式的預設瀏覽器連結。hover 時補回底線當作確認。真正需要底線的是
+         一句話中間夾的那種行內連結（.lede/.hint/.empty/.error 裡的），那裡
+         底線本身就是唯一的視覺線索，不能只靠 hover 才看得到。 */
+      a { color: var(--accent); text-decoration: none; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+      a:hover { text-decoration: underline; }
+      .lede a, .hint a, .empty a, .error a { text-decoration: underline; }
 
       .error {
         margin: 0 0 1.25rem;
