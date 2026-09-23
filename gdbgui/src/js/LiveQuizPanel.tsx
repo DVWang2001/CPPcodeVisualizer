@@ -552,8 +552,10 @@ export default function LiveQuizPanel({
   //
   // 教案不符開課資格時靜靜地什麼都不做：重新執行是除錯的基本動作，不該因為
   // 「這份教案沒有題目」就跳錯誤打斷它。
-  const restartSession = React.useCallback((): Promise<void> => {
-    if (startError()) return Promise.resolve();
+  // 回傳值表示「這次有沒有真的跳出 QR」——gateRun 要知道這件事，才能決定
+  // 遞延的 runNow 該死等 handleCloseQr，還是在這裡就直接兜底送出。
+  const restartSession = React.useCallback((): Promise<boolean> => {
+    if (startError()) return Promise.resolve(false);
     restartingRef.current = true;
     setBusy(true);
     setError(null);
@@ -569,18 +571,23 @@ export default function LiveQuizPanel({
       .then(connect)
       .then(() => {
         if ((window as any).gdbgui_rerunning_for_quiz) {
-          return;
+          return false;
         }
         setShowQr(true);
         // 暫停播放，把「學生掃碼」的空檔交給老師控制。不暫停的話播放會直接往前跑，
         // 到達綁定行時題目就開了——而學生此刻連 QR 都還沒掃到。
         // 沿用既有的 autoplay_paused：老師掃完按原本的播放鍵繼續，不必新學一個操作。
         store.set("autoplay_paused", true);
+        return true;
       })
-      .catch(reason => setError(reason.message || "無法開始課堂。"))
-      .then(() => {
+      .catch(reason => {
+        setError(reason.message || "無法開始課堂。");
+        return false;
+      })
+      .then(shown => {
         restartingRef.current = false;
         setBusy(false);
+        return shown;
       });
   }, [lessonId]);
 
@@ -591,9 +598,46 @@ export default function LiveQuizPanel({
     };
   }, [restartSession]);
 
+  // 真正送出 -exec-run（連同 GdbVariable 佇列重置、UML 狀態清空等一整包
+  // Actions.inferior_program_starting 的副作用）被 GdbApi.click_run_button
+  // 卡住，改成呼叫這裡：程式在勾了即時課堂時不能「按 Run 就立刻正式開始
+  // 跑、TTS 立刻念」，要等老師把全螢幕 QR 關掉才算數。
+  //
+  // pendingRunRef 記著那包被卡住的動作；沒跳出 QR（開課失敗、被判定為
+  // 不用跳 QR 的悄悄重跑等）就沒有人會去關閉不存在的 QR，runNow 在這裡
+  // 直接兜底送出，不能讓「按 Run」看起來完全沒反應。
+  const pendingRunRef = React.useRef<(() => void) | null>(null);
+
+  const gateRun = React.useCallback((runNow: () => void) => {
+    pendingRunRef.current = runNow;
+    restartSession().then(shown => {
+      if (!shown && pendingRunRef.current === runNow) {
+        pendingRunRef.current = null;
+        runNow();
+      }
+    });
+  }, [restartSession]);
+
+  React.useEffect(() => {
+    (window as any).gdbgui_live_quiz_gate_run = gateRun;
+    return () => {
+      (window as any).gdbgui_live_quiz_gate_run = undefined;
+    };
+  }, [gateRun]);
+
   const handleCloseQr = React.useCallback(() => {
     setShowQr(false);
     store.set("autoplay_paused", false);
+    const pendingRun = pendingRunRef.current;
+    if (pendingRun) {
+      // 這次的 QR 是 gateRun 卡住的：程式現在才真的要開始跑，還沒有
+      // 「上一步」可以續，不需要也不能補一個 autoplay 續播指令——
+      // 第一次停下來會自然播 TTS，播放鏈接得下去（autoplay_paused
+      // 剛剛已經解除）。
+      pendingRunRef.current = null;
+      pendingRun();
+      return;
+    }
     const pendingCmd = store.get("autoplay_pending_command") || "next";
     if (typeof (window as any).gdbgui_execute_autoplay_command === "function") {
       (window as any).gdbgui_execute_autoplay_command(pendingCmd);

@@ -633,12 +633,22 @@ const GdbApi = {
                 })
                 .catch(() => { /* graceful fallback: live layout */ });
 
-              GdbApi.run_gdb_command(cmds);
-
-              _pending_input_injection = true;
-              _injection_start_time = Date.now();
-
-              Actions.inferior_program_starting();
+              const startRun = () => {
+                GdbApi.run_gdb_command(cmds);
+                _pending_input_injection = true;
+                _injection_start_time = Date.now();
+                Actions.inferior_program_starting();
+              };
+              // 勾了即時課堂時，這一步（真正跑程式、TTS 開始念）要等老師把
+              // 全螢幕 QR 關掉才能做——不然學生連碼都還沒掃，程式已經跑到
+              // 第一句台詞了。LiveQuizPanel 掛載時才會有這個橋接；沒勾即時
+              // 課堂就直接跑，行為不變。
+              const liveQuizGateRun = (window as any).gdbgui_live_quiz_gate_run;
+              if (typeof liveQuizGateRun === "function") {
+                liveQuizGateRun(startRun);
+              } else {
+                startRun();
+              }
             } else {
               Actions.add_console_entries(
                 "錯誤：編譯成功，但沒有回傳可執行檔路徑。",
@@ -679,8 +689,18 @@ const GdbApi = {
       }
 
     // Fallback if no editor logic
-    Actions.inferior_program_starting();
-    GdbApi.run_gdb_command("-exec-run");
+    {
+      const startRun = () => {
+        Actions.inferior_program_starting();
+        GdbApi.run_gdb_command("-exec-run");
+      };
+      const liveQuizGateRun = (window as any).gdbgui_live_quiz_gate_run;
+      if (typeof liveQuizGateRun === "function") {
+        liveQuizGateRun(startRun);
+      } else {
+        startRun();
+      }
+    }
   },
   run_initial_commands: function () {
     Object.keys(global_variable).forEach(key => {

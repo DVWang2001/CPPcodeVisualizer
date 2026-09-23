@@ -564,6 +564,55 @@ test("關閉 QR code 彈窗時解除暫停並開始自動播放", async () => {
 });
 
 
+// ── gateRun：真正開始跑程式要等 QR 被關掉 ──────────────────────────────────
+//
+// GdbApi.click_run_button 透過 gdbgui_live_quiz_gate_run 把「送出 -exec-run」
+// 這件事交給這裡卡住：勾了即時課堂時不能一按 Run 就立刻正式開始跑、TTS
+// 立刻念，要等老師把全螢幕 QR 關掉才算數。
+
+test("gateRun 卡住的動作要等 QR 關掉才送出，關閉前完全不會被呼叫", async () => {
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended" });
+  (liveQuizClient.createLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), id: 8 });
+
+  const runNow = jest.fn();
+  await act(async () => {
+    (window as any).gdbgui_live_quiz_gate_run(runNow);
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  });
+
+  expect(runNow).not.toHaveBeenCalled();
+  const qrOverlay = root.querySelector('[data-testid="live-quiz-qr-overlay"]');
+  expect(qrOverlay).not.toBeNull();
+
+  const closeBtn = qrOverlay?.querySelector("button");
+  act(() => { Simulate.click(closeBtn!); });
+
+  expect(runNow).toHaveBeenCalledTimes(1);
+});
+
+test("gateRun 開課失敗、QR 沒跳出來時直接兜底送出，不留著等一個不存在的關閉", async () => {
+  await act(async () => {
+    ReactDOM.render(React.createElement(LiveQuizPanel, {
+      lessonId: 2,
+      startError: () => "教案還沒儲存，無法開課",
+      prepareVersion: () => Promise.resolve(),
+      onSessionEnded: () => Promise.resolve(),
+      onClose: jest.fn()
+    }), root);
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  });
+
+  const runNow = jest.fn();
+  await act(async () => {
+    (window as any).gdbgui_live_quiz_gate_run(runNow);
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  });
+
+  expect(runNow).toHaveBeenCalledTimes(1);
+  expect(root.querySelector('[data-testid="live-quiz-qr-overlay"]')).toBeNull();
+});
+
 // ⚠️ 這條是**紅的**，記錄一個尚未修好的產品 bug，不是不穩定的測試。
 // 換課時舊課堂的 ended 事件會關掉剛為新課堂啟用的 runtime，播放到綁定行時不再開題。
 // 試過兩種守衛（restartingRef、以 session id 比對、connect 內同步更新 ref）都沒生效，
