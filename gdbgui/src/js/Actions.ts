@@ -341,7 +341,7 @@ const Actions = {
     let cmds = [];
     if (store.get("auto_add_breakpoint_to_main")) {
       Actions.add_console_entries(
-        "Connected to remote target! Adding breakpoint to main, then continuing target execution.",
+        "已連線到遠端目標！在 main 加上中斷點後，繼續執行目標程式。",
         constants.console_entry_type.GDBGUI_OUTPUT
       );
       cmds.push("-break-insert main");

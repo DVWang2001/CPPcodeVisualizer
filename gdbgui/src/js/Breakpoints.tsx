@@ -67,7 +67,7 @@ class Breakpoint extends React.Component<{}, BreakpointState> {
         </span>
       );
     }
-    return "(file not cached)";
+    return "（檔案未快取）";
   }
   get_delete_jsx(bkpt_num_to_delete: any) {
     return (
@@ -78,7 +78,7 @@ class Breakpoint extends React.Component<{}, BreakpointState> {
           e.stopPropagation();
           Breakpoints.delete_breakpoint(bkpt_num_to_delete);
         }}
-        title={`Delete breakpoint ${bkpt_num_to_delete}`}
+        title={`刪除中斷點 ${bkpt_num_to_delete}`}
       >
         <span className="glyphicon glyphicon-trash"> </span>
       </div>
@@ -91,9 +91,9 @@ class Breakpoint extends React.Component<{}, BreakpointState> {
     ) {
       return "";
     } else if (bkpt.times == 1) {
-      return "1 hit";
+      return "命中 1 次";
     } else {
-      return `${bkpt.times} hits`;
+      return `命中 ${bkpt.times} 次`;
     }
   }
   on_change_bkpt_cond(e: any) {
@@ -125,14 +125,14 @@ class Breakpoint extends React.Component<{}, BreakpointState> {
       info_glyph = (
         <span
           className="glyphicon glyphicon-th-list"
-          title="Child breakpoint automatically created from parent. If parent or any child of this tree is deleted, all related breakpoints will be deleted."
+          title="子中斷點，由父中斷點自動建立。刪除父節點或此樹狀結構中任一子節點，會一併刪除所有相關中斷點。"
         />
       );
     } else if (b.is_parent_breakpoint) {
       info_glyph = (
         <span
           className="glyphicon glyphicon-th-list"
-          title="Parent breakpoint with one or more child breakpoints. If parent or any child of this tree is deleted, all related breakpoints will be deleted."
+          title="父中斷點，底下有一或多個子中斷點。刪除父節點或此樹狀結構中任一子節點，會一併刪除所有相關中斷點。"
         />
       );
       bkpt_num_to_delete = b.number;
@@ -153,22 +153,22 @@ class Breakpoint extends React.Component<{}, BreakpointState> {
     if (b.is_parent_breakpoint) {
       function_jsx = (
         <span className="placeholder">
-          {info_glyph} parent breakpoint on inline, template, or ambiguous location
+          {info_glyph} 父中斷點設在內聯（inline）、樣板（template）或無法明確定位的位置
         </span>
       );
     } else {
-      let func = b.func === undefined ? "(unknown function)" : b.func;
+      let func = b.func === undefined ? "（未知函式）" : b.func;
       let break_condition = (
         <div
           onClick={this.on_break_cond_click.bind(this)}
           className="inline"
           title={`${
-            this.state.breakpoint_condition ? "Modify or remove" : "Add"
-            } breakpoint condition`}
+            this.state.breakpoint_condition ? "修改或移除" : "新增"
+            }中斷條件`}
         >
           <span className="glyphicon glyphicon-edit"></span>
           <span className={`italic ${this.state.breakpoint_condition ? "bold" : ""}`}>
-            condition
+            條件
           </span>
         </div>
       );
@@ -183,7 +183,7 @@ class Breakpoint extends React.Component<{}, BreakpointState> {
               height: "25px",
               fontSize: "1em"
             }}
-            placeholder="Break condition"
+            placeholder="中斷條件"
             className="form-control"
             onKeyUp={this.on_key_up_bktp_cond.bind(this, b.number)}
             onChange={this.on_change_bkpt_cond.bind(this)}
@@ -205,7 +205,7 @@ class Breakpoint extends React.Component<{}, BreakpointState> {
               paddingRight: "5px"
             }}
           >
-            thread groups: {b["thread-groups"]}
+            執行緒群組：{b["thread-groups"]}
           </span>
           <span>{break_condition}</span>
           <span
@@ -297,7 +297,7 @@ class Breakpoints extends React.Component {
     if (breakpoints_jsx.length) {
       return breakpoints_jsx;
     } else {
-      return <span className="placeholder">no breakpoints</span>;
+      return <span className="placeholder">沒有中斷點</span>;
     }
   }
   static enable_or_disable_bkpt(checked: any, bkpt_num: any) {

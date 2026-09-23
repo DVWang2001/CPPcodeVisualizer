@@ -124,9 +124,9 @@ class Threads extends React.Component<{}, ThreadsState> {
       selected = (
         <span
           className="label label-primary"
-          title="This thread is selected. Variables can be inspected for the current frame of this thread."
+          title="這是目前選取的執行緒，可以檢視這個執行緒目前 frame 的變數。"
         >
-          selected
+          已選取
         </span>
       );
     } else {
@@ -136,7 +136,7 @@ class Threads extends React.Component<{}, ThreadsState> {
           onClick={() => {
             Threads.select_thread_id(thread.id);
           }}
-          title="Select this thread"
+          title="選取這個執行緒"
           style={{ fontSize: "75%" }}
         >
           select

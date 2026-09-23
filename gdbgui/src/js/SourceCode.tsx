@@ -1131,7 +1131,7 @@ class SourceCode extends React.Component<{}, State> {
         } catch (err) {
           if (err.name !== "AbortError") {
             console.error("Save failed", err);
-            Actions.add_console_entries("Save failed: " + err.message, constants.console_entry_type.STD_ERR);
+            Actions.add_console_entries("儲存失敗：" + err.message, constants.console_entry_type.STD_ERR);
           }
         }
       })();
@@ -1190,7 +1190,7 @@ class SourceCode extends React.Component<{}, State> {
         this.applyProjectBundle(JSON.parse(content));
       } catch (err) {
         console.error("Error parsing project file", err);
-        Actions.add_console_entries("Error parsing project file", constants.console_entry_type.STD_ERR);
+        Actions.add_console_entries("解析專案檔案時發生錯誤", constants.console_entry_type.STD_ERR);
       }
     };
     reader.readAsText(file);
@@ -2300,7 +2300,7 @@ class SourceCode extends React.Component<{}, State> {
       case states.FETCHING_SOURCE: {
         return (
           <tr>
-            <td>fetching source, please wait</td>
+            <td>正在讀取原始碼，請稍候</td>
           </tr>
         );
       }
@@ -2314,7 +2314,7 @@ class SourceCode extends React.Component<{}, State> {
       case states.FETCHING_ASSM: {
         return (
           <tr>
-            <td>fetching assembly, please wait</td>
+            <td>正在讀取組合語言，請稍候</td>
           </tr>
         );
       }
@@ -2711,7 +2711,7 @@ class SourceCode extends React.Component<{}, State> {
   get_body_empty() {
     return (
       <tr>
-        <td>no source code or assembly to display</td>
+        <td>沒有原始碼或組合語言可顯示</td>
       </tr>
     );
   }

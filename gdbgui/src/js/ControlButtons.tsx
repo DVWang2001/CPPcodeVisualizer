@@ -26,7 +26,7 @@ class ControlButtons extends React.Component<{}, State> {
           id="run_button"
           onClick={() => GdbApi.click_run_button()}
           type="button"
-          title="Start inferior program from the beginning keyboard shortcut: r"
+          title="從頭開始執行程式（快速鍵：r）"
           className={btn_class}
         >
           <span className="glyphicon glyphicon-repeat" />
@@ -37,8 +37,8 @@ class ControlButtons extends React.Component<{}, State> {
           onClick={() => GdbApi.click_continue_button()}
           type="button"
           title={
-            "Continue until breakpoint is hit or inferior program exits keyboard shortcut: c" +
-            (this.state.reverse_supported ? ". shift + c for reverse." : "")
+            "繼續執行，直到中斷點或程式結束（快速鍵：c）" +
+            (this.state.reverse_supported ? "；shift + c 反向執行。" : "")
           }
           className={btn_class}
           disabled={this.state.quiz_playback_gate}
@@ -69,8 +69,8 @@ class ControlButtons extends React.Component<{}, State> {
           onClick={() => GdbApi.click_next_button()}
           type="button"
           title={
-            "Step over next function call keyboard shortcut: n or right arrow" +
-            (this.state.reverse_supported ? ". shift + n for reverse." : "")
+            "單步執行，不進入函式呼叫（快速鍵：n 或右鍵）" +
+            (this.state.reverse_supported ? "；shift + n 反向執行。" : "")
           }
           className={btn_class}
           disabled={this.state.quiz_playback_gate}
@@ -83,8 +83,8 @@ class ControlButtons extends React.Component<{}, State> {
           onClick={() => GdbApi.click_step_button()}
           type="button"
           title={
-            "Step into next function call keyboard shortcut: s or down arrow" +
-            (this.state.reverse_supported ? ". shift + s for reverse." : "")
+            "單步執行，進入函式呼叫（快速鍵：s 或下鍵）" +
+            (this.state.reverse_supported ? "；shift + s 反向執行。" : "")
           }
           className={btn_class}
           disabled={this.state.quiz_playback_gate}
@@ -96,7 +96,7 @@ class ControlButtons extends React.Component<{}, State> {
           id="return_button"
           onClick={() => GdbApi.click_return_button()}
           type="button"
-          title="Step out of current function keyboard shortcut: u or up arrow"
+          title="跳出目前函式（快速鍵：u 或上鍵）"
           className={btn_class}
           disabled={this.state.quiz_playback_gate}
         >

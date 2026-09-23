@@ -57,7 +57,7 @@ class Settings extends React.Component {
     return (
       <tr>
         <td>
-          Maximum number of source file lines to display:
+          原始碼最多顯示幾行：
           <input
             style={{ width: "100px", marginLeft: "10px" }}
             defaultValue={store.get("max_lines_of_code_to_fetch")}
@@ -69,10 +69,10 @@ class Settings extends React.Component {
               let new_value = parseInt(this.max_source_file_lines_input.value);
               Actions.update_max_lines_of_code_to_fetch(new_value);
               // @ts-expect-error ts-migrate(2345) FIXME: Argument of type '1' is not assignable to paramete... Remove this comment to see the full error message
-              ToolTip.show_tooltip_on_node("saved!", this.save_button, 1);
+              ToolTip.show_tooltip_on_node("已儲存！", this.save_button, 1);
             }}
           >
-            save
+            儲存
           </button>
         </td>
       </tr>
@@ -84,29 +84,29 @@ class Settings extends React.Component {
         <tbody>
           {Settings.get_checkbox_row(
             "auto_add_breakpoint_to_main",
-            "Add breakpoint to main after loading executable"
+            "載入執行檔後自動在 main 加上中斷點"
           )}
           {this.get_update_max_lines_of_code_to_fetch()}
           {Settings.get_checkbox_row(
             "pretty_print",
-            "Pretty print dynamic variables (requires restart)"
+            "美化列印動態變數（需要重新啟動）"
           )}
           {Settings.get_checkbox_row(
             "refresh_state_after_sending_console_command",
-            "Refresh all components when a command is sent from the console"
+            "送出程式輸入後自動刷新畫面各元件"
           )}
           {Settings.get_checkbox_row(
             "show_all_sent_commands_in_console",
-            "Print all sent commands in console, including those sent automatically by gdbgui"
+            "在主控台印出所有送出的指令，包含 gdbgui 自動送出的"
           )}
           {Settings.get_checkbox_row(
             "highlight_source_code",
-            "Add syntax highlighting to source files"
+            "為原始碼加上語法高亮"
           )}
 
           <tr>
             <td>
-              Monaco editor font size:{" "}
+              Monaco 編輯器字體大小：{" "}
               <input
                 type="range"
                 min="10"
@@ -128,7 +128,7 @@ class Settings extends React.Component {
 
           <tr>
             <td>
-              Visualizer font size:{" "}
+              容器視覺化字體大小：{" "}
               <input
                 type="range"
                 min="0.7"
@@ -167,7 +167,7 @@ class Settings extends React.Component {
           <button className="close" onClick={() => Settings.toggle_key("show_settings")}>
             ×
           </button>
-          <h4>Settings</h4>
+          <h4>設定</h4>
           {this.get_table()}
           <div className="modal-footer" style={{ marginTop: "20px" }}>
             <button
@@ -175,7 +175,7 @@ class Settings extends React.Component {
               onClick={() => Settings.toggle_key("show_settings")}
               data-dismiss="modal"
             >
-              Close
+              關閉
             </button>
           </div>
         </div>

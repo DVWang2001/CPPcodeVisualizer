@@ -19,7 +19,7 @@ let onkeyup_jump_to_line = (e: any) => {
 
 let show_license = function () {
   Actions.show_modal(
-    "gdbgui license",
+    "gdbgui 授權條款",
     <React.Fragment>
       <a href="https://github.com/cs01/gdbgui/blob/master/LICENSE">
         GNU General Public License v3.0
@@ -43,7 +43,7 @@ let show_license = function () {
 let About = {
   show_about: function () {
     Actions.show_modal(
-      "About gdbgui",
+      "關於 gdbgui",
       <div>
         <div>gdbgui, v{store.get("gdbgui_version")}</div>
         <div>Copyright © Chad Smith</div>
@@ -57,7 +57,7 @@ let About = {
 
 let show_session_info = function () {
   Actions.show_modal(
-    "session information",
+    "工作階段資訊",
     <React.Fragment>
       <table>
         <tbody>
@@ -93,13 +93,13 @@ const menu = (
       </a>
       <ul className="dropdown-menu">
         <li>
-          <a title="dashboard" className="pointer" href="/dashboard">
-            Dashboard
+          <a title="管理面板" className="pointer" href="/dashboard">
+            管理面板
           </a>
         </li>
         <li>
           <a onClick={show_session_info} className="pointer">
-            Session Information
+            工作階段資訊
           </a>
         </li>
         <li>
@@ -111,12 +111,12 @@ const menu = (
         <li role="separator" className="divider" />
         <li>
           <a onClick={show_license} className="pointer">
-            License
+            授權條款
           </a>
         </li>
         <li>
           <a onClick={About.show_about} className="pointer">
-            About gdbgui
+            關於 gdbgui
           </a>
         </li>
       </ul>
@@ -306,7 +306,7 @@ class TopBar extends React.Component<{}, State> {
 
           <span
             onClick={() => Settings.toggle_key("show_settings")}
-            title="settings"
+            title="設定"
             className="pointer glyphicon glyphicon-cog toolbar-group"
             style={{ fontSize: "1.1em", color: "var(--ink-soft)" }}
           />

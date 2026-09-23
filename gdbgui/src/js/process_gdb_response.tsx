@@ -75,11 +75,11 @@ const process_gdb_response = function (response_array: any) {
         Actions.add_gdb_response_to_console(r);
         Actions.add_console_entries(
           <React.Fragment>
-            <span>Follow </span>
+            <span>請依照</span>
             <a href="https://github.com/cs01/gdbgui/issues/55#issuecomment-288209648">
-              these instructions
+              這篇說明
             </a>
-            <span> to fix this error</span>
+            <span>修正這個錯誤</span>
           </React.Fragment>,
           constants.console_entry_type.GDBGUI_OUTPUT_RAW
         );
@@ -91,7 +91,7 @@ const process_gdb_response = function (response_array: any) {
       ) {
         // We tried to step out (-exec-finish) but we are in the outermost frame (like main)
         Actions.add_console_entries(
-          `Cannot step out: ${r.payload.msg}`,
+          `無法跳出：${r.payload.msg}`,
           constants.console_entry_type.STD_ERR
         );
         Actions.inferior_program_paused(); // unfreeze UI
@@ -213,19 +213,18 @@ const process_gdb_response = function (response_array: any) {
           store.set("language", language);
         } else {
           store.set("source_file_paths", [
-            "Either no executable is loaded or the executable was compiled without debug symbols."
+            "沒有載入可執行檔，或該可執行檔編譯時沒有加上除錯符號。"
           ]);
 
           if (store.get("inferior_binary_path")) {
             // @ts-expect-error ts-migrate(2339) FIXME: Property 'render' does not exist on type 'typeof M... Remove this comment to see the full error message
             Modal.render(
-              "Warning",
+              "警告",
               <div>
-                This binary was not compiled with debug symbols. Recompile with the -g
-                flag for a better debugging experience.
+                這個執行檔編譯時沒有加上除錯符號。加上 -g 參數重新編譯，除錯體驗會更好。
                 <p />
                 <p />
-                Read more:{" "}
+                延伸閱讀：{" "}
                 <a href="http://www.delorie.com/gnu/docs/gdb/gdb_17.html">
                   http://www.delorie.com/gnu/docs/gdb/gdb_17.html
                 </a>
@@ -371,13 +370,12 @@ const process_gdb_response = function (response_array: any) {
 
           if (r.payload["signal-name"] !== "SIGINT") {
             Actions.add_console_entries(
-              `Signal received: (${r.payload["signal-meaning"]}, ${r.payload["signal-name"]}).`,
+              `收到訊號：(${r.payload["signal-meaning"]}, ${r.payload["signal-name"]})。`,
               constants.console_entry_type.GDBGUI_OUTPUT
             );
             Actions.add_console_entries(
-              "If the program exited due to a fault, you can attempt to re-enter " +
-              "the state of the program when the fault occurred by running the " +
-              "command 'backtrace' in the gdb terminal.",
+              "如果程式是因為錯誤而結束，可以在 gdb 終端機輸入 'backtrace' 指令，" +
+              "嘗試回到錯誤發生當下的程式狀態。",
               constants.console_entry_type.GDBGUI_OUTPUT
             );
           }

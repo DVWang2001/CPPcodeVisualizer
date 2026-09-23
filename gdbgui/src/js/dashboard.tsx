@@ -47,15 +47,15 @@ function GdbguiSession(props: { session: GdbguiSession; updateData: Function }) 
           className="leading-7 bg-blue-500 hover:bg-blue-700 border-blue-500 hover:border-blue-700 border-4 text-white py-2 px-2 rounded"
           type="button"
         >
-          Connect to Session
+          連線到工作階段
         </a>
         <button
           className="bg-blue-500 hover:bg-blue-700 border-blue-500 hover:border-blue-700 border-4 text-white m-1 p-2 rounded align-middle"
-          title="Copy Sharable URL"
+          title="複製可分享的網址"
           type="button"
           onClick={async () => {
             await navigator.clipboard.writeText(url);
-            setShareButtonText(<span>Copied!</span>);
+            setShareButtonText(<span>已複製！</span>);
             if (timeout) {
               clearTimeout(timeout);
             }
@@ -87,7 +87,7 @@ function GdbguiSession(props: { session: GdbguiSession; updateData: Function }) 
             }
           }}
         >
-          {clickedKill ? "Click Again to Confirm" : "Kill Session"}
+          {clickedKill ? "再按一次確認" : "終止工作階段"}
         </button>
       </td>
     </tr>
@@ -123,7 +123,7 @@ class StartCommand extends React.Component<any, { value: string }> {
   render() {
     return (
       <>
-        <div>Enter the gdb command to run in the session.</div>
+        <div>輸入要在此工作階段執行的 gdb 指令。</div>
         <div className="flex w-full mx-auto items-center container">
           <input
             type="text"
@@ -142,7 +142,7 @@ class StartCommand extends React.Component<any, { value: string }> {
             type="button"
             onClick={this.handleSubmit}
           >
-            Start New Session
+            開始新工作階段
           </button>
         </div>
       </>
@@ -222,20 +222,20 @@ class Dashboard extends React.PureComponent<any, { sessions: GdbguiSession[] }> 
       <div className="w-full h-full min-h-screen flex flex-col">
         <Nav />
         <div className="flex-grow w-full h-full bg-gray-300 text-center p-5">
-          <div className="text-3xl font-semibold">Start new session</div>
+          <div className="text-3xl font-semibold">開始新工作階段</div>
           <StartCommand />
           <div className="mt-5 text-3xl font-semibold">
             {sessions.length === 1
-              ? "There is 1 gdbgui session running"
-              : `There are ${sessions.length} gdbgui sessions running`}
+              ? "目前有 1 個 gdbgui 工作階段正在執行"
+              : `目前有 ${sessions.length} 個 gdbgui 工作階段正在執行`}
           </div>
           <table className="table-auto mx-auto">
             <thead>
               <tr>
-                <th className="px-4 py-2">Command</th>
+                <th className="px-4 py-2">指令</th>
                 <th className="px-4 py-2">PID</th>
-                <th className="px-4 py-2">Connected Browsers</th>
-                <th className="px-4 py-2">Start Time</th>
+                <th className="px-4 py-2">已連線瀏覽器數</th>
+                <th className="px-4 py-2">啟動時間</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>

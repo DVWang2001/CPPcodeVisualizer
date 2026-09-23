@@ -50,7 +50,7 @@ class Visualizer extends React.Component<{}, State> {
   renderGuideTable() {
     const guide = (global_variable as any).__guide as Map<string, any[]>;
     if (!guide || guide.size === 0) {
-      return <div>No guide data available</div>;
+      return <div>沒有可用的教案引導資料</div>;
     }
     const maxValues = Math.max(...Array.from(guide.values()).map(v => v.length));
     const rows = Array.from(guide.entries()).map(([key, values]) => {

@@ -598,7 +598,7 @@ const FileOps = {
       return;
     }
     Actions.add_console_entries(
-      "Fetching assembly since file is missing",
+      "檔案不存在，改為抓取組合語言",
       constants.console_entry_type.GDBGUI_OUTPUT
     );
     let start = parseInt(hex_addr, 16),
@@ -615,7 +615,7 @@ const FileOps = {
     FileOps.unfetchable_disassembly_addresses[addr_being_fetched] = true;
     FileOps.disassembly_addr_being_fetched = null;
     Actions.add_console_entries(
-      "Failed to retrieve assembly for missing file",
+      "取得缺少檔案的組合語言失敗",
       constants.console_entry_type.GDBGUI_OUTPUT
     );
   },

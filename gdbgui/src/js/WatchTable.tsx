@@ -54,7 +54,7 @@ class WatchTable extends React.Component {
                             style={{ fontSize: "0.8em", cursor: "pointer", color: "red" }}
                             className="glyphicon glyphicon-trash"
                             onClick={() => GdbVariable.delete_gdb_variable(obj.name)}
-                            title="Delete Expression"
+                            title="刪除這個運算式"
                         />
                     </td>
                 </tr>
@@ -77,9 +77,9 @@ class WatchTable extends React.Component {
                     <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse" }}>
                         <thead>
                             <tr style={{ backgroundColor: "#eee", textAlign: "left" }}>
-                                <th style={{ padding: "4px 8px", width: "30%" }}>Name</th>
-                                <th style={{ padding: "4px 8px", width: "20%" }}>Type</th>
-                                <th style={{ padding: "4px 8px", width: "40%" }}>Value</th>
+                                <th style={{ padding: "4px 8px", width: "30%" }}>名稱</th>
+                                <th style={{ padding: "4px 8px", width: "20%" }}>型別</th>
+                                <th style={{ padding: "4px 8px", width: "40%" }}>值</th>
                                 <th style={{ padding: "4px 8px", width: "10%" }}></th>
                             </tr>
                         </thead>
@@ -93,7 +93,7 @@ class WatchTable extends React.Component {
                     <input
                         id="watch_table_input"
                         className="form-control"
-                        placeholder="Expression or variable to watch... (e.g. k)"
+                        placeholder="要追蹤的運算式或變數...（例如 k）"
                         style={{
                             width: "100%",
                             padding: "6px 8px",

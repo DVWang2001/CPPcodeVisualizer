@@ -276,7 +276,7 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
                 {/* Left: Standard Input */}
                 <div className="flex-1 border-r-2 border-gray-300 flex flex-col">
                   <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 uppercase tracking-wider flex justify-between items-center">
-                    <span>Standard Input</span>
+                    <span>標準輸入 (Standard Input)</span>
                     <span>
                       {randomTestDataFor(store.get("fullname_to_render")) && (
                         <button
@@ -290,9 +290,9 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
                       <button
                         className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase"
                         onClick={this.sendInputToPty}
-                        title="Send input to the running program"
+                        title="把輸入送給正在執行的程式"
                       >
-                        send input
+                        送出輸入
                       </button>
                     </span>
                   </div>
@@ -323,7 +323,7 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
                 {/* Right: Standard Output */}
                 <div className="flex-1 flex flex-col">
                   <div className="bg-gray-100 text-xs font-bold text-gray-600 px-2 py-1 flex justify-between uppercase tracking-wider">
-                    <span>Standard Output</span>
+                    <span>標準輸出 (Standard Output)</span>
                     <button
                       className="text-blue-500 hover:text-blue-700 cursor-pointer outline-none font-normal lowercase"
                       onClick={() => this.setState({ programOutput: "" })}

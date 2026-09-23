@@ -134,7 +134,7 @@ class Collapser extends React.Component<{}, CollapserState> {
           onClick={this.onclick_restore_autosize}
           className="placeholder"
           title={
-            "Height frozen at " + this.state.height_px + "px. Click to restore autosize."
+            "高度已固定為 " + this.state.height_px + "px，點擊可還原自動調整大小。"
           }
           style={{
             // @ts-expect-error ts-migrate(2322) FIXME: Object literal may only specify known properties, ... Remove this comment to see the full error message
@@ -158,7 +158,7 @@ class Collapser extends React.Component<{}, CollapserState> {
             className="rowresizer"
             onMouseDown={this.onmousedown_resizer}
             style={{ textAlign: "right" }}
-            title="Click and drag to resize height"
+            title="拖曳以調整高度"
           >
             {" "}
             {reset_size_button}

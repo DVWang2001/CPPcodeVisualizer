@@ -427,7 +427,7 @@ const GdbApi = {
         const filepath = getEditorFilename ? getEditorFilename() : null;
 
         Actions.add_console_entries(
-          "Compiling and uploading code...",
+          "正在編譯並上傳程式碼……",
           constants.console_entry_type.GDBGUI_OUTPUT
         );
 
@@ -641,13 +641,13 @@ const GdbApi = {
               Actions.inferior_program_starting();
             } else {
               Actions.add_console_entries(
-                "Error: Compilation succeeded but no binary path returned.",
+                "錯誤：編譯成功，但沒有回傳可執行檔路徑。",
                 constants.console_entry_type.STD_ERR
               );
             }
           },
           error: function (xhr: any) {
-            let msg = "Unknown error during compilation.";
+            let msg = "編譯過程發生未知錯誤。";
             if (xhr.responseJSON && xhr.responseJSON.message) {
               msg = xhr.responseJSON.message;
             } else if (xhr.responseText) {
