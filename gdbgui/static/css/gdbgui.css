@@ -709,6 +709,12 @@ tr.compile-warning-tr td {
   align-items: center;
   justify-content: center;
 }
+/* Glyphicons Halflings 字型本身的字符框沒有置中（右邊留白比左邊多），
+   flexbox 置中容器沒用，圖案看起來還是偏右，要手動往左推。 */
+.toolbar-btn-icon > .glyphicon {
+  position: relative;
+  left: -3px;
+}
 /* 「即時課堂」原本是裸的 checkbox+label，跟旁邊的按鈕站在一起視覺重量差太多。
    包成跟按鈕同高、同邊框的藥丸形狀，checkbox 本身當成勾選狀態的視覺提示。 */
 .toolbar-toggle {

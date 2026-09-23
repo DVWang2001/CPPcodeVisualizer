@@ -190,7 +190,9 @@ class ControlButtons extends React.Component<{}, State> {
             className={btn_class + (this.state.autoplay_paused ? " active" : "")}
             style={this.state.autoplay_paused ? { color: "#f0ad4e", fontWeight: "bold" } : { color: "#5cb85c" }}
           >
-            <span className={this.state.autoplay_paused ? "glyphicon glyphicon-play" : "glyphicon glyphicon-pause"} />
+            {/* 用喇叭圖案（音量開/關）取代跟 GDB 原生 play/pause 一樣的三角形/長條，
+                避免跟上面那排執行控制按鈕撞臉。 */}
+            <span className={this.state.autoplay_paused ? "glyphicon glyphicon-volume-off" : "glyphicon glyphicon-volume-up"} />
           </button>
         )}
 
