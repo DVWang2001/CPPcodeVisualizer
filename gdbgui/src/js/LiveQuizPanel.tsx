@@ -545,29 +545,6 @@ export default function LiveQuizPanel({
     };
   }, [lessonId]);
 
-  const start = () => {
-    const blocked = startError();
-    if (blocked) return setError(blocked);
-    setBusy(true);
-    setError(null);
-    const remembered = storedSessionId();
-    const sessionRequest = remembered === null
-      ? createLiveSession(lessonId)
-      : getLiveSession(remembered).then(existing => {
-          if (existing.lesson_id === lessonId) return existing;
-          rememberSession(null);
-          return createLiveSession(lessonId);
-        });
-    sessionRequest
-      .then(connect)
-      .then(() => {
-        setShowQr(true);
-        store.set("autoplay_paused", true);
-      })
-      .catch(reason => setError(reason.message || "無法開始課堂。"))
-      .then(() => setBusy(false));
-  };
-
   // 「重新執行」＝開一堂新的課堂。這是刻意選的行為：每按一次就換一個 session。
   //
   // 代價是已加入的學生會被踢出（他們的裝置憑證綁在舊 session 上），必須重掃 QR，
@@ -677,28 +654,14 @@ export default function LiveQuizPanel({
     }
   };
 
+  // 還沒有 session：不再顯示「開始即時課堂」啟動卡片——按「重新執行」就會
+  // 自動開課並跳出全螢幕 QR（見 restartSession），這張卡片本來就多餘。
+  // 只有自動開課失敗時才需要露出錯誤，讓老師知道發生了什麼事。
   if (!session) {
-    const blocked = startError();
+    if (!error) return null;
     return (
       <section style={{ padding: "14px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px" }}>
-          <div>
-            <strong style={{ color: ink }}>即時課堂</strong>
-            <div style={{ color: muted, fontSize: "12px" }}>開始後顯示 QR；播放停在綁定行時自動開題。</div>
-          </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={onClose}>取消</button>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={busy || Boolean(blocked)}
-              title={blocked || undefined}
-              onClick={start}>
-              {busy ? "正在開始…" : "開始即時課堂"}
-            </button>
-          </div>
-        </div>
-        {error && <div role="alert" style={{ color: "#a61b1b", marginTop: "8px" }}>{error}</div>}
+        <div role="alert" style={{ color: "#a61b1b" }}>{error}</div>
       </section>
     );
   }

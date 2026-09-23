@@ -141,9 +141,11 @@ test('student scans rendered QR and answers when playback reaches the bound line
     }, savedSource);
     await expect(liveButton).toBeEnabled();
     // 「即時課堂」從按鈕改成**預設已勾選**的勾選框，面板一開始就在側欄裡。
-    // 這裡不能再點它——點下去是取消勾選，面板反而消失，「開始即時課堂」就找不到了。
+    // 這裡不能再點它——點下去是取消勾選，面板反而消失。
+    // 「開始即時課堂」啟動卡片已經拿掉了：按 Run（重新執行）就會自動開課、
+    // 跳出全螢幕 QR，所以改用跟後面一致的 startClassroom 走這條路。
     await expect(liveButton).toBeChecked();
-    await teacherPage.getByRole('button', { name: '開始即時課堂' }).click();
+    await startClassroom(teacherPage);
     await teacherPage.waitForFunction(() =>
       Number(sessionStorage.getItem('gdbgui_live_quiz_session_id')) > 0
     );
@@ -260,7 +262,6 @@ test('two phones submit concurrently and a retry cannot replace the first answer
     lessonId = await loginAndOpenQuizLesson(teacherPage);
     // 勾選框預設已勾選，面板已在側欄；點它是取消勾選（見上一條測試的註解）。
     await expect(teacherPage.getByTestId('live-quiz-open')).toBeChecked();
-    await teacherPage.getByRole('button', { name: '開始即時課堂' }).click();
     // 動線：按 Run 建立課堂並暫停播放 → 學生掃碼 → 老師放行 → 到綁定行才開題。
     // 按 Run 會結束舊課堂並開新的（刻意的行為），所以 Run 之前掃到的 QR 已經失效；
     // 而播放若不暫停，到綁定行時題目就開了，學生根本來不及掃。
