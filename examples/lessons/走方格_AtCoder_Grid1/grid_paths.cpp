@@ -33,6 +33,6 @@ int main() {
             dp[i][j] = (up + left) % MOD;        //@ @guide {dp[i - 1][j]:orange} 上面 {up}\n{dp[i][j - 1]:lime} 左邊 {left}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 寫進這一格\n{dp} @tts [next] 兩邊加起來就是這一格的答案：上面 {up} 加左邊 {left}[anim] | @2 [next] 上面 {up} 加左邊 {left}[anim] @layout pull:dp:orange,lime->lightblue
         }
     }
-    std::cout << dp[h][w] << "\n";               //@ @guide 整張表填完了：{dp}\n答案在右下角\n{dp[h][w]:orange} @tts [next] 表填完了。答案就是右下角那一格
+    std::cout << dp[h][w] << "\n";               //@ @guide 整張表填完了：{dp}\n答案在右下角\n{dp[h][w]:orange} @tts [next] 表填完了。答案就是右下角那一格 @layout open:live_quiz close:container
     return 0;                                    //@ @tts [continue] 每一格都是「上面加左邊」，牆填 0。教案播放完畢
 }
