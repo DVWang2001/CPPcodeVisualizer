@@ -90,6 +90,10 @@ const Actions = {
   inferior_program_starting: function () {
     lessonQuizRuntime.clearGate();
     Actions.stop_tts();
+    // 這次真正拿去跑的測資是什麼——「確認出題」要拿它跟目前的 program_input
+    // 比對，偵測「換了隨機測資但還沒真的重跑」，見 LiveQuizPanel 的
+    // TableTriggerConfirm。程式還沒開始跑就已經是這次要用的值了。
+    (global_variable as any).__last_run_program_input = store.get("program_input") || "";
     // 執行代數：只有真正重新執行才遞增。ContainerVisualizer 的輪詢用它判斷
     // 「該把 plugin 狀態清掉了」，而不能用 inferior_program === "running"
     // ——後者在每一次單步時都會短暫成立，輪詢只要剛好落在那個窗就會把已經

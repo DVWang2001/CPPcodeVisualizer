@@ -159,6 +159,29 @@ test("鋸齒狀的容器資料（某一列格數跟其他列不一致）不會�
   expect((root.querySelector("button") as HTMLButtonElement).disabled).toBe(true);
 });
 
+// 實測過的真實 bug：老師按「隨機測資」換了新測資，但還沒按 Run 重跑，就直接按
+// 「確認出題」——這時 __latest_containers 裡的還是上一次執行留下的舊資料，
+// 出的題悄悄用了舊測資，畫面上卻讓人以為用的是新測資。用 program_input 是否
+// 等於「這次真正拿去跑的測資」（__last_run_program_input，在
+// Actions.inferior_program_starting 裡記錄）來攔截。
+test("換了測資但還沒重跑時，確認出題會被擋下並顯示提醒；重跑後（兩者一致）才能按", () => {
+  (global_variable as any).__latest_containers = new Map([["dp", { values: [[1, 2], [3, 4]] }]]);
+  (global_variable as any).__last_run_program_input = "3 4\n...#\n.#..\n....\n";
+  store.set("program_input", "8 5\n.##.#\n....#\n...#.\n.#..#\n....#\n#..##\n.....\n#.#..\n");
+  const onConfirm = render();
+
+  expect(root.textContent).toContain("測資已更新，但程式還沒用新測資重跑過");
+  expect((root.querySelector("button") as HTMLButtonElement).disabled).toBe(true);
+  act(() => Simulate.click(root.querySelector("button")!));
+  expect(onConfirm).not.toHaveBeenCalled();
+
+  // 重跑之後兩者一致，才真的解除鎖定
+  (global_variable as any).__last_run_program_input = store.get("program_input");
+  const onConfirm2 = render();
+  expect(root.textContent).not.toContain("測資已更新，但程式還沒用新測資重跑過");
+  expect((root.querySelector("button") as HTMLButtonElement).disabled).toBe(false);
+});
+
 test("container visibility is restored only when the quiz flow closed an open panel", () => {
   const open = jest.fn();
   const close = jest.fn();

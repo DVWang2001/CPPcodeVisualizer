@@ -148,7 +148,15 @@ export function TableTriggerConfirm({
     : null;
   const captureError = capture && capture.ok === false ? capture.reason : "";
 
-  const disabled = busy || Boolean(isRerunning) || names.length === 0 || !capture || capture.ok !== true;
+  // 換了隨機測資、但還沒真的按 Run 重跑：__latest_containers 裡的還是上一次
+  // 執行留下的舊資料，跟畫面上「題目測資」框顯示的新輸入對不上。沒有這層
+  // 攔截的話「確認出題」會直接把舊資料拿去出題，老師看畫面上明明是新測資，
+  // 出的題卻悄悄用了舊的——這是實測過的真實 bug，不是理論風險。
+  const currentProgramInput = store.get("program_input") || "";
+  const lastRunProgramInput = (global_variable as any).__last_run_program_input ?? currentProgramInput;
+  const inputStale = currentProgramInput !== lastRunProgramInput;
+
+  const disabled = busy || Boolean(isRerunning) || names.length === 0 || !capture || capture.ok !== true || inputStale;
 
   return (
     <div style={{ marginTop: "10px", padding: "12px", background: "#fff", border: "1px solid #3b82f6", borderRadius: "6px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
@@ -204,9 +212,17 @@ export function TableTriggerConfirm({
       {/* 測資區塊 (主要顯示與調整區) */}
       <TestInputPreview />
 
-      <div style={{ fontSize: "12px", color: "#475569", margin: "8px 0 10px", background: "#eff6ff", padding: "6px 8px", borderRadius: "4px" }}>
-        💡 按下<strong>「確認出題」</strong>後，系統將帶入此測資自動重跑程式，並擷取運算後的 DP 表格出題。
-      </div>
+      {inputStale ? (
+        <div style={{ fontSize: "12px", color: "#a61b1b", margin: "8px 0 10px", background: "#fef2f2", padding: "6px 8px", borderRadius: "4px" }}>
+          ⚠️ 測資已更新，但程式還沒用新測資重跑過——上面畫出來的表格是<strong>上一次執行</strong>留下的舊資料。
+          請先按上方<strong>「Run (↻)」</strong>重新執行，等程式停在題目行之後再按「確認出題」。
+        </div>
+      ) : (
+        <div style={{ fontSize: "12px", color: "#475569", margin: "8px 0 10px", background: "#eff6ff", padding: "6px 8px", borderRadius: "4px" }}>
+          💡 這裡的表格是<strong>目前這次執行</strong>算出來的結果。換了測資要先按上方「Run (↻)」重跑，
+          等程式停在題目行、表格更新後，再按下面的<strong>「確認出題」</strong>。
+        </div>
+      )}
 
       <button
         type="button"
