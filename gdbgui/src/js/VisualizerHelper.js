@@ -974,7 +974,16 @@ class VisualizerHelper {
           }
 
           const varObj = expressions.find(obj => obj.expression === displayKey && obj.in_scope === "true");
-          if (varObj && highlightIndexReady) {
+          // 容器本身的抓取／建立 payload 不能被 highlightIndexReady 卡住：resolve2DHighlightIndex
+          // 要用的欄數，正是這段程式碼自己（下面 __latest_containers.set(...) 那幾處）
+          // 才填得進去的。如果拿 highlightIndexReady 當這段的閘門，同一行只要全部的
+          // 2D 索引高亮都還在等欄數，就沒有人的欄位抓取跑得動——欄數永遠等不到、
+          // highlightIndexReady 永遠是 false，兩邊互等的死結（這正是「快速點到某一
+          // 行時什麼都不會顯示」這個 regression 的成因：舊版曾經因為同一原因把
+          // highlightIndexReady 一起放進這個閘門，拿掉它才能讓欄位抓取自己先跑完）。
+          // highlightIndexReady 仍然正確地只決定「這一輪 tick 要不要真的寫入高亮」
+          // （見上面 resolve2DHighlightIndex 那段），跟容器抓取解耦。
+          if (varObj) {
             // ── 快取命中：同一 stop 內重複解析同容器直接返回 ──
             const _ck = `${displayKey}:${frame_line}`;
             const _cr = _gi_result_cache.get(_ck);
