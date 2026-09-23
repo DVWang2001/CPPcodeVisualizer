@@ -132,6 +132,19 @@ test("Enter focuses the next cell in row-major order", () => {
   expect(document.activeElement).toBe(inputs[1]);
 });
 
+// 手機上點格子要能直接蓋掉舊數字重打，不用先手動全選再刪——這是特地
+// 加的體驗，不是瀏覽器 focus 的預設行為（number input 光是 focus 不會
+// 自動全選），漏了會退回到要多一次手動全選的舊體驗。
+test("focusing a cell selects its existing value so typing overwrites it", () => {
+  render();
+  const input = root.querySelector("input") as HTMLInputElement;
+  const selectSpy = jest.spyOn(input, "select");
+
+  act(() => { input.focus(); });
+
+  expect(selectSpy).toHaveBeenCalledTimes(1);
+});
+
 test("submitted grid is read-only without Android disabled-input rendering", () => {
   render({ submitted: true });
   const inputs = Array.from(root.querySelectorAll("input"));

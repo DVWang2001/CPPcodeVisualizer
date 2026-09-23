@@ -110,6 +110,7 @@ export default function TableAnswerGrid({ question, onSubmit, submitted }: Props
                       readOnly={locked}
                       aria-label={`${question.row_labels[row]}，${question.col_labels[col]}${result ? `，${result}` : ""}`}
                       title={result || undefined}
+                      onFocus={event => event.currentTarget.select()}
                     />
                   </td>
                 );
