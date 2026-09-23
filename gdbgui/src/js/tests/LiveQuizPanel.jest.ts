@@ -164,22 +164,39 @@ test("鋸齒狀的容器資料（某一列格數跟其他列不一致）不會�
 // 出的題悄悄用了舊測資，畫面上卻讓人以為用的是新測資。用 program_input 是否
 // 等於「這次真正拿去跑的測資」（__last_run_program_input，在
 // Actions.inferior_program_starting 裡記錄）來攔截。
-test("換了測資但還沒重跑時，確認出題會被擋下並顯示提醒；重跑後（兩者一致）才能按", () => {
+// 換測資沒重跑就按「確認出題」曾經是真的線上 bug（悄悄用舊資料出題）。
+// 修法不是擋住按鈕要老師自己記得先手動按 Run——而是按鈕本身變成「重跑並
+// 出題」：按下去呼叫 onConfirm(null, varHint)，交給 LiveQuizPanel 觸發
+// 重跑，在題目行自動擷取新資料（reRunningForTriggerRef 那條路，跟「重試」
+// 共用）。舊的那張表格（要被丟掉的）也不該畫出來誤導老師。
+test("換了測資但還沒重跑時，按鈕變成「重跑並出題」；點擊觸發重跑而不是直接拿舊資料出題", () => {
   (global_variable as any).__latest_containers = new Map([["dp", { values: [[1, 2], [3, 4]] }]]);
   (global_variable as any).__last_run_program_input = "3 4\n...#\n.#..\n....\n";
   store.set("program_input", "8 5\n.##.#\n....#\n...#.\n.#..#\n....#\n#..##\n.....\n#.#..\n");
   const onConfirm = render();
 
-  expect(root.textContent).toContain("測資已更新，但程式還沒用新測資重跑過");
-  expect((root.querySelector("button") as HTMLButtonElement).disabled).toBe(true);
-  act(() => Simulate.click(root.querySelector("button")!));
-  expect(onConfirm).not.toHaveBeenCalled();
+  expect(root.textContent).toContain("測資已更新");
+  expect(root.textContent).toContain("不用自己手動按 Run");
+  expect(root.querySelector("table")).toBeNull(); // 舊資料的表格不畫出來
+  const button = root.querySelector("button") as HTMLButtonElement;
+  expect(button.disabled).toBe(false);
+  expect(button.textContent).toContain("重新執行並出題");
 
-  // 重跑之後兩者一致，才真的解除鎖定
+  act(() => Simulate.click(button));
+  expect(onConfirm).toHaveBeenCalledWith(null, "dp");
+
+  // 重跑之後兩者一致，變回正常的「確認出題」、直接用新資料
   (global_variable as any).__last_run_program_input = store.get("program_input");
   const onConfirm2 = render();
-  expect(root.textContent).not.toContain("測資已更新，但程式還沒用新測資重跑過");
-  expect((root.querySelector("button") as HTMLButtonElement).disabled).toBe(false);
+  expect(root.textContent).not.toContain("測資已更新");
+  const button2 = root.querySelector("button") as HTMLButtonElement;
+  expect(button2.textContent).toBe("確認出題");
+  expect(root.querySelector("table")).not.toBeNull();
+  act(() => Simulate.click(button2));
+  expect(onConfirm2).toHaveBeenCalledWith(
+    { rows: 2, cols: 2, row_labels: ["0", "1"], col_labels: ["0", "1"], values: [["1", "2"], ["3", "4"]] },
+    "dp"
+  );
 });
 
 test("container visibility is restored only when the quiz flow closed an open panel", () => {

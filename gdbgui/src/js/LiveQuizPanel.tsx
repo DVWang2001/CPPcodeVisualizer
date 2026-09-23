@@ -116,7 +116,9 @@ export function TableTriggerConfirm({
   pending: NonNullable<RuntimeState["pendingTable"]>;
   busy: boolean;
   isRerunning?: boolean;
-  onConfirm: (captured: CapturedTable, varHint: string) => void;
+  // captured 是 null 代表測資不新鮮、要靠重跑後在題目行自動擷取，不是這裡
+  // 手上這份（已經要丟掉的）舊資料。
+  onConfirm: (captured: CapturedTable | null, varHint: string) => void;
 }) {
   const [, forceUpdate] = React.useReducer(x => x + 1, 0);
   React.useEffect(() => {
@@ -149,14 +151,19 @@ export function TableTriggerConfirm({
   const captureError = capture && capture.ok === false ? capture.reason : "";
 
   // 換了隨機測資、但還沒真的按 Run 重跑：__latest_containers 裡的還是上一次
-  // 執行留下的舊資料，跟畫面上「題目測資」框顯示的新輸入對不上。沒有這層
-  // 攔截的話「確認出題」會直接把舊資料拿去出題，老師看畫面上明明是新測資，
-  // 出的題卻悄悄用了舊的——這是實測過的真實 bug，不是理論風險。
+  // 執行留下的舊資料，跟畫面上「題目測資」框顯示的新輸入對不上。曾經讓
+  // 「確認出題」直接把舊資料拿去出題——老師看畫面上明明是新測資，出的題
+  // 卻悄悄用了舊的。與其擋住按鈕要老師自己記得先手動按 Run，不如按鈕本身
+  // 就觸發重跑：這條「重跑＋在題目行自動擷取」的路徑（reRunningForTriggerRef
+  // 那個 useEffect）本來就存在、也在「重試」用過，只是沒有接到這裡。
   const currentProgramInput = store.get("program_input") || "";
   const lastRunProgramInput = (global_variable as any).__last_run_program_input ?? currentProgramInput;
   const inputStale = currentProgramInput !== lastRunProgramInput;
 
-  const disabled = busy || Boolean(isRerunning) || names.length === 0 || !capture || capture.ok !== true || inputStale;
+  // 測資不新鮮時，畫面上那張表格反正要被丟掉重擷取，不需要它驗證通過才能按——
+  // 按下去是去重跑，不是直接拿它出題。
+  const disabled = busy || Boolean(isRerunning) ||
+    (!inputStale && (names.length === 0 || !capture || capture.ok !== true));
 
   return (
     <div style={{ marginTop: "10px", padding: "12px", background: "#fff", border: "1px solid #3b82f6", borderRadius: "6px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
@@ -182,14 +189,16 @@ export function TableTriggerConfirm({
         </div>
       )}
 
-      {/* 一定要畫 capture.table.values（經過 tableFromContainer 驗證過的），不能
-          直接畫 selectedCaptured.values 這個容器原始 payload：換測資重跑之後，
-          容器輪詢是逐列更新的，中間某一瞬間可能有的列還是舊測資的欄數、有的列
-          已經是新測資的欄數，直接畫原始資料就會出現鋸齒狀、格數對不齊的表格
-          （這正是「超出格子」的根因）。tableFromContainer 已經檢查過每列欄數
-          一致，不一致就會回 ok:false，畫面上交給下面的 captureError 訊息處理，
-          不會把半新半舊的資料端出來給老師看。 */}
-      {capture && capture.ok === true && (
+      {/* 測資不新鮮時這張表格反正要被丟掉重擷取，畫出來只會誤導老師以為
+          這是新測資的結果——不畫，等重跑完再畫新的。
+          資料新鮮時：一定要畫 capture.table.values（經過 tableFromContainer
+          驗證過的），不能直接畫 selectedCaptured.values 這個容器原始
+          payload：容器輪詢是逐列更新的，擷取到的那一瞬間可能有的列還是
+          舊欄數、有的列已經是新欄數，直接畫原始資料會出現鋸齒狀、格數
+          對不齊的表格（這正是「超出格子」的根因）。tableFromContainer
+          已經檢查過每列欄數一致，不一致就會回 ok:false，交給下面的
+          captureError 訊息處理，不會把半新半舊的資料端出來給老師看。 */}
+      {!inputStale && capture && capture.ok === true && (
         <table style={{ borderCollapse: "collapse", margin: "6px 0" }}>
           <tbody>
             {capture.table.values.map((row, r) => (
@@ -203,7 +212,7 @@ export function TableTriggerConfirm({
         </table>
       )}
 
-      {captureError ? (
+      {!inputStale && captureError ? (
         <div style={{ color: "#a61b1b", fontSize: "12px", marginBottom: "6px" }}>
           {captureError}
         </div>
@@ -213,14 +222,13 @@ export function TableTriggerConfirm({
       <TestInputPreview />
 
       {inputStale ? (
-        <div style={{ fontSize: "12px", color: "#a61b1b", margin: "8px 0 10px", background: "#fef2f2", padding: "6px 8px", borderRadius: "4px" }}>
-          ⚠️ 測資已更新，但程式還沒用新測資重跑過——上面畫出來的表格是<strong>上一次執行</strong>留下的舊資料。
-          請先按上方<strong>「Run (↻)」</strong>重新執行，等程式停在題目行之後再按「確認出題」。
+        <div style={{ fontSize: "12px", color: "#0284c7", margin: "8px 0 10px", background: "#eff6ff", padding: "6px 8px", borderRadius: "4px" }}>
+          💡 測資已更新。按下面的按鈕會自動帶入新測資重新執行程式，停在題目行後直接擷取新的
+          DP 表格出題——不用自己手動按 Run。
         </div>
       ) : (
         <div style={{ fontSize: "12px", color: "#475569", margin: "8px 0 10px", background: "#eff6ff", padding: "6px 8px", borderRadius: "4px" }}>
-          💡 這裡的表格是<strong>目前這次執行</strong>算出來的結果。換了測資要先按上方「Run (↻)」重跑，
-          等程式停在題目行、表格更新後，再按下面的<strong>「確認出題」</strong>。
+          💡 上面的表格是<strong>目前這次執行</strong>算出來的結果。按下面的<strong>「確認出題」</strong>就會用它出題。
         </div>
       )}
 
@@ -230,11 +238,18 @@ export function TableTriggerConfirm({
         style={{ width: "100%", fontWeight: 600 }}
         disabled={disabled}
         onClick={() => {
-          if (!capture || capture.ok !== true) return;
-          onConfirm(capture.table, activeKey || pending.tableSpec.var_hint);
+          if (!inputStale && (!capture || capture.ok !== true)) return;
+          onConfirm(
+            !inputStale && capture && capture.ok === true ? capture.table : null,
+            activeKey || pending.tableSpec.var_hint
+          );
         }}
       >
-        {isRerunning ? "🔄 正在重跑程式並擷取 DP 表格..." : "確認出題"}
+        {isRerunning
+          ? "🔄 正在重跑程式並擷取 DP 表格..."
+          : inputStale
+          ? "🔄 帶入新測資重新執行並出題"
+          : "確認出題"}
       </button>
     </div>
   );
@@ -955,8 +970,11 @@ export default function LiveQuizPanel({
                 const currentInput = localStorage.getItem("gdbgui_program_input") || store.get("program_input") || "";
                 store.set("program_input", currentInput);
 
-                if ((window as any).gdbgui_auto_rerun_on_confirm) {
-                  // 2. 先重設出題記錄與鎖，清空舊的 pendingTable 狀態
+                // captured 是 null：TableTriggerConfirm 判定測資不新鮮（換了隨機
+                // 測資但還沒真的重跑過），手上那份是要丟掉的舊資料，交給這裡觸發
+                // 重跑，在題目行自動擷取新的（見下面 reRunningForTriggerRef 那個
+                // useEffect，跟「重試」共用同一條路）。
+                if (captured === null) {
                   lessonQuizRuntime.prepareReRunForQuestion(questionId);
                   reRunningForTriggerRef.current = { questionId, varHint };
                   setIsRerunningForTrigger(true);
