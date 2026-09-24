@@ -37,8 +37,8 @@ type State = {
     mazeColorRules: Map<string, ColorRule[]>;
     mazeRuleInput: Map<string, { value: string; color: string }>;
     bstMode: Set<string>;
-    /** @layout 的 pair:A,B 設定的一組並排容器名；null = 沒有設定。 */
-    pairNames: [string, string] | null;
+    /** @layout 的 pair:A,B（或 A,B,C）設定的一組並排容器名；null = 沒有設定。 */
+    pairNames: string[] | null;
     /** @layout 的 pop:A,B 每次真的停在有這個 token 的行，對應容器的世代號就 +1
      *  （不是「開關」——見 cellPopKey.ts 為什麼不能用顏色變了沒判斷）。 */
     popGen: Map<string, number>;
@@ -92,10 +92,10 @@ class ContainerVisualizer extends React.Component<{}, State> {
             });
         };
 
-        // pair:A,B → 這兩個容器並排顯示（見 §4.10）。只記名字，真正要不要
-        // 排版由 render() 的 splitForPairing 判斷（兩者都要有資料才算數）。
-        (window as any).gdbgui_set_pair_mode = (nameA: string, nameB: string) => {
-            this.setState({ pairNames: [nameA, nameB] });
+        // pair:A,B 或 pair:A,B,C → 這幾個容器並排顯示（見 §4.9）。只記名字，真正要不要
+        // 排版由 render() 的 splitForPairing 判斷（有資料才算數）。
+        (window as any).gdbgui_set_pair_mode = (...names: string[]) => {
+            this.setState({ pairNames: names });
         };
 
         // pop:容器名（可選 :顏色）→ 這個容器（或只有這個顏色）的高亮格「放大再
@@ -648,11 +648,11 @@ class ContainerVisualizer extends React.Component<{}, State> {
         return (
             <div style={{ padding: "10px", backgroundColor: "var(--paper)" }}>
                 {paired && (
-                    // 兩個容器共用同一個外框區塊（不是各自一張卡片並排），中間一條分隔線。
+                    // 2~3 個容器共用同一個外框區塊（不是各自一張卡片並排），之間各一條分隔線。
                     <div style={{ marginBottom: "16px", padding: "12px", border: "1px solid var(--line)", borderRadius: "12px", backgroundColor: "var(--surface)", boxShadow: "0 1px 2px rgba(27,31,36,0.04)", display: "flex", gap: "16px", alignItems: "stretch" }}>
                         {paired.map((name, idx) => (
                             <React.Fragment key={name}>
-                                {idx === 1 && <div style={{ alignSelf: "stretch", width: "1px", backgroundColor: "var(--line)" }} />}
+                                {idx > 0 && <div style={{ alignSelf: "stretch", width: "1px", backgroundColor: "var(--line)" }} />}
                                 {this.renderContainerShape(name, latestContainers.get(name), latestHighlights.get(name), true)}
                             </React.Fragment>
                         ))}
