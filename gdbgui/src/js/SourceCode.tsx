@@ -20,7 +20,7 @@ import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
 import { lineIdentifiers } from "./lineIdentifiers";
 import { parseForHeader, segRange } from "./forHeader";
-import { parsePullToken } from "./pullAnim";
+import { parsePullToken, parseCrossPullToken } from "./pullAnim";
 import LessonGenPanel from "./LessonGenPanel";
 import LessonCommitDialog from "./LessonCommitDialog";
 import LessonHistoryDialog from "./LessonHistoryDialog";
@@ -1092,6 +1092,11 @@ class SourceCode extends React.Component<{}, State> {
       const parsed = parsePullToken(val);
       if (triggerPull && parsed) {
         triggerPull(parsed.containerName, parsed.colorA, parsed.colorB, parsed.targetColor);
+      } else {
+        // 來源在不同容器的寫法：pull:cost:orange,dp:lime->dp:lightblue
+        const cross = parseCrossPullToken(val);
+        const triggerCross = (window as any).gdbgui_trigger_cross_pull;
+        if (triggerCross && cross) triggerCross(cross);
       }
     }
   }

@@ -29,6 +29,8 @@ export function parsePullToken(val: string): PullToken | null {
   const containerName = before.slice(0, colonIdx).trim();
   const colors = before.slice(colonIdx + 1).split(",").map(s => s.trim()).filter(Boolean);
   if (!containerName || !targetColor || colors.length !== 2) return null;
+  // 「容器:顏色」是跨容器寫法（見 parseCrossPullToken），不是同容器版的顏色名。
+  if (targetColor.includes(":") || colors.some((c) => c.includes(":"))) return null;
   return { containerName, colorA: colors[0], colorB: colors[1], targetColor };
 }
 
@@ -94,4 +96,75 @@ export function formatPullPreview(valueA: string, valueB: string): string | null
   const b = Number(valueB);
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return String(a + b);
+}
+
+// ── 跨容器的 pull：來源與目標可以分屬不同容器 ─────────────────────────────
+// 語法 `pull:成本表:orange,dp:lime->dp:lightblue`：每個「容器:顏色」各自指一格。
+// 用在 `dp[i][j] = cost[i][j] + best` 這種兩個來源不在同一張表的相加。
+// 同容器的舊寫法（`pull:dp:orange,lime->lightblue`）完全不變，見 parsePullToken。
+
+export interface PullEnd {
+  containerName: string;
+  color: string;
+}
+
+export interface CrossPullToken {
+  a: PullEnd;
+  b: PullEnd;
+  target: PullEnd;
+}
+
+function parsePullEnd(text: string): PullEnd | null {
+  const idx = text.indexOf(":");
+  if (idx < 0) return null;
+  const containerName = text.slice(0, idx).trim();
+  const color = text.slice(idx + 1).trim();
+  return containerName && color ? { containerName, color } : null;
+}
+
+/**
+ * 解析 `容器A:色,容器B:色->目標容器:色`。三段都要有「容器:顏色」，來源剛好兩個；
+ * 目標沒寫容器（舊寫法 `->lightblue`）就回 null，交給 parsePullToken 處理。
+ */
+export function parseCrossPullToken(val: string): CrossPullToken | null {
+  const arrowIdx = val.indexOf("->");
+  if (arrowIdx < 0) return null;
+  const target = parsePullEnd(val.slice(arrowIdx + 2));
+  const sources = val.slice(0, arrowIdx).split(",").map(parsePullEnd);
+  if (!target || sources.length !== 2 || !sources[0] || !sources[1]) return null;
+  return { a: sources[0], b: sources[1], target };
+}
+
+export interface CellPos {
+  containerName: string;
+  row: number;
+  col: number;
+}
+
+export interface CrossPullPlan {
+  a: CellPos;
+  b: CellPos;
+  target: CellPos;
+}
+
+/**
+ * 三個端點各自去它的容器裡找「亮著那個顏色的格子」，換算成 (列,欄)。
+ * `lookup` 給容器名，回它目前的高亮陣列與一列有幾格；任一端找不到就回 null——
+ * 跟同容器版一樣不強求，畫面上該亮什麼是 @guide 的事。
+ */
+export function resolveCrossPull(
+  token: CrossPullToken,
+  lookup: (containerName: string) => { highlights: HighlightEntry[] | undefined; cols: number } | null
+): CrossPullPlan | null {
+  const locate = (end: PullEnd): CellPos | null => {
+    const found = lookup(end.containerName);
+    if (!found || !found.highlights || found.cols <= 0) return null;
+    const index = found.highlights.find((h) => h.color === end.color)?.index;
+    if (index === undefined) return null;
+    return { containerName: end.containerName, row: Math.floor(index / found.cols), col: index % found.cols };
+  };
+  const a = locate(token.a);
+  const b = locate(token.b);
+  const target = locate(token.target);
+  return a && b && target ? { a, b, target } : null;
 }

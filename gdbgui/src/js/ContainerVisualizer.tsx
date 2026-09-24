@@ -8,7 +8,7 @@ import { linearPlugin, uniformCellWidth } from "./LinearPlugin";
 import { mazePlugin } from "./MazePlugin";
 import { splitForPairing } from "./containerPairing";
 import { popCellKey, popGenKey, effectivePopGen, prefersReducedMotion } from "./cellPopKey";
-import { computePullOffsets, formatPullPreview } from "./pullAnim";
+import { computePullOffsets, formatPullPreview, resolveCrossPull, CrossPullToken } from "./pullAnim";
 import { delay } from "./anim";
 
 // Register all plugins once at module load.
@@ -169,6 +169,77 @@ class ContainerVisualizer extends React.Component<{}, State> {
                 nextPull.delete(containerName);
                 return { pullState: nextPull };
             });
+        };
+
+        // 跨容器的 pull（pull:cost:orange,dp:lime->dp:lightblue）：兩個來源格各在自己的
+        // 容器，飛向另一個（或同一個）容器裡的目標格。同容器版用格子自己的百分比當位移，
+        // 跨容器量不到，所以改成量兩端格子在畫面上的實際位置，用一個浮在最上層的數字
+        // 從來源飛到目標。來源格的數字不動（跨容器時來源本來就不會被吃掉）。
+        (window as any).gdbgui_trigger_cross_pull = async (token: CrossPullToken) => {
+            const containers = (global_variable as any).__latest_containers as Map<string, any> | undefined;
+            const allHighlights = (global_variable as any).__latest_highlights as Map<string, HighlightEntry[]> | undefined;
+            const plan = resolveCrossPull(token, (name) => {
+                const data = containers?.get(name);
+                if (!data || !Array.isArray(data.values) || data.values.length === 0 || !Array.isArray(data.values[0])) return null;
+                return { highlights: allHighlights?.get(name), cols: data.values[0].length };
+            });
+            if (!plan) return;
+            const valueAt = (c: { containerName: string; row: number; col: number }) =>
+                String(containers!.get(c.containerName).values[c.row][c.col]);
+
+            // 目標格借用 pop 亮一下，表示「結果落在這裡」。
+            (window as any).gdbgui_bump_pop_gen?.(plan.target.containerName, token.target.color);
+
+            // 暫時結果：停在賦值那一行時 GDB 還沒把值寫進目標格，先把兩個來源值相加
+            // 蓋在目標格裡，直到目標格的真實值變了才收掉（見 _pollContainers）。
+            const preview = formatPullPreview(valueAt(plan.a), valueAt(plan.b));
+            const targetKey = `${plan.target.row},${plan.target.col}`;
+            const beforeValue = valueAt(plan.target);
+            if (!prefersReducedMotion()) {
+                this.setState(prev => {
+                    const nextPreview = new Map(prev.pullPreview);
+                    if (preview !== null) nextPreview.set(plan.target.containerName, { key: targetKey, text: preview, beforeValue });
+                    else nextPreview.delete(plan.target.containerName);
+                    return { pullPreview: nextPreview };
+                });
+                // 等一次重繪，量到的才是這一刻的位置（pop、暫時結果都會動到版面）。
+                await delay(60);
+                const cellEl = (c: { containerName: string; row: number; col: number }) =>
+                    document.querySelector(
+                        `[data-testid="container-${c.containerName}"] [data-cell="${c.row},${c.col}"]`
+                    ) as HTMLElement | null;
+                const to = cellEl(plan.target);
+                if (to) {
+                    const toRect = to.getBoundingClientRect();
+                    const flyers: HTMLElement[] = [];
+                    for (const src of [plan.a, plan.b]) {
+                        const from = cellEl(src);
+                        if (!from) continue;
+                        const r = from.getBoundingClientRect();
+                        const el = document.createElement("div");
+                        el.textContent = valueAt(src);
+                        el.setAttribute("data-testid", "cross-pull-flyer");
+                        Object.assign(el.style, {
+                            position: "fixed", left: `${r.left}px`, top: `${r.top}px`,
+                            width: `${r.width}px`, height: `${r.height}px`,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontWeight: "700", color: "var(--accent)", pointerEvents: "none", zIndex: "9999",
+                            transition: "transform 0.45s ease, opacity 0.45s ease", opacity: "1",
+                        });
+                        document.body.appendChild(el);
+                        flyers.push(el);
+                        const dx = toRect.left + toRect.width / 2 - (r.left + r.width / 2);
+                        const dy = toRect.top + toRect.height / 2 - (r.top + r.height / 2);
+                        // 先讓瀏覽器畫出起點，下一個 frame 才設終點，transition 才會播。
+                        requestAnimationFrame(() => requestAnimationFrame(() => {
+                            el.style.transform = `translate(${dx}px, ${dy}px)`;
+                            el.style.opacity = "0";
+                        }));
+                    }
+                    await delay(520);
+                    flyers.forEach(el => el.remove());
+                }
+            }
         };
 
         (window as any).gdbgui_set_maze_mode = (containerName: string, enabled: boolean, defaultColorRules?: ColorRule[]) => {
@@ -495,7 +566,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                             } : { display: "inline-block" };
                                             const preview = pullPreview?.key === cellKey ? pullPreview.text : null;
                                             return (
-                                                <div key={pop.key} className={pop.className} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW, position: "relative" }}>
+                                                <div key={pop.key} data-cell={cellKey} className={pop.className} style={{ ...cellBase, ...stateStyle(hl2D), padding: "8px 12px", flex: "none", width: cellW, position: "relative" }}>
                                                     <span style={numberStyle}>
                                                         {type === "string" && colVal !== "" ? `'${colVal}'` : colVal}
                                                     </span>

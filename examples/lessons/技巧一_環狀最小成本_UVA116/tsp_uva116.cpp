@@ -37,15 +37,15 @@ int main() {
         for (int i = 0; i < h; ++i) {            //@ @guide 現在算第 {j} 欄，一列一列算 @tts [next] 現在算第 {j} 欄，一列一列算 | @2 [next] 換下一列 | @3 [fast @6] 這一欄其他格子做法一樣，直接跳到這一欄算完 | @6 [next] 這一欄算完了
             int cand[3] = {(i - 1 + h) % h, i, (i + 1) % h}; //@ @guide 第 {j} 欄第 {i} 列\n{cost[i][j]:lightblue} 這一格\n往右走有三個候選：右上（第 i-1 列）、正右（第 i 列）、右下（第 i+1 列）\n第一列的上面是最後一列，所以列號要取餘數 % h @tts [next] [anim]這一格往右走有三個候選列，等一下一個一個看。第一列的上面是最後一列，所以要取餘數 | @2 [next] [anim]第 {i} 列的三個候選列 @layout pop:cost:lightblue
             std::sort(cand, cand + 3);           //@ @guide 三個候選由小排到大\n成本同分時，列號小的先比、先佔位\n這就是「字典序最小」 @tts [next] 先把三個候選列由小排到大。成本同分的時候，列號小的先被選中，這就是字典序最小 | @2 [next] 排好序
-            int best = INF;                      //@ @guide 先假設最小成本是無限大 @tts [next] 先假設最小成本是無限大，等一下一個一個比 | @2 [next] 最小成本先設無限大
+            int best = INF, bestRow = 0;                      //@ @guide 先假設最小成本是無限大 @tts [next] 先假設最小成本是無限大，等一下一個一個比 | @2 [next] 最小成本先設無限大
             for (int k = 0; k < 3; ++k) {        //@ @guide 依序看三個候選 @tts [next] 依序看三個候選 | @2 [next] 看下一個候選
                 int r = cand[k];                 //@ @guide 取出第 {k} 個候選 @tts [next] 取出第 {k} 個候選列 | @2 [next] 取出下一個候選列
                 if (dp[r][j + 1] < best) {       //@ @guide 候選第 {r} 列：右邊那欄的成本\n{dp[r][j + 1]:orange}\n目前最好 {best}\n比較小才換，同分不換 @tts [next] [anim]候選第 {r} 列，它的成本比目前最好的還小嗎？小才換，同分不換，所以列號小的會先佔位 | @2 [next] [anim]比一比 @layout pop:dp:orange
-                    best = dp[r][j + 1];         //@ @guide 更小，記下這個成本\n{dp[r][j + 1]:orange} @tts [next] [anim]更小，記下這個成本 | @2 [next] [anim]更小，換成這個 @layout pop:dp:orange
+                    best = dp[r][j + 1]; bestRow = r;         //@ @guide 更小，記下這個成本\n{dp[r][j + 1]:orange} @tts [next] [anim]更小，記下這個成本 | @2 [next] [anim]更小，換成這個 @layout pop:dp:orange
                     nxt[i][j] = r;               //@ @guide 同時記下：從這一格出發，下一步走到第 {r} 列\n{nxt[i][j]:pink} @tts [next] 同時記下，[anim]下一步走到第 {r} 列 | @2 [next] [anim]下一步換成第 {r} 列 @layout pop:nxt:pink
                 }
             }
-            dp[i][j] = cost[i][j] + best;        //@ @guide 這一格的 dp ＝ 自己的成本 ＋ 右邊最好的路\n{cost[i][j]:lightblue} ＋ {best}\n{dp[i][j]:lightblue}\n{nxt} @tts [next] [anim]這一格的 dp，等於自己的成本，加上右邊最好的那條路，寫進表裡 | @2 [next] [anim]同樣算出這一格的 dp @layout pop:cost:lightblue,dp:lightblue
+            dp[i][j] = cost[i][j] + best;        //@ @guide 這一格的 dp ＝ 自己的成本 ＋ 右邊最好的路\n{cost[i][j]:orange} ＋ {best}\n{dp[bestRow][j + 1]:lime}\n{dp[i][j]:lightblue}\n{nxt} @tts [next] 這一格的 dp，[anim]等於自己的成本，加上右邊最好的那條路，寫進表裡 | @2 [next] [anim]同樣算出這一格的 dp @layout pull:cost:orange,dp:lime->dp:lightblue
         }
     }
     int start = 0;                               //@ @guide [課堂題目#red] 兩張表都算完了，先把它們藏起來\n換你們算：dp 表、nxt 表 @tts [next] 兩張表都算完了，可是我先把它們藏起來。請大家用手機自己算出 dp 表 @layout open:live_quiz close:container

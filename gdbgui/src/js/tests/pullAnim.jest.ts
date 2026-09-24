@@ -108,3 +108,65 @@ describe("formatPullPreview", () => {
     expect(formatPullPreview("", "5")).toBeNull();
   });
 });
+
+import { parseCrossPullToken, resolveCrossPull } from "../pullAnim";
+
+describe("parseCrossPullToken", () => {
+  test("cost:orange,dp:lime->dp:lightblue", () => {
+    expect(parseCrossPullToken("cost:orange,dp:lime->dp:lightblue")).toEqual({
+      a: { containerName: "cost", color: "orange" },
+      b: { containerName: "dp", color: "lime" },
+      target: { containerName: "dp", color: "lightblue" },
+    });
+  });
+
+  test("空白會 trim", () => {
+    expect(parseCrossPullToken(" cost : orange , dp : lime -> dp : lightblue ")?.target).toEqual({
+      containerName: "dp",
+      color: "lightblue",
+    });
+  });
+
+  test("同容器舊寫法（目標沒有容器名）不是跨容器：回 null，交給 parsePullToken", () => {
+    expect(parseCrossPullToken("dp:orange,lime->lightblue")).toBeNull();
+  });
+
+  test("來源不是剛好兩個、缺箭頭、缺顏色：null", () => {
+    expect(parseCrossPullToken("cost:orange->dp:lightblue")).toBeNull();
+    expect(parseCrossPullToken("a:x,b:y,c:z->dp:lightblue")).toBeNull();
+    expect(parseCrossPullToken("cost:orange,dp:lime")).toBeNull();
+    expect(parseCrossPullToken("cost:,dp:lime->dp:lightblue")).toBeNull();
+  });
+});
+
+describe("resolveCrossPull", () => {
+  const token = parseCrossPullToken("cost:orange,dp:lime->dp:lightblue")!;
+  const tables: Record<string, any> = {
+    cost: { highlights: [{ index: 6, color: "orange" }], cols: 4 }, // (1,2)
+    dp: {
+      highlights: [
+        { index: 11, color: "lime" }, // (2,3)
+        { index: 6, color: "lightblue" }, // (1,2)
+      ],
+      cols: 4,
+    },
+  };
+
+  test("兩個容器各自換算 (列,欄)，同一個容器的兩種顏色不會混", () => {
+    expect(resolveCrossPull(token, (n) => tables[n] || null)).toEqual({
+      a: { containerName: "cost", row: 1, col: 2 },
+      b: { containerName: "dp", row: 2, col: 3 },
+      target: { containerName: "dp", row: 1, col: 2 },
+    });
+  });
+
+  test("任一端沒亮、或容器不存在：null", () => {
+    expect(resolveCrossPull(token, (n) => (n === "dp" ? tables.dp : null))).toBeNull();
+    const noLime: Record<string, any> = { ...tables, dp: { ...tables.dp, highlights: [{ index: 6, color: "lightblue" }] } };
+    expect(resolveCrossPull(token, (n) => noLime[n] || null)).toBeNull();
+  });
+});
+
+test("parsePullToken 不會把跨容器寫法誤認成同容器（顏色欄位含冒號）", () => {
+  expect(parsePullToken("cost:orange,dp:lime->dp:lightblue")).toBeNull();
+});
