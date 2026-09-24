@@ -40,7 +40,7 @@ int main() {
             int best = INF;                      //@ @guide 先假設最小成本是無限大 @tts [next] 先假設最小成本是無限大，等一下一個一個比 | @2 [next] 最小成本先設無限大
             for (int k = 0; k < 3; ++k) {        //@ @guide 依序看三個候選 @tts [next] 依序看三個候選 | @2 [next] 看下一個候選
                 int r = cand[k];                 //@ @guide 取出第 {k} 個候選 @tts [next] 取出第 {k} 個候選列 | @2 [next] 取出下一個候選列
-                if (dp[r][j + 1] < best) {       //@ @guide 候選第 {r} 列：右邊那欄的成本\n{dp[r][j + 1]:orange}\n目前最好 {best}\n比較小才換，同分不換 @tts [next] [anim]候選第 {r} 列，它的成本比目前最好的還小嗎？小才換，同分不換，所以列號小的會先佔位 | @2 [next] 比一比 @layout pop:dp:orange
+                if (dp[r][j + 1] < best) {       //@ @guide 候選第 {r} 列：右邊那欄的成本\n{dp[r][j + 1]:orange}\n目前最好 {best}\n比較小才換，同分不換 @tts [next] [anim]候選第 {r} 列，它的成本比目前最好的還小嗎？小才換，同分不換，所以列號小的會先佔位 | @2 [next] [anim]比一比 @layout pop:dp:orange
                     best = dp[r][j + 1];         //@ @guide 更小，記下這個成本\n{dp[r][j + 1]:orange} @tts [next] [anim]更小，記下這個成本 | @2 [next] [anim]更小，換成這個 @layout pop:dp:orange
                     nxt[i][j] = r;               //@ @guide 同時記下：從這一格出發，下一步走到第 {r} 列\n{nxt[i][j]:pink} @tts [next] 同時記下，[anim]下一步走到第 {r} 列 | @2 [next] [anim]下一步換成第 {r} 列 @layout pop:nxt:pink
                 }

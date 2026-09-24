@@ -602,6 +602,16 @@ class VisualizerHelper {
     // 變數替換完成後確認任務是否仍有效（非同步查詢期間可能有新任務進來）
     if (myTaskId !== _tts_task_id) return;
 
+    // 這一行有 pop:/pull: 動畫時，先讓畫面亮出來（高亮換上去、動畫開始）才開口：
+    // 「先看到是哪一格，再聽它在講什麼」。等這一行的視覺化算完（上限 2 秒，
+    // 不讓旁白等太久），再多等一下讓動畫先動。沒有動畫的行不等，速度照舊。
+    const _layoutOfLine = String(((global_variable.__layout || {})[String(lineNum)]) || '');
+    if (/(^|\s)(pop|pull):/.test(_layoutOfLine) && window.gdbgui_graphics_done) {
+      await Promise.race([window.gdbgui_graphics_done, new Promise(r => setTimeout(r, 2000))]);
+      await new Promise(r => setTimeout(r, 120));
+      if (myTaskId !== _tts_task_id) return;
+    }
+
     // 產生全局字幕文字：去除所有 [wait:X]、[pause:X]、[anim] 以及讀音標記 [音]
     const displayText = evaluateSpokenText
       .replace(/\[(?:wait|pause):[\d.]+\]/g, '')
