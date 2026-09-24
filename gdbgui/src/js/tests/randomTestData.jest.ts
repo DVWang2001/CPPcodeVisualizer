@@ -47,3 +47,43 @@ test("h and w stay within the 3..8 range across the rng domain", () => {
     expect(w).toBeLessThanOrEqual(8);
   }
 });
+
+describe("// @random script", () => {
+  const { runRandomScript } = require("../randomTestData");
+  const seq = (...v: number[]) => { let i = 0; return () => v[i++ % v.length]; };
+
+  test("fixed size, matrix with values in range", () => {
+    const out = runRandomScript("// @random h = 2\n// @random w = 3\n// @random print h w\n// @random matrix h w 1..9", seq(0, 0.99));
+    const lines = out.trim().split("\n");
+    expect(lines[0]).toBe("2 3");
+    expect(lines).toHaveLength(3);
+    lines.slice(1).forEach((l: string) => l.split(" ").forEach(x => expect(+x).toBeGreaterThanOrEqual(1)));
+  });
+
+  test("distinct gives a permutation", () => {
+    const out = runRandomScript("// @random matrix 3 3 1..9 distinct");
+    expect(out.trim().split(/\s+/).map(Number).sort((a: number, b: number) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  test("errors carry the line number", () => {
+    expect(() => runRandomScript("x\n// @random matrix 3 3 1..4 distinct")).toThrow("第 2 行");
+    expect(() => runRandomScript("// @random print nope")).toThrow("未宣告");
+    expect(() => runRandomScript("// @random bogus 1")).toThrow("不認得");
+  });
+
+  test("grid corners; no script -> null", () => {
+    const g = runRandomScript("// @random grid 3 3 .# 1 corners", () => 0.5).trim().split("\n");
+    expect(g[0][0]).toBe("."); expect(g[2][2]).toBe(".");
+    expect(runRandomScript("int main(){}")).toBeNull();
+  });
+
+  test("real lessons carry a valid script", () => {
+    const fs = require("fs"), path = require("path");
+    const root = path.resolve(__dirname, "../../../../examples/lessons");
+    for (const dir of fs.readdirSync(root).filter((d: string) => /^技巧[一二]/.test(d))) {
+      const f = fs.readdirSync(path.join(root, dir)).find((n: string) => n.endsWith(".cpp"));
+      const out = runRandomScript(fs.readFileSync(path.join(root, dir, f), "utf8"));
+      expect(out.split("\n")[0]).toMatch(/^\d+ \d+$/);
+    }
+  });
+});

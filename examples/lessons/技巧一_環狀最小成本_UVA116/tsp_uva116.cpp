@@ -62,3 +62,9 @@ int main() {
     std::cout << dp[start][0] << "\n";           //@ @guide 最小總成本 ＝ 起點那一格的 dp\n{dp[start][0]:orange} @tts [next] 最小總成本，就是起點那一格的 dp
     return 0;                                    //@ @tts [continue] 原題只問走法數，這一課多了兩個條件：環狀相鄰，讓列號要取餘數；最小成本，讓每一格要比較三個候選，並用 nxt 表記下最好的下一步。教案播放完畢
 }
+
+// 隨機測資腳本（🎲 按鈕用；放檔尾才不會擠動上面的行號）
+// @random h = 5
+// @random w = 4
+// @random print h w
+// @random matrix h w 1..9

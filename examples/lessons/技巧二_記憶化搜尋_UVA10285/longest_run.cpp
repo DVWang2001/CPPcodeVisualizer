@@ -57,3 +57,9 @@ int main() {
     std::cout << ans << "\n";                    //@ @guide [課堂題目#red] 每個起點都問完了，先把 dp 表藏起來\n換你們算：dp 表 @tts [next] 每個起點都問完了，可是我先把 dp 表藏起來。請大家用手機自己算出來 @layout open:live_quiz close:container,callgraph
     return 0;                                    //@ @guide 揭曉：dp 表\n{dp}\n答案 {ans} 就是表裡最大的那一格\n有值的格子都是從那一格出發的最長路徑 @tts [continue] 走法不再固定往右下，就沒有現成的填表順序，所以改成用到才算、算過就記住。教案播放完畢 @layout sidebar:58 open:container,callgraph close:live_quiz
 }
+
+// 隨機測資腳本（🎲 按鈕用；放檔尾才不會擠動上面的行號）
+// @random h = 3
+// @random w = 3
+// @random print h w
+// @random matrix h w 1..9 distinct
