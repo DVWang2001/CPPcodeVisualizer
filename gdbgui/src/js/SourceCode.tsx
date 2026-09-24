@@ -1053,8 +1053,24 @@ class SourceCode extends React.Component<{}, State> {
     }
   };
 
-  /** pop:/pull: 實際的觸發動作，applyLayout 立即執行跟延後執行共用同一份。 */
+  /** pop:/pull: 實際的觸發動作，applyLayout 立即執行跟延後執行共用同一份。
+   *  動畫要閃的是「這一行新算出來的高亮格」，而高亮要向 GDB 來回好幾次才算得完
+   *  （見 VisualizerHelper 的 gdbgui_graphics_done）。停到這一行就立刻閃，閃到的
+   *  是上一次留在畫面上的舊格子（迴圈第二次進同一行、旁白又很短時最明顯），
+   *  所以先等視覺化算完（上限 4 秒，避免卡死）再觸發。 */
   private _runAnimLayoutToken(key: string, val: string) {
+    const graphicsDone = (window as any).gdbgui_graphics_done as Promise<void> | null | undefined;
+    if (!graphicsDone) {
+      this._triggerAnimLayoutToken(key, val);
+      return;
+    }
+    Promise.race([graphicsDone, new Promise<void>((resolve) => setTimeout(resolve, 4000))]).then(() =>
+      // 高亮換上去之後要等一次重繪，動畫才會落在新的格子上
+      setTimeout(() => this._triggerAnimLayoutToken(key, val), 50)
+    );
+  }
+
+  private _triggerAnimLayoutToken(key: string, val: string) {
     if (key === "pop") {
       // pop:容器名1,容器名2 → 這些容器目前有高亮的格子放大再縮小一次。
       // pop:容器名:顏色 → 只有這個顏色的格子跳（例如 pop:dp:orange 只跳橘色的
