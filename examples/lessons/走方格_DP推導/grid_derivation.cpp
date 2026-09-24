@@ -20,10 +20,10 @@ const int MOD = 1000000007;
 
 int main() {
     int h, w;
-    std::cin >> h >> w;                          //@ @tts [next] 先讀進地圖有幾列幾行 @layout sidebar:55 open:container close:locals
-    std::vector<std::string> g(h);               //@ @guide 準備 {h} 個字串，一列地圖存一個\n（要等這一行執行完才建好）@tts [next] 準備好放地圖的空間
-    for (int i = 0; i < h; ++i) {                //@ @guide 一列一列把地圖讀進來 @tts [next] 一列一列把地圖讀進來 | @2 [next] 讀完一列，看還有沒有下一列
-        std::cin >> g[i];                        //@ @tts [next] 讀第 {i} 列。點是通道，井字號是牆 | @2 [next] 讀第 {i} 列
+    std::cin >> h >> w;                          //@ @tts [continue] @layout sidebar:55 open:container close:locals
+    std::vector<std::string> g(h);
+    for (int i = 0; i < h; ++i) {
+        std::cin >> g[i];
     }
 
     std::vector<std::vector<int>> dp(h + 1, std::vector<int>(w + 1, 0)); //@ @guide 表開 (h+1) x (w+1)，多墊一列、一行\ndp[r][c] 對應地圖上的 (r-1, c-1)；第 0 列、第 0 行整排是墊片，永遠是 0\n（表要等這一行執行完才長出來） @tts [next] 這一行做一張表，故意比地圖多一列、多一行。多出來的那一圈全部先填 0，等一下就知道用途

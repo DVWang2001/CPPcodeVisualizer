@@ -56,6 +56,14 @@ def source_of(path):
     return text
 
 
+def breakpoints_of(path):
+    """bundle 的中斷點行號集合；.cpp 沒有這個資訊，回傳 None。"""
+    if path.suffix != ".json":
+        return None
+    found = json.loads(path.read_text(encoding="utf-8")).get("breakpoints") or []
+    return {int(item["line"]) for item in found}
+
+
 def mode_of(source):
     """這份原始碼想當哪一種教案。決定要套哪些規則。
 
@@ -75,8 +83,12 @@ def mode_of(source):
     return "manual"
 
 
-def check(source):
-    """回傳 (problems, notes)。problems 非空代表不合格；notes 只是要作者確認一下。"""
+def check(source, breakpoints=None):
+    """回傳 (problems, notes)。problems 非空代表不合格；notes 只是要作者確認一下。
+
+    `breakpoints`：bundle 裡的中斷點行號集合。給了才會檢查「[continue] 跳過的行」
+    的落點有沒有放中斷點；只有 .cpp 時不知道中斷點，這條就略過。
+    """
     problems = []
     notes = []
     lines = source.split("\n")
@@ -85,6 +97,9 @@ def check(source):
         return problems, notes
     autoplay = mode == "autoplay"
     last_tts_line = last_tts = None
+    # 某一行每次停駐都是 [continue]：GDB 直接跑到下一個中斷點，中間的行根本不會被停到
+    # （例如讀資料的行，見 §8.1），所以到下一個 //@ 之前的行不要求 @tts。
+    skip_from = None
 
     for number, line in enumerate(lines, start=1):
         code = line.split("//@", 1)[0]
@@ -93,11 +108,21 @@ def check(source):
         found = fields(line)
 
         if found is None:
-            if autoplay and not NO_STOP.match(code):
+            if autoplay and skip_from is None and not NO_STOP.match(code):
                 problems.append((number, f"這是停駐點卻沒有 @tts：{code.strip()}"))
             continue
 
+        if skip_from is not None:
+            if breakpoints is not None and number not in breakpoints:
+                problems.append((number, (
+                    f"第 {skip_from} 行用 [continue] 跳過中間的行，但這一行沒有放中斷點，"
+                    "程式會一路跑到結束——在 bundle 的 breakpoints 加上這一行"
+                )))
+            skip_from = None
+
         tts = found.get("tts", "")
+        if tts.split("|")[0].strip().startswith("[continue]"):
+            skip_from = number
         if not tts:
             if autoplay and not NO_STOP.match(code):
                 problems.append((number, f"有 //@ 但沒有 @tts，停在這一行會無聲卡住：{code.strip()}"))
@@ -156,7 +181,7 @@ def main(argv):
         print(f"{path.name}  沒有任何 //@ 註解——這是一支範例程式，不是自動播放教案，沒有東西可檢查。")
         return 0
 
-    problems, notes = check(source)
+    problems, notes = check(source, breakpoints_of(path))
     for number, message in problems:
         where = f"{path.name}:{number}" if number else path.name
         print(f"{where}  {message}")

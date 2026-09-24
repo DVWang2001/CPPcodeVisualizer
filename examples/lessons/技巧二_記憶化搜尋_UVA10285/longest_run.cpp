@@ -39,11 +39,11 @@ int solve(int i, int j) {
     return result;                               //@ @guide 回傳 {result} ← 四個方向中最長的一條 @tts [next] 把答案 {best} 交回上一層
 }                                                //@ @tts [next] 這一層結束，沿呼叫樹返回
 int main() {
-    std::cin >> h >> w;                          //@ @tts [next] 先讀進地圖有幾列、幾欄 @layout sidebar:55 open:container close:locals
-    a.assign(h, std::vector<int>(w));            //@ @guide 準備 {h} 列 {w} 欄的地圖 @tts [next] 準備放數值的地圖，一共 {h} 列、{w} 欄
-    for (int i = 0; i < h; ++i) {                //@ @guide 一列一列把數值讀進來 @tts [next] 一列一列把每一格的數值讀進來 | @2 [next] 讀完一列，看還有沒有下一列
-        for (int j = 0; j < w; ++j) {            //@ @guide 第 {i} 列，由左往右讀 @tts [next] 這一列由左往右讀 | @2 [next] 看還有沒有下一格
-            std::cin >> a[i][j];                 //@ @tts [next] 讀第 {i} 列第 {j} 欄 | @2 [next] 讀第 {i} 列第 {j} 欄 | @3 [fast @9] 其他格子都是同一個動作，直接跳到全部讀完 | @9 [next] 九格都讀完了
+    std::cin >> h >> w;                          //@ @tts [continue] @layout sidebar:55 open:container close:locals
+    a.assign(h, std::vector<int>(w));
+    for (int i = 0; i < h; ++i) {
+        for (int j = 0; j < w; ++j) {
+            std::cin >> a[i][j];
         }
     }
     dp.assign(h, std::vector<int>(w, 0));        //@ @guide {a}\n再準備一張一樣大的 dp 表，全填 0，代表都還沒算過\n{dp} @tts [next] 再準備一張一樣大的記憶表，全部填零，代表每一格都還沒算過 @layout pair:a,dp

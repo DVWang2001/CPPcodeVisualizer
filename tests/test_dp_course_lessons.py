@@ -120,3 +120,22 @@ def test_the_other_lessons_carry_no_quiz():
             continue
         bundle = json.loads((LESSONS / folder / f"{stem}.json").read_text(encoding="utf-8"))
         assert validate_quiz_bundle(bundle) is None
+
+
+def test_lines_skipped_by_continue_need_no_tts_but_the_landing_line_needs_a_breakpoint():
+    """§8.1：讀資料的行不寫 @guide/@tts，靠第一個停駐點 [continue] 跳到讀完之後的斷點。"""
+    source = "\n".join([
+        "int main() {",
+        "    std::cin >> n;              //@ @tts [continue]",
+        "    for (int i = 0; i < n; ++i) {",
+        "        std::cin >> a[i];",
+        "    }",
+        "    int s = 0;                  //@ @tts [next] 開始加總",
+        "    return s;                   //@ @tts [continue] 結束",
+        "}",
+    ])
+    assert check_lesson.check(source, {6})[0] == []
+    problems, _ = check_lesson.check(source, {1})
+    assert [n for n, _ in problems] == [6] and "中斷點" in problems[0][1]
+    # 沒有 [continue] 的話，中間的行照樣是缺 @tts 的停駐點。
+    assert check_lesson.check(source.replace("[continue]\n", "[next]\n", 1).replace("@tts [continue]\n", "@tts [next]\n", 1))[0]

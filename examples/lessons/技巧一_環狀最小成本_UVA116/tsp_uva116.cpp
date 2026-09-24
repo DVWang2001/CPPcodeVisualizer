@@ -20,11 +20,11 @@ const int INF = 1000000000;
 
 int main() {
     int h, w;
-    std::cin >> h >> w;                          //@ @tts [next] 先讀進矩陣有幾列、幾欄 @layout sidebar:55 open:container close:locals
-    std::vector<std::vector<int>> cost(h, std::vector<int>(w)); //@ @guide 準備 {h} 列 {w} 欄的成本表\n（表要等這一行執行完才長出來） @tts [next] 準備一張放成本的表，一共 {h} 列、{w} 欄
-    for (int i = 0; i < h; ++i) {                //@ @guide 一列一列把成本讀進來 @tts [next] 一列一列把每一格的成本讀進來 | @2 [next] 讀完一列，看還有沒有下一列
-        for (int j = 0; j < w; ++j) {            //@ @guide 第 {i} 列，由左往右讀 @tts [next] 這一列由左往右讀 | @2 [next] 看還有沒有下一格
-            std::cin >> cost[i][j];              //@ @tts [next] 讀第 {i} 列第 {j} 欄的成本 | @2 [next] 讀第 {i} 列第 {j} 欄 | @3 [fast @20] 其他格子都是同一個動作，直接跳到全部讀完 | @20 [next] 二十格的成本全部讀完了
+    std::cin >> h >> w;                          //@ @tts [continue] @layout sidebar:55 open:container close:locals
+    std::vector<std::vector<int>> cost(h, std::vector<int>(w));
+    for (int i = 0; i < h; ++i) {
+        for (int j = 0; j < w; ++j) {
+            std::cin >> cost[i][j];
         }
     }
 
