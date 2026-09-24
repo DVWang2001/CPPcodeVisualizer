@@ -28,12 +28,12 @@ int main() {
         }
     }
 
-    std::vector<std::vector<int>> dp(h, std::vector<int>(w, 0));   //@ @guide {cost}\n再開一張一樣大的 dp 表\ndp[i][j] ＝ 從 (i,j) 一路走到最右欄的最小總成本\n（表要等這一行執行完才長出來） @tts [next] 再開一張一樣大的表，叫 dp。dp 的第 i 列第 j 欄，代表從這一格一路走到最右欄，最少要花多少成本 @layout pair:cost,dp,nxt
+    std::vector<std::vector<int>> dp(h, std::vector<int>(w, 0));   //@ @guide {cost}\n再開一張一樣大的 dp 表\ndp[i][j] ＝ 從 (i,j) 一路走到最右欄的最小總成本\n（表要等這一行執行完才長出來） @tts [next] 再開一張一樣大的表，叫 dp。dp 的第 i 列第 j 欄，代表從這一格一路走到最右欄，最少要花多少成本
     std::vector<std::vector<int>> nxt(h, std::vector<int>(w, -1)); //@ @guide {dp}\n再開一張 nxt 表，先全填 -1\nnxt[i][j] ＝ 從 (i,j) 出發，最佳路線的下一步要走到右邊那一欄的第幾列\n（表要等這一行執行完才長出來） @tts [next] 再開一張 nxt 表，先填負一，表示還沒決定。它記的是：從這一格出發，最好的下一步要走到右邊那一欄的第幾列，等一下要靠它把路線走出來
-    for (int i = 0; i < h; ++i) {                //@ @guide 先處理最右欄：它是終點欄\n{dp}\n{nxt} @tts [next] 先處理最右欄，它是終點欄 | @2 [next] 看還有沒有下一列
+    for (int i = 0; i < h; ++i) {                //@ @guide 先處理最右欄：它是終點欄\n{dp}\n{nxt} @tts [next] 先處理最右欄，它是終點欄 | @2 [next] 看還有沒有下一列 @layout pair:cost,dp,nxt
         dp[i][w - 1] = cost[i][w - 1];           //@ @guide 最右欄沒有下一步，走到這裡就結束\n{cost[i][w - 1]:orange} 這一格自己的成本\n{dp[i][w - 1]:lightblue} 就是 dp @tts [next] 最右欄沒有下一步，走到這裡就結束，所以 [anim]dp 就等於這一格自己的成本 | @2 [next] [anim]第 {i} 列也一樣 | @3 [fast @5] 最右欄其他格子都一樣，直接跳到這一欄填完 | @5 [next] 最右欄全部填好了 @layout pop:cost:orange,dp:lightblue
     }
-    for (int j = w - 2; j >= 0; --j) {           //@ @guide 從倒數第二欄開始，一欄一欄往左算\n{dp}\n{nxt} @tts [next] 接下來從倒數第二欄開始，一欄一欄往左算。為什麼往左？因為每一格的答案，要用到它右邊那一欄的答案 | @2 [fast @4] 每一欄的算法都一樣，直接跳到全部算完 | @4 [next] 每一欄都算完了 @layout pair:cost,dp,nxt
+    for (int j = w - 2; j >= 0; --j) {           //@ @guide 從倒數第二欄開始，一欄一欄往左算\n{dp}\n{nxt} @tts [next] 接下來從倒數第二欄開始，一欄一欄往左算。為什麼往左？因為每一格的答案，要用到它右邊那一欄的答案 | @2 [fast @4] 每一欄的算法都一樣，直接跳到全部算完 | @4 [next] 每一欄都算完了
         for (int i = 0; i < h; ++i) {            //@ @guide 現在算第 {j} 欄，一列一列算 @tts [next] 現在算第 {j} 欄，一列一列算 | @2 [next] 換下一列 | @3 [fast @6] 這一欄其他格子做法一樣，直接跳到這一欄算完 | @6 [next] 這一欄算完了
             int cand[3] = {(i - 1 + h) % h, i, (i + 1) % h}; //@ @guide 第 {j} 欄第 {i} 列\n{cost[i][j]:lightblue} 這一格\n往右走有三個候選：右上（第 i-1 列）、正右（第 i 列）、右下（第 i+1 列）\n第一列的上面是最後一列，所以列號要取餘數 % h @tts [next] [anim]這一格往右走有三個候選列，等一下一個一個看。第一列的上面是最後一列，所以要取餘數 | @2 [next] [anim]第 {i} 列的三個候選列 @layout pop:cost:lightblue
             std::sort(cand, cand + 3);           //@ @guide 三個候選由小排到大\n成本同分時，列號小的先比、先佔位\n這就是「字典序最小」 @tts [next] 先把三個候選列由小排到大。成本同分的時候，列號小的先被選中，這就是字典序最小 | @2 [next] 排好序
@@ -45,7 +45,7 @@ int main() {
                     nxt[i][j] = r;               //@ @guide 同時記下：從這一格出發，下一步走到第 {r} 列\n{nxt[i][j]:pink} @tts [next] 同時記下，[anim]下一步走到第 {r} 列 | @2 [next] [anim]下一步換成第 {r} 列 @layout pop:nxt:pink
                 }
             }
-            dp[i][j] = cost[i][j] + best;        //@ @guide 這一格的 dp ＝ 自己的成本 ＋ 右邊最好的路\n{cost[i][j]:lightblue} ＋ {best}\n{dp[i][j]:lightblue}\n{nxt} @tts [next] [anim]這一格的 dp，等於自己的成本，加上右邊最好的那條路，寫進表裡 | @2 [next] [anim]同樣算出這一格的 dp @layout pair:cost,dp,nxt pop:cost:lightblue,dp:lightblue
+            dp[i][j] = cost[i][j] + best;        //@ @guide 這一格的 dp ＝ 自己的成本 ＋ 右邊最好的路\n{cost[i][j]:lightblue} ＋ {best}\n{dp[i][j]:lightblue}\n{nxt} @tts [next] [anim]這一格的 dp，等於自己的成本，加上右邊最好的那條路，寫進表裡 | @2 [next] [anim]同樣算出這一格的 dp @layout pop:cost:lightblue,dp:lightblue
         }
     }
     int start = 0;                               //@ @guide [課堂題目#red] 兩張表都算完了，先把它們藏起來\n換你們算：dp 表、nxt 表 @tts [next] 兩張表都算完了，可是我先把它們藏起來。請大家用手機自己算出 dp 表 @layout open:live_quiz close:container
