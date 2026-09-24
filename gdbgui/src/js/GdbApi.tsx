@@ -1111,6 +1111,13 @@ GdbApi.socket = socket;
     // 等待 BST 插入比對動畫完成，再繼續執行 GDB 指令
     const barrier = (window as any).gdbgui_bst_anim_done as Promise<void> | null | undefined;
     if (barrier) await barrier;
+    // 等這一行的視覺化（高亮索引、容器資料）算完再送下一步，不然旁白很短時
+    // 下一步會取代還沒算完的任務，畫面停在上一次的高亮。設上限避免某個 token
+    // 永遠等不到結果時卡住整份教案；快轉本來就以速度優先，不等。
+    const graphicsDone = (window as any).gdbgui_graphics_done as Promise<void> | null | undefined;
+    if (graphicsDone && !isFastForwarding()) {
+      await Promise.race([graphicsDone, new Promise<void>((resolve) => setTimeout(resolve, 4000))]);
+    }
     if (isQuizPlaybackBlocked(store)) return lessonQuizRuntime.stashAutoplay(command);
     // 動畫結束後再次確認狀態（使用者可能在動畫期間關閉 autoplay 或暫停）
     if (!store.get("autoplay_enabled")) return;

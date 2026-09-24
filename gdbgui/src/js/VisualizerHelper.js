@@ -362,7 +362,13 @@ class VisualizerHelper {
     // ----------------------------------------------------
 
     const content = VisualizerHelper.extractBalancedBraces(graphicsContent);
-    VisualizerHelper.graphics_instruction(content, frame_line, funcName);
+    // 自動播放要等這一行的視覺化（高亮索引、容器資料）算完才送下一步：
+    // 這些要向 GDB 來回好幾次，旁白很短（例如迴圈第二次進來只講「比一比」）時，
+    // 下一步會搶在算完之前送出，舊任務被取代、高亮就停在上一次的格子。
+    // 見 GdbApi.tsx 的 gdbgui_execute_autoplay_command。
+    window.gdbgui_graphics_done = Promise.resolve(
+      VisualizerHelper.graphics_instruction(content, frame_line, funcName)
+    ).catch(() => {});
   }
 
   /**
