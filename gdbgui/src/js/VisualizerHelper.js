@@ -23,7 +23,7 @@ import {
 } from "./fastForward";
 import { buildJumpCommand } from "./fastForwardJump";
 import { parseTtsPlaylist } from "./ttsPlaylist";
-import { findLatestExpr } from "./exprLookup";
+import { findLatestExpr, findAllExpr } from "./exprLookup";
 import { resolve2DHighlightIndex } from "./gridHighlightIndex";
 import { parseSwapCall } from "./swapDetect";
 
@@ -796,8 +796,7 @@ class VisualizerHelper {
           // static
         } else {
           rowDisplayKey = funcName ? `${funcName}::${rowExpr}` : rowExpr;
-          const existingRowVar = findLatestExpr(expressions, rowDisplayKey);
-          if (existingRowVar) GdbVariable.delete_gdb_variable(existingRowVar.name);
+          findAllExpr(expressions, rowDisplayKey).forEach(v => GdbVariable.delete_gdb_variable(v.name));
           GdbVariable.create_variable(rowExpr, "expr", rowDisplayKey);
         }
 
@@ -805,8 +804,7 @@ class VisualizerHelper {
           // static
         } else {
           colDisplayKey = funcName ? `${funcName}::${colExpr}` : colExpr;
-          const existingColVar = findLatestExpr(expressions, colDisplayKey);
-          if (existingColVar) GdbVariable.delete_gdb_variable(existingColVar.name);
+          findAllExpr(expressions, colDisplayKey).forEach(v => GdbVariable.delete_gdb_variable(v.name));
           GdbVariable.create_variable(colExpr, "expr", colDisplayKey);
         }
       } else if (indexMatch) {
@@ -824,10 +822,7 @@ class VisualizerHelper {
           indexExpr = null;
         } else {
           idxDisplayKey = funcName ? `${funcName}::${indexExpr}` : indexExpr;
-          const existingIdxVar = findLatestExpr(expressions, idxDisplayKey);
-          if (existingIdxVar) {
-            GdbVariable.delete_gdb_variable(existingIdxVar.name);
-          }
+          findAllExpr(expressions, idxDisplayKey).forEach(v => GdbVariable.delete_gdb_variable(v.name));
           GdbVariable.create_variable(indexExpr, "expr", idxDisplayKey);
         }
       }

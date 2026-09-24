@@ -29,3 +29,21 @@ export function findLatestExpr<T extends ExprLike>(
   }
   return undefined;
 }
+
+// ── 同名運算式的「全部」in_scope 紀錄 ─────────────────────────────────────
+//
+// 同一個變數（例如迴圈裡的 r）可能同時被兩條路徑管：指導欄的 `{r}` 與高亮索引
+// `{dp[r][j + 1]}` 的列／欄。第一次停駐時兩條路徑各建一份，expressions 裡就有
+// 兩筆同名紀錄。之後高亮那條路徑「只刪最新一筆再重建」，重建完成前讀值會讀到
+// 留下來的另一筆——它的值還停在上一次停駐點（-var-update 的結果尚未套用），
+// 於是第二次進到同一行時高亮還是上一次的格子。所以重建前要把同名的全部舊紀錄
+// 一起刪掉，讀值時就只剩剛建好的那一筆。
+export function findAllExpr<T extends ExprLike>(
+  expressions: T[],
+  expression: string
+): T[] {
+  return expressions.filter(
+    (obj) => obj.expression === expression && obj.in_scope === "true"
+  );
+}
+

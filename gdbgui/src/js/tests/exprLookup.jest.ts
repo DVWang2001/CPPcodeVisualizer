@@ -1,4 +1,4 @@
-import { findLatestExpr } from "../exprLookup";
+import { findLatestExpr, findAllExpr } from "../exprLookup";
 
 describe("findLatestExpr", () => {
   test("只有一筆相符：直接回傳", () => {
@@ -46,5 +46,23 @@ describe("findLatestExpr", () => {
 
   test("空陣列回 undefined", () => {
     expect(findLatestExpr([], "i")).toBeUndefined();
+  });
+});
+
+describe("findAllExpr", () => {
+  test("回傳所有同名且 in_scope 的紀錄（第 43 行的 r 被兩條路徑各建一份）", () => {
+    const expressions = [
+      { expression: "main::r", in_scope: "true", value: "0", name: "var1" },
+      { expression: "main::x", in_scope: "true", value: "9", name: "var2" },
+      { expression: "main::r", in_scope: "true", value: "0", name: "var3" },
+      { expression: "main::r", in_scope: "false", value: "7", name: "var4" }
+    ];
+    expect(findAllExpr(expressions, "main::r").map((v) => v.name)).toEqual(["var1", "var3"]);
+  });
+
+  test("沒有相符的：回傳空陣列，且回傳的是新陣列（刪除時不會動到原陣列）", () => {
+    const expressions = [{ expression: "main::r", in_scope: "true" }];
+    expect(findAllExpr(expressions, "nope")).toEqual([]);
+    expect(findAllExpr(expressions, "main::r")).not.toBe(expressions);
   });
 });
