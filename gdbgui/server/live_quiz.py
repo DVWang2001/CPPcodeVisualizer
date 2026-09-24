@@ -830,6 +830,58 @@ def export_session(session_id: int, owner_id: int) -> Optional[dict]:
     }
 
 
+def export_summary(owner_id: int) -> Optional[dict]:
+    """擁有者所有課堂的匿名聚合，拿來證明「這幾場課堂確實辦過」。
+
+    跟 `export_session` 的差別：這裡**完全不碰** participants / responses，所以
+    不含暱稱、不含逐筆作答，結束課堂前後輸出一樣，天生是去識別的。只列出至少開過
+    一題的課堂——只建立、沒出過題的（多半是測試）不算辦過。
+    """
+    if not _valid_id(owner_id):
+        return None
+    with closing(db.connect()) as conn:
+        sessions = conn.execute(
+            "SELECT id, title, state, created_at, ended_at FROM live_quiz_sessions "
+            "WHERE owner_user_id=? AND id IN "
+            "(SELECT session_id FROM live_quiz_questions WHERE opened_at IS NOT NULL) "
+            "ORDER BY id",
+            (owner_id,),
+        ).fetchall()
+        out = []
+        for session in sessions:
+            questions = conn.execute(
+                "SELECT question_key, kind, prompt, opened_at, closed_at, answer_count, "
+                "correct_count, option_counts_json, cell_stats_json "
+                "FROM live_quiz_questions WHERE session_id=? AND opened_at IS NOT NULL "
+                "ORDER BY position",
+                (session["id"],),
+            ).fetchall()
+            out.append(
+                {
+                    "session_id": session["id"],
+                    "title": session["title"],
+                    "state": session["state"],
+                    "created_at": session["created_at"],
+                    "ended_at": session["ended_at"],
+                    "questions": [
+                        {
+                            "question_key": q["question_key"],
+                            "kind": q["kind"],
+                            "prompt": q["prompt"],
+                            "opened_at": q["opened_at"],
+                            "closed_at": q["closed_at"],
+                            "answer_count": q["answer_count"],
+                            "correct_count": q["correct_count"],
+                            "option_counts": _json_or_none(q["option_counts_json"]),
+                            "cell_stats": _json_or_none(q["cell_stats_json"]),
+                        }
+                        for q in questions
+                    ],
+                }
+            )
+    return {"exported_at": db._now(), "sessions": out}
+
+
 def end_session(session_id: int, owner_id: int) -> Optional[dict]:
     if not _valid_id(session_id) or not _valid_id(owner_id):
         return None
@@ -1328,6 +1380,20 @@ def question_responses_route(session_id, question_key):
         return jsonify({"responses": rows})
     except QuizConflict as exc:
         return _error(str(exc), 409)
+
+@blueprint.get("/api/live-quiz/export")
+def export_summary_route():
+    payload = export_summary(current_user_id())
+    if payload is None:
+        return _error("找不到課堂。", 404)
+    response = current_app.response_class(
+        json.dumps(payload, ensure_ascii=False, indent=2), mimetype="application/json"
+    )
+    response.headers["Content-Disposition"] = (
+        'attachment; filename="live-quiz-summary-%s.json"' % payload["exported_at"][:10]
+    )
+    return response
+
 
 @blueprint.get("/api/live-quiz/sessions/<int:session_id>/export")
 def export_session_route(session_id):

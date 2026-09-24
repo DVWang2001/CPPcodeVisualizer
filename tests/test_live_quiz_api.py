@@ -316,3 +316,32 @@ def test_export_captures_responses_that_ending_the_session_destroys(api_context)
     # 題目與匿名統計摘要照留，這正是結束課堂該保住的東西。
     assert [q["question_key"] for q in after["questions"]] == ["q1"]
     assert after["questions"][0]["answer_count"] == 1
+
+
+def test_export_summary_is_anonymous_and_owner_scoped(api_context):
+    """總覽只給擁有者、只含開過題的課堂，且不含暱稱與逐筆作答。"""
+    app, author, other, lesson_id = api_context
+    created = _create(author, lesson_id)
+    session_id = created.get_json()["id"]
+    token = _join_token(created)
+    guest, _ = _guest_join(app, token, nickname="3081")
+    _create(author, lesson_id)  # 只建立、沒出題：不該出現
+    assert author.http.post(
+        f"/api/live-quiz/sessions/{session_id}/questions/q1/trigger",
+        json={"source_file": "main.cpp", "line": 3},
+        headers={"x-csrftoken": author.csrf},
+    ).status_code == 200
+    assert guest.post(
+        "/api/live-quiz/guest/answers",
+        json={"question_id": "q1", "option_id": "b"},
+        headers={"Origin": "http://localhost"},
+    ).status_code == 200
+
+    body = author.http.get("/api/live-quiz/export")
+    assert body.status_code == 200
+    assert "attachment" in body.headers["Content-Disposition"]
+    data = body.get_json()
+    assert [s["session_id"] for s in data["sessions"]] == [session_id]
+    assert data["sessions"][0]["questions"][0]["answer_count"] == 1
+    assert "3081" not in body.get_data(as_text=True)
+    assert other.http.get("/api/live-quiz/export").get_json()["sessions"] == []
