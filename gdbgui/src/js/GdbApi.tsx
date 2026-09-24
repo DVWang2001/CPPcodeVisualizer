@@ -92,6 +92,9 @@ if (debug) {
 const initial_data = window.initial_data;
 let socket: SocketIOClient.Socket;
 let _pending_input_injection = false;
+// 給 Actions 的「出題自動重跑」用：測資還沒寫進 PTY 之前不能繼續執行，
+// 否則程式的第一個 cin 讀到空的，h、w 是垃圾值，接著就是 std::bad_alloc。
+(window as any).gdbgui_input_injection_pending = () => _pending_input_injection;
 let _injection_start_time = 0;
 let _next_request_id = 1;
 let _response_packet_buffer: any[] = [];

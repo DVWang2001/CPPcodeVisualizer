@@ -189,11 +189,19 @@ const Actions = {
     const isRerunningForQuiz = (window as any).gdbgui_rerunning_for_quiz === true;
     if (isRerunningForQuiz && !quizMatched) {
       Actions.stop_tts();
-      setTimeout(() => {
-        if ((window as any).gdbgui_rerunning_for_quiz === true) {
-          GdbApi.click_continue_button();
+      // 測資是每 300ms 輪詢一次才寫進 PTY 的（見 GdbApi 的 doInject）。固定等 150ms
+      // 會有一半機率搶在寫入之前繼續執行，第一個 cin 讀到空的，h、w 變垃圾值，
+      // 接著 vector 開太大就是 std::bad_alloc。所以要等到寫入完成才繼續（上限 3 秒）。
+      const continueWhenInputReady = (tries: number) => {
+        if ((window as any).gdbgui_rerunning_for_quiz !== true) return;
+        const pending = (window as any).gdbgui_input_injection_pending?.();
+        if (pending && tries < 60) {
+          setTimeout(() => continueWhenInputReady(tries + 1), 50);
+          return;
         }
-      }, 150);
+        GdbApi.click_continue_button();
+      };
+      setTimeout(() => continueWhenInputReady(0), 150);
     } else if (!quizMatched) {
       // 播放 TTS 語音
       // @ts-expect-error
