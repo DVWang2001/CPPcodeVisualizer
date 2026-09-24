@@ -26,6 +26,7 @@ import { parseTtsPlaylist } from "./ttsPlaylist";
 import { findLatestExpr, findAllExpr } from "./exprLookup";
 import { resolve2DHighlightIndex } from "./gridHighlightIndex";
 import { parseSwapCall } from "./swapDetect";
+import { effectiveTtsRate } from "./ttsSpeed";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
@@ -255,7 +256,7 @@ function _tts_play_next(taskId) {
     let canplayFired = false;
     const watchdog = setTimeout(() => {
       if (!canplayFired && _tts_current_audio === audio && taskId === _tts_task_id) {
-        audio.playbackRate = (store.get('tts_speed')) || 1.0;
+        audio.playbackRate = effectiveTtsRate(store.get('tts_speed'));
         audio.play().catch(() => finish());
       }
     }, 5000);
@@ -264,7 +265,7 @@ function _tts_play_next(taskId) {
       canplayFired = true;
       clearTimeout(watchdog);
       if (_tts_current_audio !== audio || taskId !== _tts_task_id) return;
-      audio.playbackRate = (store.get('tts_speed')) || 1.0;
+      audio.playbackRate = effectiveTtsRate(store.get('tts_speed'));
       if (item.currentTime) {
         audio.currentTime = item.currentTime;
         item.currentTime = 0;
@@ -303,7 +304,7 @@ class VisualizerHelper {
         store.set('tts_speed', speed);
         // 若目前有正在播放的音訊，立即套用新速度
         const currentAudio = window._tts_api && window._tts_api._current();
-        if (currentAudio) currentAudio.playbackRate = speed;
+        if (currentAudio) currentAudio.playbackRate = effectiveTtsRate(speed);
       }
     }
     // 移除 [speed:N] token，後續不顯示在 guide 面板

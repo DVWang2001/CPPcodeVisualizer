@@ -5,6 +5,7 @@ import GdbApi from "./GdbApi";
 import constants from "./constants";
 import { store } from "statorgfc";
 import { lessonQuizRuntime } from "./lessonQuizRuntime";
+import { effectiveTtsRate } from "./ttsSpeed";
 
 type State = any;
 
@@ -217,7 +218,7 @@ class ControlButtons extends React.Component<{}, State> {
                 store.set("tts_speed", speed);
                 // 若目前正在播放，立即套用新速度
                 const audio = (window as any)._tts_api?._current?.();
-                if (audio) audio.playbackRate = speed;
+                if (audio) audio.playbackRate = effectiveTtsRate(speed);
               }}
               style={{ width: "70px", cursor: "pointer", accentColor: "#5cb85c" }}
               title={`播放速度：${Number(this.state.tts_speed).toFixed(1)}x（拖曳調整 0.5x ~ 2.0x）`}
