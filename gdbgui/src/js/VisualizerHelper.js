@@ -603,11 +603,12 @@ class VisualizerHelper {
     if (myTaskId !== _tts_task_id) return;
 
     // 這一行有 pop:/pull: 動畫時，先讓畫面亮出來（高亮換上去、動畫開始）才開口：
-    // 「先看到是哪一格，再聽它在講什麼」。等這一行的視覺化算完（上限 2 秒，
-    // 不讓旁白等太久），再多等一下讓動畫先動。沒有動畫的行不等，速度照舊。
+    // 「先看到是哪一格，再聽它在講什麼」。等這一行的視覺化算完（上限 8 秒，只是防止
+    // 某個 token 永遠等不到而卡死；標了好幾張表的行要來回向 GDB 拿幾十筆資料，
+    // 實測要 3~4 秒，上限太短旁白會搶在畫面亮出來之前講完），再多等一下讓動畫先動。沒有動畫的行不等，速度照舊。
     const _layoutOfLine = String(((global_variable.__layout || {})[String(lineNum)]) || '');
     if (/(^|\s)(pop|pull):/.test(_layoutOfLine) && window.gdbgui_graphics_done) {
-      await Promise.race([window.gdbgui_graphics_done, new Promise(r => setTimeout(r, 2000))]);
+      await Promise.race([window.gdbgui_graphics_done, new Promise(r => setTimeout(r, 8000))]);
       await new Promise(r => setTimeout(r, 120));
       if (myTaskId !== _tts_task_id) return;
     }
