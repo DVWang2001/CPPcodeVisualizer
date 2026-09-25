@@ -35,3 +35,8 @@
 - 正確性：372 步行序列與 GDB 相同；唯一差異是第一步未初始化的 `h`（垃圾值，本來就不比）。
 - 快取：同一份 #include 組合第二次起免建；不同組合各建一份（首次 +2.2 s）。
 - 未做：PCH 位元組尚未存 IndexedDB（重新整理頁面就要重建）；`bits/stdc++.h` 的 PCH 尚未在瀏覽器測；PCH 的名稱衝突風險見 E3 報告。
+
+## 補：PCH 存進 IndexedDB
+PCH 位元組存 IndexedDB（`vgdb-pch`），鍵 = 標準 + #include 組合 + vg.h 雜湊 + clang.wasm 大小，任一改變自動失效。
+實測：新 Worker（模擬重新整理）第一次 `from: "built"`（建置 3.6 s，冷）→ 第二個新 Worker `from: "indexeddb"`（建置 0 s），輸出正確。
+限制：無容量上限／淘汰（ponytail）；PCH 約 15 MB／組合，若學生 include 組合很多需加 LRU；隱私模式 IndexedDB 可能不可用，此時退回每次重建（已 catch）。

@@ -12,7 +12,9 @@ export async function loadAll() {
   state.sysroot = await (await fetch(DIST + "sysroot.tar")).arrayBuffer();
   t.sysroot = performance.now() - t0;
   t0 = performance.now();
-  state.clangMod = await WebAssembly.compileStreaming(fetch(DIST + "clang.wasm"));
+  const cr = await fetch(DIST + "clang.wasm");
+  state.clangSize = cr.headers.get("content-length");
+  state.clangMod = await WebAssembly.compileStreaming(cr);
   t.clangWasm = performance.now() - t0;
   t0 = performance.now();
   state.lldMod = await WebAssembly.compileStreaming(fetch(DIST + "lld.wasm"));

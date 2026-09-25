@@ -37,18 +37,31 @@ function decode(errText) {
 
 // 預編譯標頭：依「使用者的 #include 組合 + 標準」各建一份並快取（同一份標頭第二次起不用再建）。
 const pchCache = new Map();
+const hashStr = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
+const idb = () => new Promise((res, rej) => { const r = indexedDB.open("vgdb-pch", 1); r.onupgradeneeded = () => r.result.createObjectStore("pch"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+const idbGet = async (k) => { try { const db = await idb(); return await new Promise((res) => { const q = db.transaction("pch").objectStore("pch").get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch { return null; } };
+const idbPut = async (k, v) => { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction("pch", "readwrite"); t.objectStore("pch").put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); };
 async function getPch(source, std) {
   const NL = "\n";
   const incs = source.split(NL).filter((l) => /^\s*#\s*include\b/.test(l)).map((l) => l.trim());
   const key = std + "|" + incs.join("|");
   let hit = pchCache.get(key), built = 0;
+  const src = incs.join(NL) + NL + '#include "vg.h"' + NL;
+  let from = "memory";
   if (!hit) {
-    const src = incs.join(NL) + NL + '#include "vg.h"' + NL;
-    const b = await buildPch(src, { std, extraFiles: { "include/vg.h": vgH } });
-    hit = { files: { "vg.pch": b.bytes, "pch_src.h": src, "include/vg.h": vgH }, mb: b.bytes.length / 1e6 };
-    pchCache.set(key, hit); built = b.ms;
+    // 持久快取：鍵含 vg.h 內容雜湊與編譯器大小，任一改變就自動失效（PCH 綁死編譯器版本）。
+    const dbKey = key + "|vg" + hashStr(vgH) + "|clang" + state.clangSize;
+    let bytes = await idbGet(dbKey);
+    if (bytes) from = "indexeddb";
+    else {
+      const b = await buildPch(src, { std, extraFiles: { "include/vg.h": vgH } });
+      bytes = b.bytes; built = b.ms; from = "built";
+      idbPut(dbKey, bytes).catch(() => {}); // ponytail: 沒有容量上限／淘汰，鍵很多時再加 LRU
+    }
+    hit = { files: { "vg.pch": bytes, "pch_src.h": src, "include/vg.h": vgH }, mb: bytes.length / 1e6 };
+    pchCache.set(key, hit);
   }
-  return { ...hit, built, flags: ["-Xclang", "-include-pch", "-Xclang", "vg.pch", "-Xclang", "-fno-validate-pch"] };
+  return { ...hit, built, from, flags: ["-Xclang", "-include-pch", "-Xclang", "vg.pch", "-Xclang", "-fno-validate-pch"] };
 }
 
 function dedupe(steps) {
@@ -71,7 +84,7 @@ self.onmessage = async (e) => {
       const T = {};
       let t0 = now();
       const pch = m.pch ? await getPch(m.source, "c++17") : null;
-      T.pchBuild = pch ? pch.built : 0;
+      T.pchBuild = pch ? pch.built : 0; T.pchFrom = pch ? pch.from : null;
       t0 = now();
       const ins = m.instrumentOff ? { text: m.source, uninit: [] } : await instrument(m.source, { std: "c++17", astOpts: pch ? { extraFiles: pch.files, flags: pch.flags } : {} });
       T.instrument = now() - t0;
