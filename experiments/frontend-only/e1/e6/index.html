@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><title>E6 瀏覽器實測</title>
+<style>body{font:14px/1.5 system-ui,sans-serif;margin:20px auto;max-width:900px;padding:0 12px}pre{background:#f4f4f4;padding:10px;white-space:pre-wrap}button{font-size:15px;padding:6px 14px;margin-right:8px}</style></head>
+<body>
+<h1>E6：瀏覽器實測（編譯器 + 插樁 + 執行）</h1>
+<p>跨來源隔離：<b id="iso"></b>　第幾次造訪：<b id="visit"></b></p>
+<button id="go">開始實測</button><button id="clear">清除記錄</button>
+<pre id="status">尚未開始</pre>
+<pre id="out"></pre>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const log = (s) => { $("status").textContent += "\n" + s; };
+const visits = JSON.parse(localStorage.getItem("e6visits") || "[]");
+$("iso").textContent = String(crossOriginIsolated);
+$("visit").textContent = String(visits.length + 1);
+$("clear").onclick = () => { localStorage.removeItem("e6visits"); location.reload(); };
+
+// 主執行緒事件迴圈延遲：整個測試期間有沒有被卡住
+let last = performance.now(), maxLag = 0;
+setInterval(() => { const n = performance.now(); maxLag = Math.max(maxLag, n - last - 50); last = n; }, 50);
+
+const pw = new Worker("/browser/src/pipeline.worker.js", { type: "module" });
+const call = (msg) => new Promise((res, rej) => { pw.onmessage = (e) => (e.data.type === "error" ? rej(new Error(e.data.error)) : res(e.data)); pw.onerror = (e) => rej(new Error("worker 錯誤：" + e.message)); pw.postMessage(msg); });
+const med = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
+const r0 = (x) => Math.round(x);
+async function memory() {
+  const o = {};
+  try { if (performance.measureUserAgentSpecificMemory) { const m = await performance.measureUserAgentSpecificMemory(); o.totalMB = Math.round(m.bytes / 1e6); } } catch (e) { o.err = String(e.message).slice(0, 60); }
+  if (performance.memory) o.jsHeapMB = Math.round(performance.memory.usedJSHeapSize / 1e6);
+  return o;
+}
+const matrix = (h, w) => { let s = 7; const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; const NL = String.fromCharCode(10); return h + " " + w + NL + Array.from({ length: h }, () => Array.from({ length: w }, () => 1 + Math.floor(rnd() * 9)).join(" ")).join(NL) + NL; };
+
+$("go").onclick = async () => {
+  $("go").disabled = true;
+  const R = { visit: visits.length + 1, isolated: crossOriginIsolated, ua: navigator.userAgent.slice(0, 80), cores: navigator.hardwareConcurrency, deviceMemoryGB: navigator.deviceMemory };
+  try {
+    const src = await (await fetch("/lessons/tsp.cpp")).text();
+    const inp = await (await fetch("/lessons/tsp.in")).text();
+    const ref = await (await fetch("/e2/ref_tsp.json")).json();
+
+    log("1. 載入編譯器（冷／暖，取決於瀏覽器快取）…");
+    const t0 = performance.now();
+    const loaded = await call({ type: "load", reuse: true });
+    R.load = { wallMs: r0(performance.now() - t0), parts: Object.fromEntries(Object.entries(loaded.t).map(([k, v]) => [k, r0(v)])), resources: loaded.res };
+    R.memAfterLoad = await memory();
+
+    log("2. 技巧一（5×4）跑 5 次，重用已編譯模組…");
+    const runs = [];
+    for (let i = 0; i < 5; i++) runs.push(await call({ type: "run", source: src, stdin: inp, reuse: true, returnSteps: i === 0 }));
+    const first = runs[0];
+    // 正確性：跟正式機 GDB 的參考比對（行序列＋變數值；h、w 在宣告後第一站是垃圾值，不比）
+    let bad = 0, cells = 0;
+    const ours = first.stepList || [];
+    const lineOk = ours.length === ref.length && ours.every((s, i) => s.line === ref[i].line);
+    let seenHW = { h: false, w: false };
+    ours.forEach((s, i) => { for (const [k, v] of Object.entries(s.vars)) { if (k.includes("(")) continue; if ((k === "h" || k === "w") && !seenHW[k] && s.line > 22) { seenHW[k] = true; continue; } cells++; if (JSON.stringify(v) !== JSON.stringify(ref[i].vars[k])) bad++; } });
+    R.correct = { steps: ours.length, gdbSteps: ref.length, lineSequenceSame: lineOk, valuesCompared: cells, valuesDifferent: bad, stdout: first.stdout };
+    const pick = (f) => runs.map(f);
+    R.warmRuns = { instrument: pick((r) => r0(r.T.instrument)), compileTotal: pick((r) => r0(r.T.compile)), detail0: Object.fromEntries(Object.entries(first.T.compileDetail).map(([k, v]) => [k, r0(v)])), exec: pick((r) => r0(r.T.exec)), decode: pick((r) => r0(r.T.decode || 0)), endToEnd: pick((r) => r0(r.T.instrument + r.T.compile + r.T.exec)), medianEndToEnd: r0(med(pick((r) => r.T.instrument + r.T.compile + r.T.exec))) };
+    R.memAfterRuns = await memory();
+
+    log("3. 同樣的 3 次，但每次重新編譯編譯器（不重用模組）…");
+    const noReuse = [];
+    for (let i = 0; i < 3; i++) noReuse.push(await call({ type: "run", source: src, stdin: inp, reuse: false }));
+    R.noReuse = { endToEnd: noReuse.map((r) => r0(r.T.instrument + r.T.compile + r.T.exec)), medianEndToEnd: r0(med(noReuse.map((r) => r.T.instrument + r.T.compile + r.T.exec))) };
+
+    log("4. 技巧一 20×20…");
+    const big = await call({ type: "run", source: src, stdin: matrix(20, 20), reuse: true });
+    R.big20 = { steps: big.steps, traceKB: r0(big.traceBytes / 1024), endToEndMs: r0(big.T.instrument + big.T.compile + big.T.exec), execMs: r0(big.T.exec), decodeMs: r0(big.T.decode || 0) };
+    R.memAfterBig = await memory();
+
+    log("5. 失控程式：for(;;){}，1.5 秒逾時…");
+    const inf = await call({ type: "run", source: "int main() { for (;;) {} return 0; }", stdin: "", reuse: true, timeoutMs: 1500 });
+    R.watchdog = { killed: inf.killed, killWallMs: inf.killWallMs ? r0(inf.killWallMs) : null };
+    const cap = await call({ type: "run", source: "int main() { int x = 0; while (true) { x++; } return 0; }", stdin: "", reuse: true, timeoutMs: 8000 });
+    R.stepCap = { limit: cap.limit, steps: cap.rawSteps, execMs: r0(cap.T.exec), traceKB: cap.traceBytes ? r0(cap.traceBytes / 1024) : null };
+
+    R.mainThreadMaxLagMs = r0(maxLag);
+    R.memEnd = await memory();
+  } catch (e) { R.error = String(e && e.stack || e); }
+  visits.push(R);
+  localStorage.setItem("e6visits", JSON.stringify(visits));
+  window.__e6 = R;
+  $("out").textContent = JSON.stringify(R, null, 1);
+  log("完成");
+  $("go").disabled = false;
+};
+</script></body></html>
