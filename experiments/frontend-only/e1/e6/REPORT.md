@@ -40,3 +40,18 @@
 PCH 位元組存 IndexedDB（`vgdb-pch`），鍵 = 標準 + #include 組合 + vg.h 雜湊 + clang.wasm 大小，任一改變自動失效。
 實測：新 Worker（模擬重新整理）第一次 `from: "built"`（建置 3.6 s，冷）→ 第二個新 Worker `from: "indexeddb"`（建置 0 s），輸出正確。
 限制：無容量上限／淘汰（ponytail）；PCH 約 15 MB／組合，若學生 include 組合很多需加 LRU；隱私模式 IndexedDB 可能不可用，此時退回每次重建（已 catch）。
+
+## 補：前景分頁重測（一般 Chrome、視窗可見；`?only=pch&auto=1`，結果由頁面 POST 回 serve.py）
+自動化控制的分頁是背景分頁（visibilityState=hidden），計時器與 CPU 被節流，先前的數字（含「主執行緒延遲 46.9 秒」）偏慢／不可信。前景重測：
+
+| 項目 | 前景結果 |
+|---|---|
+| 暖機後端到端（插樁+編譯+執行，PCH 已快取） | **約 0.9 秒**（背景分頁是 2.05 秒） |
+| 同一 Worker 內第 1 次（含 IndexedDB 讀 PCH） | 2.4 秒（冷 JIT） |
+| 主執行緒延遲 | 848 個 50ms tick 中 3 個 >100ms、最大 950ms；編譯／執行在 Worker，主執行緒沒有被長時間卡住。兩次最大值都剛好 950ms，疑似頁面載入或結果搬運的單次停頓，未追查 |
+| 載入編譯器（快取後） | 約 0.23~0.27 秒 |
+| 快取 | sysroot.tar、lld.wasm：transferSize=0（命中快取）。clang.wasm 仍回報完整 transferSize（42.5MB）但只花 125~173ms，不是真的走網路；原因未查明（本機 127.0.0.1，無法代表真實網路） |
+| PCH 持久快取 | 重新整理後第一次 `from: indexeddb`，之後 `memory`；建置 0 s |
+| 記憶體（主執行緒） | 34~51 MB（不含 Worker 內 wasm，僅供參考） |
+
+限制：仍是本機、單一機器（13 核、16GB）、Chrome；學生筆電較慢時數字要放大；真實網路下載與 HTTPS 部署後的快取未測。

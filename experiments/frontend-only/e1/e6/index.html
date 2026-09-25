@@ -13,11 +13,12 @@ const log = (s) => { $("status").textContent += "\n" + s; };
 const visits = JSON.parse(localStorage.getItem("e6visits") || "[]");
 $("iso").textContent = String(crossOriginIsolated);
 $("visit").textContent = String(visits.length + 1);
+if (new URLSearchParams(location.search).get("auto")) setTimeout(() => $("go").click(), 500);
 $("clear").onclick = () => { localStorage.removeItem("e6visits"); location.reload(); };
 
 // 主執行緒事件迴圈延遲：整個測試期間有沒有被卡住
-let last = performance.now(), maxLag = 0;
-setInterval(() => { const n = performance.now(); maxLag = Math.max(maxLag, n - last - 50); last = n; }, 50);
+let last = performance.now(), maxLag = 0, lagOver100 = 0, ticks = 0;
+setInterval(() => { const n = performance.now(); const l = n - last - 50; maxLag = Math.max(maxLag, l); if (l > 100) lagOver100++; ticks++; last = n; }, 50);
 
 const pw = new Worker("/browser/src/pipeline.worker.js", { type: "module" });
 const call = (msg) => new Promise((res, rej) => { pw.onmessage = (e) => (e.data.type === "error" ? rej(new Error(e.data.error)) : res(e.data)); pw.onerror = (e) => rej(new Error("worker 錯誤：" + e.message)); pw.postMessage(msg); });
@@ -65,7 +66,7 @@ $("go").onclick = async () => {
     for (let i = 0; i < 5; i++) pr.push(await call({ type: "run", source: src, stdin: inp, reuse: true, pch: true, returnSteps: i === 0 }));
     const pl = pr[0].stepList || [];
     R.pch = { lineSeqSame: pl.length === ref.length && pl.every((s, i) => s.line === ref[i].line), valuesDiff: pl.reduce((n, s, i) => n + Object.entries(s.vars).filter(([k, v]) => !k.includes("(") && JSON.stringify(v) !== JSON.stringify(ref[i].vars[k]) && !((k === "h" || k === "w") && s.line <= 22)).length, 0), build: pr.map((r) => r0(r.T.pchBuild)), from: pr.map((r) => r.T.pchFrom), instrument: pr.map((r) => r0(r.T.instrument)), compile: pr.map((r) => r0(r.T.compile)), detail1: Object.fromEntries(Object.entries(pr[1].T.compileDetail).map(([k, v]) => [k, r0(v)])), endToEnd: pr.map((r) => r0(r.T.pchBuild + r.T.instrument + r.T.compile + r.T.exec)), endToEndNoBuild: pr.map((r) => r0(r.T.instrument + r.T.compile + r.T.exec)) };
-    if (new URLSearchParams(location.search).get("only") === "pch") { R.warmRuns = R.warmRuns; window.__e6 = R; $("out").textContent = JSON.stringify(R, null, 1); log("完成(only pch)"); $("go").disabled = false; return; }
+    if (new URLSearchParams(location.search).get("only") === "pch") throw "early";
     log("3. 同樣的 3 次，但每次重新編譯編譯器（不重用模組）…");
     const noReuse = [];
     for (let i = 0; i < 3; i++) noReuse.push(await call({ type: "run", source: src, stdin: inp, reuse: false }));
@@ -84,10 +85,12 @@ $("go").onclick = async () => {
 
     R.mainThreadMaxLagMs = r0(maxLag);
     R.memEnd = await memory();
-  } catch (e) { R.error = String(e && e.stack || e); }
+  } catch (e) { if (e !== "early") R.error = String(e && e.stack || e); }
   visits.push(R);
   localStorage.setItem("e6visits", JSON.stringify(visits));
+  R.visibility = document.visibilityState; R.lag = { maxMs: r0(maxLag), over100ms: lagOver100, ticks };
   window.__e6 = R;
+  if (new URLSearchParams(location.search).get("auto")) { await fetch("/save", { method: "POST", body: JSON.stringify(R) }); if (visits.length < 2) setTimeout(() => location.reload(), 1500); }
   $("out").textContent = JSON.stringify(R, null, 1);
   log("完成");
   $("go").disabled = false;

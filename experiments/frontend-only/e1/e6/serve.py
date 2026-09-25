@@ -17,6 +17,10 @@ class H(http.server.SimpleHTTPRequestHandler):
         else:
             self.send_header("Cache-Control", "no-cache")
         super().end_headers()
+    def do_POST(self):  # 結果回收：POST /save 存成 e6_result.json（附加一行）
+        n = int(self.headers.get("Content-Length", 0))
+        with open("e6_results.jsonl", "ab") as f: f.write(self.rfile.read(n) + bytes([10]))
+        self.send_response(204); self.end_headers()
     def log_message(self, fmt, *args):
         pass
 
