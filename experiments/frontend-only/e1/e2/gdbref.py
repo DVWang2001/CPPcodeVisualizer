@@ -7,6 +7,9 @@ OUT = os.environ.get("REF_OUT", "/tmp/ref.json")
 MAXN = int(os.environ.get("REF_MAX", "3000"))
 GLOBALS = [g for g in os.environ.get("REF_GLOBALS", "").split(",") if g]
 MODE = os.environ.get("REF_MODE", "next")   # next=單步跨過函式；step=進入函式
+# REF_EXPRS：JSON 檔，{"行號": ["表達式", ...]}；在該行的每個停駐點，用 GDB 自己求值當標準答案
+CAPS = [c for c in os.environ.get("REF_CAPS", "").split(",") if c]   # 每一站對這些 vector 變數求 name.capacity()
+EXPRS = json.load(open(os.environ["REF_EXPRS"])) if os.environ.get("REF_EXPRS") else {}
 
 gdb.execute("set pagination off")
 gdb.execute("set confirm off")
@@ -80,7 +83,28 @@ for _ in range(MAXN):
         break   # 離開 main 進到沒有除錯資訊的 libc：結束
     if MODE == "next" and fr.name() != "main":
         break
-    steps.append({"line": sal.line, "fn": fr.name(), "vars": frame_vars(fr)})
+    rec = {"line": sal.line, "fn": fr.name(), "vars": frame_vars(fr)}
+    if EXPRS.get(str(sal.line)):
+        ev = {}
+        for ex in EXPRS[str(sal.line)]:
+            try:
+                ev[ex] = {"ok": dump(gdb.parse_and_eval(ex))}
+            except Exception as e:
+                ev[ex] = {"err": str(e)[:120]}
+        rec["exprs"] = ev
+    caps = {}
+    for cn in CAPS:
+        if cn in rec["vars"]:
+            try:
+                # 直接讀 libstdc++ 的成員（結尾指標 − 起始指標），不呼叫任何函式：
+                # 呼叫 capacity() 在程式沒用到它時會失敗，在遞迴 step 途中還會干擾單步。
+                impl = gdb.parse_and_eval(cn)["_M_impl"]
+                caps[cn] = int(impl["_M_end_of_storage"] - impl["_M_start"])
+            except Exception as e:
+                caps[cn] = "<err>"
+    if caps:
+        rec["caps"] = caps
+    steps.append(rec)
     try:
         gdb.execute(MODE, to_string=True)
     except gdb.error:

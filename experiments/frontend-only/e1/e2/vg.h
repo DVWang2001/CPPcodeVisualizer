@@ -27,7 +27,12 @@ namespace __vg {
 struct Var {
   const char* name;
   std::string json;
+  long long cap = -1;  // std::vector 的 capacity()；-1 表示沒有。前端的容器視覺化會用它畫「超出長度的空格子」。
 };
+
+template <class T, class = void> struct has_capacity : std::false_type {};
+template <class T>
+struct has_capacity<T, std::void_t<decltype(std::declval<const T&>().capacity())>> : std::true_type {};
 
 template <class T, class = void> struct has_iter : std::false_type {};
 template <class T>
@@ -79,7 +84,11 @@ template <class T> std::string j(const T& x) {
   }
 }
 
-template <class T> Var v(const char* name, const T& x) { return Var{name, j(x)}; }
+template <class T> Var v(const char* name, const T& x) {
+  long long cap = -1;
+  if constexpr (has_capacity<T>::value && !std::is_same_v<T, std::string>) cap = static_cast<long long>(x.capacity());
+  return Var{name, j(x), cap};
+}
 
 // 差量記錄：每個 (函式, 變數名) 記住上一次輸出的 JSON，只輸出「跟上次不同」的變數，
 // 並另外列出目前在作用域內的全部變數名（"n"）。解碼端用同樣的規則還原完整快照。
@@ -91,18 +100,21 @@ inline std::map<std::string, std::string>& last() {
 inline void step(int line, const char* fn, std::initializer_list<Var> vars) {
   std::string names = "[", diff = "{";
   bool firstName = true, firstDiff = true;
-  for (const auto& v : vars) {
+  auto emit = [&](const std::string& name, const std::string& json) {
     if (!firstName) names += ",";
     firstName = false;
-    names += quote(v.name);
-    std::string key = std::string(fn) + "\x1f" + v.name;
-    auto& prev = last()[key];
-    if (prev != v.json) {
-      prev = v.json;
+    names += quote(name);
+    auto& prev = last()[std::string(fn) + "\x1f" + name];
+    if (prev != json) {
+      prev = json;
       if (!firstDiff) diff += ",";
       firstDiff = false;
-      diff += quote(v.name) + ":" + v.json;
+      diff += quote(name) + ":" + json;
     }
+  };
+  for (const auto& v : vars) {
+    emit(v.name, v.json);
+    if (v.cap >= 0) emit(std::string(v.name) + ".capacity()", std::to_string(v.cap));  // 偽變數，求值器直接查表
   }
   std::string o = "\x01VG{\"line\":" + std::to_string(line) + ",\"fn\":\"" + fn + "\",\"n\":" + names + "],\"d\":" + diff + "}}\n";
   // 安全上限：步數或輸出量超過就中止程式（無窮迴圈、失控遞迴），並留下標記讓前端顯示原因。

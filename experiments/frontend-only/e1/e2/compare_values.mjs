@@ -12,6 +12,7 @@ ours.forEach((s, i) => {
   if (!r || r.line !== s.line || (r.fn !== undefined && r.fn !== s.fn)) { bad.push({ i, why: "行不同" }); return; }
   const isFocus = focus.has(s.line); if (isFocus) focusSteps++;
   for (const [name, val] of Object.entries(s.vars)) {
+    if (name.includes("(")) continue;   // 偽變數（x.capacity()）另外比
     const u = uninit.find((x) => x.name === name);
     if (u && (u.all || (s.line > u.line && !seenFirst.has(name)))) { seenFirst.add(name); ignored++; continue; }
     cells++;
