@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>E5 TTS 測試</title>
+<style>
+  body { font: 15px/1.6 system-ui, sans-serif; margin: 24px auto; max-width: 860px; padding: 0 16px; }
+  button { font-size: 16px; padding: 8px 18px; margin: 4px 6px 4px 0; }
+  pre { background: #f4f4f4; padding: 12px; overflow: auto; white-space: pre-wrap; }
+  .ok { color: #0a7a2f; } .bad { color: #b00020; }
+</style>
+</head>
+<body>
+<h1>E5：瀏覽器內建語音（Web Speech API）</h1>
+<p>按下「開始自動測試」會<b>實際念出聲音</b>，約 2～3 分鐘，請不要關掉頁面。</p>
+<button id="run">開始自動測試</button>
+<button id="listen">只念幾句教案旁白（給人聽聽看）</button>
+<pre id="status">尚未開始</pre>
+<pre id="result"></pre>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const now = () => performance.now();
+const log = (s) => { $("status").textContent += "\n" + s; };
+
+function loadVoices() {
+  return new Promise((resolve) => {
+    let v = speechSynthesis.getVoices();
+    if (v.length) return resolve(v);
+    const done = () => resolve(speechSynthesis.getVoices());
+    speechSynthesis.onvoiceschanged = done;
+    setTimeout(done, 4000);
+  });
+}
+
+function pickChinese(voices) {
+  const order = ["zh-TW", "zh-CN", "zh-HK", "zh"];
+  for (const lang of order) {
+    const hit = voices.find((v) => v.lang.replace("_", "-").toLowerCase() === lang.toLowerCase())
+      || voices.find((v) => v.lang.toLowerCase().startsWith(lang.toLowerCase()));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// 念一段文字，回傳事件時間；逾時也會回傳，不會卡住整個測試。
+function speak(text, { voice, rate = 1, timeout = 30000, onboundary } = {}) {
+  return new Promise((resolve) => {
+    const u = new SpeechSynthesisUtterance(text);
+    if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = "zh-TW";
+    u.rate = rate;
+    const t0 = now();
+    const r = { text: text.slice(0, 30), t0, start: null, end: null, error: null, timedOut: false, boundaries: [] };
+    let finished = false;
+    const fin = () => { if (!finished) { finished = true; clearTimeout(timer); resolve(r); } };
+    u.onstart = () => { r.start = now(); };
+    u.onend = () => { r.end = now(); fin(); };
+    u.onerror = (e) => { r.error = e.error; r.end = now(); fin(); };
+    u.onboundary = (e) => { r.boundaries.push({ i: e.charIndex, t: Math.round(now() - t0), name: e.name }); if (onboundary) onboundary(e); };
+    const timer = setTimeout(() => { r.timedOut = true; fin(); }, timeout);
+    speechSynthesis.speak(u);
+  });
+}
+
+const dur = (r) => (r.start != null && r.end != null ? Math.round(r.end - r.start) : null);
+const stats = (a) => { const s = [...a].sort((x, y) => x - y); return { min: s[0], median: s[Math.floor(s.length / 2)], max: s[s.length - 1] }; };
+
+const SENT_MIX = "第 3 列第 4 欄的 dp，等於成本 4 加上 nxt 表裡的 2，寫進 dp[i][j]。";
+const SENTENCES_20 = [
+  "先讀進矩陣有幾列、幾欄", "再開一張一樣大的表，叫 dp", "先處理最右欄，它是終點欄", "最右欄沒有下一步，走到這裡就結束",
+  "接下來從倒數第二欄開始，一欄一欄往左算", "現在算第 3 欄，一列一列算", "這一格往右走有三個候選列", "先把三個候選列由小排到大",
+  "先假設最小成本是無限大", "取出第 1 個候選列", "候選第 0 列，它的成本比目前最好的還小嗎", "更小，記下這個成本",
+  "同時記下，下一步走到第 2 列", "這一格的 dp，等於自己的成本，加上右邊最好的那條路", "兩張表都算完了，可是我先把它們藏起來",
+  "請大家用手機自己算出 dp 表", "接著請大家算出 nxt 表", "兩張表現在打開了，大家對一下答案", "第 4 欄走第 1 列，輸出從一開始算", "教案播放完畢",
+];
+const LONG_TEXT = "原題只問走法數，這一課多了兩個條件：環狀相鄰，讓列號要取餘數；最小成本，讓每一格要比較三個候選，並用 nxt 表記下最好的下一步。".repeat(3);
+
+async function runAll() {
+  const R = { userAgent: navigator.userAgent, startedAt: new Date().toISOString() };
+  $("run").disabled = true;
+  log("載入語音清單…");
+  const voices = await loadVoices();
+  R.voices = voices.map((v) => ({ name: v.name, lang: v.lang, local: v.localService, default: v.default }));
+  const zh = pickChinese(voices);
+  R.chineseVoice = zh ? { name: zh.name, lang: zh.lang, local: zh.localService } : null;
+  R.voiceCount = voices.length;
+  R.chineseVoices = voices.filter((v) => /^zh/i.test(v.lang)).map((v) => `${v.name} (${v.lang}${v.localService ? "，本機" : "，網路"})`);
+  log(`語音 ${voices.length} 個；中文 ${R.chineseVoices.length} 個；選用：${zh ? zh.name + " " + zh.lang : "（沒有）"}`);
+  if (!zh) { R.fatal = "沒有中文語音"; $("result").textContent = JSON.stringify(R, null, 1); window.__e5 = R; return; }
+
+  // T2：含數字與英文變數名的句子；1.0 倍 vs 1.5 倍
+  speechSynthesis.cancel();
+  log("T2 速度…");
+  const a = await speak(SENT_MIX, { voice: zh, rate: 1 });
+  const b = await speak(SENT_MIX, { voice: zh, rate: 1.5 });
+  const b2 = await speak(SENT_MIX, { voice: zh, rate: 2 });
+  R.T2 = { text: SENT_MIX, ms_rate1: dur(a), ms_rate1_5: dur(b), ms_rate2: dur(b2), ratio_1_to_1_5: a && b ? +(dur(a) / dur(b)).toFixed(2) : null, ratio_1_to_2: dur(a) && dur(b2) ? +(dur(a) / dur(b2)).toFixed(2) : null, errors: [a.error, b.error, b2.error].filter(Boolean), timedOut: [a, b, b2].some((x) => x.timedOut), startLatency_ms: a.start != null ? Math.round(a.start - a.t0) : null };
+
+  // T3：連續 20 句，看 onend 是否每一句都觸發
+  log("T3 連續 20 句（1.5 倍）…");
+  const t3 = []; const tt0 = now();
+  for (const s of SENTENCES_20) t3.push(await speak(s, { voice: zh, rate: 1.5, timeout: 15000 }));
+  R.T3 = { count: t3.length, ended: t3.filter((r) => r.end != null && !r.error && !r.timedOut).length, errors: t3.filter((r) => r.error).map((r) => r.error), timedOut: t3.filter((r) => r.timedOut).length, totalMs: Math.round(now() - tt0), perSentenceMs: stats(t3.map(dur).filter((x) => x != null)), stillSpeaking: speechSynthesis.speaking };
+
+  // T4：語音 → [anim] → 語音。量「第一段結束」到「第二段開始」的間隔（anim 在這個縫隙觸發）。
+  log("T4 語音→[anim]→語音（10 次）…");
+  const gaps = [], animDelays = [];
+  for (let i = 0; i < 10; i++) {
+    const r1 = await speak("這一格的 dp，", { voice: zh, rate: 1.5 });
+    const tAnim = now();                       // [anim] 標記：第一段語音結束的那一刻觸發
+    animDelays.push(Math.round(tAnim - r1.end));
+    const r2 = await speak("等於自己的成本，加上右邊最好的那條路", { voice: zh, rate: 1.5 });
+    gaps.push(Math.round(r2.start - r1.end));
+  }
+  R.T4 = { note: "gap = 第二段 onstart − 第一段 onend；anim 在兩者之間立刻觸發，所以觀眾看到的『動畫→旁白』間隔就是 gap", gap_ms: stats(gaps), animTriggerDelay_ms: stats(animDelays), gaps };
+
+  // T4b：單一句子的 boundary 事件（可以用來在句子中間觸發 anim）
+  log("T4b boundary 事件…");
+  const bnd = await speak("這一格的 dp，等於自己的成本，加上右邊最好的那條路，寫進表裡", { voice: zh, rate: 1 });
+  R.T4b = { boundaryCount: bnd.boundaries.length, first: bnd.boundaries.slice(0, 6), last: bnd.boundaries.slice(-2), totalMs: dur(bnd), note: "有 boundary 才能在句子中間精確觸發 [anim]；沒有就只能在分段之間觸發（T4）" };
+
+  // T5：暫停／繼續
+  log("T5 暫停／繼續…");
+  const long = "兩張表都算完了，可是我先把它們藏起來。請大家用手機自己算出 dp 表。算完之後才把表打開，大家對一下答案。";
+  const u = new SpeechSynthesisUtterance(long); u.voice = zh; u.lang = zh.lang; u.rate = 1;
+  const ev = { start: null, end: null, error: null };
+  u.onstart = () => { ev.start = now(); }; u.onend = () => { ev.end = now(); }; u.onerror = (e) => { ev.error = e.error; };
+  speechSynthesis.speak(u);
+  await sleep(1200);
+  speechSynthesis.pause();
+  await sleep(300);
+  const pausedFlag = speechSynthesis.paused;
+  await sleep(2500);                                   // 暫停 2.5 秒，期間不該結束
+  const endedWhilePaused = ev.end != null;
+  speechSynthesis.resume();
+  const tRes = now();
+  for (let k = 0; k < 300 && ev.end == null && !ev.error; k++) await sleep(100);
+  R.T5 = { pausedFlag, endedWhilePaused, endedAfterResume: ev.end != null, error: ev.error, resumeToEnd_ms: ev.end != null ? Math.round(ev.end - tRes) : null };
+
+  // T6：長文字（Chrome 的網路語音常在約 15 秒後被截斷）
+  log("T6 長文字…");
+  const l6 = await speak(LONG_TEXT, { voice: zh, rate: 1.5, timeout: 90000 });
+  R.T6 = { chars: LONG_TEXT.length, ms: dur(l6), ended: l6.end != null && !l6.timedOut && !l6.error, error: l6.error, timedOut: l6.timedOut, lastBoundary: l6.boundaries.length ? l6.boundaries[l6.boundaries.length - 1] : null };
+
+  // T7：取消後能不能再念
+  log("T7 取消…");
+  const p7 = speak(LONG_TEXT, { voice: zh, rate: 1, timeout: 20000 });
+  await sleep(700);
+  speechSynthesis.cancel();
+  const r7 = await p7;
+  const r7b = await speak("取消之後可以再念", { voice: zh, rate: 1.5 });
+  R.T7 = { cancelEndedFast: r7.end != null && r7.end - r7.t0 < 3000, cancelError: r7.error, nextOk: r7b.end != null && !r7b.error && !r7b.timedOut };
+
+  R.finishedAt = new Date().toISOString();
+  window.__e5 = R;
+  $("result").textContent = JSON.stringify(R, null, 1);
+  log("完成");
+  $("run").disabled = false;
+}
+
+$("run").onclick = () => runAll().catch((e) => { $("result").textContent = "錯誤：" + e.message; window.__e5 = { fatal: e.message }; });
+$("listen").onclick = async () => {
+  const zh = pickChinese(await loadVoices());
+  for (const s of ["這一格的 dp，等於自己的成本，加上右邊最好的那條路，寫進表裡", "第 3 列第 4 欄，成本是 4，nxt 表記下來的是第 2 列", "dp[i][j] 等於 cost[i][j] 加 best"]) await speak(s, { voice: zh, rate: 1.5 });
+};
+</script>
+</body>
+</html>

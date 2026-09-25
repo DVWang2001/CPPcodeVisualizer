@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><title>E5 速度曲線</title></head>
+<body>
+<h1>E5：rate 與實際唸完時間的關係</h1>
+<p>按下開始會念出聲音（約 1～2 分鐘）。每一步的結果會即時顯示。</p>
+<button id="run">開始</button>
+<pre id="out"></pre>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const show = (R) => { window.__rate = R; $("out").textContent = JSON.stringify(R, null, 1); };
+// Chrome 的語音清單是非同步載入的：第一次呼叫 getVoices() 常回傳空陣列，voiceschanged 也不一定觸發，
+// 所以要輪詢到有值為止（正式版也要這樣做）。
+async function voices() { for (let i = 0; i < 60; i++) { const v = speechSynthesis.getVoices(); if (v.length) return v; await new Promise((r) => setTimeout(r, 200)); } return []; }
+function speak(text, voice, rate, timeout = 25000) {
+  return new Promise((resolve) => {
+    const u = new SpeechSynthesisUtterance(text); u.voice = voice; u.lang = voice.lang; u.rate = rate;
+    const t0 = performance.now(); let s = null, done = false;
+    const fin = (o) => { if (!done) { done = true; clearTimeout(t); resolve({ ...o, sinceCall: Math.round(performance.now() - t0) }); } };
+    const t = setTimeout(() => fin({ timedOut: true, started: s != null }), timeout);
+    u.onstart = () => { s = performance.now(); };
+    u.onend = () => fin({ ms: s != null ? Math.round(performance.now() - s) : null });
+    u.onerror = (e) => fin({ error: e.error });
+    speechSynthesis.speak(u);
+  });
+}
+const WITH_PUNCT = "這一格的 dp，等於自己的成本，加上右邊最好的那條路，寫進表裡。";
+const NO_PUNCT = "這一格的 dp 等於自己的成本 加上右邊最好的那條路 寫進表裡";
+$("run").onclick = async () => {
+  const R = { progress: "開始" };
+  try {
+    const vs = await voices();
+    const pick = (n) => vs.find((v) => v.name.includes(n));
+    const hanhan = pick("Hanhan");
+    R.curve = {}; R.punct = {}; R.voices = {};
+    for (const rate of [1, 1.5, 2, 2.5, 3, 4, 5]) { R.progress = "curve rate=" + rate; show(R); R.curve[rate] = await speak(WITH_PUNCT, hanhan, rate); }
+    for (const rate of [1, 2]) { R.progress = "punct rate=" + rate; show(R); const a = await speak(WITH_PUNCT, hanhan, rate); const b = await speak(NO_PUNCT, hanhan, rate); R.punct["rate" + rate] = { with: a.ms, without: b.ms }; }
+    for (const n of ["Yating", "Zhiwei", "Huihui"]) { const v = pick(n); if (v) { R.progress = "voice " + n; show(R); R.voices[n] = (await speak(WITH_PUNCT, v, 1)).ms; } }
+    R.progress = "完成"; show(R);
+  } catch (e) { R.error = String(e && e.message || e); show(R); }
+};
+</script></body></html>
