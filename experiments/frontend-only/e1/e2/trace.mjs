@@ -6,11 +6,11 @@ import { instrument } from "./instrument.mjs";
 
 const VG_H = fs.readFileSync(new URL("./vg.h", import.meta.url), "utf8");
 
-export async function runTrace(source, stdinText, { funcs = ["main"], std = "c++17", maxSteps = 200000 } = {}) {
+export async function runTrace(source, stdinText, { funcs = null, std = "c++17", maxSteps = 200000 } = {}) {
   const t0 = performance.now();
   const ins = await instrument(source, { funcs, std });
   const t1 = performance.now();
-  const c = await compile({ source: ins.text, flags: [`-std=${std}`, "-fno-exceptions"], extraFiles: { "include/vg.h": VG_H } });
+  const c = await compile({ source: ins.text, flags: [`-std=${std}`, "-fno-exceptions", "-include", "vg.h"], extraFiles: { "include/vg.h": VG_H } });
   const t2 = performance.now();
   if (!c.ok) return { ok: false, stage: c.stage, log: c.log, instrumented: ins.text };
   let out = "", errBuf = "";
@@ -31,7 +31,7 @@ export async function runTrace(source, stdinText, { funcs = ["main"], std = "c++
 import { pathToFileURL } from "node:url";
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [src, inp] = [process.argv[2], process.argv[3]];
-  const r = await runTrace(fs.readFileSync(src, "utf8"), fs.readFileSync(inp, "utf8"), { funcs: (process.argv[4] || "main").split(",") });
+  const r = await runTrace(fs.readFileSync(src, "utf8"), fs.readFileSync(inp, "utf8"), { funcs: process.argv[4] ? process.argv[4].split(",") : null });
   if (!r.ok) { console.log("✗", r.stage, r.log.split("\n").filter((l) => /error/.test(l)).slice(0, 8).join("\n")); process.exit(1); }
   console.log("✓ 步數", r.steps.length, "| exit", r.exit, "| stdout", JSON.stringify(r.stdout), "| ms", JSON.stringify(Object.fromEntries(Object.entries(r.ms).map(([k, v]) => [k, Math.round(v)]))));
   console.log("前 12 步的行號:", r.steps.slice(0, 12).map((s) => s.line).join(" "));

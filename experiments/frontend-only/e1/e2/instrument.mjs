@@ -6,30 +6,30 @@
 //   * while / if：每次求值條件停一次（else if 各自在自己那行停）。
 //   * return X;：先停在 return 那行，算完 X 之後停在函式的 `}`。
 import fs from "node:fs";
-import { astOf } from "./ast.mjs";
-import { splitJson } from "./jsonsplit.mjs";
+import { userDecls } from "./userast.mjs";
 
-export async function instrument(source, { funcs = ["main"], std = "c++17" } = {}) {
+export async function instrument(source, { funcs = null, std = "c++17" } = {}) {
   const buf = Buffer.from(source, "utf8");
   const lineStarts = [0];
   for (let i = 0; i < buf.length; i++) if (buf[i] === 10) lineStarts.push(i + 1);
   const lineAt = (off) => { let lo = 0, hi = lineStarts.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (lineStarts[m] <= off) lo = m; else hi = m - 1; } return lo + 1; };
 
   const edits = [];
-  const ins = (at, text) => edits.push({ at, text, seq: edits.length });
-  ins(0, "#include <vg.h> ");
+  const ins = (at, text, del = 0) => edits.push({ at, text, del, seq: edits.length });
+  // 探針標頭用編譯器旗標 -include vg.h 帶入，不動原始碼（在第一行前面插 #include 會吞掉原本第一行的 #include）。
 
   const begin = (n) => n.range.begin.offset;
   const endTok = (n) => n.range.end.offset + (n.range.end.tokLen || 0);
   // 語句結尾：若後面緊跟 `;` 就一起吃掉（Expr／Return／Break 的 range 不含分號）
   const endStmt = (n) => { let e = endTok(n); let k = e; while (k < buf.length && (buf[k] === 32 || buf[k] === 9)) k++; return buf[k] === 59 ? k + 1 : e; };
 
-  const names = (scopes) => { const seen = new Map(); for (const sc of scopes) for (const v of sc) seen.set(v, true); return [...seen.keys()]; };
+  let curGlobals = [];
+  const names = (scopes) => { const seen = new Map(); for (const g of curGlobals) seen.set(g, true); for (const sc of scopes) for (const v of sc) seen.set(v, true); return [...seen.keys()]; };
   const vars = (scopes) => "{" + names(scopes).map((n) => `__vg::v("${n}", ${n})`).join(", ") + "}";
   let curFn = "main";
   const probe = (line, scopes) => `__vg::step(${line}, "${curFn}", ${vars(scopes)})`;
 
-  const unsupported = new Set(["CXXForRangeStmt", "SwitchStmt", "DoStmt", "CaseStmt", "DefaultStmt", "LabelStmt", "GotoStmt", "CXXTryStmt"]);
+  const unsupported = new Set(["SwitchStmt", "DoStmt", "CaseStmt", "DefaultStmt", "LabelStmt", "GotoStmt", "CXXTryStmt"]);
   const declHasInit = (d) => d.kind === "VarDecl" && (d.init !== undefined || (d.inner || []).some((c) => /Expr|Literal|Init/.test(c.kind || "")));
 
   function compound(node, scopes, ctx) {
@@ -53,6 +53,42 @@ export async function instrument(source, { funcs = ["main"], std = "c++17" } = {
         const ds = (st.inner || []).filter((d) => d.kind === "VarDecl");
         if (ds.some(declHasInit)) ins(begin(st), probe(L, scopes) + "; ");
         for (const d of ds) { scopes[scopes.length - 1].push(d.name); if (!declHasInit(d)) ctx.uninit.push({ name: d.name, line: L }); }
+        return;
+      }
+      case "CXXForRangeStmt": {
+        // 展開成等價的傳統 for，套用 for 的停駐規則（實測 GDB 對範圍 for 的行為與傳統 for 完全相同）：
+        //   for (D x : E) BODY  →  { 探針; auto&& r = (E); auto b = begin(r); auto e = end(r);
+        //                            for (; b != e; (探針, ++b)) { D = *b; BODY } }
+        // 只替換同一行的表頭文字，換行數補回去，行號不變。
+        const [initS, , beginDS, , , , varDS, bodyN] = st.inner;
+        if (initS && initS.kind) throw new Error("E2 尚未支援範圍 for 的 init-statement（C++20）@行 " + L);
+        const colon = beginDS.range.begin.offset;
+        if (buf[colon] !== 58) throw new Error("範圍 for：找不到 ':' @行 " + L);
+        const closeParen = varDS.range.end.offset;
+        const declText = buf.subarray(begin(varDS), colon).toString("utf8").trim();
+        const rangeText = buf.subarray(colon + 1, closeParen).toString("utf8").trim();
+        const bodyBegin = begin(bodyN);
+        let nl = 0;
+        for (let k = begin(st); k < bodyBegin; k++) if (buf[k] === 10) nl++;
+        const names2 = [];
+        for (const d of varDS.inner || []) {
+          if (d.kind === "VarDecl" && !d.isImplicit && d.name) names2.push(d.name);
+          if (d.kind === "DecompositionDecl") for (const b of d.inner || []) if (b.kind === "BindingDecl") names2.push(b.name);
+        }
+        const head = `{ ${probe(L, scopes)}; auto&& __vg_r = (${rangeText}); auto __vg_b = std::begin(__vg_r); auto __vg_e = std::end(__vg_r); `
+          + `for (; __vg_b != __vg_e; (${probe(L, scopes)}, ++__vg_b)) ` + String.fromCharCode(10).repeat(nl);
+        ins(begin(st), head, bodyBegin - begin(st));
+        scopes.push(names2);
+        if (bodyN.kind === "CompoundStmt") {
+          ins(bodyBegin + 1, ` ${declText} = *__vg_b; `);
+          compound(bodyN, scopes, ctx);
+          ins(endTok(bodyN), " }");
+        } else {
+          ins(bodyBegin, `{ ${declText} = *__vg_b; `);
+          stmt(bodyN, scopes, ctx);
+          ins(endStmt(bodyN), " } }");
+        }
+        scopes.pop();
         return;
       }
       case "ForStmt": {
@@ -97,14 +133,16 @@ export async function instrument(source, { funcs = ["main"], std = "c++17" } = {
     }
   }
 
-  const ctxAll = { uninit: [], funcs: {} };
-  for (const fn of funcs) {
-    const objs = splitJson((await astOf(source, { std, filter: fn })).out);
-    const decl = objs.find((o) => o.kind === "FunctionDecl" && o.name === fn && (o.loc?.file === "main.cpp" || o.loc?.includedFrom === undefined) && (o.inner || []).some((c) => c.kind === "CompoundStmt"));
-    if (!decl) throw new Error("找不到函式定義：" + fn);
+  const ctxAll = { uninit: [], funcs: {}, globals: [] };
+  const { globals, functions } = await userDecls(source, std);
+  ctxAll.globals = globals.map((g) => g.name);
+  for (const decl of functions) {
+    const fn = decl.name;
+    if (funcs && !funcs.includes(fn)) continue;
     const bodyN = decl.inner.find((c) => c.kind === "CompoundStmt");
     const params = (decl.inner || []).filter((c) => c.kind === "ParmVarDecl").map((p) => p.name).filter(Boolean);
     curFn = fn;
+    curGlobals = [...new Set(globals.filter((g) => g.offset < decl.range.begin.offset).map((g) => g.name))];
     const closeLine = lineAt(bodyN.range.end.offset);
     const ctx = { closeLine, uninit: ctxAll.uninit };
     const scopes = [params];
@@ -117,14 +155,14 @@ export async function instrument(source, { funcs = ["main"], std = "c++17" } = {
 
   edits.sort((a, b) => a.at - b.at || a.seq - b.seq);
   let out = "", prev = 0;
-  for (const e of edits) { out += buf.subarray(prev, e.at).toString("utf8") + e.text; prev = e.at; }
+  for (const e of edits) { if (e.at < prev) throw new Error("插樁編輯重疊 @" + e.at); out += buf.subarray(prev, e.at).toString("utf8") + e.text; prev = e.at + e.del; }
   out += buf.subarray(prev).toString("utf8");
-  return { text: out, uninit: ctxAll.uninit, funcs: ctxAll.funcs };
+  return { text: out, uninit: ctxAll.uninit, funcs: ctxAll.funcs, globals: ctxAll.globals };
 }
 
 import { pathToFileURL } from "node:url";
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href && process.argv[2]) {
-  const r = await instrument(fs.readFileSync(process.argv[2], "utf8"), { funcs: (process.argv[3] || "main").split(",") });
+  const r = await instrument(fs.readFileSync(process.argv[2], "utf8"), {});
   fs.writeFileSync("instrumented.cpp", r.text);
-  console.log("行數 原/插樁後:", fs.readFileSync(process.argv[2], "utf8").split("\n").length, r.text.split("\n").length, "| 未初始化宣告:", JSON.stringify(r.uninit));
+  console.log("函式:", Object.keys(r.funcs).join(","), "| 全域:", r.globals.join(","), "| 行數 原/插樁後:", fs.readFileSync(process.argv[2], "utf8").split("\n").length, r.text.split("\n").length, "| 未初始化宣告:", JSON.stringify(r.uninit));
 }

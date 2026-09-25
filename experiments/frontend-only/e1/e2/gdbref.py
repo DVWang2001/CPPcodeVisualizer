@@ -5,6 +5,7 @@ import gdb, json, os
 INP = os.environ.get("REF_IN", "/dev/null")
 OUT = os.environ.get("REF_OUT", "/tmp/ref.json")
 MAXN = int(os.environ.get("REF_MAX", "3000"))
+GLOBALS = [g for g in os.environ.get("REF_GLOBALS", "").split(",") if g]
 MODE = os.environ.get("REF_MODE", "next")   # next=單步跨過函式；step=進入函式
 
 gdb.execute("set pagination off")
@@ -21,9 +22,15 @@ def dump(v, depth=0):
     if depth > 6:
         return "<deep>"
     t = v.type.strip_typedefs()
+    if t.code in (gdb.TYPE_CODE_REF, gdb.TYPE_CODE_RVALUE_REF):
+        return dump(v.referenced_value(), depth + 1)   # 參考：看它指向的值
     viz = gdb.default_visualizer(v)
     if viz is not None and hasattr(viz, "children"):
-        return [dump(c[1], depth + 1) for c in viz.children()]
+        kids = [dump(c[1], depth + 1) for c in viz.children()]
+        hint = viz.display_hint() if hasattr(viz, "display_hint") else None
+        if hint == "map":   # map 的美化印表機把 key、value 攤平交錯；兩兩併成 [key, value]
+            return [[kids[i], kids[i + 1]] for i in range(0, len(kids) - 1, 2)]
+        return kids
     if t.code == gdb.TYPE_CODE_ARRAY:
         lo, hi = t.range()
         return [dump(v[i], depth + 1) for i in range(lo, hi + 1)]
@@ -54,6 +61,12 @@ def frame_vars(fr):
         if block.function is not None:
             break
         block = block.superblock
+    for name in GLOBALS:   # 全域變數：用目前的作用域解析（被區域變數遮蔽時就是區域那個，跟 C++ 一致）
+        if name not in out:
+            try:
+                out[name] = dump(gdb.parse_and_eval(name))
+            except Exception:
+                pass
     return out
 
 steps = []
