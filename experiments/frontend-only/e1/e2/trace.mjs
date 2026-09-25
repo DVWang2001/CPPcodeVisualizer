@@ -21,11 +21,18 @@ export async function runTrace(source, stdinText, { funcs = null, std = "c++17",
   const inst = await WebAssembly.instantiate(c.module, { wasi_snapshot_preview1: wasi.wasiImport });
   let exit; try { exit = wasi.start(inst); } catch (e) { exit = "trap: " + e.message; }
   const t3 = performance.now();
-  const steps = [], stderr = [];
+  // 差量解碼：state[(函式, 變數名)] = 最後一次輸出的值；每一步的 vars = 「n」列出的名字對應到 state。
+  const steps = [], stderr = [], state = new Map();
   for (const line of errBuf.split("\n")) {
-    if (line.startsWith("\x01VG")) steps.push(JSON.parse(line.slice(3))); else if (line) stderr.push(line);
+    if (line.startsWith("\x01VG")) {
+      const e = JSON.parse(line.slice(3));
+      for (const [k, v] of Object.entries(e.d)) state.set(e.fn + "\x1f" + k, v);
+      const vars = {};
+      for (const n of e.n) vars[n] = state.get(e.fn + "\x1f" + n);
+      steps.push({ line: e.line, fn: e.fn, vars });
+    } else if (line) stderr.push(line);
   }
-  return { ok: true, steps, stdout: out, stderr, exit, uninit: ins.uninit, ms: { instrument: t1 - t0, compile: t2 - t1, run: t3 - t2 }, instrumented: ins.text };
+  return { ok: true, steps, traceBytes: errBuf.length, stdout: out, stderr, exit, uninit: ins.uninit, ms: { instrument: t1 - t0, compile: t2 - t1, run: t3 - t2 }, instrumented: ins.text };
 }
 
 import { pathToFileURL } from "node:url";

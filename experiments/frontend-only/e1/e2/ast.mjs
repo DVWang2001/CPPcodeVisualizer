@@ -6,14 +6,14 @@ const D = fileURLToPath(new URL("../node_modules/browsercc/dist/", import.meta.u
 const sb = fs.readFileSync(D + "sysroot.tar");
 const sysroot = sb.buffer.slice(sb.byteOffset, sb.byteOffset + sb.byteLength);
 
-export async function astOf(source, { std = "c++17", filter = null, extraFiles = {} } = {}) {
+export async function astOf(source, { std = "c++17", filter = null, extraFiles = {}, flags: extraFlags = [] } = {}) {
   let err = "";
   const drv = await Clang({ thisProgram: "clang++", printErr: (d) => err += d + "\n", locateFile: (p) => D + p });
   drv.FS.writeFile("main.cpp", source);
   drv.FS.mkdirTree("/lib/wasm32-wasi"); drv.FS.mkdirTree("/include/c++/v1");
   drv.FS.writeFile("/lib/wasm32-wasi/crt1-command.o", new Uint8Array(0));
   drv.FS.writeFile("/lib/wasm32-wasi/crt1-reactor.o", new Uint8Array(0));
-  const flags = [`-std=${std}`, "-fno-exceptions", "-fsyntax-only", "-Xclang", "-ast-dump=json", ...(filter ? ["-Xclang", `-ast-dump-filter=${filter}`] : [])];
+  const flags = [`-std=${std}`, "-fno-exceptions", "-fsyntax-only", "-Xclang", "-ast-dump=json", ...extraFlags, ...(filter ? ["-Xclang", `-ast-dump-filter=${filter}`] : [])];
   drv.callMain(["main.cpp", ...flags, "-###"]);
   const cc1 = err.split("\n").find((l) => l.includes("-cc1"));
   const args = cc1.match(/"([^"]*)"/g).map((s) => s.slice(1, -1)).slice(1);

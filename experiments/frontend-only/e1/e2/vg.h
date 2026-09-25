@@ -3,6 +3,14 @@
 #pragma once
 #include <array>
 #include <cstdio>
+#include <cstdlib>
+
+#ifndef VG_MAX_STEPS
+#define VG_MAX_STEPS 200000LL
+#endif
+#ifndef VG_MAX_BYTES
+#define VG_MAX_BYTES 20000000LL
+#endif
 #include <deque>
 #include <initializer_list>
 #include <iterator>
@@ -73,15 +81,36 @@ template <class T> std::string j(const T& x) {
 
 template <class T> Var v(const char* name, const T& x) { return Var{name, j(x)}; }
 
+// 差量記錄：每個 (函式, 變數名) 記住上一次輸出的 JSON，只輸出「跟上次不同」的變數，
+// 並另外列出目前在作用域內的全部變數名（"n"）。解碼端用同樣的規則還原完整快照。
+inline std::map<std::string, std::string>& last() {
+  static std::map<std::string, std::string> m;
+  return m;
+}
+
 inline void step(int line, const char* fn, std::initializer_list<Var> vars) {
-  std::string o = "\x01VG{\"line\":" + std::to_string(line) + ",\"fn\":\"" + fn + "\",\"vars\":{";
-  bool first = true;
+  std::string names = "[", diff = "{";
+  bool firstName = true, firstDiff = true;
   for (const auto& v : vars) {
-    if (!first) o += ",";
-    first = false;
-    o += quote(v.name) + ":" + v.json;
+    if (!firstName) names += ",";
+    firstName = false;
+    names += quote(v.name);
+    std::string key = std::string(fn) + "\x1f" + v.name;
+    auto& prev = last()[key];
+    if (prev != v.json) {
+      prev = v.json;
+      if (!firstDiff) diff += ",";
+      firstDiff = false;
+      diff += quote(v.name) + ":" + v.json;
+    }
   }
-  o += "}}\n";
+  std::string o = "\x01VG{\"line\":" + std::to_string(line) + ",\"fn\":\"" + fn + "\",\"n\":" + names + "],\"d\":" + diff + "}}\n";
+  // 安全上限：步數或輸出量超過就中止程式（無窮迴圈、失控遞迴），並留下標記讓前端顯示原因。
+  static long long steps = 0, bytes = 0;
+  if (++steps > VG_MAX_STEPS || (bytes += static_cast<long long>(o.size())) > VG_MAX_BYTES) {
+    std::fputs("\x01VGLIMIT\n", stderr);
+    std::exit(124);
+  }
   std::fputs(o.c_str(), stderr);
 }
 

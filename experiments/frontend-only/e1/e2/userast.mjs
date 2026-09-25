@@ -7,7 +7,7 @@ import { splitJson } from "./jsonsplit.mjs";
 
 const NS = "namespace __vg_user { ";
 
-export async function userDecls(source, std = "c++17") {
+export async function userDecls(source, std = "c++17", astOpts = {}) {
   const lines = source.split("\n");
   let lastInc = -1;
   lines.forEach((l, i) => { if (/^\s*#\s*include\b/.test(l)) lastInc = i; });
@@ -16,7 +16,7 @@ export async function userDecls(source, std = "c++17") {
   const wrapped = lines.slice(0, insLine).join("\n") + (insLine > 0 ? "\n" : "") + NS + lines.slice(insLine).join("\n") + "\n}\n";
   const shift = Buffer.byteLength(NS, "utf8");
   const un = (off) => (off >= insAt + shift ? off - shift : off);
-  const objs = splitJson((await astOf(wrapped, { std, filter: "__vg_user" })).out);
+  const objs = splitJson((await astOf(wrapped, { std, filter: "__vg_user", ...astOpts })).out);
   const norm = (n) => { // 偏移量還原成原始碼的偏移量（遞迴）
     if (!n || typeof n !== "object") return n;
     if (Array.isArray(n)) return n.map(norm);
