@@ -40,6 +40,7 @@ from flask_compress import Compress  # type: ignore
 from flask_socketio import SocketIO, emit  # type: ignore
 
 from . import auth, db, live_quiz
+from .event_recorder import rec as _rec
 from .constants import DEFAULT_GDB_EXECUTABLE, STATIC_DIR, TEMPLATE_DIR
 from .http_routes import blueprint
 from .http_util import CSRF_EXEMPT_ENDPOINTS, is_cross_origin, owner_key, require_login
@@ -291,15 +292,14 @@ def client_connected():
             message = f"Connected to existing gdb process {debug_session.pid}"
             if killed_running_inferior:
                 message += "（原本還在執行的程式已因重新整理而中止，請重新執行）"
-            emit(
-                "debug_session_connection_event",
-                {
-                    "ok": True,
-                    "started_new_gdb_process": False,
-                    "pid": debug_session.pid,
-                    "message": message,
-                },
-            )
+            _conn_ev = {
+                "ok": True,
+                "started_new_gdb_process": False,
+                "pid": debug_session.pid,
+                "message": message,
+            }
+            _rec("S>C", "debug_session_connection_event", _conn_ev, request.sid)
+            emit("debug_session_connection_event", _conn_ev)
         else:
             # start new debug session.
             #
@@ -344,15 +344,14 @@ def client_connected():
                 exec_wrapper=session.get("exec_wrapper"),
                 session_key=session_key,
             )
-            emit(
-                "debug_session_connection_event",
-                {
-                    "ok": True,
-                    "started_new_gdb_process": True,
-                    "message": f"Started new gdb process, pid {debug_session.pid}",
-                    "pid": debug_session.pid,
-                },
-            )
+            _conn_ev = {
+                "ok": True,
+                "started_new_gdb_process": True,
+                "message": f"Started new gdb process, pid {debug_session.pid}",
+                "pid": debug_session.pid,
+            }
+            _rec("S>C", "debug_session_connection_event", _conn_ev, request.sid)
+            emit("debug_session_connection_event", _conn_ev)
     except Exception as e:
         emit(
             "debug_session_connection_event",
@@ -370,6 +369,7 @@ def client_connected():
 @socketio.on("pty_interaction", namespace="/gdb_listener")
 def pty_interaction(message):
     """Write a character to the user facing pty"""
+    _rec("C>S", "pty_interaction", message, request.sid)
     debug_session = manager.debug_session_from_client_id(request.sid)
     if not debug_session:
         emit(
@@ -419,6 +419,7 @@ def pty_interaction(message):
 def run_gdb_command(message: Dict[str, str]):
     """Write commands to gdbgui's gdb mi pty"""
     client_id = request.sid  # type: ignore
+    _rec("C>S", "run_gdb_command", message, client_id)
     debug_session = manager.debug_session_from_client_id(client_id)
     if not debug_session:
         emit("error_running_gdb_command", {"message": "no session"})
@@ -570,6 +571,7 @@ def read_and_forward_gdb_and_pty_output():
                         "data": response,
                     }
                     for client_id in client_ids:
+                        _rec("S>C", "gdb_response", payload, client_id)
                         logger.info(
                             "emiting message to websocket client id " + client_id
                         )
@@ -609,6 +611,7 @@ def check_and_forward_pty_output() -> List[DebugSession]:
             response = debug_session.pty_for_gdb.read()
             if response is not None:
                 for client_id in client_ids:
+                    _rec("S>C", "user_pty_response", response, client_id)
                     socketio.emit(
                         "user_pty_response",
                         response,
@@ -619,6 +622,7 @@ def check_and_forward_pty_output() -> List[DebugSession]:
             response = debug_session.pty_for_debugged_program.read()
             if response is not None:
                 for client_id in client_ids:
+                    _rec("S>C", "program_pty_response", response, client_id)
                     socketio.emit(
                         "program_pty_response",
                         response,
