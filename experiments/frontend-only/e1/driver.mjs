@@ -1,9 +1,10 @@
 // E1 實驗驅動：照 browsercc 的 compile() 改成讀本機檔案，在 Node 裡編譯並用 WASI 執行。
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Clang, LLD, setUpSysroot, getCompilerInvocation } from "./node_modules/browsercc/dist/index.js";
 import { WASI, File, OpenFile, ConsoleStdout } from "@bjorn3/browser_wasi_shim";
 
-const D = "./node_modules/browsercc/dist/";
+const D = fileURLToPath(new URL("./node_modules/browsercc/dist/", import.meta.url));
 const sysrootBuf = fs.readFileSync(D + "sysroot.tar");
 const sysroot = sysrootBuf.buffer.slice(sysrootBuf.byteOffset, sysrootBuf.byteOffset + sysrootBuf.byteLength);
 
