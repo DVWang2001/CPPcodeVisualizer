@@ -60,6 +60,12 @@ $("go").onclick = async () => {
     R.warmRuns = { instrument: pick((r) => r0(r.T.instrument)), compileTotal: pick((r) => r0(r.T.compile)), detail0: Object.fromEntries(Object.entries(first.T.compileDetail).map(([k, v]) => [k, r0(v)])), exec: pick((r) => r0(r.T.exec)), decode: pick((r) => r0(r.T.decode || 0)), endToEnd: pick((r) => r0(r.T.instrument + r.T.compile + r.T.exec)), medianEndToEnd: r0(med(pick((r) => r.T.instrument + r.T.compile + r.T.exec))) };
     R.memAfterRuns = await memory();
 
+    log("2b. PCH：預編譯標頭 ×5（第 1 次含建置）…");
+    const pr = [];
+    for (let i = 0; i < 5; i++) pr.push(await call({ type: "run", source: src, stdin: inp, reuse: true, pch: true, returnSteps: i === 0 }));
+    const pl = pr[0].stepList || [];
+    R.pch = { lineSeqSame: pl.length === ref.length && pl.every((s, i) => s.line === ref[i].line), valuesDiff: pl.reduce((n, s, i) => n + Object.entries(s.vars).filter(([k, v]) => !k.includes("(") && JSON.stringify(v) !== JSON.stringify(ref[i].vars[k]) && !((k === "h" || k === "w") && s.line <= 22)).length, 0), build: pr.map((r) => r0(r.T.pchBuild)), instrument: pr.map((r) => r0(r.T.instrument)), compile: pr.map((r) => r0(r.T.compile)), detail1: Object.fromEntries(Object.entries(pr[1].T.compileDetail).map(([k, v]) => [k, r0(v)])), endToEnd: pr.map((r) => r0(r.T.pchBuild + r.T.instrument + r.T.compile + r.T.exec)), endToEndNoBuild: pr.map((r) => r0(r.T.instrument + r.T.compile + r.T.exec)) };
+    if (new URLSearchParams(location.search).get("only") === "pch") { R.warmRuns = R.warmRuns; window.__e6 = R; $("out").textContent = JSON.stringify(R, null, 1); log("完成(only pch)"); $("go").disabled = false; return; }
     log("3. 同樣的 3 次，但每次重新編譯編譯器（不重用模組）…");
     const noReuse = [];
     for (let i = 0; i < 3; i++) noReuse.push(await call({ type: "run", source: src, stdin: inp, reuse: false }));

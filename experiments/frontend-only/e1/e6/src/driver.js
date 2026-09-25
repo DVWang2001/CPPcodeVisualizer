@@ -54,6 +54,24 @@ async function invocation(fileName, source, flags) {
   return { compilerArgs: cc1.args, compilerArtifact: cc1.out, linkerArgs: ld.args, linkerArtifact: ld.out };
 }
 
+/** 用同一個 wasm clang 建預編譯標頭。回傳 { bytes, ms }。 */
+export async function buildPch(headerText, { std = "c++17", extraFiles = {} } = {}) {
+  let err = "";
+  const t0 = performance.now();
+  const drv = await makeClang({ printErr: (d) => { err += d + "\n"; } });
+  drv.FS.writeFile("pch_src.h", headerText);
+  drv.FS.mkdirTree("/lib/wasm32-wasi"); drv.FS.mkdirTree("/include/c++/v1");
+  drv.FS.writeFile("/lib/wasm32-wasi/crt1-command.o", new Uint8Array(0));
+  drv.FS.writeFile("/lib/wasm32-wasi/crt1-reactor.o", new Uint8Array(0));
+  drv.callMain(["-x", "c++-header", "pch_src.h", `-std=${std}`, "-fno-exceptions", "-o", "out.pch", "-###"]);
+  const args = err.split("\n").find((l) => l.includes("-cc1")).match(/"([^"]*)"/g).map((s) => s.slice(1, -1)).slice(1);
+  let e2 = "";
+  const c = await makeClang({ printErr: (d) => { e2 += d + "\n"; } });
+  c.FS.writeFile("pch_src.h", headerText); setUpSysroot(c, state.sysroot, extraFiles);
+  if (c.callMain(args) !== 0) throw new Error("PCH 建置失敗：" + e2.slice(0, 300));
+  return { bytes: c.FS.readFile(args[args.indexOf("-o") + 1], { encoding: "binary" }), ms: performance.now() - t0 };
+}
+
 /** 編譯＋連結。回傳 { ok, module, log, t: {invocation, clangLoad, compile, lldLoad, link} }。 */
 export async function compile({ source, fileName = "main.cpp", flags, extraFiles }) {
   const t = {};

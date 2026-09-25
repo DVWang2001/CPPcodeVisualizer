@@ -8,7 +8,7 @@ import { Buffer } from "./buf.js";
 //   * return X;：先停在 return 那行，算完 X 之後停在函式的 `}`。
 import { userDecls } from "./userast.js";
 
-export async function instrument(source, { funcs = null, std = "c++17" } = {}) {
+export async function instrument(source, { funcs = null, std = "c++17", astOpts = {} } = {}) {
   const buf = Buffer.from(source, "utf8");
   const lineStarts = [0];
   for (let i = 0; i < buf.length; i++) if (buf[i] === 10) lineStarts.push(i + 1);
@@ -134,7 +134,7 @@ export async function instrument(source, { funcs = null, std = "c++17" } = {}) {
   }
 
   const ctxAll = { uninit: [], funcs: {}, globals: [] };
-  const { globals, functions } = await userDecls(source, std);
+  const { globals, functions } = await userDecls(source, std, astOpts);
   ctxAll.globals = globals.map((g) => g.name);
   for (const decl of functions) {
     const fn = decl.name;

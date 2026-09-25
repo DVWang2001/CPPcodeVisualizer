@@ -1,6 +1,6 @@
 // 編譯管線 Worker：載入編譯器 → 插樁 → 編譯連結 → 在「執行 Worker」裡跑（可逾時終止）→ 解碼差量紀錄。
 // 跟正式版的分工一樣：主執行緒完全不做重活，永遠不會被編譯器或學生程式卡住。
-import { state, loadAll, compile } from "./driver.js";
+import { state, loadAll, compile, buildPch } from "./driver.js";
 import { instrument } from "./instrument.js";
 
 let vgH = null;
@@ -35,6 +35,22 @@ function decode(errText) {
   return { steps, other, limit };
 }
 
+// 預編譯標頭：依「使用者的 #include 組合 + 標準」各建一份並快取（同一份標頭第二次起不用再建）。
+const pchCache = new Map();
+async function getPch(source, std) {
+  const NL = "\n";
+  const incs = source.split(NL).filter((l) => /^\s*#\s*include\b/.test(l)).map((l) => l.trim());
+  const key = std + "|" + incs.join("|");
+  let hit = pchCache.get(key), built = 0;
+  if (!hit) {
+    const src = incs.join(NL) + NL + '#include "vg.h"' + NL;
+    const b = await buildPch(src, { std, extraFiles: { "include/vg.h": vgH } });
+    hit = { files: { "vg.pch": b.bytes, "pch_src.h": src, "include/vg.h": vgH }, mb: b.bytes.length / 1e6 };
+    pchCache.set(key, hit); built = b.ms;
+  }
+  return { ...hit, built, flags: ["-Xclang", "-include-pch", "-Xclang", "vg.pch", "-Xclang", "-fno-validate-pch"] };
+}
+
 function dedupe(steps) {
   const out = [];
   for (const s of steps) { const p = out[out.length - 1]; if (!p || p.line !== s.line || p.fn !== s.fn) out.push(s); }
@@ -54,10 +70,13 @@ self.onmessage = async (e) => {
       state.reuse = m.reuse ?? true;
       const T = {};
       let t0 = now();
-      const ins = m.instrumentOff ? { text: m.source, uninit: [] } : await instrument(m.source, { std: "c++17" });
+      const pch = m.pch ? await getPch(m.source, "c++17") : null;
+      T.pchBuild = pch ? pch.built : 0;
+      t0 = now();
+      const ins = m.instrumentOff ? { text: m.source, uninit: [] } : await instrument(m.source, { std: "c++17", astOpts: pch ? { extraFiles: pch.files, flags: pch.flags } : {} });
       T.instrument = now() - t0;
       t0 = now();
-      const c = await compile({ source: ins.text, flags: ["-std=c++17", "-fno-exceptions", "-include", "vg.h"], extraFiles: { "include/vg.h": vgH } });
+      const c = await compile({ source: ins.text, flags: ["-std=c++17", "-fno-exceptions", ...(pch ? pch.flags : ["-include", "vg.h"])], extraFiles: pch ? pch.files : { "include/vg.h": vgH } });
       T.compile = now() - t0;
       T.compileDetail = c.t;
       if (!c.ok) { post({ type: "result", ok: false, stage: c.stage, log: c.log.slice(0, 600), T }); return; }
