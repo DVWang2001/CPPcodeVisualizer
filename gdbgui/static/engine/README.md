@@ -286,3 +286,11 @@ small `self`/`postMessage` shim); `node tests/engine/node_driver.mjs prog.cpp [i
   scope (plan §6 L1).
 - Values: stack/queue/priority_queue and structs are `"<?>"`; pointers are `"<ptr>"`; type-string
   generation from `decls` is S4.
+
+## LocalGdb (M1 layer A)
+
+`localgdb/` turns a `runProgram` result into the GDB/MI conversation the gdbgui UI expects (socket.io-style
+`run_gdb_command` / `gdb_response`, breakpoints, run/next/step/finish/reverse, stack and variable objects, the
+`[fast @N]` jump), pure JS and testable in Node. It is not wired into the UI yet (layer B). API, command matrix,
+the closed list of allowed differences to real GDB and the golden-replay results are in
+[`localgdb/README.md`](localgdb/README.md); tests: `node --test --test-concurrency=1 tests/engine/localgdb`.
