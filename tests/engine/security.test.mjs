@@ -95,7 +95,7 @@ test("M2: a loop of new char[1<<30] aborts at the 512 MiB cap", async () => {
 int main() {
     long long total = 0;
     for (;;) {
-        char* p = new char[1 << ${shift}];
+        volatile char* p = new char[1 << ${shift}]; // volatile：-O1 會把「沒人讀的配置」整個刪掉，測試要真的佔用記憶體
         p[0] = 1;
         total += 1 << ${shift};
         std::cout << total << "\\n";

@@ -14,6 +14,8 @@
 //     return {errors:[{kind:"compile-timeout"}]} within 10 s;
 //   * execution wall clock (default 5 s, max 30 s): terminate the execution worker.
 
+import { sha256Hex } from "./sha256.js";
+
 export const VERSION = "s1-0.1.0";
 
 /** Defaults and hard bounds. Callers may lower budgets; raising is clamped to the max values. */
@@ -46,33 +48,79 @@ export function validateManifest(m) {
 }
 
 /**
- * Browser environment: assets via fetch+SRI, module workers from static URLs, IndexedDB PCH cache.
- * @param {{ baseUrl?: string | URL }} [o]
+ * Verified asset bytes in IndexedDB. Measured in Chrome (S2): the HTTP cache did not keep the 42.5 MB
+ * clang.wasm (larger entries are not stored) so it was re-downloaded on every visit; Cache Storage
+ * needs a secure context (production is plain http today) but IndexedDB does not.
+ * Key = name + sha256 from the manifest, so a new manifest can never be served old bytes.
+ */
+function createAssetStore(dbName = "vgdb-assets-v1") {
+  /** @type {Promise<IDBDatabase> | null} */
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open(dbName, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("bytes");
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+  return {
+    /** @param {string} key @returns {Promise<ArrayBuffer | null>} */
+    async get(key) {
+      try {
+        const db = await open();
+        return await new Promise((res) => { const q = db.transaction("bytes").objectStore("bytes").get(key); q.onsuccess = () => res(q.result instanceof ArrayBuffer ? q.result : null); q.onerror = () => res(null); });
+      } catch { return null; }
+    },
+    /** @param {string} key @param {ArrayBuffer} bytes */
+    async put(key, bytes) {
+      try {
+        const db = await open();
+        await new Promise((res, rej) => { const t = db.transaction("bytes", "readwrite"); t.objectStore("bytes").put(bytes, key); t.oncomplete = () => res(undefined); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
+      } catch { /* quota or private mode: run without the cache */ }
+    },
+    /** @param {string} key */
+    async delete(key) { try { const db = await open(); db.transaction("bytes", "readwrite").objectStore("bytes").delete(key); } catch { /* ignore */ } },
+  };
+}
+
+/**
+ * Browser environment: assets via fetch+SRI (bytes cached in IndexedDB), module workers from static URLs,
+ * IndexedDB PCH cache.
+ * @param {{ baseUrl?: string | URL, assetStore?: any }} [o]
  */
 export function browserEnv(o = {}) {
   const base = new URL(String(o.baseUrl || new URL("./", import.meta.url)));
+  const store = o.assetStore || (typeof indexedDB !== "undefined" ? createAssetStore() : null);
   return {
     pchStore: "indexeddb",
     async loadAssets() {
+      try { if (typeof navigator !== "undefined" && navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch { /* best effort */ }
       const res = await fetch(new URL("assets/manifest.json", base), { cache: "no-cache", credentials: "same-origin" });
       if (!res.ok) throw new Error("manifest: HTTP " + res.status);
       const manifest = validateManifest(await res.json());
-      /** @param {string} name */
-      const get = async (name) => {
-        const r = await fetch(new URL("assets/" + name, base), { integrity: manifest.files[name].integrity, credentials: "same-origin" });
+      /** @type {Record<string, "cache" | "network">} */
+      const sources = {};
+      /** @param {string} name @returns {Promise<ArrayBuffer>} */
+      const bytesOf = async (name) => {
+        const f = manifest.files[name];
+        const key = name + "|" + f.sha256;
+        const hit = store ? await store.get(key) : null;
+        if (hit && hit.byteLength === f.size) {
+          // Re-verify when SubtleCrypto exists (secure contexts). Without it (plain http) the JS fallback would
+          // take seconds for 42 MB, so only the size is checked; WebAssembly.compile still validates the module.
+          if (typeof crypto === "undefined" || !crypto.subtle || (await sha256Hex(hit)) === f.sha256) { sources[name] = "cache"; return hit; }
+          if (store) await store.delete(key);
+        }
+        const r = await fetch(new URL("assets/" + name, base), { integrity: f.integrity, credentials: "same-origin" }); // rejects on SRI mismatch: fail closed
         if (!r.ok) throw new Error(name + ": HTTP " + r.status);
-        return r;
+        const bytes = await r.arrayBuffer();
+        if (store) await store.put(key, bytes);
+        sources[name] = "network";
+        return bytes;
       };
       /** @param {string} name */
-      const wasm = async (name) => {
-        const r = await get(name);
-        try { return await WebAssembly.compileStreaming(r.clone()); }
-        catch { return WebAssembly.compile(await r.arrayBuffer()); } // wrong MIME type on some servers
-      };
-      const [clangModule, lldModule, sysroot, headers] = await Promise.all([
-        wasm("clang.wasm"), wasm("lld.wasm"), get("sysroot.tar").then((r) => r.arrayBuffer()), get("headers.tar").then((r) => r.arrayBuffer()),
-      ]);
-      return { clangModule, lldModule, sysroot, headers, hashes: { clang: manifest.files["clang.wasm"].sha256, sysroot: manifest.files["sysroot.tar"].sha256, headers: manifest.files["headers.tar"].sha256 } };
+      const wasm = async (name) => WebAssembly.compile(await bytesOf(name));
+      const [clangModule, lldModule, sysroot, headers] = await Promise.all([wasm("clang.wasm"), wasm("lld.wasm"), bytesOf("sysroot.tar"), bytesOf("headers.tar")]);
+      return { clangModule, lldModule, sysroot, headers, sources, hashes: { clang: manifest.files["clang.wasm"].sha256, sysroot: manifest.files["sysroot.tar"].sha256, headers: manifest.files["headers.tar"].sha256 } };
     },
     /** @param {"pipeline" | "exec"} kind */
     createWorker(kind) {
@@ -96,13 +144,15 @@ export function normalizeRequest(source, stdin, opts) {
   if (src.length > LIMITS.maxSourceBytes) throw new RangeError(`source larger than ${LIMITS.maxSourceBytes} bytes`);
   if (inp.length > LIMITS.maxStdinBytes) throw new RangeError(`stdin larger than ${LIMITS.maxStdinBytes} bytes`);
   const o = opts && typeof opts === "object" ? opts : {};
-  const allowed = new Set(["std", "instrument", "pch", "compileTimeoutMs", "execTimeoutMs", "returnWasm"]);
+  const allowed = new Set(["std", "instrument", "pch", "opt", "compileTimeoutMs", "execTimeoutMs", "returnWasm"]);
   for (const k of Object.keys(o)) if (!allowed.has(k)) throw new TypeError("unknown option " + k);
   const std = o.std === undefined ? "c++17" : o.std;
   if (!["c++17", "c++20", "c++23"].includes(std)) throw new RangeError("std must be c++17, c++20 or c++23");
+  const opt = o.opt === undefined ? "O1" : o.opt;
+  if (!["O0", "O1", "O2"].includes(opt)) throw new RangeError("opt must be O0, O1 or O2");
   return {
     source, stdin: inp,
-    opts: { std, instrument: o.instrument !== false, pch: o.pch !== false, returnWasm: o.returnWasm === true },
+    opts: { std, opt, instrument: o.instrument !== false, pch: o.pch !== false, returnWasm: o.returnWasm === true },
     compileTimeoutMs: clampMs(o.compileTimeoutMs, LIMITS.compileTimeoutMs, LIMITS.maxCompileTimeoutMs),
     execTimeoutMs: clampMs(o.execTimeoutMs, LIMITS.execTimeoutMs, LIMITS.maxExecTimeoutMs),
   };

@@ -47,14 +47,14 @@ export function pchIncludes(source) {
 }
 
 /** @param {string} std @param {string[]} includes @param {(s: string) => void} stage */
-async function getPch(std, includes, stage) {
-  const key = await pchKey({ std, includes, vgSha256: hashes.vg, headersSha256: hashes.headers, clangSha256: hashes.clang, sysrootSha256: hashes.sysroot });
+async function getPch(std, includes, stage, opt = "O1") {
+  const key = await pchKey({ std: std + "|" + opt, includes, vgSha256: hashes.vg, headersSha256: hashes.headers, clangSha256: hashes.clang, sysrootSha256: hashes.sysroot });
   const src = "#include <vg.h>\n" + includes.map((i) => `#include <${i}>\n`).join("");
   let bytes = hotPch.get(key), from = "memory";
   if (!bytes && pchCache) { const b = await pchCache.get(key); if (b) { bytes = b; from = "cache"; } }
   if (!bytes) {
     stage("pch");
-    bytes = await /** @type {Driver} */ (driver).buildPch(src, [`-std=${std}`, "-fno-exceptions", "-O0"]);
+    bytes = await /** @type {Driver} */ (driver).buildPch(src, [`-std=${std}`, "-fno-exceptions", "-" + opt]);
     from = "built";
     if (pchCache) await pchCache.put(key, bytes);
   }
@@ -65,14 +65,15 @@ async function getPch(std, includes, stage) {
 
 /**
  * @param {string} source
- * @param {{ std?: string, instrument?: boolean, pch?: boolean, returnWasm?: boolean }} opts
+ * @param {{ std?: string, opt?: string, instrument?: boolean, pch?: boolean, returnWasm?: boolean }} opts
  * @param {(s: string) => void} stage
  */
 async function compileProgram(source, opts, stage) {
   const d = /** @type {Driver} */ (driver);
   const std = opts.std || "c++17";
   if (!STD_ALLOWED.includes(std)) return { ok: false, errors: [{ kind: "bad-request", message: "unsupported -std " + std }] };
-  const base = [`-std=${std}`, "-fno-exceptions", "-O0"];
+  const opt = opts.opt || "O1";
+  const base = [`-std=${std}`, "-fno-exceptions", "-" + opt];
   /** @type {Record<string, number>} */
   const T = {};
   let t0 = now();
@@ -81,7 +82,7 @@ async function compileProgram(source, opts, stage) {
   if (doInstrument && opts.pch !== false) {
     const incs = pchIncludes(source);
     if (incs) {
-      try { pch = await getPch(std, incs, stage); } catch { pch = null; /* e.g. unknown header: fall back */ }
+      try { pch = await getPch(std, incs, stage, opt); } catch { pch = null; /* e.g. unknown header: fall back */ }
     }
   }
   T.pch = now() - t0;

@@ -9,7 +9,7 @@ export async function runDifferential(engine) {
     let row;
     try {
       const { source, stdin, ref } = loadProgram(p);
-      const r = await engine.runProgram(source, stdin);
+      const r = await engine.runProgram(source, stdin, process.env.VG_OPT ? { opt: process.env.VG_OPT } : undefined); // VG_OPT=O1|O2：檢查最佳化等級不改變軌跡（S2）
       if (!r.ok) row = { name: p.name, state: "not tested", reason: JSON.stringify(r.errors).slice(0, 300) };
       else row = { name: p.name, stdout: r.stdout, ...compareTraces(r.steps, ref, { mode: p.mode, functions: r.functions }) };
     } catch (e) {

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><title>S2 遞迴深度</title></head>
+<body><pre id="out">running…</pre>
+<script type="module">
+// 二分搜尋：瀏覽器 Worker 內，各種（插樁／最佳化等級）組合能遞迴多深而不 stack-overflow。
+// volatile 寫入避免編譯器把線性遞迴改成迴圈（尾遞迴消除）而掩蓋堆疊使用量。
+const NL = String.fromCharCode(10);
+const { loadEngine } = await import("/static/engine/index.js");
+const engine = await loadEngine();
+const rec = "#include <iostream>" + NL + "volatile int sink;" + NL + "int f(int n) { if (n == 0) return 0; int r = f(n - 1); sink = n; return r + 1; }" + NL + "int main() { int n; std::cin >> n; std::cout << f(n) << std::endl; return 0; }" + NL;
+const R = { kind: "recdepth", ua: navigator.userAgent.slice(0, 90), visibility: document.visibilityState, cases: {} };
+async function ok(n, inst, opt) { const r = await engine.runProgram(rec, n + NL, { instrument: inst, opt, execTimeoutMs: 20000 }); return r.exit && r.exit.reason === "exit" && (r.stdout || "").trim() === String(n); }
+for (const [inst, opt] of [[false, "O0"], [false, "O2"], [true, "O0"], [true, "O1"], [true, "O2"]]) {
+  const name = (inst ? "instrumented " : "plain ") + opt;
+  let lo = 1, hi = 200000;
+  try {
+    if (!(await ok(lo, inst, opt))) { R.cases[name] = "fails at depth 1"; continue; }
+    if (await ok(hi, inst, opt)) { R.cases[name] = ">= " + hi; continue; }
+    while (hi - lo > Math.max(8, lo * 0.01)) { const mid = Math.floor((lo + hi) / 2); if (await ok(mid, inst, opt)) lo = mid; else hi = mid; }
+    R.cases[name] = { maxOkDepth: lo, firstFail: hi };
+  } catch (e) { R.cases[name] = "error: " + String(e && e.message || e).slice(0, 120); }
+}
+document.getElementById("out").textContent = JSON.stringify(R, null, 1);
+await fetch("/save", { method: "POST", body: JSON.stringify(R) });
+</script></body></html>

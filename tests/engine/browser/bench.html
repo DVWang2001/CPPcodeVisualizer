@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><title>S2 引擎瀏覽器實測</title>
+<style>body{font:14px/1.5 system-ui,sans-serif;margin:20px auto;max-width:900px;padding:0 12px}pre{background:#f4f4f4;padding:10px;white-space:pre-wrap}</style></head>
+<body>
+<h1>S2：引擎瀏覽器實測</h1>
+<p>?auto=1 自動執行並把結果 POST 到 /save；?tamper=1 只驗證竄改資產時載入必須失敗。</p>
+<pre id="status">尚未開始</pre><pre id="out"></pre>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const log = (s) => { $("status").textContent += "\n" + s; };
+const q = new URLSearchParams(location.search);
+const NL = String.fromCharCode(10);
+const r0 = (x) => Math.round(x);
+const post = (o) => fetch("/save", { method: "POST", body: JSON.stringify(o) }).catch(() => {});
+
+let lastTick = performance.now(), maxLag = 0, lagOver100 = 0, ticks = 0;
+setInterval(() => { const n = performance.now(); const l = n - lastTick - 50; maxLag = Math.max(maxLag, l); if (l > 100) lagOver100++; ticks++; lastTick = n; }, 50);
+
+const visits = JSON.parse(localStorage.getItem("s2visits") || "[]");
+const R = { visit: visits.length + 1, mode: q.get("tamper") ? "tamper" : "normal", ua: navigator.userAgent.slice(0, 90), cores: navigator.hardwareConcurrency, deviceMemoryGB: navigator.deviceMemory, crossOriginIsolated, secureContext: window.isSecureContext, visibility: document.visibilityState };
+
+async function main() {
+  const { loadEngine } = await import("/static/engine/index.js");
+
+  if (q.get("tamper")) {           // 竄改測試：資產被翻轉一個位元 → 必須拒絕載入
+    try { await loadEngine(); R.tamper = { loaded: true, note: "REFUTED：竄改的資產居然載入成功" }; }
+    catch (e) { R.tamper = { loaded: false, error: String(e && e.message || e).slice(0, 200) }; }
+    return;
+  }
+
+  // 1. 載入（下載＋驗證＋編譯 wasm）
+  log("1. loadEngine…");
+  let t0 = performance.now();
+  const engine = await loadEngine();
+  R.load = { ms: r0(performance.now() - t0) };
+  R.assets = performance.getEntriesByType("resource").filter((x) => /assets\//.test(x.name)).map((x) => ({ name: x.name.split("/").pop(), transfer: x.transferSize, decoded: x.decodedBodySize, ms: r0(x.duration) }));
+
+  // 2. 技巧一 ×4（第 1 次含 PCH 建置或從 IndexedDB 還原）
+  log("2. 技巧一 ×4…");
+  const src = await (await fetch("/data/tsp.cpp")).text();
+  const inp = await (await fetch("/data/tsp.in")).text();
+  R.tsp = [];
+  for (let i = 0; i < 4; i++) {
+    t0 = performance.now();
+    const r = await engine.runProgram(src, inp);
+    R.tsp.push({ wallMs: r0(performance.now() - t0), ok: r.ok, steps: r.steps.length, pchFrom: r.pchFrom, exit: r.exit && r.exit.reason, stdout: (r.stdout || "").slice(0, 20), timings: Object.fromEntries(Object.entries(r.timings || {}).map(([k, v]) => [k, typeof v === "number" ? r0(v) : v])) });
+  }
+
+  // 3. Worker 內遞迴深度（瀏覽器實測 Worker 的呼叫堆疊；Node 約 1.3 萬層）
+  log("3. 遞迴深度…");
+  const rec = "#include <iostream>" + NL + "int f(int n) { if (n == 0) return 0; return 1 + f(n - 1); }" + NL + "int main() { int n; std::cin >> n; std::cout << f(n) << std::endl; return 0; }" + NL;
+  R.recursion = {};
+  for (const inst of [true, false]) {
+    const row = {};
+    for (const n of [1000, 5000, 10000, 20000, 50000, 100000]) {
+      const r = await engine.runProgram(rec, n + NL, { instrument: inst, execTimeoutMs: 15000 });
+      row[n] = r.exit ? r.exit.reason + (r.exit.reason === "exit" ? ":" + (r.stdout || "").trim() : "") : "?";
+    }
+    R.recursion[inst ? "instrumented" : "plain"] = row;
+  }
+
+  // 4. 失控程式與輸出炸彈（瀏覽器內的看門狗）
+  log("4. 逾時與上限…");
+  t0 = performance.now();
+  const inf = await engine.runProgram("int main() { for (;;) {} return 0; }", "", { instrument: false, execTimeoutMs: 1500 });
+  R.watchdog = { reason: inf.exit && inf.exit.reason, wallMs: r0(performance.now() - t0) };
+  const flood = await engine.runProgram("#include <iostream>" + NL + "int main() { for (;;) std::cout << std::string(1000, 'x'); }", "", { instrument: false });
+  R.outputLimit = { reason: flood.exit && flood.exit.reason, stdoutBytes: (flood.stdout || "").length };
+  const mem = await engine.runProgram("#include <cstdlib>" + NL + "int main() { for (;;) { char* p = new char[1 << 26]; p[0] = 1; } }", "", { instrument: false });
+  R.memory = { reason: mem.exit && mem.exit.reason, trap: mem.exit && mem.exit.trap };
+  t0 = performance.now();
+  const bomb = await engine.runProgram("template<int N> struct T { static constexpr int v = T<N-1>::v + T<N-2>::v; };" + NL + "template<> struct T<1> { static constexpr int v = 1; };" + NL + "template<> struct T<0> { static constexpr int v = 0; };" + NL + "int main() { return T<400>::v; }" + NL, "", { instrument: false });
+  R.compileBomb = { errors: (bomb.errors || []).map((e) => e.kind), wallMs: r0(performance.now() - t0) };
+  const again = await engine.runProgram(src, inp);   // 炸彈之後管線 Worker 應已重生，下一個程式正常
+  R.afterBomb = { ok: again.ok, steps: again.steps.length };
+
+  // 5. Worker 內的網路／載入碼探測（CSP 標頭的實際效果；control 是不帶 CSP 的對照組）
+  log("5. CSP 探測…");
+  const origin = location.origin, other = origin.includes("127.0.0.1") ? origin.replace("127.0.0.1", "localhost") : origin.replace("localhost", "127.0.0.1");
+  const ws = "ws://" + location.host + "/ws";
+  R.csp = {};
+  for (const kind of ["control", "pipeline", "exec"]) {
+    R.csp[kind] = await new Promise((res) => { const w = new Worker("/browser/probe-" + kind + ".worker.js", { type: "module" }); const t = setTimeout(() => { w.terminate(); res("probe timeout"); }, 15000); w.onmessage = (e) => { clearTimeout(t); w.terminate(); res(e.data); }; w.onerror = (e) => { clearTimeout(t); w.terminate(); res("worker error: " + e.message); }; w.postMessage([origin, other, ws]); });
+  }
+
+  R.mainThreadLag = { maxMs: r0(maxLag), over100ms: lagOver100, ticks };
+}
+
+try { await main(); } catch (e) { R.error = String(e && e.stack || e).slice(0, 600); }
+R.done = true;
+visits.push({ visit: R.visit, mode: R.mode });
+if (!q.get("tamper")) localStorage.setItem("s2visits", JSON.stringify(visits));
+window.__s2 = R;
+$("out").textContent = JSON.stringify(R, null, 1);
+if (q.get("auto")) {
+  await post(R);
+  if (!q.get("tamper") && R.visit < 2) setTimeout(() => location.reload(), 1500);
+}
+</script></body></html>
