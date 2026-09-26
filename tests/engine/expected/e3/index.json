@@ -1,0 +1,160 @@
+{
+  "generator": "g++ -std=c++17 -O0 (native, uninstrumented)",
+  "compiler": "g++ (x86_64-posix-seh, Built by strawberryperl.com project) 8.3.0",
+  "cases": [
+    {
+      "id": "01",
+      "name": "技巧一 5x4",
+      "file": "examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp",
+      "exit": 0,
+      "stdoutBytes": 11
+    },
+    {
+      "id": "02",
+      "name": "技巧一 10x10",
+      "file": "examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp",
+      "exit": 0,
+      "stdoutBytes": 23
+    },
+    {
+      "id": "03",
+      "name": "技巧一 20x20",
+      "file": "examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp",
+      "exit": 0,
+      "stdoutBytes": 63
+    },
+    {
+      "id": "04",
+      "name": "技巧二 3x3",
+      "file": "examples/lessons/技巧二_記憶化搜尋_UVA10285/longest_run.cpp",
+      "exit": 0,
+      "stdoutBytes": 2
+    },
+    {
+      "id": "05",
+      "name": "技巧二 8x8",
+      "file": "examples/lessons/技巧二_記憶化搜尋_UVA10285/longest_run.cpp",
+      "exit": 0,
+      "stdoutBytes": 2
+    },
+    {
+      "id": "06",
+      "name": "技巧二 12x12",
+      "file": "examples/lessons/技巧二_記憶化搜尋_UVA10285/longest_run.cpp",
+      "exit": 0,
+      "stdoutBytes": 2
+    },
+    {
+      "id": "07",
+      "name": "走方格AtCoder 3x4",
+      "file": "examples/lessons/走方格_AtCoder_Grid1/grid_paths.cpp",
+      "exit": 0,
+      "stdoutBytes": 2
+    },
+    {
+      "id": "08",
+      "name": "走方格AtCoder 8x8",
+      "file": "examples/lessons/走方格_AtCoder_Grid1/grid_paths.cpp",
+      "exit": 0,
+      "stdoutBytes": 3
+    },
+    {
+      "id": "09",
+      "name": "DP課1_一維陣列與索引",
+      "file": "examples/lessons/DP課1_一維陣列與索引/dp1_row.cpp",
+      "exit": 0,
+      "stdoutBytes": 3
+    },
+    {
+      "id": "10",
+      "name": "DP課2_雙層迴圈填表",
+      "file": "examples/lessons/DP課2_雙層迴圈填表/dp2_grid.cpp",
+      "exit": 0,
+      "stdoutBytes": 3
+    },
+    {
+      "id": "11",
+      "name": "DP課3_背包填表",
+      "file": "examples/lessons/DP課3_背包填表/dp3_knapsack.cpp",
+      "exit": 0,
+      "stdoutBytes": 17
+    },
+    {
+      "id": "12",
+      "name": "DP課4_同一題改用遞迴",
+      "file": "examples/lessons/DP課4_同一題改用遞迴/dp4_recursion.cpp",
+      "exit": 0,
+      "stdoutBytes": 17
+    },
+    {
+      "id": "13",
+      "name": "DP課5_記憶化剪掉重複",
+      "file": "examples/lessons/DP課5_記憶化剪掉重複/dp5_memo.cpp",
+      "exit": 0,
+      "stdoutBytes": 17
+    },
+    {
+      "id": "14",
+      "name": "圖論_Dijkstra最短路徑",
+      "file": "examples/lessons/圖論_Dijkstra最短路徑/dijkstra.cpp",
+      "exit": 0,
+      "stdoutBytes": 45
+    },
+    {
+      "id": "15",
+      "name": "stack經典_Rails",
+      "file": "examples/lessons/stack經典_Rails/UVA514.cpp",
+      "exit": 0,
+      "stdoutBytes": 13
+    },
+    {
+      "id": "16",
+      "name": "deque經典_BrokenKeyb",
+      "file": "examples/lessons/deque經典_BrokenKeyboard/a.cpp",
+      "exit": 0,
+      "stdoutBytes": 60
+    },
+    {
+      "id": "17",
+      "name": "string經典_迴文判斷",
+      "file": "examples/lessons/string經典_迴文判斷/palindrome.cpp",
+      "exit": 0,
+      "stdoutBytes": 11
+    },
+    {
+      "id": "18",
+      "name": "vector經典_排序",
+      "file": "examples/lessons/vector經典_排序/bubble_sort.cpp",
+      "exit": 0,
+      "stdoutBytes": 19
+    },
+    {
+      "id": "19",
+      "name": "vector經典_矩陣轉置",
+      "file": "examples/lessons/vector經典_矩陣轉置/matrix_transpose.cpp",
+      "exit": 0,
+      "stdoutBytes": 0
+    },
+    {
+      "id": "20",
+      "name": "vector經典_快速排序",
+      "file": "examples/lessons/vector經典_快速排序/quick_sort.cpp",
+      "exit": 0,
+      "stdoutBytes": 14
+    },
+    {
+      "id": "21",
+      "name": "list經典_串列走訪",
+      "file": "examples/lessons/list經典_串列走訪/list_walkthrough.cpp",
+      "exit": 0,
+      "stdoutBytes": 15
+    },
+    {
+      "id": "22",
+      "name": "函式_SWAP寫法",
+      "file": "examples/lessons/函式_SWAP寫法/函式_SWAP寫法_傳址.cpp",
+      "exit": 0,
+      "stdoutBytes": 0
+    }
+  ]
+}

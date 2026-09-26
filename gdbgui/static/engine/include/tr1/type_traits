@@ -1,0 +1,8 @@
+// libc++ 沒有 <tr1/...>：pb_ds 只用到下面這幾個，直接指向 C++11 的標準版本。
+#pragma once
+#include <type_traits>
+namespace std { namespace tr1 {
+  using std::integral_constant; using std::is_base_of; using std::is_const; using std::is_fundamental;
+  using std::is_member_object_pointer; using std::is_member_pointer; using std::is_pointer;
+  using std::is_reference; using std::is_same; using std::remove_const; using std::remove_reference;
+} }

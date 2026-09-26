@@ -35,6 +35,7 @@ __pycache__
 gdbgui/server/uploads/
 generate_pptx.py
 .claude/settings.local.json
+.local-data/
 e2e/test-results/
 e2e/playwright-report/
 docs/superpowers/
@@ -45,6 +46,17 @@ test_pty.py
 
 # 截圖產物，不進版控
 shots/
+
+# 瀏覽器端引擎（S1）：依賴與 94 MB 的編譯器資產不進版控，由 npm ci + build-assets 重建。
+# 但 package.json／lockfile（固定精確版本）與測試案例必須進版控，所以把上面的 *.json／*.cpp／*.in／*.txt 放行。
+gdbgui/static/engine/node_modules/
+gdbgui/static/engine/assets/
+!gdbgui/static/engine/package.json
+!gdbgui/static/engine/package-lock.json
+!tests/engine/**/*.cpp
+!tests/engine/**/*.in
+!tests/engine/**/*.txt
+!tests/engine/**/*.json
 
 # 部署用的環境變數：AI 服務金鑰與對外網址。repo 是 public，這個檔進版控就是把
 # 金鑰公開。每台機器自己有一份，內容不共用。

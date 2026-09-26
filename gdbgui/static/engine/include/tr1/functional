@@ -1,0 +1,3 @@
+#pragma once
+#include <functional>
+namespace std { namespace tr1 { using std::hash; } }

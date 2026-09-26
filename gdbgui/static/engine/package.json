@@ -1,0 +1,15 @@
+{
+  "name": "vgdb-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "vgdb in-browser C++ engine (S1): instrument + compile (browsercc clang/lld wasm) + run in a Web Worker, with a validated trace channel.",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "build-assets": "node scripts/build-assets.mjs"
+  },
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "0.4.2",
+    "browsercc": "0.1.1"
+  }
+}

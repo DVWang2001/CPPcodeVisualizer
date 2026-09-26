@@ -1,0 +1,19 @@
+Third-party headers in gdbgui/static/engine/include/
+
+1. GCC libstdc++ policy-based data structures and helpers
+   Files: ext/pb_ds/** (243 files), ext/typelist.h, ext/type_traits.h, ext/numeric_traits.h,
+          bits/cpp_type_traits.h, bits/version.h
+   Source: https://github.com/gcc-mirror/gcc, libstdc++-v3/include/, commit
+           ee5bf81d7816b0b6c54788f195295ba448cda49e (2026-09-25), copied unmodified
+           (same files the E1 experiment validated; see experiments/frontend-only/e1/REPORT.md, E1c).
+   License: GNU GPL v3 with the GCC Runtime Library Exception 3.1 (COPYING3, COPYING.RUNTIME in
+            this directory). The original license headers are kept in every file.
+
+2. vgdb's own compatibility layer (part of this repository, GPL-3.0-or-later like gdbgui):
+   bits/stdc++.h, bits/extc++.h, bits/c++config.h, debug/debug.h, tr1/functional, tr1/type_traits,
+   vgcompat.h (from experiments/frontend-only/e1/mine, plus vgcompat.h added in S1).
+
+The wasm toolchain (clang/lld/sysroot, LLVM Apache-2.0 with LLVM exception; wasi-libc MIT/BSD;
+browsercc MIT) is not stored in the repository: it is installed by `npm ci` and copied into the
+git-ignored assets/ directory by scripts/build-assets.mjs. Only browsercc's emscripten JS glue is
+vendored in vendor/browsercc/ together with its MIT LICENSE.
