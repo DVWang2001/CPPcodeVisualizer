@@ -43,6 +43,20 @@ export class TraceModel {
     /** @type {Map<number, number[]>} step indexes per frame (ascending) */
     this.frameSteps = new Map();
     this.steps.forEach((s, i) => { const a = this.frameSteps.get(s.frame); if (a) a.push(i); else this.frameSteps.set(s.frame, [i]); });
+    /** previous step of the same frame (-1 for the first) and, for each frame, its ordinal among the callees of the same caller step */
+    this.prevInFrame = new Int32Array(this.steps.length).fill(-1);
+    this.calleeOrd = new Map();
+    const lastOf = new Map(), calls = new Map();
+    this.steps.forEach((s, i) => {
+      if (lastOf.has(s.frame)) this.prevInFrame[i] = lastOf.get(s.frame);
+      else {
+        const f = /** @type {any} */ (this.frames.get(s.frame));
+        this.calleeOrd.set(s.frame, f.callerStep >= 0 ? calls.get(f.callerStep) || 0 : 0);
+        if (f.callerStep >= 0) calls.set(f.callerStep, (calls.get(f.callerStep) || 0) + 1);
+      }
+      lastOf.set(s.frame, i);
+    });
+    /** @type {Map<number, number>} */ this.addrCache = new Map();
     this.typeCache = new Map();
     // lines that hold code (GDB can place a breakpoint there)
     this.codeLines = [...new Set(this.steps.map((s) => s.line))].sort((a, b) => a - b);
@@ -146,10 +160,51 @@ export class TraceModel {
     return `${fn}(${ps.join(", ")})`;
   }
 
-  /** Deterministic pseudo address of a source position (only equality matters to the UI). @param {string} fn @param {number} line @param {boolean} [returnAddr] */
-  addr(fn, line, returnAddr = false) {
+  // ---- pseudo addresses ------------------------------------------------------------------------------
+  // What the UI relies on (audit of gdbgui/src/js):
+  //  * forHeader.ts decideForSegment (via Actions.ts recompute_for_sub_step): on a stop at a `for` line the segment is
+  //    "A" (init) iff frame.addr == the smallest addr seen so far for that line, else "C" (increment) -> the loop-entry
+  //    (init) address of a for-line must be LOWER than its increment address, both fixed per for-line (g++ -O0 layout).
+  //  * callTree.ts ingestStack: the call-site identity of a caller frame is its frame.addr (return address): stable for
+  //    one call site (same on every loop iteration), different for two calls on the same source line.
+  //  * Threads.tsx: frame.addr equality picks the selected frame; breakpoints/frames of one line share the line's address.
+  // Layout (golden: 0x40147d init < 0x401486 body < 0x4014ec increment on `for` line 33, likewise 41):
+  //   lineAddr = 0x401000 + fnIndex*0x100000 + line*0x100          (monotonic in source order, functions in declaration order)
+  //   increment stop of a `for` line = lineAddr(loop end line) + 0xC0 - nesting*0x10 (above the whole body, inner loops below outer)
+  //   return address of a call made at step c = stepAddr(c) + 5 + 8*k   (k = index of the call among the calls made from that step)
+
+  /** First address of a source line (breakpoints, init stops). @param {string} fn @param {number} line */
+  lineAddr(fn, line) {
     const i = Math.max(0, this.fnNames.indexOf(fn));
-    return 0x401000 + i * 0x4000 + line * 0x10 + (returnAddr ? 5 : 0);
+    return 0x401000 + i * 0x100000 + line * 0x100;
+  }
+
+  /** Is step `idx` on a `for` line the loop-entry (init) or the increment stop? null when the line is no `for` header. @param {number} idx @returns {{ seg: "init" | "incr", end: number, depth: number } | null} */
+  forSegment(idx) {
+    const s = this.steps[idx];
+    const sc = this.scopes.get(s.fn);
+    const b = sc && sc.blocks.find((x) => x.kind === "for" && x.start === s.line);
+    if (!b) return null;
+    const p = this.prevInFrame[idx];
+    const pl = p >= 0 ? this.steps[p].line : -1;
+    return { seg: pl > b.start && pl <= b.end ? "incr" : "init", end: b.end, depth: b.depth };
+  }
+
+  /** Address of the stop at step `idx` (start of a line, or of the increment code of a `for` line). @param {number} idx */
+  stepAddr(idx) {
+    let a = this.addrCache.get(idx);
+    if (a === undefined) {
+      const s = this.steps[idx];
+      const fs = this.forSegment(idx);
+      a = fs && fs.seg === "incr" ? this.lineAddr(s.fn, fs.end) + 0xc0 - Math.min(fs.depth, 8) * 0x10 : this.lineAddr(s.fn, s.line);
+      this.addrCache.set(idx, a);
+    }
+    return a;
+  }
+
+  /** Return address of the call that created frame `calleeFrameId`, seen from the caller's step `callerStepIdx`. @param {number} callerStepIdx @param {number} calleeFrameId */
+  retAddr(callerStepIdx, calleeFrameId) {
+    return this.stepAddr(callerStepIdx) + 5 + 8 * (this.calleeOrd.get(calleeFrameId) || 0);
   }
 
   /** Pseudo stack address of a variable in a frame. @param {number} frameId @param {string} name */

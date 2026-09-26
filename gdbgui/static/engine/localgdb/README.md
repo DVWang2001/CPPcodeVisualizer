@@ -93,7 +93,8 @@ the golden sample (a numeric token stays in the raw text: `"4^done\r"`).
 | `python exec("...@@FF@@...")` | supported | only the `[fast @N]` jump script of `fastForwardJump.ts`; any other `python` -> explicit error |
 | `-data-list-register-*`, `-data-read-memory*`, `-data-disassemble`, `-target-*`, `-break-watch`, `-catch-*`, `-var-assign`, `-var-set-*` ... | explicit error `... is not supported by the browser engine` | never fake data |
 | unknown MI command | `^error,msg="Undefined MI command: NAME",code="undefined-command"` | |
-| other CLI commands (`backtrace`, `kill`, ...) | explicit error | |
+| `kill` (also `-interpreter-exec console "kill"`) | supported | live inferior: console `[Inferior 1 (process N) killed]`, `=thread-exited`, `=thread-group-exited`, `^done`; afterwards the "no process" state (`-exec-*` -> `The program is not being run.`, `-thread-info` -> `{threads:[]}`) and `-exec-run` starts again. No process: `The program is not being run.` (GDB's own text). Not in the golden sample; shape from GDB knowledge |
+| other CLI commands (`backtrace`, ...) | explicit error | |
 
 Before `-exec-run` / after the program ended: exec commands -> `The program is not being run.`;
 `-thread-info` -> `{threads:[]}`; `-stack-list-frames` -> `No stack.`; `-stack-list-variables` ->
@@ -200,6 +201,25 @@ Explicit MI errors (never fake data), all `type:"result", message:"error", paylo
 | unknown name | `No symbol "NAME" in current context.` |
 | unknown varobj | `Variable object not found` |
 | no program / no frame | `No frame selected.` |
+
+## Pseudo addresses (what the UI derives behaviour from)
+
+`frame.addr` / `bkpt.addr` are not compared against GDB (allow rule `addr`), but the UI uses their ORDER and EQUALITY:
+- `forHeader.ts` `decideForSegment` (called from `Actions.ts` `recompute_for_sub_step`): on a stop at a `for` line, segment "A" (init) iff
+  `addr` equals the smallest addr seen so far for that line, else "C" (increment). Needs init addr < increment addr, both fixed per for-line.
+- `callTree.ts` `ingestStack`: a caller frame's `addr` is the call-site identity (`normalizeAddr`): stable per call site, different for two
+  calls on the same line. The FF blob's short hex (`0x4014ec`) is normalised by the UI.
+- `Threads.tsx`: `frame.addr` equality selects the current frame. (`Breakpoints.tsx` only tests `addr === "(MULTIPLE)"`; the
+  disassembly/memory panels are hidden.)
+
+Layout (golden: line 33 has 0x40147d init < 0x401486 body < 0x4014ec increment; line 41 likewise): `lineAddr = 0x401000 + fnIndex*0x100000 +
+line*0x100` (monotonic in source order, functions in declaration order, format `0x` + 16 hex digits); the stop after the body of a `for`
+line (previous stop of the frame inside the loop) has the increment address `lineAddr(loop end line) + 0xC0 - nesting*0x10` (above the whole
+body, inner loops below outer); breakpoint addr = `lineAddr` (the init address); the return address of a call made at step c is
+`stepAddr(c) + 5 + 8*k` with k = index of the call among the calls made from that step (stable across iterations, distinct for `f(g(x))`);
+frame 0 after `finish` reports the return address. Derived host-side from the trace order and the scope analysis; no engine change.
+`tests/engine/localgdb/addresses.test.mjs` runs the UI's `decideForSegment` (literal copy) over the golden stops and ours and requires the
+same A/C classification for every tsp `for` stop.
 
 ## Scope analysis (why `scopes.js` exists)
 

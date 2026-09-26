@@ -12,6 +12,7 @@ import { parseForHeader, decideForSegment } from "./forHeader";
 import { decideFastState, getFastForward, disarmFastForward } from "./fastForward";
 import { lessonQuizRuntime } from "./lessonQuizRuntime";
 import { clearStepWatchdog } from "./stepWatchdog";
+import localEngine from "./localEngine";
 void React; // using jsx implicity uses React
 
 // ── for 迴圈三段式單步：每個真正的 GDB 停駐點重算一次 ──────────
@@ -407,7 +408,7 @@ const Actions = {
    * which let any user signal PID 1, the gdbgui server, or another user's gdb.
    */
   send_signal(signal_name: any, target: "gdb" | "inferior") {
-    $.ajax({
+    const request: JQuery.AjaxSettings = {
       beforeSend: function (xhr) {
         xhr.setRequestHeader(
           "x-csrftoken",
@@ -441,7 +442,13 @@ const Actions = {
         console.error(response);
       },
       complete: function () { }
-    });
+    };
+    if (localEngine.enabled()) {
+      // 瀏覽器引擎：中斷進行中的編譯／執行或結束 LocalGdb 階段，不連網
+      localEngine.ajax(request);
+    } else {
+      $.ajax(request);
+    }
   }
 };
 

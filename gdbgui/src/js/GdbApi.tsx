@@ -18,6 +18,7 @@ import { buildGhostFromSnapshots } from "./ghostTree";
 import { isFastForwarding } from "./fastForward";
 import { isQuizPlaybackBlocked, lessonQuizRuntime } from "./lessonQuizRuntime";
 import { armStepWatchdog } from "./stepWatchdog";
+import localEngine from "./localEngine";
 
 /**
  * 步進命令送出後掛上看門狗。逾時仍在 running 就是 GDB 卡死了（見 stepWatchdog.ts），
@@ -104,6 +105,10 @@ const GdbApi = {
   },
   init: function () {
     const TIMEOUT_MIN = 5;
+    if (localEngine.enabled()) {
+      // ?engine=wasm：瀏覽器內引擎＋LocalGdb 代替伺服器 GDB（見 localEngine.README.md）
+      socket = (localEngine.getSocket() as any) as SocketIOClient.Socket;
+    } else {
     socket = io.connect(`/gdb_listener`, {
       timeout: TIMEOUT_MIN * 60 * 1000,
       query: {
@@ -112,6 +117,7 @@ const GdbApi = {
         gdb_command: initial_data.gdb_command
       }
     });
+    }
 
     socket.on("connect", function () {
       log("connected");
@@ -435,7 +441,7 @@ const GdbApi = {
         );
 
         // Call create_and_upload endpoint
-        $.ajax({
+        const createAndUploadRequest: JQuery.AjaxSettings = {
           url: "/create_and_upload",
           type: "POST",
           data: {
@@ -619,12 +625,14 @@ const GdbApi = {
               // must ride in the x-csrftoken header (same as create_and_upload,
               // FileOps, Actions). Without it the request 415s on request.json
               // and the ghost silently never loads.
-              fetch("/api/prerun_calltree", {
+              (localEngine.enabled()
+                ? localEngine.prerunCalltree()
+                : fetch("/api/prerun_calltree", {
                 method: "POST",
                 credentials: "same-origin",
                 headers: { "x-csrftoken": (window as any).initial_data.csrf_token },
               })
-                .then(r => (r.ok ? r.json() : null))
+                .then(r => (r.ok ? r.json() : null)))
                 .then(data => {
                   const gv = (window as any).gdbgui_global_variable;
                   if (!gv || !data || !data.ok) return;
@@ -687,7 +695,15 @@ const GdbApi = {
             // Return to edit mode so the user sees their code (with error markers), not "no source code"
             store.set("edit_mode", true);
           }
-        });
+        };
+        if (localEngine.enabled()) {
+          // 瀏覽器內編譯執行，回應形狀與伺服器相同，走同一組 success/error 回呼
+          localEngine.ajax(createAndUploadRequest, (m: string) =>
+            Actions.add_console_entries(m, constants.console_entry_type.GDBGUI_OUTPUT)
+          );
+        } else {
+          $.ajax(createAndUploadRequest);
+        }
         return;
       }
 
@@ -1004,7 +1020,7 @@ const GdbApi = {
     GdbApi.run_gdb_command([GdbApi.get_break_list_cmd()]);
   },
   get_inferior_binary_last_modified_unix_sec(path: any) {
-    $.ajax({
+    const request: JQuery.AjaxSettings = {
       beforeSend: function (xhr: { setRequestHeader: (arg0: string, arg1: any) => void }) {
         xhr.setRequestHeader("x-csrftoken", initial_data.csrf_token);
       },
@@ -1014,7 +1030,12 @@ const GdbApi = {
       data: { path: path },
       success: GdbApi._recieve_last_modified_unix_sec,
       error: GdbApi._error_getting_last_modified_unix_sec
-    });
+    };
+    if (localEngine.enabled()) {
+      localEngine.ajax(request); // 固定 mtime，不連網
+    } else {
+      $.ajax(request);
+    }
   },
   get_insert_break_cmd: function (fullname: any, line: any) {
     return [`-break-insert "${fullname}:${line}"`];

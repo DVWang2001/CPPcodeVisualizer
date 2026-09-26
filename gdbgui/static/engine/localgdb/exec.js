@@ -58,7 +58,7 @@ export class BreakpointTable {
     /** @type {Breakpoint} */
     const b = {
       number: this.next++, type: "breakpoint", disp: o.temp ? "del" : "keep", enabled: !o.disabled,
-      line: o.line === null ? -1 : o.line, fn: o.fn || "", addr: o.line === null ? 0 : this.model.addr(o.fn || "", o.line),
+      line: o.line === null ? -1 : o.line, fn: o.fn || "", addr: o.line === null ? 0 : this.model.lineAddr(o.fn || "", o.line),
       times: 0, cond: o.cond || null, ignore: o.ignore || 0, original: o.original, pending: o.pendingSpec || null,
     };
     this.list.push(b);

@@ -3,6 +3,7 @@ import GdbApi from "./GdbApi";
 import constants from "./constants";
 import Actions from "./Actions";
 import React from "react"; // needed for jsx
+import localEngine from "./localEngine";
 void React;
 
 let debug_print: any;
@@ -46,7 +47,7 @@ let FileFetcher = {
       highlight: store.get("highlight_source_code")
     };
 
-    $.ajax({
+    const request: JQuery.AjaxSettings = {
       beforeSend: function (xhr) {
         xhr.setRequestHeader(
           "x-csrftoken",
@@ -98,7 +99,13 @@ let FileFetcher = {
 
         FileFetcher._fetch_next();
       }
-    });
+    };
+    if (localEngine.enabled()) {
+      // 瀏覽器引擎：由前端從除錯中的原始碼產生，逐行 HTML 跳脫（規格 §7）
+      localEngine.ajax(request);
+    } else {
+      $.ajax(request);
+    }
   },
   _fetch_next: function () {
     if (FileFetcher._is_fetching) {

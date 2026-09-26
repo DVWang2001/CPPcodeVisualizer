@@ -18,6 +18,8 @@ const ENGINE = path.join(ROOT, "gdbgui/static/engine");
 const DATA_FILES = {
   "tsp.cpp": path.join(ROOT, "examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp"),
   "tsp.in": path.join(ROOT, "experiments/frontend-only/e1/e2/ref/tsp.in"),
+  "ui_drive.js": path.join(HERE, "ui_drive.js"),
+  "tsp_uva116.json": path.join(ROOT, "examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.json"),
 };
 const port = Number(process.argv[2] || 8770);
 const tamper = process.argv.includes("--tamper");
@@ -61,6 +63,7 @@ const server = http.createServer((req, res) => {
   let body = fs.readFileSync(file);
   if (tamper && name === "clang.wasm") { body = Buffer.from(body); body[body.length >> 1] ^= 1; }
   headers["Content-Length"] = body.length;
+  if (p.startsWith("/data/")) headers["Access-Control-Allow-Origin"] = "*"; // 讓本機 App（另一個埠）能取教案 JSON 做匯入測試
   res.writeHead(200, headers);
   res.end(body);
 });

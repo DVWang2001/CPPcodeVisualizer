@@ -199,7 +199,20 @@ export class LocalGdbSession {
       if (ff) return this.fastForward(c.raw, ff);
       return [errorItem(unsupportedMsg("python (only the [fast @N] jump script is recognised)"), c.token)];
     }
+    if (c.name === "kill" && !c.rest.trim()) return this.kill(c.token);
     return [errorItem(unsupportedMsg(`CLI command '${c.name}'`), c.token)];
+  }
+
+  /** GDB's `kill` of a live inferior: console line, thread/group exit notifications, `^done`; afterwards "no process". @param {any} token */
+  kill(token) {
+    if (!this.exec.running) return [errorItem("The program is not being run.", token)];
+    this.exec.reset();
+    return [
+      consoleItem(`[Inferior 1 (process ${this.pid}) killed]\n`),
+      notifyItem("thread-exited", { id: "1", "group-id": "i1" }),
+      notifyItem("thread-group-exited", { id: "i1" }),
+      doneItem(token),
+    ];
   }
 
   /** @param {ReturnType<typeof parseCommand>} c */
@@ -207,6 +220,7 @@ export class LocalGdbSession {
     const args = splitArgs(c.rest);
     const inner = (args[1] ? args[1].value : "").trim();
     if (!args[0] || args[0].value !== "console" || !args[1]) return [errorItem(unsupportedMsg("-interpreter-exec other than console"), c.token)];
+    if (inner === "kill") return this.kill(c.token);
     if (inner === "delete") { this.bps.clear(); return [doneItem(c.token)]; }
     if (inner === "unset substitute-path") return [consoleItem("Delete all source path substitution rules? (y or n) [answered Y; input not from terminal]\n"), doneItem(c.token)];
     if (/^set substitute-path\b/.test(inner)) return [doneItem(c.token)];
@@ -233,7 +247,7 @@ export class LocalGdbSession {
   frameRec(level, argMode, withLevel) {
     const f = this.frames()[level];
     if (!f) return null;
-    const addr = this.model.addr(f.fn, f.line, level > 0);
+    const addr = this.frameAddr(level);
     /** @type {any} */
     const o = {};
     if (withLevel) o.level = String(level);
@@ -245,6 +259,15 @@ export class LocalGdbSession {
     o.line = String(f.line);
     o.arch = "i386:x86-64";
     return o;
+  }
+
+  /** Pseudo pc of stack level `level`: stop address at level 0 (return address right after `finish`), return addresses above. @param {number} level */
+  frameAddr(level) {
+    const ch = this.frames();
+    const f = ch[level];
+    if (level > 0) return this.model.retAddr(f.stepIdx, ch[level - 1].frameId);
+    if (this.exec.landed) return this.model.retAddr(f.stepIdx, this.model.steps[this.exec.pos].frame);
+    return this.model.stepAddr(f.stepIdx);
   }
 
   /** @param {number} stepIdx @param {"scalars" | "all"} mode */
@@ -617,7 +640,7 @@ export class LocalGdbSession {
     const inner = sc ? chainAt(sc, f.line)[0] : null;
     const args = !inner || inner.kind === "function" ? this.model.visibleVars(f.stepIdx).filter((e) => e.isArg) : [];
     const py = new Map(/** @type {Array<[string, any]>} */ ([
-      ["func", f.fn], ["addr", "0x" + this.model.addr(f.fn, f.line, f.level > 0).toString(16)], ["line", f.line], ["fullname", this.sourcePath],
+      ["func", f.fn], ["addr", "0x" + this.frameAddr(f.level).toString(16)], ["line", f.line], ["fullname", this.sourcePath],
       ["args", args.map((e) => new Map(/** @type {Array<[string, any]>} */ ([["name", e.name], ["value", this.entryValue(e)]])))],
     ]));
     return { line: f.line, py };

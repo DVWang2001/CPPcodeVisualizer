@@ -230,7 +230,7 @@ test("MI error paths: undefined command, known-but-unsupported command, CLI, pyt
   assert.match(payloadOf(await send(gdb, "backtrace")).msg, /CLI command 'backtrace' is not supported by the browser engine/);
   assert.match(payloadOf(await send(gdb, "python print(1)")).msg, /python .* not supported by the browser engine|not supported by the browser engine/);
   assert.match(payloadOf(await send(gdb, "-interpreter-exec mi \"-list-features\"")).msg, /not supported by the browser engine/);
-  assert.match(payloadOf(await send(gdb, "-interpreter-exec console \"kill\"")).msg, /not supported by the browser engine/);
+  assert.match(payloadOf(await send(gdb, "-interpreter-exec console \"backtrace\"")).msg, /not supported by the browser engine/);
 });
 
 test("initial sequence: features, target features, load commands, break-list (golden shapes)", async () => {
@@ -258,4 +258,20 @@ test("small commands: -exec-arguments, -environment-cd, -stack-info-depth, `-int
   assert.equal(payloadOf(await send(gdb, "-break-insert -f 2")).bkpt.number, "3");
   await send(gdb, "-exec-run");
   assert.deepEqual(payloadOf(await send(gdb, "-stack-info-depth")), { depth: "1" });
+});
+
+test("kill: live inferior -> console line, thread exit notifications, ^done; then no process; without process -> GDB's error", async () => {
+  const gdb = newGdb(smallRun(), SMALL_SRC);
+  assert.equal(payloadOf(await send(gdb, "kill")).msg, "The program is not being run.");
+  await send(gdb, "-break-insert -f 3");
+  await send(gdb, "-exec-run");
+  const k = await send(gdb, "kill");
+  assert.deepEqual(k.map((x) => x.type + ":" + (x.message || "")), ["console:", "notify:thread-exited", "notify:thread-group-exited", "output:"]);
+  assert.match(k[0].payload, /^\[Inferior 1 \(process \d+\) killed\]\n$/);
+  assert.equal(payloadOf(await send(gdb, "-exec-next")).msg, "The program is not being run.");
+  assert.equal(payloadOf(await send(gdb, "-exec-continue")).msg, "The program is not being run.");
+  assert.deepEqual(payloadOf(await send(gdb, "-thread-info")), { threads: [] });
+  // the session can run again, also through -interpreter-exec
+  assert.ok(stopped(await send(gdb, "-exec-run")));
+  assert.equal((await send(gdb, "-interpreter-exec console \"kill\"")).at(-1).payload, "^done\r");
 });
