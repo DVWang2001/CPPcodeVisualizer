@@ -337,7 +337,7 @@ test("-var-create: unsupported types and expressions get an explicit MI error; G
   await send(g, "-break-insert -f 33");
   await send(g, "-exec-run");
   const err = async (e) => { const it = await send(g, `3-var-create - * "${e}"`); const r = it.find((x) => x.type === "result"); assert.equal(r.message, "error", e); assert.equal(r.token, 3); return r.payload.msg; };
-  for (const [e, ty] of [["m", "std::map"], ["arr", "int \\[3\\]"], ["p", "int \\*"], ["pt", "Pt"]]) assert.match(await err(e), new RegExp(`^type '${ty}.*' is not supported by the browser engine$`), e);
+  for (const [e, ty] of [["m", "std::map"], ["p", "int \\*"], ["pt", "Pt"]]) assert.match(await err(e), new RegExp(`^type '${ty}.*' is not supported by the browser engine$`), e);
   assert.match(await err("*p"), /^expression '\*p' is not supported|^operator '\*' in expression '\*p' is not supported by the browser engine$/);
   assert.match(await err("g[0]"), /^expression 'g\[0\]' \(its value is a container\) is not supported by the browser engine$/);
   assert.equal(await err("x +"), "A syntax error in expression, near `'.");
@@ -346,7 +346,7 @@ test("-var-create: unsupported types and expressions get an explicit MI error; G
   assert.equal(await err("v.capacity()"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("v.size()"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("nosuch"), 'No symbol "nosuch" in current context.');
-  assert.equal(payloadOf(await send(g, "-var-create - * \"x\"")).name, "var13", "12 failed creates each consumed a varN (like GDB)");
+  assert.equal(payloadOf(await send(g, "-var-create - * \"x\"")).name, "var12", "11 failed creates each consumed a varN (like GDB)");
   // unsupported names for the other varobj commands
   assert.equal(payloadOf(await send(g, "-var-list-children --all-values \"var1\"")).msg, "Variable object not found");
   assert.equal(payloadOf(await send(g, "-var-delete var1")).msg, "Variable object not found");
@@ -466,7 +466,9 @@ test("-data-evaluate-expression: plain variables only; errors like -var-create",
   await send(g, "-exec-run");
   const ev = async (e) => payloadOf(await send(g, `-data-evaluate-expression "${e}"`));
   assert.deepEqual(await ev("x"), { value: "6" });
-  assert.deepEqual(await ev("v"), { value: "std::vector of length 3, capacity 4" });
+  assert.deepEqual(await ev("v"), { value: "std::vector of length 3, capacity 4 = {0, 1, 4}" }, "print format: the pretty-printer children are included");
+  assert.deepEqual(await ev("arr"), { value: "{1, 2, 3}" });
+  assert.deepEqual(await ev("g"), { value: "std::vector of length 2, capacity 2 = {std::vector of length 2, capacity 2 = {7, 7}, std::vector of length 2, capacity 2 = {7, 7}}" });
   assert.deepEqual(await ev("s"), { value: "\"hi\"" });
   assert.deepEqual(await ev("c"), { value: "97 'a'" });
   assert.deepEqual(await ev("INF"), { msg: 'No symbol "INF" in current context.' });
@@ -668,4 +670,61 @@ test("&(name): pointer varobjs shaped like the golden's (numchild 1, `T *`, chil
   // unsupported pointees keep the explicit error, and unknown names the GDB one
   assert.match(payloadOf(await send(g, "3-var-create - * \"&(m)\"")).msg, /not supported by the browser engine/);
   assert.equal(payloadOf(await send(g, "3-var-create - * \"&(nosuch)\"")).msg, 'No symbol "nosuch" in current context.');
+});
+
+test("-exec-run clears breakpoint hit counts (GDB): times back to 0, then 1 after the first hit of the new run (verifier A3)", async () => {
+  const g = fresh();
+  await send(g, "-break-insert -f 7");
+  await send(g, "-exec-run");
+  await send(g, "-exec-continue");
+  assert.equal(payloadOf(await send(g, "-break-list")).BreakpointTable.body[0].times, "2");
+  const again = await send(g, "-exec-run");
+  assert.equal(again.find((x) => x.message === "breakpoint-modified").payload.bkpt.times, "1");
+  assert.equal(payloadOf(await send(g, "-break-list")).BreakpointTable.body[0].times, "1");
+  const g2 = fresh();
+  await send(g2, "-break-insert -f 16");
+  await send(g2, "-exec-run");
+  await send(g2, "-break-disable 1");
+  await send(g2, "-exec-continue"); // runs to the end
+  await send(g2, "-break-enable 1");
+  assert.equal(payloadOf(await send(g2, "-break-list")).BreakpointTable.body[0].times, "1");
+  await send(g2, "-exec-run");
+  assert.equal(payloadOf(await send(g2, "-break-list")).BreakpointTable.body[0].times, "1", "reset to 0 at run, 1 after the hit");
+});
+
+test("expression literals (verifier A4): octal, hex, true/false, integer suffixes with C++ literal types", async () => {
+  const g = fresh();
+  await send(g, "-break-insert -f 33");
+  await send(g, "-exec-run");
+  const tv = async (e) => { const r = payloadOf(await send(g, `3-var-create - * "${e}"`)); return r.msg || [r.value, r.type]; };
+  assert.deepEqual(await tv("010"), ["8", "int"]);
+  assert.deepEqual(await tv("0x10"), ["16", "int"]);
+  assert.deepEqual(await tv("0x10 + 010 + x"), ["30", "int"]);
+  assert.deepEqual(await tv("true"), ["true", "bool"]);
+  assert.deepEqual(await tv("false || x > 5"), ["true", "bool"]);
+  assert.deepEqual(await tv("2LL * big"), ["2469135780246", "long long"]);
+  assert.deepEqual(await tv("2LL"), ["2", "long long"]);
+  assert.deepEqual(await tv("1U"), ["1", "unsigned int"]);
+  assert.deepEqual(await tv("1UL"), ["1", "unsigned long"]);
+  assert.deepEqual(await tv("1U - 2"), ["4294967295", "unsigned int"]);
+  assert.deepEqual(await tv("x - 7U"), ["4294967295", "unsigned int"]);
+  assert.deepEqual(await tv("2147483648"), ["2147483648", "long"]);
+  assert.deepEqual(await tv("0xffffffff"), ["4294967295", "unsigned int"]);
+  assert.equal(await tv("08"), 'Invalid number "08".');
+  assert.equal(await tv("1uu"), 'Invalid number "1uu".');
+  assert.equal(await tv("99999999999999999999"), "Numeric constant too large.");
+});
+
+test("expression depth / length limits give an explicit error, never an internal error (verifier A5)", async () => {
+  const g = fresh();
+  await send(g, "-break-insert -f 33");
+  await send(g, "-exec-run");
+  for (const e of ["(".repeat(200) + "x" + ")".repeat(200), "x" + " + 1".repeat(2000), "-".repeat(500) + "x", "v[".repeat(100) + "0" + "]".repeat(100)]) {
+    const r = (await send(g, `3-var-create - * "${e}"`)).find((x) => x.type === "result");
+    assert.equal(r.message, "error");
+    assert.equal(r.payload.msg, "expression too long or nested too deeply: not supported by the browser engine");
+    const d = (await send(g, `-data-evaluate-expression "${e}"`)).find((x) => x.type === "result");
+    assert.equal(d.payload.msg, "expression too long or nested too deeply: not supported by the browser engine");
+  }
+  assert.ok(!g.session.subcommandLog.some((s) => s.items.some((x) => x.payload && typeof x.payload.msg === "string" && /internal error/.test(x.payload.msg))));
 });

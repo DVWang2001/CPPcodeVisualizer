@@ -166,6 +166,7 @@ export class TraceModel {
 /** @param {any} cls */
 function zeroFor(cls) {
   if (cls.kind === "ref") return zeroFor(cls.to);
+  if (cls.kind === "array") return Array.from({ length: Math.max(cls.n, 0) }, () => zeroFor(classify(cls.elem)));
   if (cls.kind === "vector") return [];
   if (cls.kind === "string") return "";
   return 0;
@@ -178,6 +179,7 @@ function zeroFor(cls) {
  */
 export function valueOf(cls, raw, capacity) {
   if (cls.kind === "ref") return valueOf(cls.to, raw, capacity);
+  if (cls.kind === "array") return `[${cls.n}]`; // varobj value of a C array (GDB: "[N]")
   if (cls.kind === "vector") {
     const n = Array.isArray(raw) ? raw.length : 0;
     return `std::vector of length ${n}, capacity ${capacity === undefined ? n : capacity}`;

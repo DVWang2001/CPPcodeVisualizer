@@ -4,7 +4,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Report, compareSub, segmentGolden, ALLOW_RULES } from "./golden_replay.mjs";
 
-const ctx = (uninit = []) => ({ uninit: new Set(uninit), expr: null, step: { vars: {}, uninit: [] }, line: 1, declLater: new Set() });
+/** comparator context for a stop listing the variables `names` (all declared on line 1, current line 5); `uninit` per engine and LocalGdb */
+const ctx = (uninit = [], names = ["h", "w"]) => ({
+  expr: null, line: 5, step: { vars: Object.fromEntries(names.map((n) => [n, 0])), uninit },
+  entries: names.map((n) => ({ name: n, present: true, declLine: 1, uninit: uninit.includes(n) })),
+});
 const res = (payload, token = null, message = "done") => ({ type: "result", message, payload, token, stream: "stdout" });
 const cmp = (g, m, c = ctx()) => { const r = new Report(); compareSub("t", g, m, r, c); return r; };
 
@@ -128,18 +132,41 @@ test("address rules are strict: whole hex address on both sides, or `@0xADDR: re
   assert.equal(pid("57", "abc"), false);
 });
 
-test("uninit-value rule: zero on our side, integer garbage on the golden side, variable uninitialised per the ENGINE trace too; pairs are recorded", () => {
+test("uninit-value rule: zero on our side, integer garbage on the golden side, the SAME entry uninitialised per LocalGdb and per the engine trace; (line, variable@declLine) recorded", () => {
   const g = [res({ variables: [{ name: "h", type: "int", value: "198127616" }] }, 1)];
   const m = [res({ variables: [{ name: "h", type: "int", value: "0" }] }, 1)];
-  const c = (extra) => ({ uninit: new Set(["h"]), expr: null, step: { vars: { h: 0 }, uninit: ["h"] }, line: 23, declLater: new Set(), ...extra });
+  const ent = (o) => ({ name: "h", present: true, declLine: 22, uninit: true, ...o });
+  const c = (o = {}, e = {}) => ({ expr: null, step: { vars: { h: 0 }, uninit: ["h"] }, line: 23, entries: [ent(e)], ...o });
   const run = (gg, cc) => { const r = new Report(); compareSub("t", gg, m, r, cc); return r; };
   const r1 = run(g, c());
-  assert.deepEqual([r1.diffs, [...r1.uninitPairs]], [[], ["23:h"]]);
+  assert.deepEqual([r1.diffs, [...r1.uninitPairs]], [[], ["23:h@22"]]);
   assert.equal(run(g, c({ step: { vars: { h: 0 }, uninit: [] } })).diffs.length, 1, "LocalGdb's flag alone is not trusted: the engine trace must agree");
-  assert.equal(run(g, c({ step: { vars: { h: 0 }, uninit: [] }, declLater: new Set(["h"]) })).diffs.length, 0, "shadowed outer variable declared later");
-  assert.equal(run(g, c({ uninit: new Set() })).diffs.length, 1);
+  assert.equal(run(g, c({}, { uninit: false })).diffs.length, 1, "the engine's flag alone is not enough either");
+  assert.equal(run(g, c({ step: { vars: {}, uninit: [] } }, { present: false, declLine: 30 })).diffs.length, 0, "not declared yet (declaration later in the block)");
+  assert.equal(run(g, c({ step: { vars: {}, uninit: [] } }, { present: false, declLine: 10 })).diffs.length, 1, "a shadowed variable declared EARLIER is not uninitialised: a real difference");
+  assert.equal(run(g, c({}, { name: "other" })).diffs.length, 1, "the entry must be the listed variable");
   const gtext = [res({ variables: [{ name: "h", type: "int", value: "abc" }] }, 1)];
   assert.equal(run(gtext, c()).diffs.length, 1, "golden garbage must be a plain integer");
   const gtype = [res({ variables: [{ name: "h", type: "long", value: "198127616" }] }, 1)];
   assert.equal(run(gtype, c()).diffs.length, 1, "only the value may differ, never the type");
+});
+
+test("uninit-value rule resolves shadowing by entry, not by name (verifier A1): an initialised inner `r` is not excused by an uninitialised outer `r`", () => {
+  // line 43 of the golden lesson: inner r (declared line 42, initialised) listed first, outer r (declared line 57) last
+  const g = [res({ variables: [{ name: "r", type: "int", value: "7" }, { name: "k", type: "int", value: "0" }, { name: "r", type: "int", value: "-104" }] }, 1)];
+  const m = [res({ variables: [{ name: "r", type: "int", value: "0" }, { name: "k", type: "int", value: "0" }, { name: "r", type: "int", value: "0" }] }, 1)];
+  const c = { expr: null, line: 43, step: { vars: { r: 0, k: 0 }, uninit: [] }, entries: [
+    { name: "r", present: true, declLine: 42, uninit: false }, { name: "k", present: true, declLine: 41, uninit: false }, { name: "r", present: false, declLine: 57, uninit: true }] };
+  const r = new Report(); compareSub("t", g, m, r, c);
+  assert.equal(r.diffs.length, 1, "inner r: golden 7 != ours 0 must be reported");
+  assert.match(r.diffs[0], /variables\[0\]\.value/);
+  assert.deepEqual([...r.uninitPairs], ["43:r@57"], "the outer r (declared later) is the excused one");
+});
+
+test("address rule: 0x0 never matches a non-null address (verifier A2)", () => {
+  const v = (value) => [res({ name: "v", value, type: "T *" }, 3)];
+  assert.equal(cmp(v("0x0"), v("0x7ffe00001000")).diffs.length, 1);
+  assert.equal(cmp(v("0x7ffe00001000"), v("0x0")).diffs.length, 1);
+  assert.equal(cmp(v("0x0"), v("0x0")).diffs.length, 0);
+  assert.equal(cmp([res({ bkpt: { addr: "0x0000000000000000" } })], [res({ bkpt: { addr: "0x0000000000401000" } })]).diffs.length, 1);
 });

@@ -83,7 +83,7 @@ the golden sample (a numeric token stays in the raw text: `"4^done\r"`).
 | `-gdb-set`, `-file-exec-and-symbols`, `-exec-arguments`, `-environment-cd`, `-enable-pretty-printing` | accepted (bare `^done`) | no effect |
 | `-interpreter-exec console "delete" / "unset substitute-path" / "set substitute-path A B"` | supported | `delete` clears the table (numbering continues); `unset substitute-path` prints GDB's console line; other CLI: explicit error |
 | `-break-insert` (`-t -f -d -h -c COND -i N`, `file:LINE`, `LINE`, `func`, `file:func`) | supported | line without code moves to the next line with code; `-f` makes unknown locations pending (`addr:"<PENDING>"`); `*ADDR` -> explicit error; `bkpt.func` is the demangled signature (`fact(int)`, `fill(std::vector<int, std::allocator<int> >&, int)`) |
-| `-break-list`, `-break-delete`, `-break-enable`, `-break-disable`, `-break-condition` | supported | notifications `breakpoint-deleted` / `breakpoint-modified` precede the `^done`; hit counts (`times`) per hit; ignore counts; temp breakpoints deleted after the stop |
+| `-break-list`, `-break-delete`, `-break-enable`, `-break-disable`, `-break-condition` | supported | `-exec-run` resets hit counts (`times`) like GDB; notifications `breakpoint-deleted` / `breakpoint-modified` precede the `^done`; hit counts (`times`) per hit; ignore counts; temp breakpoints deleted after the stop |
 | `-exec-run`, `-exec-continue`, `-exec-next`, `-exec-step`, `-exec-finish` (+ `--reverse`) | supported | stop reasons `breakpoint-hit`, `end-stepping-range`, `function-finished`, `exited-normally` (+ `exited`, `signal-received`, `exited-signalled`, `no-history`); see "Stepping semantics" |
 | `-exec-interrupt` | always `^error` "Current thread is not running." | execution is instantaneous (recorded); the UI's abort goes through `/send_signal` (layer B) |
 | `-exec-next-instruction`, `-exec-step-instruction`, `-exec-until`, `-exec-return`, `-exec-jump` | explicit error `... is not supported by the browser engine` | |
@@ -138,18 +138,24 @@ placeholder or the shape the parser relies on changes.
 
 Supported:
 - a **plain variable name** (local or global) of int-family / bool / char / float / double / `std::string`, `std::vector<T>` (T supported,
-  nested vectors of any depth) or a reference to those;
+  nested vectors of any depth), a **C array** of a supported element type (1-D and multi-dimensional, e.g. `int cand[3]`, `int memo[4][5][4]`,
+  `char s[10]`, `std::string names[2]`, `std::vector<int> vs[2]`), or a reference to those;
 - **arithmetic / subscript expressions** (`w - 1`, `j + 1`, `dp[r][j + 1]`, `x > 3 && !done`, `-x`, `c ? a : b`, integer/floating literals,
   `true`/`false`) evaluated by `expr.js` with C++ rules: integer promotion and usual arithmetic conversions, 32-bit wrap for `int`
   (64-bit for `long`/`long long`), truncating `/` and `%`, `Division by zero` (GDB's text), comparisons/logical operators give `bool`
-  (printed `true`/`false`), any double operand gives `double`, `[]` on vectors/strings/nested vectors. The result must be a scalar
+  (printed `true`/`false`), any double operand gives `double`, `[]` on vectors/strings/nested vectors/C arrays (`cand[i + 1]`, `m[1][2]`).
+  Literals: decimal, octal (`010` = 8), hex (`0x10`), `true`/`false`, floating (`1.5`, `1.5f`), integer suffixes `U`, `L`, `LL`, `UL`, `ULL`
+  with the C++ literal type rules (`2LL * big` is `long long`, `1U - 2` is `unsigned int` 4294967295, `2147483648` is `long`, `0xffffffff`
+  is `unsigned int`); invalid literals give `Invalid number "08".` / `Numeric constant too large.` Expressions over 4096 characters,
+  512 tokens or 64 nesting levels (or exhausting the host stack) give the explicit error
+  `expression too long or nested too deeply: not supported by the browser engine`. The result must be a scalar
   (a container-valued expression such as `g[0]` is an explicit error). The varobj's block is the innermost block of the variables it uses
   (so it goes out of scope like GDB's); an expression without variables has no `thread-id`. Not supported: unary `*`, `->`, `::`, bitwise
   and shift operators, casts, calls. `evalexpr.js` (the engine's untyped evaluator) was not reusable for this: it cannot type results
   (`int` vs `bool`), wrap 32-bit ints or give GDB's messages; `tests/engine/localgdb/expr.test.mjs` cross-checks the two on the grammar they share.
   Member calls (`v.size()`, `v.empty()`, `v.capacity()`) stay `Cannot evaluate function -- may be inlined`, which is what real GDB answers for
   libstdc++ members (golden: `cost.capacity()`), even though evalexpr.js would compute them;
-- **`&(name)` / `&name`** for variables of scalar type or supported vectors: a pointer varobj shaped like the golden's: `numchild:"1"`,
+- **`&(name)` / `&name`** for variables of scalar type, supported vectors or supported C arrays (`int (*)[3]`, child `*&(cand)` = the array varobj `[3]`): a pointer varobj shaped like the golden's: `numchild:"1"`,
   type `T *`, value a stable pseudo address (`0x7ffe...`, equal on every read), `has_more:"0"`; its one child is `NAME.*&(name)`
   (`exp:"*&(name)"`, the pointee's value/type) or, for vectors, `NAME.std::_Vector_base<E, std::allocator<E> >` (`value:"{...}"`, `numchild:"1"`;
   expanding that class is an explicit error). Pointer children follow the variable in `-var-update`; the pointer itself never changes.
@@ -158,9 +164,22 @@ Supported:
   sample skips `var3` after a failed `cost.capacity()`);
 - type strings are libstdc++-style: `std::vector<std::vector<int>>` ->
   `std::vector<std::vector<int, std::allocator<int> >, std::allocator<std::vector<int, std::allocator<int> > > >`;
-  `std::string` at top level, the full `std::__cxx11::basic_string<...>` inside template arguments; `int [3]`, `int *`, `T &`;
+  `std::string` at top level, the full `std::__cxx11::basic_string<...>` inside template arguments; `int [3]`, `int [2][3]`, `int *`,
+  `int (*)[3]`, `T &`;
 - value strings: `std::vector of length N, capacity M` (top level: the engine's capacity probe; inner vectors: capacity = length),
   `"text"`, `true`/`false`, `97 'a'`, doubles with 17 significant digits like GDB (`0.10000000000000001`), references `@0xADDR: value`;
+- **C arrays** are plain (not dynamic) varobjs like GDB's: value `[N]`, `numchild:"N"` at creation, no `displayhint`/`dynamic`,
+  `has_more:"0"`; children `NAME.i` with `exp:"i"` (element type/value; a row of a multi-dimensional array is again `[N]` with N
+  children); the `-var-list-children` result has no `displayhint`. The element type keeps the declared spelling (`std::string`, not the
+  `basic_string<...>` expansion used for vector children). Element changes reach `-var-update` through the listed children (the
+  array varobj's own value `[N]` never changes). `-stack-list-variables --simple-values` lists arrays without a value (golden: `cand`);
+- **print format** (`-stack-list-variables --all-values`, `-data-evaluate-expression`, frame args of `[fast @N]` blobs) follows GDB's
+  `print` with the defaults `set print elements 200` and `set print repeats 10`: arrays `{5, 60, 7}`, `{{1, 2, 3}, {4, 5, 6}}`, runs of
+  MORE than 10 equal elements collapse to `0 <repeats 14 times>` (GDB's `reps > repeat_count_threshold`), at most 200 elements then
+  `...` (`{0, 1, ..., 199...}`), char arrays as strings (`"ab\000\000..."`; the final NUL of an untruncated char array is not
+  printed; runs of more than 10 equal chars as `'\000' <repeats 18 times>`; the same repeat rule applies to `std::string` values),
+  vectors through the libstdc++ printer including their elements (`std::vector of length 3, capacity 4 = {0, 1, 4}`; the printer's
+  children are not repeat-compressed). A varobj's own `value` stays the short form (`std::vector of length 3, capacity 4`, `[3]`);
 - vectors are dynamic varobjs: `displayhint:"array"`, `dynamic:"1"`, `has_more:"1"` at creation, `numchild:"0"` until the children were
   listed; children `NAME.[i]` (`exp:"[i]"`), `--all-values` / `--simple-values` / `--no-values`, optional `FROM TO` range;
 - `-var-update`: roots **newest first**, children depth-first; reports value changes; `in_scope:"false"` (no value) once when the
@@ -172,9 +191,9 @@ Explicit MI errors (never fake data), all `type:"result", message:"error", paylo
 
 | case | msg |
 |---|---|
-| unsupported type (map/set/deque/stack/queue/priority_queue, pointer, array, struct, `vector<bool>`, `vector<unsupported>`; also `&(name)` of those) | `type 'TYPE' is not supported by the browser engine` |
+| unsupported type (map/set/deque/stack/queue/priority_queue, pointer, struct, arrays of those, `vector<bool>`, `vector<unsupported>`; also `&(name)` of those) | `type 'TYPE' is not supported by the browser engine` |
 | syntax error | ``A syntax error in expression, near `REST'.`` |
-| unsupported operator/construct (`*p`, `f(x)`, `a->b`, container-valued expression, `&(map)`) | `... is not supported by the browser engine` |
+| unsupported operator/construct (`*p`, `f(x)`, `a->b`, array-to-pointer decay such as `cand + 1`, container- or row-valued expression such as `g[0]` / `m[1]`, `&(map)`) | `... is not supported by the browser engine` |
 | `x / 0`, `x % 0` | `Division by zero` |
 | subscript out of range | `Cannot access memory at address 0x0` (GDB would read garbage) |
 | `name.method(...)` (e.g. `cost.capacity()`, the UI's probe) | `Cannot evaluate function -- may be inlined` (GDB's own text; golden) |
@@ -201,10 +220,10 @@ differences outside this list** (rule name = key in `ALLOW_RULES` of `golden_rep
 
 | rule | what | uses |
 |---|---|---|
-| `addr` | address values, compared strictly: the WHOLE value is a hex address on both sides (`addr`, hex pointer values, FF blob `addr`), or `@0xADDR: rest` with `rest` equal | 295 |
+| `addr` | address values, compared strictly: the WHOLE value is a hex address on both sides and either both or neither are null (`0x0` never matches a real address) (`addr`, hex pointer values, FF blob `addr`), or `@0xADDR: rest` with `rest` equal | 295 |
 | `file` | `file` real path | 0 (the test passes the golden's real path as `gdbFilePath`) |
 | `pid-thread` | pid (digits on both sides), thread `target-id`/`name`, `process N` in console text | 66 |
-| `uninit-value` | value of a variable that is not initialised yet: ours is the zero of its type (D6), GDB's is stack garbage. Required together: our value is zero, the golden value is a plain integer, the variable is flagged by LocalGdb AND uninitialised per the ENGINE trace (`uninit` list, absent from the step's `vars`, or a shadowed outer variable whose declaration line is later). The (line, variable) pairs are recorded (44 in the replay); type/structure differences are never excused | 73 |
+| `uninit-value` | value of a variable that is not initialised yet: ours is the zero of its type (D6), GDB's is stack garbage. Resolved per listed ENTRY, never by name (`variables[k]` -> the k-th entry; a `-var-create` of a name -> its innermost entry), so an initialised inner `r` is not excused by an uninitialised outer `r`. Required together: our value is zero, the golden value is a plain integer, LocalGdb flags that entry AND the ENGINE trace agrees (the entry receives the trace value and the engine lists it in `uninit`, or it receives none because its declaration is on the current or a later line). The (line, variable@declLine) pairs are recorded (45 in the replay); type/structure differences are never excused | 73 |
 | `gdb-noise` | GDB startup/environment notifications: `library-loaded`, `thread-group-added`, `cmd-param-changed`, the ASLR warning `log` | 10 |
 | `reverse-feature` | our extra `"reverse"` entry in `-list-features` (spec §12 N3) | 1 |
 | `std-window-shift` | (b) consequence: after the golden's one `step` into `std::vector::operator[]` the first refresh reports changes our engine (which never enters the library) already reported one refresh earlier; compared as a merged, order-insensitive set | 1 |
@@ -225,7 +244,7 @@ All 75 golden `-var-create` (plain names, `&(x)` pointers, `w - 1` / `j + 1`, `x
 (including the pointer varobjs and their `_Vector_base` / `*&(x)` children) are compared.
 
 Other known differences (outside the golden sample, documented, tested against our own expectations only):
-finish has no `return-value`; `using namespace std;` programs work (unqualified `vector<int>` is normalised to `std::vector<...>`) but a structured-binding `auto` variable has no usable type (`?`, not supported); inner vector capacity = length; a breakpoint on a `for` line stops on every visit of that
+finish has no `return-value`; C arrays: array-to-pointer decay, sub-array expressions (`m[1]`) and pointer arithmetic are explicit errors, elements of vector type inside an array use capacity = length, char-array printing follows GDB's rules as documented above (not recorded in a golden); `using namespace std;` programs work (unqualified `vector<int>` is normalised to `std::vector<...>`) but a structured-binding `auto` variable has no usable type (`?`, not supported); inner vector capacity = length; a breakpoint on a `for` line stops on every visit of that
 line (GDB places it on the init code only); bp locations on several addresses are not modelled; `frame.addr`/pointer values
 are deterministic pseudo values (equal for equal call sites); reference varobj value format (`@0xADDR: ...`) and the
 update-record shape for growing vectors are from GDB knowledge, not from a golden.
@@ -238,12 +257,13 @@ node --test --test-concurrency=1 tests/engine/localgdb      # from the repositor
 
 | file | covers |
 |---|---|
-| `replay.test.mjs` | contract §4-A: the golden `run_gdb_command` sequence replayed in order against a real engine run of `tsp_uva116.cpp`; 25 deliberately altered goldens must fail |
+| `replay.test.mjs` | contract §4-A: the golden `run_gdb_command` sequence replayed in order against a real engine run of `tsp_uva116.cpp`; 27 deliberately altered goldens must fail |
 | `compare.test.mjs` | the comparator and the golden segmentation (what the allow list lets through and what it must not) |
 | `commands.test.mjs` | every supported command and error path on a real engine run of `programs/types_recursion.cpp` (recursion, ref params, nested vectors, string/double/bool/char/long long, unsupported types) |
 | `protocol.test.mjs` | handshake, socket surface, FIFO, packet fields, tokens, run_token, pty, exit/signal paths, error payloads (hand-made trace, no compiler) |
 | `fastforward_template.test.mjs` | D11 lock on `fastForwardJump.ts` |
 | `types_scopes.test.mjs` | type expansion (incl. `using namespace std`), value formatting, block analysis |
+| `arrays.test.mjs` | C arrays on a real engine run of `programs/arrays.cpp`: listing, varobjs, children, updates, expressions, `&(array)`, print format |
 | `expr.test.mjs` | typed expression evaluator: C++ typing, wrap-around, GDB error texts, agreement with evalexpr.js |
 | `golden_replay.mjs`, `helpers.mjs`, `ff_template.mjs` | shared library code (not tests) |
 

@@ -157,6 +157,7 @@ export class ExecState {
   /** Run start: first breakpoint hit or program end. @returns {StopInfo} */
   run() {
     this.reset();
+    for (const b of this.bps.list) b.times = 0; // GDB clears hit counts when the program is (re)started
     this.started = true;
     return this.forward("continue");
   }

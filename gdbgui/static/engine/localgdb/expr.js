@@ -16,15 +16,19 @@
 import { classify, parseType } from "./types.js";
 import { unsupportedMsg } from "./mi.js";
 
+const MAX_SOURCE = 4096, MAX_TOKENS = 512, MAX_DEPTH = 64;
+const TOO_COMPLEX = "expression too long or nested too deeply: not supported by the browser engine";
+
 export class ExprError extends Error {
   /** @param {string} msg @param {string} kind */
   constructor(msg, kind = "error") { super(msg); this.kind = kind; }
 }
 
-const TOK = /\s*(?:(\d+\.\d*(?:[eE][-+]?\d+)?|\.\d+|\d+[eE][-+]?\d+|\d+)([uUlLfF]*)|([A-Za-z_]\w*)|(&&|\|\||==|!=|<=|>=|->|::|<<|>>|[-+*\/%<>!?:()\[\].,&|^~=]))/y;
+const TOK = /\s*(?:(0[xX][0-9a-fA-F]+|\d+\.\d*(?:[eE][-+]?\d+)?|\.\d+|\d+[eE][-+]?\d+|\d+)([uUlLfF]*)(?![\w.])|([A-Za-z_]\w*)|(&&|\|\||==|!=|<=|>=|->|::|<<|>>|[-+*\/%<>!?:()\[\].,&|^~=]))/y;
 
 /** @param {string} src */
 function tokenize(src) {
+  if (src.length > MAX_SOURCE) throw new ExprError(TOO_COMPLEX, "unsupported");
   const out = [];
   let pos = 0;
   while (pos < src.length) {
@@ -37,6 +41,7 @@ function tokenize(src) {
     if (m[1] !== undefined) out.push({ t: "num", v: m[1], suf: m[2].toLowerCase(), at: start });
     else if (m[3] !== undefined) out.push({ t: "id", v: m[3], at: start });
     else out.push({ t: "op", v: m[4], at: start });
+    if (out.length > MAX_TOKENS) throw new ExprError(TOO_COMPLEX, "unsupported");
   }
   return out;
 }
@@ -54,7 +59,7 @@ export function parseExpr(src) {
   const isOp = (v) => p < toks.length && toks[p].t === "op" && toks[p].v === v;
   const expect = (v) => { if (!isOp(v)) throw new ExprError(near(), "syntax"); p++; };
   let depth = 0;
-  const enter = () => { if (++depth > 64) throw new ExprError("expression nested too deeply", "syntax"); };
+  const enter = () => { if (++depth > MAX_DEPTH) throw new ExprError(TOO_COMPLEX, "unsupported"); };
   const binLevel = (ops, sub) => () => {
     let l = sub();
     while (p < toks.length && toks[p].t === "op" && ops.includes(toks[p].v)) { const op = toks[p++].v; l = { k: "bin", op, a: l, b: sub() }; }
@@ -146,6 +151,7 @@ export function fromRaw(cls, raw) {
     case "int": { const [bits, uns] = INT_INFO.get(cls.node.name) || [32, false]; return { t: "int", bits, uns, name: cls.node.name, v: big(raw) }; }
     case "float": return { t: "float", single: !!cls.single, v: typeof raw === "number" ? raw : raw === "inf" ? Infinity : raw === "-inf" ? -Infinity : raw === "nan" ? NaN : 0 };
     case "vector": return { t: "vec", cls, v: Array.isArray(raw) ? raw : [] };
+    case "array": return { t: "vec", cls, v: Array.isArray(raw) ? raw : [], arr: true };
     case "string": return { t: "str", v: typeof raw === "string" ? raw : "" };
     default: throw new ExprError(unsupportedMsg(`type '${cls.node && cls.node.k === "n" ? cls.node.name : cls.kind}'`), "unsupported");
   }
@@ -206,14 +212,36 @@ function arith(op, x, y) {
  * @returns {Val}
  */
 export function evalAst(a, lookup) {
+  try { return evalNode(a, lookup); } catch (x) {
+    if (x instanceof RangeError) throw new ExprError(TOO_COMPLEX, "unsupported"); // host stack exhausted: never an internal error
+    throw x;
+  }
+}
+
+/** @param {Ast} a @param {(name: string) => { cls: any, raw: any } | null} lookup @returns {Val} */
+function evalNode(a, lookup) {
   switch (a.k) {
     case "num": {
-      if (/[.eE]/.test(a.text) && !/^0[xX]/.test(a.text)) return { t: "float", single: a.suf.includes("f"), v: Number(a.text) };
-      const v = BigInt(a.text);
-      const l = a.suf.includes("l"), u = a.suf.includes("u");
-      if (!l && v < 2147483648n && !u) return { ...INT, v };
-      if (!l && u && v < 4294967296n) return { t: "int", bits: 32, uns: true, name: "unsigned int", v };
-      return { t: "int", bits: 64, uns: u, name: u ? "unsigned long" : "long", v };
+      const hex = /^0[xX]/.test(a.text);
+      if (/[.eE]/.test(a.text) && !hex) {
+        if (/[ul]/.test(a.suf) || (a.suf.includes("f") && !/[.eE]/.test(a.text))) throw new ExprError(`Invalid number "${a.text}${a.suf}".`, "syntax");
+        return { t: "float", single: a.suf.includes("f"), v: Number(a.text) };
+      }
+      if (a.suf.includes("f") || !/^(u?(l|ll)?|(l|ll)u)$/.test(a.suf)) throw new ExprError(`Invalid number "${a.text}${a.suf}".`, "syntax");
+      const octal = !hex && /^0\d/.test(a.text);
+      if (octal && /[89]/.test(a.text)) throw new ExprError(`Invalid number "${a.text}".`, "syntax");
+      const v = octal ? BigInt("0o" + a.text.slice(1)) : BigInt(a.text);
+      const u = a.suf.includes("u"), ls = (a.suf.match(/l/g) || []).length;
+      // C++ [lex.icon]: the first type that fits. Decimal without `u`: int, long (, long long); hex/octal also try the unsigned ones.
+      const cands = ls === 2 ? [["long long", 64, false], ["unsigned long long", 64, true]]
+        : ls === 1 ? [["long", 64, false], ["unsigned long", 64, true]]
+          : [["int", 32, false], ["unsigned int", 32, true], ["long", 64, false], ["unsigned long", 64, true]];
+      for (const [name, bits, uns] of cands) {
+        if (u && !uns) continue;
+        if (!u && uns && !(hex || octal)) continue;
+        if (v < (uns ? 1n << BigInt(bits) : 1n << BigInt(bits - 1))) return { t: "int", bits: /** @type {number} */ (bits), uns: /** @type {boolean} */ (uns), name: /** @type {string} */ (name), v };
+      }
+      throw new ExprError("Numeric constant too large.", "syntax");
     }
     case "id": {
       if (a.name === "true" || a.name === "false") return bool(a.name === "true");
@@ -222,7 +250,7 @@ export function evalAst(a, lookup) {
       return fromRaw(e.cls, e.raw);
     }
     case "un": {
-      const x = evalAst(a.a, lookup);
+      const x = evalNode(a.a, lookup);
       if (!isNum(x)) throw new ExprError(unsupportedMsg("operator on non-scalar value"), "unsupported");
       if (a.op === "!") return bool(!truthy(x));
       if (x.t === "float") return { ...x, v: a.op === "-" ? -x.v : x.v };
@@ -231,28 +259,28 @@ export function evalAst(a, lookup) {
     }
     case "bin": {
       if (a.op === "&&" || a.op === "||") {
-        const l = evalAst(a.a, lookup);
+        const l = evalNode(a.a, lookup);
         if (!isNum(l)) throw new ExprError(unsupportedMsg("logical operator on non-scalar value"), "unsupported");
         if (a.op === "&&" ? !truthy(l) : truthy(l)) return bool(a.op === "||");
-        const r = evalAst(a.b, lookup);
+        const r = evalNode(a.b, lookup);
         if (!isNum(r)) throw new ExprError(unsupportedMsg("logical operator on non-scalar value"), "unsupported");
         return bool(truthy(r));
       }
-      return arith(a.op, evalAst(a.a, lookup), evalAst(a.b, lookup));
+      return arith(a.op, evalNode(a.a, lookup), evalNode(a.b, lookup));
     }
     case "cond": {
-      const c = evalAst(a.c, lookup);
+      const c = evalNode(a.c, lookup);
       if (!isNum(c)) throw new ExprError(unsupportedMsg("condition of non-scalar type"), "unsupported");
-      return truthy(c) ? evalAst(a.a, lookup) : evalAst(a.b, lookup);
+      return truthy(c) ? evalNode(a.a, lookup) : evalNode(a.b, lookup);
     }
     case "idx": {
-      const base = evalAst(a.a, lookup);
-      const ix = evalAst(a.i, lookup);
+      const base = evalNode(a.a, lookup);
+      const ix = evalNode(a.i, lookup);
       if (!(ix.t === "int" || ix.t === "char" || ix.t === "bool")) throw new ExprError("Argument to arithmetic operation not a number or boolean.", "error");
       const i = Number(ix.v);
       if (base.t === "vec") {
         if (i < 0 || i >= base.v.length) throw new ExprError("Cannot access memory at address 0x0", "error");
-        return fromRaw(classify(base.cls.elem), base.v[i]);
+        return fromRaw(classify(base.cls.elem), base.v[i]); // vector element or C array element (cls.elem = element type)
       }
       if (base.t === "str") {
         if (i < 0 || i >= base.v.length) throw new ExprError("Cannot access memory at address 0x0", "error");
@@ -261,7 +289,7 @@ export function evalAst(a, lookup) {
       throw new ExprError("cannot subscript something of type `int'", "error");
     }
     case "call": {
-      evalAst(a.a, lookup); // errors of the receiver (unknown name) come first, like GDB
+      evalNode(a.a, lookup); // errors of the receiver (unknown name) come first, like GDB
       throw new ExprError("Cannot evaluate function -- may be inlined", "inlined");
     }
   }

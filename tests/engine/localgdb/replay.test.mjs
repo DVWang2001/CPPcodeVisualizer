@@ -120,6 +120,8 @@ const MUTATIONS = {
   "pointer varobj type": (evs) => { const it = respItems(evs).find((x) => x.payload && x.payload.type && / \*$/.test(x.payload.type) && x.payload.value); it.payload.type = "long *"; },
   "pointer child value": (evs) => { const it = respItems(evs).find((x) => x.payload && x.payload.children && /^\*&/.test(x.payload.children[0].exp)); it.payload.children[0].value = "424242"; },
   "integer expression value (w - 1)": (evs) => { const it = respItems(evs).find((x) => x.payload && x.payload.type === "int" && x.payload.name && x.payload.value === "3"); it.payload.value = "4"; },
+  "initialised inner r shadowing an uninitialised outer r (A1)": (evs) => { const it = respItems(evs).find((x) => x.payload && x.payload.variables && x.payload.variables[0].name === "r" && x.payload.variables[0].value === "0" && x.payload.variables.filter((v) => v.name === "r").length === 2); it.payload.variables[0].value = "7"; },
+  "null pointer vs address (A2)": (evs) => { const it = respItems(evs).find((x) => x.payload && x.payload.type && / \*$/.test(x.payload.type) && x.payload.value); it.payload.value = "0x0"; },
   "features list": (evs) => { const it = respItems(evs).find((x) => x.payload && x.payload.features && x.payload.features.length); it.payload.features.push("bogus-feature"); },
 };
 

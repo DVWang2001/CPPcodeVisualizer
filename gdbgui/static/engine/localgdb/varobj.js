@@ -15,6 +15,7 @@
 
 import { classify, gdbType, isSupported, isDynamic, isSimple } from "./types.js";
 import { valueOf } from "./model.js";
+import { printValue } from "./types.js";
 import { resultItem, errorItem, unsupportedMsg } from "./mi.js";
 import { parseExpr, evalAst, collectNames, resultClass, rawOf } from "./expr.js";
 
@@ -81,7 +82,7 @@ export class VarObjs {
     if (/^[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*\s*\(.*\)$/.test(e)) return errorItem("Cannot evaluate function -- may be inlined", token);
     const am = /^&\s*\(?\s*([A-Za-z_]\w*)\s*\)?$/.exec(e);
     if (am) return this._createPtr(name, e, am[1], token);
-    if (!/^[A-Za-z_]\w*$/.test(e)) return this._createExpr(name, e, token);
+    if (!/^[A-Za-z_]\w*$/.test(e) || e === "true" || e === "false") return this._createExpr(name, e, token);
     const r = this._resolve(e);
     if ("error" in r) return errorItem(r.error, token);
     const cls = r.cls;
@@ -162,7 +163,7 @@ export class VarObjs {
     if ("error" in r) return errorItem(r.error, token);
     const pc = r.cls.kind === "ref" ? r.cls.to : r.cls;
     const scalar = pc.kind === "int" || pc.kind === "bool" || pc.kind === "char" || pc.kind === "float";
-    if (!(scalar || (pc.kind === "vector" && isSupported(pc)))) return errorItem(unsupportedMsg(`type '${gdbType(pointerTo(r.node))}'`), token);
+    if (!(scalar || ((pc.kind === "vector" || pc.kind === "array") && isSupported(pc)))) return errorItem(unsupportedMsg(`type '${gdbType(pointerTo(r.node))}'`), token);
     const pnode = r.cls.kind === "ref" ? r.node.to : r.node;
     /** @type {VarObj} */
     const vo = {
@@ -285,7 +286,8 @@ export class VarObjs {
   _describe(vo, isCreate) {
     const cls = vo.ti.cls;
     const ecls = cls.kind === "ref" ? cls.to : cls;
-    const nc = vo.kind === "ptr" || vo.kind === "basechild" ? "1" : String(vo.children ? vo.children.length : 0);
+    // numchild: pointers 1; C arrays N (static type, known at creation); dynamic (pretty-printed) ones: children listed so far
+    const nc = vo.kind === "ptr" || vo.kind === "basechild" ? "1" : ecls.kind === "array" ? String(ecls.n) : String(vo.children ? vo.children.length : 0);
     const p = { name: vo.name, numchild: nc, value: this._value(vo), type: vo.ti.gdbType };
     if (!vo.root.global) /** @type {any} */ (p)["thread-id"] = "1";
     if (isDynamic(ecls)) {
@@ -321,9 +323,10 @@ export class VarObjs {
       });
       return resultItem({ numchild: "1", children: kids, has_more: "0" }, token);
     }
-    if (ecls.kind !== "vector") return resultItem({ numchild: "0", has_more: "0" }, token);
+    if (ecls.kind !== "vector" && ecls.kind !== "array") return resultItem({ numchild: "0", has_more: "0" }, token);
+    const isArr = ecls.kind === "array";
     const raw = this._raw(vo);
-    const n = Array.isArray(raw) ? raw.length : 0;
+    const n = isArr ? ecls.n : Array.isArray(raw) ? raw.length : 0;
     this._ensureChildren(vo, n);
     const kids = /** @type {VarObj[]} */ (vo.children).slice(from ?? 0, to ?? n);
     const children = kids.map((c) => {
@@ -337,7 +340,8 @@ export class VarObjs {
       if (d.displayhint) { out.displayhint = d.displayhint; out.dynamic = d.dynamic; }
       return out;
     });
-    return resultItem({ numchild: String(n), displayhint: "array", children, has_more: "0" }, token);
+    // a C array is not a dynamic varobj: no displayhint on the result
+    return resultItem(isArr ? { numchild: String(n), children, has_more: "0" } : { numchild: String(n), displayhint: "array", children, has_more: "0" }, token);
   }
 
   /** @param {VarObj} vo @param {number} n */
@@ -351,8 +355,9 @@ export class VarObjs {
     for (let i = vo.children.length; i < n; i++) {
       /** @type {VarObj} */
       const c = {
-        name: `${vo.name}.[${i}]`, exp: `[${i}]`, parent: vo, index: i,
-        ti: { cls: ecl, node: elemNode, gdbType: gdbType(elemNode, true) }, children: null, root: vo.root, varName: vo.varName,
+        // GDB child names: pretty-printed vector `var1.[i]` / exp `[i]`; C array `var1.i` / exp `i`
+        name: ecls.kind === "array" ? `${vo.name}.${i}` : `${vo.name}.[${i}]`, exp: ecls.kind === "array" ? `${i}` : `[${i}]`, parent: vo, index: i,
+        ti: { cls: ecl, node: elemNode, gdbType: gdbType(elemNode, ecls.kind !== "array") } /* array elements keep the declared spelling (typedef std::string); vector children are template arguments (full spelling) */, children: null, root: vo.root, varName: vo.varName,
         frameId: vo.frameId, fn: vo.fn, blockId: vo.blockId, global: vo.global, lastValue: null, lastInScope: true, addrName: vo.addrName,
       };
       c.lastValue = this._value(c);
@@ -452,7 +457,7 @@ export class VarObjs {
   }
 
   /**
-   * `-data-evaluate-expression`: plain variable names only.
+   * `-data-evaluate-expression`: plain names, `&name`, arithmetic/subscript expressions (value only, `print` format).
    * @param {string} expr @param {number | null} token
    */
   evaluate(expr, token) {
@@ -464,7 +469,7 @@ export class VarObjs {
       if ("error" in t) return errorItem(t.error, token);
       return resultItem({ value: `(${gdbType(pointerTo(t.node))}) 0x${this._model.varAddr(t.frameId ?? 0, am[1]).toString(16)}` }, token);
     }
-    if (!/^[A-Za-z_]\w*$/.test(e)) {
+    if (!/^[A-Za-z_]\w*$/.test(e) || e === "true" || e === "false") {
       let val;
       try {
         const fr = this._frames()[Math.min(this.host.exec.selectedLevel, Math.max(this._frames().length - 1, 0))];
@@ -472,13 +477,16 @@ export class VarObjs {
       } catch (x) { return errorItem(/** @type {any} */ (x).message, token); }
       const rc = resultClass(val);
       if (!rc) return errorItem(unsupportedMsg(`expression '${e}' (its value is a container)`), token);
-      return resultItem({ value: valueOf(rc.cls, rawOf(val)) }, token);
+      return resultItem({ value: printValue(rc.cls, rawOf(val)) }, token);
     }
     const r = this._resolve(e);
     if ("error" in r) return errorItem(r.error, token);
     if (!isSupported(r.cls)) return errorItem(unsupportedMsg(`type '${r.gdbType}'`), token);
     const fake = { name: "", exp: e, parent: null, index: -1, ti: { cls: r.cls, node: r.node, gdbType: r.gdbType }, children: null, varName: e, frameId: r.frameId, fn: r.fn, blockId: r.blockId, global: r.global, lastValue: null, lastInScope: true, addrName: e };
     /** @type {any} */ (fake).root = fake;
-    return resultItem({ value: this._value(/** @type {any} */ (fake)) }, token);
+    // `print`-style value (children included: `{1, 2, 3}`, `std::vector of length 3, capacity 4 = {0, 1, 4}`)
+    const cap = r.cls.kind === "vector" || (r.cls.kind === "ref" && r.cls.to.kind === "vector") ? this._capacityOf(/** @type {any} */ (fake)) : undefined;
+    const pv = printValue(r.cls, this._raw(/** @type {any} */ (fake)), cap);
+    return resultItem({ value: r.cls.kind === "ref" ? `@0x${this._model.varAddr(r.frameId ?? 0, e).toString(16)}: ${pv}` : pv }, token);
   }
 }

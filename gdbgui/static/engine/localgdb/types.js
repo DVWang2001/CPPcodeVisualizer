@@ -126,6 +126,11 @@ function tmpl(name, args) {
  * @returns {string}
  */
 export function gdbType(t, inTemplate = false) {
+  if (t.k === "p" && t.to.k === "a") { // pointer to array: `int (*)[3]`
+    const s = gdbType(t.to, inTemplate);
+    const i = s.indexOf(" [");
+    return `${s.slice(0, i)} (*)${s.slice(i + 1)}`;
+  }
   if (t.k === "p") { const s = gdbType(t.to, inTemplate); return s.endsWith("*") ? s + "*" : s + " *"; }
   if (t.k === "r") return gdbType(t.to, inTemplate) + " &";
   if (t.k === "a") {
@@ -178,13 +183,13 @@ const FLOAT_NAMES = new Set(["float", "double", "long double"]);
 
 /**
  * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "ptr" | "array" | "ref" | "other", node: TypeNode,
- *   unsigned?: boolean, single?: boolean, elem?: TypeNode, to?: Cls }} Cls
+ *   unsigned?: boolean, single?: boolean, elem?: TypeNode, to?: Cls, n?: number }} Cls
  */
 
 /** @param {TypeNode} t @returns {Cls} */
 export function classify(t) {
   if (t.k === "p") return { kind: "ptr", node: t };
-  if (t.k === "a") return { kind: "array", node: t };
+  if (t.k === "a") return { kind: "array", node: t, elem: t.of, n: /^\d+$/.test(t.dim) ? Number(t.dim) : -1 };
   if (t.k === "r") return { kind: "ref", node: t, to: classify(t.to) };
   const name = ALIASES.get(t.name) || t.name;
   if (INT_NAMES.has(name)) return { kind: "int", node: t, unsigned: name.startsWith("unsigned") };
@@ -217,6 +222,7 @@ export function isSupported(c) {
     case "int": case "bool": case "char": case "float": case "string": return true;
     case "ref": return isSupported(/** @type {Cls} */ (c.to));
     case "vector": return isSupported(classify(/** @type {TypeNode} */ (c.elem)));
+    case "array": return /** @type {any} */ (c).n >= 0 && isSupported(classify(/** @type {TypeNode} */ (c.elem)));
     default: return false;
   }
 }
@@ -293,9 +299,89 @@ export function formatScalar(c, raw) {
       if (c.single) return formatG(Math.fround(v), 9);
       return formatG(v, 17);
     }
-    case "string": return quoteString(typeof raw === "string" ? raw : "");
+    case "string": return printChars(typeof raw === "string" ? [...raw].map((ch) => ch.codePointAt(0) || 0) : [], false);
     case "ptr": return raw === 0 || raw === undefined ? "0x0" : "0x7ffe00000000";
     case "ref": return formatScalar(/** @type {Cls} */ (c.to), raw);
     default: return "{...}";
   }
+}
+
+// ---- GDB `print` formatting of aggregates (defaults: `set print elements 200`, `set print repeats 10`) ------------------
+
+export const PRINT_ELEMENTS = 200;
+export const REPEAT_THRESHOLD = 10;
+
+/** @param {number} c */
+const quoteChar = (c) => (c > 127 ? String.fromCodePoint(c) : escChar(c, '"'));
+
+/**
+ * GDB's printstr: quoted segments, runs longer than the repeat threshold as `'c' <repeats N times>`, at most
+ * 200 characters (a repeat group counts as 10), then `...`. `charArray` applies c_value_print_array's rule of not
+ * printing the final NUL of a char array that was not truncated.
+ * @param {number[]} codes @param {boolean} charArray @returns {string}
+ */
+export function printChars(codes, charArray) {
+  let len = codes.length;
+  if (charArray && len > 0 && len <= PRINT_ELEMENTS && (codes[len - 1] & 0xff) === 0) len--;
+  if (len === 0) return '""';
+  const parts = [];
+  let seg = null, things = 0, i = 0;
+  const norm = (c) => (charArray ? c & 0xff : c);
+  while (i < len && things < PRINT_ELEMENTS) {
+    const c = norm(codes[i]);
+    let j = i + 1;
+    while (j < len && norm(codes[j]) === c) j++;
+    const reps = j - i;
+    if (reps > REPEAT_THRESHOLD) {
+      if (seg !== null) { parts.push(`"${seg}"`); seg = null; }
+      parts.push(`'${c > 127 ? String.fromCodePoint(c) : escChar(c, "'")}' <repeats ${reps} times>`);
+      things += REPEAT_THRESHOLD;
+      i = j;
+    } else {
+      seg = (seg || "") + quoteChar(c);
+      things++;
+      i++;
+    }
+  }
+  if (seg !== null) parts.push(`"${seg}"`);
+  return parts.join(", ") + (i < len ? "..." : "");
+}
+
+/** @param {any} a @param {any} b */
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Full GDB `print` value (as in `-stack-list-variables --all-values`, `-data-evaluate-expression`, frame args):
+ * arrays `{1, 2, 0 <repeats 11 times>}` with the 200-element limit, char arrays as strings, vectors through the
+ * libstdc++ printer `std::vector of length N, capacity M = {...}` (children are not repeat-compressed), scalars.
+ * @param {Cls} cls @param {any} raw @param {number} [capacity] outermost vector capacity (inner vectors: length)
+ * @returns {string}
+ */
+export function printValue(cls, raw, capacity) {
+  if (cls.kind === "ref") return printValue(/** @type {Cls} */ (cls.to), raw, capacity);
+  if (cls.kind === "array") {
+    const ec = classify(/** @type {TypeNode} */ (cls.elem));
+    const a = Array.isArray(raw) ? raw : [];
+    if (ec.kind === "char") return printChars(a.map((x) => (typeof x === "number" ? x : 0)), true);
+    const out = [];
+    let i = 0, things = 0;
+    for (; i < a.length && things < PRINT_ELEMENTS; i++) {
+      let j = i + 1;
+      while (j < a.length && same(a[j], a[i])) j++;
+      const reps = j - i;
+      const el = printValue(ec, a[i]);
+      if (reps > REPEAT_THRESHOLD) { out.push(`${el} <repeats ${reps} times>`); i = j - 1; things += REPEAT_THRESHOLD; }
+      else { out.push(el); things++; }
+    }
+    return `{${out.join(", ")}${i < a.length ? "..." : ""}}`;
+  }
+  if (cls.kind === "vector") {
+    const a = Array.isArray(raw) ? raw : [];
+    const head = `std::vector of length ${a.length}, capacity ${capacity === undefined ? a.length : capacity}`;
+    if (!a.length) return head;
+    const ec = classify(/** @type {TypeNode} */ (cls.elem));
+    const shown = a.slice(0, PRINT_ELEMENTS).map((x) => printValue(ec, x));
+    return `${head} = {${shown.join(", ")}${a.length > PRINT_ELEMENTS ? "..." : ""}}`;
+  }
+  return formatScalar(cls, raw);
 }

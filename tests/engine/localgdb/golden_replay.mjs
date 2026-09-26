@@ -84,9 +84,10 @@ const isNoise = (/** @type {any} */ it) => (it.type === "notify" && NOISE_NOTIFY
 const HEX_FULL = /^0x[0-9a-f]+$/;
 const REF_PREFIX = /^@0x[0-9a-f]+: /;
 /** Address values: both sides are WHOLE hex addresses, or `@0xADDR: rest` with `rest` equal. */
-const addrEqual = (/** @type {string} */ g, /** @type {string} */ m) => (HEX_FULL.test(g) && HEX_FULL.test(m)) || (REF_PREFIX.test(g) && REF_PREFIX.test(m) && g.replace(REF_PREFIX, "") === m.replace(REF_PREFIX, ""));
+const NULL_ADDR = /^0x0+$/;
+const addrEqual = (/** @type {string} */ g, /** @type {string} */ m) => (HEX_FULL.test(g) && HEX_FULL.test(m) && NULL_ADDR.test(g) === NULL_ADDR.test(m)) ||(REF_PREFIX.test(g) && REF_PREFIX.test(m) && g.replace(REF_PREFIX, "") === m.replace(REF_PREFIX, ""));
 
-/** @typedef {{ uninit: Set<string>, expr: string | null, step: any, line: number | string, declLater: Set<string> }} Ctx */
+/** @typedef {{ expr: string | null, step: any, line: number | string, entries: Array<{ name: string, present: boolean, declLine: number, uninit: boolean }> }} Ctx */
 
 export class Report {
   constructor() {
@@ -114,11 +115,17 @@ function cmpVal(g, m, p, rep, ctx, parentG, key = "") {
     const nm = parentG && typeof parentG === "object" ? parentG.name : undefined;
     const zero = /^(0|false|0 '\\000'|"")$/.test(m); // D6: our value for an uninitialised variable is the zero of its type
     const garbage = /^-?\d+$/.test(g); // GDB shows stack garbage: a plain integer
-    const target = p.includes("variables[") ? nm : p.includes("payload.value") ? ctx.expr : null;
-    // independent of LocalGdb's own flag: the ENGINE trace says the variable is uninitialised (`uninit`) or not declared yet at this stop
-    // (or a shadowed outer variable whose declaration line is after the current line, from the source's block analysis)
-    const engineUninit = typeof target === "string" && ctx.step && ((ctx.step.uninit || []).includes(target) || !Object.prototype.hasOwnProperty.call(ctx.step.vars, target) || ctx.declLater.has(target));
-    if (zero && garbage && typeof target === "string" && ctx.uninit.has(target) && engineUninit) { rep.allow("uninit-value"); rep.uninitPairs.add(`${ctx.line}:${target}`); return; }
+    // Resolve the ONE variable this value belongs to (never just by name: an initialised inner `r` must not inherit the
+    // uninitialised state of an outer `r`): `variables[k]` -> the k-th listed entry; a `-var-create` of a plain name -> the
+    // innermost entry of that name (what GDB's lookup finds).
+    const vk = /variables\[(\d+)\]/.exec(p);
+    const entries = ctx.entries || [];
+    const ent = vk ? entries[Number(vk[1])] : p.includes("payload.value") && ctx.expr !== null ? entries.find((x) => x.name === ctx.expr) : undefined;
+    const target = ent && (vk ? ent.name === nm : true) ? ent : null;
+    // independent of LocalGdb's own flag: the ENGINE trace says this entry is uninitialised - it receives the trace value
+    // and the engine lists it in `uninit`, or it does not receive a trace value because its declaration (this line or a later one) has not run
+    const engineUninit = !!target && !!ctx.step && (target.present ? (ctx.step.uninit || []).includes(target.name) : target.declLine >= Number(ctx.line)); // a stop is BEFORE its line executes
+    if (zero && garbage && target && target.uninit && engineUninit) { rep.allow("uninit-value"); rep.uninitPairs.add(`${ctx.line}:${target.name}@${target.declLine}`); return; }
   }
   if (key === "features" && Array.isArray(g) && Array.isArray(m)) {
     if (m.includes("reverse") && !g.includes("reverse")) { m = m.filter((x) => x !== "reverse"); rep.allow("reverse-feature"); }
@@ -222,10 +229,9 @@ export async function replayGolden({ gdb, events, userFns, steps, mutate }) {
         if (st.inStd && /^\d*-var-update\b/.test(gs.command)) for (const it of ms.items) if (it.payload && it.payload.changelist) st.windowMine.push(...it.payload.changelist);
         return;
       }
-      const uninit = new Set(ms.ctx ? ms.ctx.uninit : []);
       const em = /^\d*-var-create\s+\S+\s+\S+\s+"(.*)"$/.exec(gs.command);
       /** @type {Ctx} */
-      const ctx = { uninit, expr: em ? em[1] : null, step: ms.ctx && ms.ctx.stepIdx >= 0 ? steps[ms.ctx.stepIdx] : null, line: ms.ctx ? ms.ctx.line : -1, declLater: new Set(ms.ctx ? ms.ctx.declLater : []) };
+      const ctx = { expr: em ? em[1] : null, step: ms.ctx && ms.ctx.stepIdx >= 0 ? steps[ms.ctx.stepIdx] : null, line: ms.ctx ? ms.ctx.line : -1, entries: ms.ctx ? ms.ctx.entries : [] };
       let gi = gs.items;
       if (/^\d*-var-update\b/.test(gs.command)) gi = filterUntestedChanges(gi, st, rep);
       const before = rep.diffs.length;

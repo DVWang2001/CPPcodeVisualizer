@@ -4,10 +4,10 @@
 // Plain ES module, no DOM / Node APIs.
 
 import { parseCommand, splitArgs, resultItem, errorItem, notifyItem, consoleItem, logItem, outputItem, doneItem, unsupportedMsg, hex16 } from "./mi.js";
-import { TraceModel, valueOf } from "./model.js";
+import { TraceModel } from "./model.js";
 import { BreakpointTable, ExecState } from "./exec.js";
 import { VarObjs } from "./varobj.js";
-import { isSimple } from "./types.js";
+import { isSimple, printValue } from "./types.js";
 import { parseFastForward, pyJson } from "./fastforward.js";
 import { chainAt } from "./scopes.js";
 
@@ -128,7 +128,7 @@ export class LocalGdbSession {
       for (const c of job.cmds) {
         let it;
         try { it = this.dispatch(c); } catch (e) { it = [errorItem("internal error: " + (e && /** @type {any} */ (e).message), parseCommand(c).token)]; }
-        if (this.record) this.subcommandLog.push({ command: c, items: it, ctx: { uninit: this.uninitNames(), declLater: this.hasStack() ? this.model.visibleVars(this.topStep()).filter((e) => e.declLine > this.model.steps[this.topStep()].line).map((e) => e.name) : [], stepIdx: this.hasStack() ? this.topStep() : -1, line: this.hasStack() ? this.model.steps[this.topStep()].line : -1 } });
+        if (this.record) this.subcommandLog.push({ command: c, items: it, ctx: { uninit: this.uninitNames(), declLater: this.hasStack() ? this.model.visibleVars(this.topStep()).filter((e) => e.declLine > this.model.steps[this.topStep()].line).map((e) => e.name) : [], entries: this.hasStack() ? this.model.visibleVars(this.topStep()).map((e) => ({ name: e.name, present: e.present, declLine: e.declLine, uninit: e.uninit })) : [], stepIdx: this.hasStack() ? this.topStep() : -1, line: this.hasStack() ? this.model.steps[this.topStep()].line : -1 } });
         items = items.concat(it);
       }
       this.out("gdb_response", { run_token: job.runToken, request_id: this.lastRequestId, packet_seq_num: ++this.seq, data: items });
@@ -222,7 +222,7 @@ export class LocalGdbSession {
 
   /** GDB `value` string of a variable entry. @param {import("./model.js").VarEntry} e */
   entryValue(e) {
-    const s = valueOf(e.cls, e.raw, this.model.topCapacity(e));
+    const s = printValue(e.cls, e.raw, this.model.topCapacity(e));
     return e.cls.kind === "ref" ? `@0x${this.model.varAddr(e.frameId, e.name).toString(16)}: ${s}` : s;
   }
 

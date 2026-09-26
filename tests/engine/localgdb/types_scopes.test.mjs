@@ -44,8 +44,8 @@ test("type spelling: builtins, string, containers, pointers, references, arrays,
 
 test("classification: supported set, simple values, dynamic (pretty-printed) types", () => {
   const c = (q) => classify(parseType(q));
-  for (const q of ["int", "long long", "bool", "char", "double", "float", "std::string", "std::vector<int>", "std::vector<std::vector<int>>", "std::vector<std::string>", "std::vector<double> &", "unsigned"]) assert.equal(isSupported(c(q)), true, q);
-  for (const q of ["std::map<int,int>", "std::set<int>", "std::deque<int>", "std::stack<int>", "std::queue<int>", "std::priority_queue<int>", "int *", "int[3]", "Pt", "std::vector<bool>", "std::vector<std::map<int,int>>", "std::pair<int,int>"]) assert.equal(isSupported(c(q)), false, q);
+  for (const q of ["int", "long long", "bool", "char", "double", "float", "std::string", "std::vector<int>", "std::vector<std::vector<int>>", "std::vector<std::string>", "std::vector<double> &", "unsigned", "int[3]", "int[2][3]", "char[4]", "double[2]", "std::vector<int>[2]", "long long[3]"]) assert.equal(isSupported(c(q)), true, q);
+  for (const q of ["std::map<int,int>", "std::set<int>", "std::deque<int>", "std::stack<int>", "std::queue<int>", "std::priority_queue<int>", "int *", "Pt", "Pt[2]", "int *[2]", "std::map<int,int>[2]", "std::vector<bool>", "std::vector<std::map<int,int>>", "std::pair<int,int>"]) assert.equal(isSupported(c(q)), false, q);
   assert.deepEqual(["int", "bool", "char", "double", "int *", "int &", "std::string", "std::vector<int>", "int[3]", "Pt", "std::vector<int> &"].map((q) => isSimple(c(q))), [true, true, true, true, true, true, false, false, false, false, false]);
   assert.deepEqual(["std::vector<int>", "std::string", "int", "std::vector<int> &"].map((q) => isDynamic(c(q))), [true, true, false, true]);
 });
