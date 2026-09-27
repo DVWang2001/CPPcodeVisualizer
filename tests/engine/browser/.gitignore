@@ -1,3 +1,5 @@
 results.jsonl
 autorun_results.jsonl
 !evidence/
+proxy_access.log
+STOP

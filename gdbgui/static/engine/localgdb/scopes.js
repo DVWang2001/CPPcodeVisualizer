@@ -20,7 +20,7 @@
 
 /** @typedef {{ t: string, line: number }} Tok */
 /** @typedef {{ id: number, kind: "function" | "for" | "body", start: number, end: number, parent: number, depth: number, vars: Array<{ name: string, declLine: number, nth: number }> }} Block */
-/** @typedef {{ blocks: Block[] }} FnScopes */
+/** @typedef {{ blocks: Block[], loops: Array<{ kind: "for" | "while", start: number, end: number }> }} FnScopes */
 
 const KEYWORDS_NOT_TYPES = new Set(["return", "delete", "throw", "goto", "break", "continue", "case", "default", "else", "new", "sizeof", "using", "namespace", "co_return", "co_yield", "co_await", "typedef"]);
 const TYPE_PREFIX = new Set(["const", "static", "constexpr", "volatile", "register", "extern", "inline", "mutable"]);
@@ -179,6 +179,8 @@ export function analyzeScopes(source, functions, globals = {}) {
     const known = new Set(meta.vars);
     /** @type {Block[]} */
     const blocks = [];
+    /** @type {Array<{ kind: "for" | "while", start: number, end: number }>} loop headers with the last line of their body */
+    const loops = [];
     /** @type {Record<string, number>} */
     const nth = Object.create(null);
     const mk = (kind, start, end, parent) => {
@@ -246,11 +248,13 @@ export function analyzeScopes(source, functions, globals = {}) {
             next = parseStmt(r, fbk);
             fbk.end = T[Math.max(next - 1, r)].line;
           }
+          loops.push({ kind: "for", start: tok.line, end: fbk.end });
           return next;
         }
         if ((tok.t === "while" || tok.t === "if" || tok.t === "switch") && T[i + 1] && T[i + 1].t === "(") {
           const q = matching(T, i + 1);
           let next = parseStmt(q + 1, block);
+          if (tok.t === "while") loops.push({ kind: "while", start: tok.line, end: T[Math.max(next - 1, q + 1)].line });
           if (tok.t === "if" && T[next] && T[next].t === "else") next = parseStmt(next + 1, block);
           return next;
         }
@@ -270,7 +274,7 @@ export function analyzeScopes(source, functions, globals = {}) {
     const placed = new Set();
     for (const b of blocks) for (const v of b.vars) placed.add(v.name);
     for (const v of meta.vars) if (!placed.has(v) && !Object.prototype.hasOwnProperty.call(globals, v)) fb.vars.push({ name: v, declLine: meta.line, nth: 0 });
-    out.set(fn, { blocks });
+    out.set(fn, { blocks, loops });
   }
   return out;
 }

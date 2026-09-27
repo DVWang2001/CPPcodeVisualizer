@@ -82,6 +82,7 @@ export class BreakpointTable {
    */
   hitsAt(idx) {
     const s = this.model.steps[idx];
+    if (this.model.isLoopRevisit(idx)) return [];
     /** @type {Breakpoint[]} */
     const stops = [];
     for (const b of this.list) {
@@ -154,6 +155,21 @@ export class ExecState {
     return { kind, idx: f.callerStep, hits: [], frameChanged: true };
   }
 
+  /**
+   * GDB's next/step keep stepping until the LINE changes: a later step of the same frame on the same line as the
+   * origin (e.g. the then-branch of `if (f(x)) cout << ...;` after the callee ran) is not a new stop, and neither is the
+   * rest of the caller's call line after returning from a callee (GDB continues to the end of that statement).
+   * A `for` header's increment stop after the body is a different line visit (the body's line lies in between).
+   * @param {number} origin step index of the stop we resume from @param {number} i candidate step
+   */
+  _sameLineVisit(origin, i) {
+    const S = this.model.steps, o = S[origin], c = S[i];
+    if (c.frame === o.frame && c.line === o.line) return true;
+    const f = this.model.frames.get(o.frame);
+    if (f && f.callerStep >= 0) { const cs = S[f.callerStep]; if (c.frame === cs.frame && c.line === cs.line) return true; }
+    return false;
+  }
+
   /** Run start: first breakpoint hit or program end. @returns {StopInfo} */
   run() {
     this.reset();
@@ -192,6 +208,7 @@ export class ExecState {
       const h = this.bps.hitsAt(i);
       if (h.length) return this._stopAt(i, "step", h);
       if (how === "continue") continue;
+      if (pos >= 0 && this._sameLineVisit(dispIdx, i)) continue;
       if (how === "step" || S[i].depth <= dRef) {
         return this._stopAt(i, "step");
       }
@@ -218,6 +235,7 @@ export class ExecState {
       const h = this.bps.hitsAt(i);
       if (h.length) return this._stopAt(i, "step", h);
       if (how === "continue") continue;
+      if (this._sameLineVisit(base, i)) continue;
       if (how === "step" || S[i].depth <= dRef) return this._stopAt(i, "step");
     }
     const r = this._stopAt(0, "no-history");

@@ -112,6 +112,12 @@ The trace is a list of GDB-style stops (`line`, `fn`, `depth`, `frame`, `vars`).
   call line** (mid-statement, `function-finished`, no `return-value`). In `main`: `"finish" not meaningful in the outermost frame.`
 - Returning from a function with `next`/`step` finishes the caller's statement and stops on the NEXT line (no extra stop on the
   call line; verified against GDB 16.3 reference runs). Only `finish` stops mid-line on the call.
+- `next`/`step` stop when the LINE changes: a later step of the same frame on the same line as the origin (the then-branch of
+  `if (f(x)) cout << ...;` after the callee ran) is not a new stop, nor is the rest of the caller's call line after returning from a
+  callee. A `for` increment stop after the body is a different line visit and stays (`lines.test.mjs`).
+- A breakpoint on a loop-header line (`for`, `while`) hits at loop ENTRY only, not at every increment/condition re-evaluation (GDB places
+  it on the entry code; the lesson bundles' recorded hit counts confirm it: a breakpoint on a `while` line has `times` = number of loop
+  entries). This replaces the earlier documented "stops on every visit" gap.
 - A stepping command that ends on a line with an enabled breakpoint reports `breakpoint-hit` (GDB does the same).
 - Reverse (`--reverse`): the same rules walking the trace backwards (`step` back into a callee's last step, `next` steps back
   over calls, `finish` back to the call site, `continue` to the previous breakpoint). The trace start reports
@@ -264,8 +270,7 @@ All 75 golden `-var-create` (plain names, `&(x)` pointers, `w - 1` / `j + 1`, `x
 (including the pointer varobjs and their `_Vector_base` / `*&(x)` children) are compared.
 
 Other known differences (outside the golden sample, documented, tested against our own expectations only):
-finish has no `return-value`; C arrays: array-to-pointer decay, sub-array expressions (`m[1]`) and pointer arithmetic are explicit errors, elements of vector type inside an array use capacity = length, char-array printing follows GDB's rules as documented above (not recorded in a golden); `using namespace std;` programs work (unqualified `vector<int>` is normalised to `std::vector<...>`) but a structured-binding `auto` variable has no usable type (`?`, not supported); inner vector capacity = length; a breakpoint on a `for` line stops on every visit of that
-line (GDB places it on the init code only); bp locations on several addresses are not modelled; `frame.addr`/pointer values
+finish has no `return-value`; C arrays: array-to-pointer decay, sub-array expressions (`m[1]`) and pointer arithmetic are explicit errors, elements of vector type inside an array use capacity = length, char-array printing follows GDB's rules as documented above (not recorded in a golden); `using namespace std;` programs work (unqualified `vector<int>` is normalised to `std::vector<...>`) but a structured-binding `auto` variable has no usable type (`?`, not supported); inner vector capacity = length; bp locations on several addresses are not modelled; `frame.addr`/pointer values
 are deterministic pseudo values (equal for equal call sites); reference varobj value format (`@0xADDR: ...`) and the
 update-record shape for growing vectors are from GDB knowledge, not from a golden.
 
@@ -284,6 +289,8 @@ node --test --test-concurrency=1 tests/engine/localgdb      # from the repositor
 | `fastforward_template.test.mjs` | D11 lock on `fastForwardJump.ts` |
 | `types_scopes.test.mjs` | type expansion (incl. `using namespace std`), value formatting, block analysis |
 | `arrays.test.mjs` | C arrays on a real engine run of `programs/arrays.cpp`: listing, varobjs, children, updates, expressions, `&(array)`, print format |
+| `lines.test.mjs` | next/step line-change rule (same-line second probe), reverse, loop-header breakpoints |
+| `lessons_corpus.test.mjs` | the real lesson bundles driven like the UI (breakpoints, run, continue, 30 next) vs the recorded GDB and wasm line sequences (evidence/m1_lessons_manual_lines.json) |
 | `expr.test.mjs` | typed expression evaluator: C++ typing, wrap-around, GDB error texts, agreement with evalexpr.js |
 | `golden_replay.mjs`, `helpers.mjs`, `ff_template.mjs` | shared library code (not tests) |
 

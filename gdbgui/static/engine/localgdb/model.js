@@ -190,6 +190,22 @@ export class TraceModel {
     return { seg: pl > b.start && pl <= b.end ? "incr" : "init", end: b.end, depth: b.depth };
   }
 
+  /**
+   * Is step `idx` a RE-evaluation stop of a loop header (`for` increment, `while` condition after the body)? GDB puts a breakpoint on a
+   * loop-header line at the loop's entry code only (the golden lesson's own recorded hit counts: a breakpoint on a `while` line hit once per
+   * loop entry, not once per condition evaluation), so such stops never hit the breakpoints of that line.
+   * @param {number} idx
+   */
+  isLoopRevisit(idx) {
+    const s = this.steps[idx];
+    const sc = this.scopes.get(s.fn);
+    const lp = sc && sc.loops.find((l) => l.start === s.line);
+    if (!lp) return false;
+    const p = this.prevInFrame[idx];
+    const pl = p >= 0 ? this.steps[p].line : -1;
+    return pl > lp.start && pl <= lp.end;
+  }
+
   /** Address of the stop at step `idx` (start of a line, or of the increment code of a `for` line). @param {number} idx */
   stepAddr(idx) {
     let a = this.addrCache.get(idx);

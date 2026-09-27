@@ -18,6 +18,12 @@ const OUT = path.join(HERE, "autorun_results.jsonl");
 
 http.createServer((req, res) => {
   const url = new URL(req.url, "http://x");
+  if (!/\.(js|css|wasm|tar|png|svg|ico|woff2?|map)(\?|$)/.test(req.url) && !req.url.startsWith("/socket.io")) fs.appendFileSync(path.join(HERE, "proxy_access.log"), new Date().toISOString().slice(11, 19) + " " + req.method + " " + req.url.slice(0, 120) + String.fromCharCode(10));
+  // 同一帳號只有一個 GDB session、run_token 是 session 層級單一值：兩個視窗同時連線會互相蓋掉回應的章。
+  // 啟動代理時加 ISO_ONLY=1，只放行「網址或 Referer 帶 iso=1」的請求（隔離的測試視窗），其餘一律 410，舊視窗因此斷線。
+  if (process.env.ISO_ONLY === "1" && !url.pathname.startsWith("/__drive/") && !url.pathname.startsWith("/static/") && !url.pathname.startsWith("/login") && !/iso=1/.test(req.url + " " + String(req.headers.referer || ""))) {
+    res.writeHead(410, { "Content-Type": "text/plain", "Cache-Control": "no-store" }); res.end("blocked: not the isolated test window"); return;
+  }
   if (url.pathname.startsWith("/__drive/")) {
     const name = url.pathname.slice("/__drive/".length);
     if (req.method === "POST" && name === "save") {
@@ -25,6 +31,24 @@ http.createServer((req, res) => {
       req.on("data", (c) => chunks.push(c));
       req.on("end", () => { fs.appendFileSync(OUT, Buffer.concat(chunks).toString("utf8") + "\n"); res.writeHead(204); res.end(); });
       return;
+    }
+    if (name === "lessons.json" || /^lesson\/\d+\.json$/.test(name)) {
+      // 批次驗收：examples/lessons 底下所有含 source_code 的 .json 教案 bundle（依資料夾名排序）
+      const root = path.join(HERE, "..", "..", "..", "examples", "lessons");
+      const list = [];
+      for (const d of fs.readdirSync(root).sort()) for (const f of fs.readdirSync(path.join(root, d)).filter((x) => x.endsWith(".json")).sort()) {
+        try { const b = JSON.parse(fs.readFileSync(path.join(root, d, f), "utf8")); if (typeof b.source_code === "string") list.push({ name: d + "/" + f, file: path.join(root, d, f) }); } catch { /* skip */ }
+      }
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      if (name === "lessons.json") res.end(JSON.stringify(list.map((x, i) => ({ idx: i, name: x.name }))));
+      else { const i = Number(name.match(/\d+/)[0]); res.end(list[i] ? fs.readFileSync(list[i].file) : "{}"); }
+      return;
+    }
+    if (name === "autorun.js" && fs.existsSync(path.join(HERE, "STOP")) && !/iso=1|vgnext/.test(String(req.headers.referer || ""))) { // 緊急停止：讓已開啟的視窗下一次載入時什麼都不做
+      res.writeHead(200, { "Content-Type": "text/javascript", "Cache-Control": "no-store" }); res.end("/* stopped */"); return;
+    }
+    if (name === "cred") { // 本機測試帳號（讀環境變數指定的檔案，不在 repo 內）；只給 127.0.0.1 代理用
+      const f2 = process.env.VG_CRED; res.writeHead(200, { "Content-Type": "text/plain", "Cache-Control": "no-store" }); res.end(f2 && fs.existsSync(f2) ? fs.readFileSync(f2, "utf8") : ""); return;
     }
     const f = { "ui_drive.js": "ui_drive.js", "autorun.js": "autorun.js", "lesson.json": path.join("..", "..", "..", "examples", "lessons", "技巧一_環狀最小成本_UVA116", "tsp_uva116.json") }[name];
     if (!f) { res.writeHead(404); res.end("not found"); return; }
