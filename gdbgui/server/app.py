@@ -66,6 +66,12 @@ app.config["COMPRESS_MIMETYPES"] = [
     "application/json",
     "application/javascript",
     "text/javascript",
+    # 瀏覽器內 C++ 引擎的編譯器資產（clang.wasm/lld.wasm/sysroot.tar/headers.tar，
+    # 合計 ~92 MB，首次造訪才會抓）：wasm 位元碼與 tar 裡的標頭檔文字都壓得動，
+    # 沒設這兩個型別時 Flask-Compress 完全跳過它們，全部未壓縮送出。ETag 條件式
+    # 請求已經讓重複造訪很便宜，這裡壓縮成本只落在真的第一次下載的人身上。
+    "application/wasm",
+    "application/x-tar",
 ]
 Compress(
     app

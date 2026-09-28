@@ -2,6 +2,10 @@
 # e2e/node_modules 與 e2e 的測試產物就是這樣整包進了 image。
 **/node_modules
 
+# wasm 引擎的編譯器資產（~92 MB）：Dockerfile 現在一律在 build 內用 `npm run build-assets`
+# 重建，本機若剛好已經建過這份（開發用），送進 build context 只會拖慢傳輸，不會被用到。
+gdbgui/static/engine/assets
+
 # Playwright 產物：trace: 'on' 每個測試都寫一份，累積得很快（曾達 344 MB）
 **/playwright-report
 **/test-results

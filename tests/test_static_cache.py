@@ -45,3 +45,31 @@ def test_javascript_is_served_gzipped(flask_app):
 
     assert resp.status_code == 200
     assert resp.headers.get("Content-Encoding") == "gzip"
+
+
+def test_wasm_engine_assets_are_served_gzipped(flask_app):
+    """瀏覽器內 C++ 引擎的編譯器資產（~92 MB，clang.wasm/lld.wasm/sysroot.tar/headers.tar）
+    也要壓縮送出——跟上面 JS 那條測試同一個故事：COMPRESS_MIMETYPES 沒列的型別，
+    Flask-Compress 完全跳過、沒有任何錯誤訊息，只有實際看 Content-Encoding 才看得到。
+
+    這些資產是 `npm run build-assets`（Node，見 gdbgui/static/engine/scripts/
+    build-assets.mjs）的產物，不是這個 Python 套件安裝的一部分，所以只在單元測試環境
+    剛好也 build 過前端引擎時才驗；純 Python-only 的 CI 沒有這份資產時分界本身仍成立。
+    """
+    resp = flask_app.test_client().get(
+        "/static/engine/assets/clang.wasm", headers={"Accept-Encoding": "br,gzip"}
+    )
+    if resp.status_code == 404:
+        return
+
+    assert resp.status_code == 200
+    assert resp.headers.get("Content-Encoding") in ("br", "gzip")
+
+    resp = flask_app.test_client().get(
+        "/static/engine/assets/headers.tar", headers={"Accept-Encoding": "br,gzip"}
+    )
+    if resp.status_code == 404:
+        return
+
+    assert resp.status_code == 200
+    assert resp.headers.get("Content-Encoding") in ("br", "gzip")

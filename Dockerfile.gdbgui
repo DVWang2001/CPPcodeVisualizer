@@ -6,6 +6,15 @@ RUN npm ci --no-audit
 COPY . .
 RUN NODE_ENV=production node --openssl-legacy-provider node_modules/.bin/webpack --mode production --config webpack.config.js
 
+# In-browser C++ engine assets (clang.wasm/lld.wasm/sysroot.tar/headers.tar, ~92 MB): pinned via
+# the npm package `browsercc` in gdbgui/static/engine/package.json, but gdbgui/static/engine/assets/
+# itself is git-ignored (too big for the repo) and must be rebuilt on every image build — a plain
+# `COPY . .` from a fresh clone would silently ship an image with no assets/, 404-ing every wasm
+# engine page load. build-assets.mjs only reads node_modules/browsercc/dist + the checked-in
+# gdbgui/static/engine/include/**, so this is a private, deterministic install/build, not
+# reachable via any web-facing route.
+RUN cd gdbgui/static/engine && npm ci --no-audit && npm run build-assets
+
 # ── Stage 2: Python runtime ────────────────────────────────────────────────
 FROM python:3.13-slim
 
@@ -41,8 +50,10 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
-# Bring in the freshly built JS bundles from Stage 1
+# Bring in the freshly built JS bundles and wasm engine assets from Stage 1 (both are git-ignored
+# and must come from the build, not from whatever a `COPY . .` from the host happened to pick up).
 COPY --from=frontend-builder /app/gdbgui/static/js/ ./gdbgui/static/js/
+COPY --from=frontend-builder /app/gdbgui/static/engine/assets/ ./gdbgui/static/engine/assets/
 
 RUN pip install -e . --no-deps
 
