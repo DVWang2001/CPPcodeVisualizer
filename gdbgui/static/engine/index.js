@@ -308,6 +308,9 @@ class Engine {
       result.uninitDecls = c.meta.uninitDecls;
       result.classes = nullProto(c.meta.classes);
       for (const cn of Object.keys(result.classes)) result.classes[cn] = nullProto(result.classes[cn]);
+      // D5: non-fatal — a bare `long`/`size_t`/`sizeof(pointer)` behaves differently on this engine's
+      // wasm32 target (4 bytes) than the reference x86_64 GDB environment (8 bytes); never blocks ok.
+      for (const w of c.meta.widthWarnings || []) result.errors.push({ kind: "width-warning", construct: w.construct, line: w.line });
     }
 
     const t1 = performance.now();
@@ -336,7 +339,7 @@ class Engine {
         if (d.truncated) result.errors.push({ kind: "trace-truncated", message: "the last trace record was incomplete" });
       }
     }
-    result.ok = !result.errors.some((/** @type {any} */ e) => e.kind !== "trace-truncated");
+    result.ok = !result.errors.some((/** @type {any} */ e) => e.kind !== "trace-truncated" && e.kind !== "width-warning");
     result.timings.total = performance.now() - t0;
     return result;
   }

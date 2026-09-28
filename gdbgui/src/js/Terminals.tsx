@@ -2,6 +2,7 @@ import React from "react";
 import GdbApi from "./GdbApi";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
+import { WebLinksAddon } from "xterm-addon-web-links";
 import { store } from "statorgfc";
 import "xterm/css/xterm.css";
 import constants from "./constants";
@@ -391,6 +392,8 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
     // ── gdbguiPty：同上，先不 open() ─────────────────────────────────
     const gdbguiPty = new Terminal({ cursorBlink: false, macOptionIsMeta: true, scrollback: 9999, disableStdin: true });
     gdbguiPty.loadAddon(this._gdbguiFitAddon);
+    // 讓 runWarnings()（例如 D5 的 long/size_t 警告）裡附的網址可以直接點擊，不用另外做按鈕 UI
+    gdbguiPty.loadAddon(new WebLinksAddon());
     gdbguiPty.attachCustomKeyEventHandler(
       // @ts-expect-error
       customKeyEventHandler({ pty_name: "unused", pty: gdbguiPty, canPaste: false })

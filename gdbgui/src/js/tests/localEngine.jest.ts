@@ -8,6 +8,8 @@ import localEngine, {
   LocalSocket,
   LocalGdbLike,
   mapRunError,
+  runWarnings,
+  gdbFallbackUrl,
   readFile,
   escapeHtml,
   SOURCE_PATH,
@@ -380,6 +382,43 @@ describe("模擬 /create_and_upload", () => {
     expect(mapRunError(okRun({ errors: [{ kind: "trace-truncated" }] }))).toBeNull();
     expect(mapRunError({ ...emptyRunResult(), ok: false, errors: [{ kind: "compile-timeout" }] })!.message).toMatch(/逾時/);
     expect(mapRunError({ ...emptyRunResult(), ok: false, errors: [{ kind: "trace-corrupted" }] })!.message).toMatch(/內部錯誤/);
+  });
+
+  test("D5：width-warning 不是致命錯誤，mapRunError 回 null，但 runWarnings 會提示並附上可點連結", () => {
+    const r = okRun({ errors: [{ kind: "width-warning", construct: "long", line: 3 }] });
+    expect(mapRunError(r)).toBeNull(); // 不阻擋除錯，只是提示
+    const warnings = runWarnings(r);
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toMatch(/long/);
+    expect(warnings[0]).toMatch(/https?:\/\//); // 完整網址，讓 xterm web-links 外掛能點擊
+    expect(warnings[0]).toMatch(/engine=gdb/);
+  });
+
+  test("D5：多筆 width-warning 的 construct 去重、合併成一則訊息", () => {
+    const r = okRun({
+      errors: [
+        { kind: "width-warning", construct: "long", line: 1 },
+        { kind: "width-warning", construct: "long", line: 5 },
+        { kind: "width-warning", construct: "sizeof(pointer)", line: 9 },
+      ],
+    });
+    const warnings = runWarnings(r);
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toMatch(/long/);
+    expect(warnings[0]).toMatch(/sizeof/);
+  });
+
+  test("gdbFallbackUrl：保留其他參數，只覆寫 engine=gdb", () => {
+    const original = window.location.href;
+    try {
+      window.history.pushState({}, "", "/?foo=bar&engine=wasm#frag");
+      const url = gdbFallbackUrl();
+      expect(url).toMatch(/engine=gdb/);
+      expect(url).toMatch(/foo=bar/);
+      expect(url).not.toMatch(/engine=wasm/);
+    } finally {
+      window.history.pushState({}, "", original);
+    }
   });
 
   test("警告進 sandbox_warnings", async () => {

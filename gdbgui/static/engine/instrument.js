@@ -160,6 +160,44 @@ export function instrumentAst(source, top) {
     if (n.inner) scanForbidden(n.inner);
   };
   /**
+   * D5: this engine compiles to wasm32, where `long`/`size_t`/a pointer are 4 bytes, unlike the
+   * reference x86_64 GDB environment (8 bytes) — a program that relies on that width (e.g. large
+   * arithmetic in a bare `long`, or `sizeof` of a pointer) can silently behave differently in each.
+   * Not a rejection: this only collects a NON-FATAL warning (the plan's decision D5 is "detect and
+   * warn, with a one-click fallback to the GDB engine", not "refuse to run"). Deliberately a simple
+   * presence check, not an overflow/risk analysis — every bare `long`/`unsigned long`/`size_t`
+   * declaration or `sizeof` of a pointer is reported, whether or not it could actually overflow.
+   * @type {Array<{ construct: string, line: number | undefined }>}
+   */
+  const widthWarnings = [];
+  const WIDTH_LONG_TYPES = new Set(["long", "long int", "signed long", "signed long int", "unsigned long", "unsigned long int"]);
+  const scanWidth = (/** @type {any} */ n) => {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n)) { for (const c of n) scanWidth(c); return; }
+    if (n.kind === "VarDecl" || n.kind === "ParmVarDecl" || n.kind === "FieldDecl") {
+      // Strip cv-qualifiers and array brackets so `const long`, `volatile long`, and `long arr[3]`
+      // still match — the same bare spelling as `long`, just with decoration this is a presence
+      // check (not a full type resolver) shouldn't be defeated by.
+      const q = ((n.type && n.type.qualType) || "")
+        .replace(/^(?:(?:const|volatile)\s+)+/, "")
+        .replace(/(?:\s*\[\s*\d*\s*\])+$/, "")
+        .trim();
+      const l = locOf(n.range && n.range.begin);
+      const line = l ? lineAt(l.offset) : undefined;
+      if (WIDTH_LONG_TYPES.has(q)) widthWarnings.push({ construct: "long", line });
+      else if (/(^|::)size_t$/.test(q)) widthWarnings.push({ construct: "size_t", line });
+    } else if (n.kind === "UnaryExprOrTypeTraitExpr" && n.name === "sizeof") {
+      const argQual = (n.argType && n.argType.qualType) || (Array.isArray(n.inner) && n.inner[0] && n.inner[0].type && n.inner[0].type.qualType) || "";
+      if (/\*\s*$/.test(argQual.trim())) {
+        const l = locOf(n.range && n.range.begin);
+        widthWarnings.push({ construct: "sizeof(pointer)", line: l ? lineAt(l.offset) : undefined });
+      }
+    }
+    if (n.inner) scanWidth(n.inner);
+  };
+  for (const d of top) scanWidth(d);
+
+  /**
    * Names of declared-without-initialiser variables (by decl id) that `nodes` may write:
    * any DeclRefExpr to such a variable that is NOT directly under an lvalue-to-rvalue conversion
    * (i.e. assignment targets, ++/--, &x, reference arguments such as `cin >> x`, member access,
@@ -669,5 +707,5 @@ export function instrumentAst(source, top) {
   }
   out += text(prev, buf.length);
   if (out.split("\n").length !== lineCount) throw new Error("instrumenter changed the line count (internal error)");
-  return { text: out, meta: { lineCount, functions: fnMeta, probes, decls, globals: globalTypes, uninitDecls, classes } };
+  return { text: out, meta: { lineCount, functions: fnMeta, probes, decls, globals: globalTypes, uninitDecls, classes, widthWarnings } };
 }

@@ -441,7 +441,7 @@ export interface CreateAndUploadRequest {
 export function mapRunError(r: any): { message: string; stderr?: string } | null {
   if (!r) return { message: "瀏覽器引擎沒有回傳結果；請改用伺服器引擎" };
   const errors: any[] = Array.isArray(r.errors) ? r.errors : [];
-  const fatal = errors.filter((e) => e && e.kind !== "trace-truncated");
+  const fatal = errors.filter((e) => e && e.kind !== "trace-truncated" && e.kind !== "width-warning");
   if (r.ok === false || fatal.length) {
     const e = fatal[0] || { kind: "internal-error", message: "unknown error" };
     switch (e.kind) {
@@ -482,6 +482,22 @@ export function mapRunError(r: any): { message: string; stderr?: string } | null
   return null;
 }
 
+/**
+ * The current page's URL with `engine=gdb` forced (overrides any `engine` param, keeps everything
+ * else) — the explicit escape hatch `computeEnabled()` already honours. Printed as a full URL inside
+ * a `runWarnings()` message so xterm's web-links addon (Terminals.tsx) turns it into a click-through
+ * "switch to the server engine" link, without a dedicated UI control (D5's "one-click fallback").
+ */
+export function gdbFallbackUrl(): string | null {
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.set("engine", "gdb");
+    return u.href;
+  } catch (e) {
+    return null;
+  }
+}
+
 /** Non-fatal notes for `sandbox_warnings` (printed to the console as STD_ERR by the UI). */
 export function runWarnings(r: any): string[] {
   const out: string[] = [];
@@ -492,6 +508,17 @@ export function runWarnings(r: any): string[] {
   if (r.nosys && typeof r.nosys === "object") {
     const names = Object.keys(r.nosys);
     if (names.length) out.push("[瀏覽器引擎] 程式呼叫了瀏覽器不支援的系統功能：" + names.join(", "));
+  }
+  const widthErrors = errors.filter((e) => e && e.kind === "width-warning");
+  if (widthErrors.length) {
+    const kinds = Array.from(new Set(widthErrors.map((e) => String(e.construct))));
+    const label: Record<string, string> = { long: "long", size_t: "size_t", "sizeof(pointer)": "sizeof(指標)" };
+    const desc = kinds.map((k) => label[k] || k).join("、");
+    const url = gdbFallbackUrl();
+    out.push(
+      `[瀏覽器引擎] 程式用到 ${desc}：瀏覽器引擎是 32 位元（4 bytes），伺服器 GDB 是 64 位元（8 bytes），數值可能不一致` +
+        (url ? `。如需切換為伺服器引擎，請點此連結：${url}` : "（請改用伺服器引擎：網址加上 ?engine=gdb）")
+    );
   }
   const reason = r.exit && r.exit.reason;
   if (reason === "timeout") out.push("[瀏覽器引擎] 程式執行超過時間上限，已被終止");

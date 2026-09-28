@@ -251,6 +251,59 @@ int main() {
   assert.ok(conds.every((s) => s.uninit && s.uninit.includes("r")));
 });
 
+test("D5: a bare long/size_t/sizeof(pointer) is a non-fatal warning (kind width-warning), never rejects or blocks ok", async () => {
+  const cases = [
+    ["long a = 1; int main() { return 0; }", "long", 1],
+    ["int main() { long a = 1; return 0; }", "long", 1],
+    ["#include <cstddef>\nsize_t n = 5;\nint main() { return 0; }\n", "size_t", 2],
+    ["int main() { int x = 1; int* p = &x; int s = sizeof(p); return 0; }", "sizeof(pointer)", 1],
+    ["int main() { int s = sizeof(int*); return 0; }", "sizeof(pointer)", 1],
+    ["struct S { long f; };\nint main() { S s{1}; return 0; }\n", "long", 1],
+    ["void fn(long p) {}\nint main() { fn(1); return 0; }\n", "long", 1],
+  ];
+  for (const [src, construct, line] of cases) {
+    const r = await eng.runProgram(src, "");
+    assert.equal(r.ok, true, `${construct}: ${JSON.stringify(r.errors)}`);
+    const w = r.errors.find((e) => e.kind === "width-warning");
+    assert.ok(w, `${construct}: no width-warning in ${JSON.stringify(r.errors)}`);
+    assert.equal(w.construct, construct, JSON.stringify(r.errors));
+    assert.equal(w.line, line, JSON.stringify(r.errors));
+  }
+});
+
+test("D5: cv-qualified and array long/size_t (const long, volatile long, long[N]) still warn (independent verifier advisory)", async () => {
+  const cases = [
+    ["int main() { const long c = 3; return 0; }", "long"],
+    ["int main() { volatile long v = 3; return 0; }", "long"],
+    ["int main() { long a[3]; a[0] = 1; return 0; }", "long"],
+    ["#include <cstddef>\nint main() { const size_t n = 3; return 0; }\n", "size_t"],
+  ];
+  for (const [src, construct] of cases) {
+    const r = await eng.runProgram(src, "");
+    assert.equal(r.ok, true, JSON.stringify(r.errors));
+    const w = r.errors.find((e) => e.kind === "width-warning");
+    assert.ok(w, `${src}: ${JSON.stringify(r.errors)}`);
+    assert.equal(w.construct, construct);
+  }
+  const clean = await eng.runProgram("int main() { const int c = 3; return 0; }", "");
+  assert.ok(!clean.errors.some((e) => e.kind === "width-warning"), JSON.stringify(clean.errors));
+});
+
+test("D5: long long, long double, and sizeof of a non-pointer never produce a width-warning", async () => {
+  const clean = [
+    "long long a = 1; int main() { return 0; }",
+    "unsigned long long a = 1; int main() { return 0; }",
+    "long double a = 1; int main() { return 0; }",
+    "int main() { int s = sizeof(int); return 0; }",
+    "int main() { int x = 1; return 0; }",
+  ];
+  for (const src of clean) {
+    const r = await eng.runProgram(src, "");
+    assert.equal(r.ok, true, JSON.stringify(r.errors));
+    assert.ok(!r.errors.some((e) => e.kind === "width-warning"), `${src}: ${JSON.stringify(r.errors)}`);
+  }
+});
+
 test("cStr escapes C++ string literals (quotes, backslashes, control chars, trigraph '?')", () => {
   assert.equal(cStr('operator""_km'), '"operator\\"\\"_km"');
   assert.equal(cStr("a\\b\n?"), '"a\\\\b\\012\\?"');
