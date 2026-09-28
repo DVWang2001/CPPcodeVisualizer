@@ -248,10 +248,26 @@ export function createWasi(opts = {}) {
 }
 
 /**
- * Map a thrown value from _start() to a structured exit.
- * @param {unknown} e
+ * `--stack-first` (LINK_FLAGS) places the stack at the bottom of linear memory, growing DOWN toward
+ * address 0 — so a real stack overflow drives `__stack_pointer` at or just below 0, while every other
+ * kind of bad memory access (a dangling/garbage pointer, an out-of-range index into the heap/data
+ * region, which live at much higher addresses) leaves it at its normal, comfortably positive resting
+ * value somewhere in the configured 8 MiB budget. Confirmed empirically: a genuine deep-recursion
+ * overflow left the exported global at -48; an unrelated bad-pointer write left it at 8388512 (≈8 MiB,
+ * i.e. untouched). A small positive margin (one page) is kept rather than comparing to exactly 0, in
+ * case the specific instruction that finally traps has already stepped a little past the boundary.
+ * @param {WebAssembly.Instance} instance
  */
-function classify(e) {
+function stackOverflowed(instance) {
+  const sp = /** @type {any} */ (instance.exports).__stack_pointer;
+  return !!sp && typeof sp.value === "number" && sp.value < 65536;
+}
+
+/**
+ * Map a thrown value from _start() to a structured exit.
+ * @param {unknown} e @param {WebAssembly.Instance} instance
+ */
+function classify(e, instance) {
   if (e instanceof ProcExit) return { reason: "exit", code: e.code };
   if (e instanceof OutputLimit) return { reason: "output-limit", stream: e.stream, code: null };
   if (e instanceof RangeError && /call stack/i.test(e.message)) {
@@ -260,7 +276,10 @@ function classify(e) {
   if (e instanceof WebAssembly.RuntimeError) {
     const m = e.message;
     if (/unreachable/.test(m)) return { reason: "trap", code: null, trap: "abort", message: "program aborted (abort(), failed assertion, or out of memory: std::bad_alloc without exceptions)" };
-    if (/out of bounds|memory access/.test(m)) return { reason: "trap", code: null, trap: "memory", message: "invalid memory access (stack overflow from deep recursion, or a bad pointer/index)" };
+    if (/out of bounds|memory access/.test(m)) {
+      if (stackOverflowed(instance)) return { reason: "stack-overflow", code: null, message: "wasm stack pointer ran past its 8 MiB budget (recursion too deep)" };
+      return { reason: "trap", code: null, trap: "memory", message: "invalid memory access (a bad pointer/index)" };
+    }
     if (/divide by zero|division by zero/.test(m)) return { reason: "trap", code: null, trap: "div-zero", message: "integer division by zero" };
     if (/call stack|stack overflow/i.test(m)) return { reason: "stack-overflow", code: null, message: "call stack exhausted (recursion too deep)" };
     return { reason: "trap", code: null, trap: "other", message: m };
@@ -292,7 +311,7 @@ export async function execute(module, opts = {}) {
     /** @type {Function} */ (instance.exports._start)();
     exit = { reason: "exit", code: 0 };
   } catch (e) {
-    exit = classify(e);
+    exit = classify(e, instance);
   }
   const ms = performance.now() - t0;
   return {

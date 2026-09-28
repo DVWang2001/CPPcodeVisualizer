@@ -474,7 +474,12 @@ export function mapRunError(r: any): { message: string; stderr?: string } | null
   }
   const reason = r.exit && r.exit.reason;
   if (reason === "stack-overflow") {
-    return { message: "瀏覽器引擎的遞迴深度不足（堆疊溢位），無法完整記錄這次執行；請改用伺服器引擎" };
+    const url = gdbFallbackUrl();
+    return {
+      message:
+        "瀏覽器引擎的遞迴深度不足（堆疊溢位），無法完整記錄這次執行" +
+        (url ? `。如需切換為伺服器引擎，請點此連結：${url}` : "；請改用伺服器引擎"),
+    };
   }
   if (reason === "step-limit" || reason === "trace-limit") {
     return { message: "程式執行步數超過瀏覽器引擎的記錄上限；請縮小輸入或改用伺服器引擎" };

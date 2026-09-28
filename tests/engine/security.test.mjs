@@ -72,6 +72,37 @@ test("M2: linker caps linear memory at 512 MiB with an 8 MiB stack placed first"
   assert.equal(w.importedMemory, false);
 });
 
+// Stack-overflow fallback: a WASM-level "out of bounds" trap (the shadow stack running its 8 MiB
+// budget out, from --stack-first + stack-size=8388608) is reclassified from a generic trap to
+// reason:"stack-overflow" by reading the exported __stack_pointer global after the trap (it runs
+// negative on overflow, since the stack occupies [0, 8 MiB) and grows down) — but an UNRELATED bad
+// pointer access (no deep recursion at all) must still be left as a generic trap, not misclassified.
+test("M2: deep recursion overflowing the wasm shadow stack is classified stack-overflow (not a generic trap)", async () => {
+  const src = `int rec(int n) {
+    volatile int pad[64]; // real per-frame stack cost, not tail-call-optimisable at -O0
+    pad[0] = n;
+    return rec(n + 1) + pad[0];
+}
+int main() { return rec(0); }
+`;
+  const r = await eng.runProgram(src, "");
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.equal(r.exit.reason, "stack-overflow", JSON.stringify(r.exit));
+});
+
+test("M2: an unrelated bad pointer access (no recursion) stays a generic memory trap, not stack-overflow", async () => {
+  const src = `int main() {
+    int* p = (int*)0x7fffffff;
+    *p = 1;
+    return 0;
+}
+`;
+  const r = await eng.runProgram(src, "");
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.equal(r.exit.reason, "trap", JSON.stringify(r.exit));
+  assert.equal(r.exit.trap, "memory", JSON.stringify(r.exit));
+});
+
 test("M2: vector<char>(3e9) aborts cleanly (no host memory blow-up)", async () => {
   const src = `#include <vector>
 #include <iostream>

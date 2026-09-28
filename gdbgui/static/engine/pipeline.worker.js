@@ -17,6 +17,7 @@ export const LINK_FLAGS = Object.freeze([
   "-Wl,--max-memory=536870912",   // 512 MiB linear memory cap (same budget as the server's ulimit -v)
   "-Wl,--stack-first",            // stack at the bottom: an overflow traps instead of corrupting data
   "-Wl,-z,stack-size=8388608",    // 8 MiB, the Linux default stack the GDB path gets (no ulimit -s)
+  "-Wl,--export=__stack_pointer", // exec.worker.js reads this after a memory trap to tell a real stack overflow from a bad pointer
 ]);
 export const STD_ALLOWED = Object.freeze(["c++17", "c++20", "c++23"]);
 const PCH_USE = ["-Xclang", "-include-pch", "-Xclang", "/vg.pch", "-fpch-validate-input-files-content", "-Xclang", "-fmodules-validate-system-headers"];

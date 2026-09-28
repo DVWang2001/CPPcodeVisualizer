@@ -377,6 +377,7 @@ describe("模擬 /create_and_upload", () => {
 
   test("堆疊溢位 / 步數上限 → 錯誤路徑；timeout 只是警告", () => {
     expect(mapRunError(okRun({ exit: { reason: "stack-overflow", code: null } }))!.message).toMatch(/堆疊溢位/);
+    expect(mapRunError(okRun({ exit: { reason: "stack-overflow", code: null } }))!.message).toMatch(/engine=gdb/); // D5 同款一鍵連結
     expect(mapRunError(okRun({ exit: { reason: "step-limit", code: null } }))!.message).toMatch(/上限/);
     expect(mapRunError(okRun({ exit: { reason: "timeout", code: null } }))).toBeNull();
     expect(mapRunError(okRun({ errors: [{ kind: "trace-truncated" }] }))).toBeNull();
