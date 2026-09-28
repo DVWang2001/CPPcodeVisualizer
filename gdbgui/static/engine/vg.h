@@ -149,14 +149,32 @@ template <class T> Var v(const char* name, const T& x) {
 
 // Call depth and activation serial. The instrumenter puts `__vg::Frame __vg_fr;` first in every
 // instrumented function body, so each probe knows which activation (recursion level) it is in.
-struct FrameState { long long depth = 0, cur = 0, next = 0; };
+// `cur` is a real stack, not a single "previous value" int, because a constructor's probes must
+// already be inside the NEW activation while its member-initializer-list is still running -- that
+// runs before the body's `{`, so nothing can declare a body-scoped `Frame` local yet. The
+// instrumenter instead calls pushFrame() bare, from inside the first initializer clause, and pairs
+// it with a FrameGuard (pop-only) declared once the body opens. A single-int "previous value" would
+// not survive a nested constructor call made from a LATER clause of the same initializer-list
+// pushing and popping its own frame first; a real stack does, by construction (LIFO, same as the
+// actual C++ call stack).
+struct FrameState { long long depth = 0, next = 0; std::vector<long long> stk; };
 inline FrameState& frames() { static FrameState f; return f; }
+inline long long curFrame() { auto& s = frames().stk; return s.empty() ? 0 : s.back(); }
+inline void pushFrame() { FrameState& f = frames(); f.stk.push_back(++f.next); ++f.depth; }
+inline void popFrame() { FrameState& f = frames(); f.stk.pop_back(); --f.depth; }
 struct Frame {
-  long long prev;
-  Frame() { FrameState& f = frames(); prev = f.cur; f.cur = ++f.next; ++f.depth; }
-  ~Frame() { FrameState& f = frames(); f.cur = prev; --f.depth; }
+  Frame() { pushFrame(); }
+  ~Frame() { popFrame(); }
   Frame(const Frame&) = delete;
   Frame& operator=(const Frame&) = delete;
+};
+// A constructor's frame is pushed early (see above); FrameGuard just pops it at scope exit,
+// mirroring Frame's RAII without pushing a second time.
+struct FrameGuard {
+  FrameGuard(const FrameGuard&) = delete;
+  FrameGuard& operator=(const FrameGuard&) = delete;
+  FrameGuard() = default;
+  ~FrameGuard() { popFrame(); }
 };
 
 // The trace channel: one fd_write per record, straight to fd 3 (no stdio buffering, so a record
@@ -196,7 +214,7 @@ inline void step(int probe, int line, const char* fn, std::initializer_list<Var>
     if (x.cap >= 0) add(std::string(x.name) + ".capacity()", std::to_string(x.cap));  // pseudo variable
   }
   std::string o = "{\"p\":" + std::to_string(probe) + ",\"line\":" + std::to_string(line) + ",\"fn\":" + qfn +
-                  ",\"depth\":" + std::to_string(frames().depth) + ",\"frame\":" + std::to_string(frames().cur) +
+                  ",\"depth\":" + std::to_string(frames().depth) + ",\"frame\":" + std::to_string(curFrame()) +
                   ",\"n\":" + names + "],\"d\":" + diff + "}}\n";
   // Safety limits: runaway loops / recursion stop with a marker the host turns into a clear message.
   if (++steps > VG_MAX_STEPS) { emit("{\"limit\":\"steps\"}\n"); std::exit(124); }

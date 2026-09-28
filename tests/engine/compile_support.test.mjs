@@ -35,7 +35,12 @@ for (const id of ["CC-2602B", "CC-2603B", "CC-2604B", "CC-2605B", "CC-2606B", "C
     const ri = await eng.runProgram(src, stdin);
     assert.equal(ri.ok, false);
     assert.equal(ri.errors[0].kind, "unsupported");
-    assert.match(ri.errors[0].message, /^unsupported construct: class member function \(line \d+\)$/);
+    // These lessons are all operator-overload-heavy (Point/Fraction/Complex/Matrix-style CF OOP
+    // corpus, see [[project_uml_object_diagram]]); phase-1 class support (commit adding
+    // gdbgui/static/engine/instrument.js's registerClass) accepts plain member functions but still
+    // explicitly rejects operator overloads, inheritance and virtual functions — the instrumenter
+    // still refuses these classes, just with a more specific reason than the old blanket rejection.
+    assert.match(ri.errors[0].message, /^unsupported construct: (operator overload|class inheritance|virtual function) \(line \d+\)$/);
   });
 }
 

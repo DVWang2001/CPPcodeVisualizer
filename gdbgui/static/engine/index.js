@@ -306,6 +306,8 @@ class Engine {
       result.globals = nullProto(c.meta.globals);
       result.functions = nullProto(c.meta.functions);
       result.uninitDecls = c.meta.uninitDecls;
+      result.classes = nullProto(c.meta.classes);
+      for (const cn of Object.keys(result.classes)) result.classes[cn] = nullProto(result.classes[cn]);
     }
 
     const t1 = performance.now();

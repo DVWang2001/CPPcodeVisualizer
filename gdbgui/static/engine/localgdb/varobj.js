@@ -25,10 +25,49 @@ const pointerTo = (node) => ({ k: "p", to: node });
 const own = (/** @type {object} */ o, /** @type {string} */ k) => Object.prototype.hasOwnProperty.call(o, k);
 
 /**
+ * Unwraps a reference, or a pointer SPECIFICALLY to a class (`this`, or any `Class*` local) — for
+ * BOTH, GDB's C++ varobj support skips an intermediate "pointee" node and shows the class's access
+ * pseudo-nodes as direct children (confirmed against a real `gdb -i mi -enable-pretty-printing`
+ * session for both a `const Acc&` parameter and `this` inside a member function). A pointer to
+ * anything else stays as-is (still unsupported — see isSupported in types.js, which only allows
+ * "ptr" when its pointee is "class"). Only for numchild/children dispatch — `_value()` special-cases
+ * these two directly instead, since their VALUE strings differ (a class value's own "{...}"; a
+ * reference's is also "{...}" at var-create but a bare address at evaluate(); a pointer's is always
+ * its own pseudo-address — see the comments in `_value` and `evaluate`).
+ * @param {any} cls
+ */
+const childKind = (cls) => (cls.kind === "ref" ? cls.to : cls.kind === "ptr" && cls.to && cls.to.kind === "class" ? cls.to : cls);
+
+/**
+ * `this` is the ONE pointer-to-class expression with real backing data (vg.h traces it dereferenced
+ * — see instrument.js's probe() — every other pointer, including a `Point* p` local, is still traced
+ * as the opaque generic placeholder). isSupported() stays type-only and conservative (a bare
+ * `Class*` type is NOT supported in general — widening it there previously let any Class* through
+ * `-var-create` and silently showed wrong data, even a non-null address for a null pointer); this
+ * checks the actual EXPRESSION text instead, and only "this" (a C++ keyword — no real variable can
+ * ever be named it) qualifies.
+ *
+ * The pointee class must ALSO be fully isSupported() in its own right — not just "some class" — or
+ * this exception reopens the exact hole it closes one level down: a self-referential class (a
+ * linked-list or BST node, `struct Node { Node* next; }`) is not isSupported (a raw pointer FIELD
+ * stays unsupported, same as any other raw pointer), but `this` used to get through regardless of
+ * that; expanding it then expanded `next` too — childKind()'s ptr-to-class unwrap is purely
+ * type-based, with no way to tell "this is the real `this`" apart from "this is some field reached
+ * through it" — showing `next`'s made-up placeholder data (a null pointer even looked non-null,
+ * since the pseudo-address branch in _value()/evaluate() doesn't know the difference either).
+ * Requiring the pointee to be fully supported means `this` inside a self-referential class's own
+ * method is consistently rejected too, matching what a plain `Node` value or `Node&` already gets —
+ * not a new limitation, just consistency with the boundary this whole feature already has (no
+ * pointer-chasing/traversal support in phase 1).
+ * @param {string} e @param {any} cls
+ */
+const isThisPtr = (e, cls) => e === "this" && cls.kind === "ptr" && cls.to && cls.to.kind === "class" && isSupported(cls.to);
+
+/**
  * @typedef {{ name: string, exp: string, parent: VarObj | null, index: number, ti: any, children: VarObj[] | null,
  *   root: VarObj, varName: string, frameId: number | null, fn: string, blockId: number, global: boolean,
- *   lastValue: string | null, lastInScope: boolean, addrName: string, kind?: "var" | "expr" | "ptr" | "ptrchild" | "basechild" | "elem",
- *   ast?: any, pointee?: any }} VarObj
+ *   lastValue: string | null, lastInScope: boolean, addrName: string, kind?: "var" | "expr" | "ptr" | "ptrchild" | "basechild" | "elem" | "access" | "classfield",
+ *   ast?: any, pointee?: any, fieldName?: string }} VarObj
  */
 
 export class VarObjs {
@@ -86,7 +125,7 @@ export class VarObjs {
     const r = this._resolve(e);
     if ("error" in r) return errorItem(r.error, token);
     const cls = r.cls;
-    if (!isSupported(cls)) return errorItem(unsupportedMsg(`type '${r.gdbType}'`), token);
+    if (!isSupported(cls) && !isThisPtr(e, cls)) return errorItem(unsupportedMsg(`type '${r.gdbType}'`), token);
     /** @type {VarObj} */
     const vo = {
       name, exp: e, parent: null, index: -1, kind: "var", ti: { cls, node: r.node, gdbType: r.gdbType }, children: null,
@@ -231,7 +270,7 @@ export class VarObjs {
     const s = model.steps[si];
     if (own(s.vars, vo.varName)) return s.vars[vo.varName];
     const k = vo.ti.cls.kind;
-    return k === "vector" || FLAT_CONTAINER_KINDS.has(k) ? [] : k === "string" ? "" : 0;
+    return k === "vector" || FLAT_CONTAINER_KINDS.has(k) ? [] : k === "string" ? "" : k === "class" ? {} : 0;
   }
 
   /** @param {VarObj} vo */
@@ -240,6 +279,15 @@ export class VarObjs {
       try { return rawOf(evalAst(vo.ast, this._lookup(vo.frameId))); } catch (x) { return undefined; }
     }
     if (vo.kind === "ptrchild") return this._rawRoot(/** @type {VarObj} */ (vo.parent));
+    // An access pseudo-node (public/private/protected) has no data of its own — it is a synthetic
+    // grouping GDB's C++ varobj support inserts, one layer above the real fields (see the class
+    // README note). Pass its parent's raw object straight through so a field one level below can
+    // index it by name.
+    if (vo.kind === "access") return this._raw(/** @type {VarObj} */ (vo.parent));
+    if (vo.kind === "classfield") {
+      const pr = this._raw(/** @type {VarObj} */ (vo.parent));
+      return pr && typeof pr === "object" ? pr[/** @type {string} */ (vo.fieldName)] : undefined;
+    }
     if (!vo.parent) return this._rawRoot(vo);
     const pr = this._raw(vo.parent);
     return Array.isArray(pr) ? pr[vo.index] : undefined;
@@ -259,14 +307,24 @@ export class VarObjs {
   _value(vo) {
     if (vo.kind === "ptr") return "0x" + this._model.varAddr(vo.frameId ?? 0, vo.varName).toString(16);
     if (vo.kind === "basechild") return "{...}";
+    if (vo.kind === "access") return ""; // GDB's own access pseudo-nodes always report an empty value
     if (vo.kind === "expr") {
       try { return valueOf(vo.ti.cls, rawOf(evalAst(vo.ast, this._lookup(vo.frameId)))); } catch (x) { return `<error: ${/** @type {any} */ (x).message}>`; }
     }
     const cls = vo.ti.cls;
+    // A pointer specifically to a class (this, or any Class* local) shows its own pseudo-address as
+    // the value, like &(name) does — ground truth: real GDB's var-create value for `this` is a
+    // plain address, never "{...}" (that generic-pointer placeholder is for OTHER pointer kinds,
+    // which stay unsupported and never reach this far).
+    if (cls.kind === "ptr" && cls.to && cls.to.kind === "class") return "0x" + this._model.varAddr(vo.frameId ?? 0, vo.varName).toString(16);
     const ecls = cls.kind === "ref" ? cls.to : cls;
     const raw = this._raw(vo);
     const s = valueOf(ecls, raw, ecls.kind === "vector" ? this._capacityOf(vo) : undefined);
-    if (cls.kind === "ref") return `@0x${this._model.varAddr(vo.frameId ?? 0, vo.varName).toString(16)}: ${s}`;
+    // A class reference's var-create value is the class's own "{...}", not the usual `@addr: value`
+    // scalar-reference wrap (ground truth: a `const Acc&` parameter's var-create value is exactly
+    // "{...}" with no address at all — only -data-evaluate-expression on one shows a bare address;
+    // see evaluate()).
+    if (cls.kind === "ref" && ecls.kind !== "class") return `@0x${this._model.varAddr(vo.frameId ?? 0, vo.varName).toString(16)}: ${s}`;
     return s;
   }
 
@@ -285,10 +343,24 @@ export class VarObjs {
 
   /** @param {VarObj} vo @param {boolean} isCreate @returns {any} */
   _describe(vo, isCreate) {
+    if (vo.kind === "access") {
+      // GDB's own access pseudo-node shape: numchild = real fields at this access level (static,
+      // known up front — a class layout can't change at runtime), empty value, no `type` key at all.
+      const p = { name: vo.name, numchild: String(/** @type {any} */ (vo.ti.cls).fields.length), value: "" };
+      if (!vo.root.global) /** @type {any} */ (p)["thread-id"] = "1";
+      if (isCreate) /** @type {any} */ (p).has_more = "0";
+      return p;
+    }
     const cls = vo.ti.cls;
-    const ecls = cls.kind === "ref" ? cls.to : cls;
-    // numchild: pointers 1; C arrays N (static type, known at creation); dynamic (pretty-printed) ones: children listed so far
-    const nc = vo.kind === "ptr" || vo.kind === "basechild" ? "1" : ecls.kind === "array" ? String(ecls.n) : String(vo.children ? vo.children.length : 0);
+    const ecls = childKind(cls);
+    // numchild: pointers 1; C arrays N (static type, known at creation); a class instance (or a
+    // reference/this-pointer to one — childKind unwraps both) = its number of DISTINCT access
+    // levels that have a field (not its field count — see access nodes, above); dynamic
+    // (pretty-printed) ones: children listed so far.
+    const nc = vo.kind === "ptr" || vo.kind === "basechild" ? "1"
+      : ecls.kind === "array" ? String(ecls.n)
+      : ecls.kind === "class" ? String(new Set(ecls.fields.map((/** @type {any} */ f) => f.access)).size)
+      : String(vo.children ? vo.children.length : 0);
     const p = { name: vo.name, numchild: nc, value: this._value(vo), type: vo.ti.gdbType };
     if (!vo.root.global) /** @type {any} */ (p)["thread-id"] = "1";
     if (isDynamic(ecls)) {
@@ -317,7 +389,7 @@ export class VarObjs {
     const vo = this._find(name);
     if (!vo) return errorItem("Variable object not found", token);
     const cls = vo.ti.cls;
-    const ecls = cls.kind === "ref" ? cls.to : cls;
+    const ecls = childKind(cls);
     if (vo.kind === "basechild") return errorItem(unsupportedMsg("expanding the class members of std::vector"), token);
     if (vo.kind === "ptr") {
       const kids = this._ptrChildren(vo).map((c) => {
@@ -330,6 +402,33 @@ export class VarObjs {
         return out;
       });
       return resultItem({ numchild: "1", children: kids, has_more: "0" }, token);
+    }
+    // A class instance's children are access pseudo-nodes (public/private/protected), not real
+    // fields — GDB inserts this extra layer for every C++ class/struct varobj. Expanding one of
+    // those pseudo-nodes (vo.kind === "access") is what finally gives the real fields.
+    if (vo.kind === "access") {
+      const kids = this._ensureClassFields(vo).slice(from ?? 0, to ?? undefined);
+      const children = kids.map((c) => {
+        const cc = c.ti.cls;
+        const d = this._describe(c, false);
+        /** @type {any} */
+        const out = { name: d.name, exp: c.exp, numchild: d.numchild };
+        if (values === "all" || (values === "simple" && isSimple(cc))) out.value = d.value;
+        out.type = d.type;
+        out["thread-id"] = "1";
+        if (d.displayhint) { out.displayhint = d.displayhint; out.dynamic = d.dynamic; }
+        return out;
+      });
+      return resultItem({ numchild: String(/** @type {any} */ (vo.ti.cls).fields.length), children, has_more: "0" }, token);
+    }
+    if (ecls.kind === "class") {
+      const kids = this._ensureAccessChildren(vo);
+      const children = kids.map((c) => {
+        const d = this._describe(c, false);
+        // No `type` key on an access pseudo-node (ground truth: GDB never sends one for it).
+        return { name: d.name, exp: c.exp, numchild: d.numchild, value: d.value, "thread-id": "1" };
+      });
+      return resultItem({ numchild: String(kids.length), children, has_more: "0" }, token);
     }
     if (ecls.kind !== "vector" && ecls.kind !== "array" && !FLAT_CONTAINER_KINDS.has(ecls.kind)) return resultItem({ numchild: "0", has_more: "0" }, token);
     const isArr = ecls.kind === "array";
@@ -373,6 +472,50 @@ export class VarObjs {
       vo.children.push(c);
       this.byName.set(c.name, c);
     }
+  }
+
+  /**
+   * A class instance's access pseudo-nodes (public/private/protected), one per level that has a
+   * field, ALWAYS in that fixed public/private/protected order regardless of declaration order —
+   * confirmed against real GDB with declaration orders public+protected+private and
+   * protected+private+public, both giving public/private/protected. GDB's own C++ varobj support
+   * inserts this extra layer for every class/struct (never a Python pretty-printer:
+   * `-var-list-children` on it has no `dynamic`/`displayhint`, and its own children have no `type`
+   * key). Memoized like `_ptrChildren`: the set of access levels is fixed by the class's static
+   * layout.
+   * @param {VarObj} vo
+   */
+  _ensureAccessChildren(vo) {
+    if (vo.children) return vo.children;
+    const cls = childKind(vo.ti.cls);
+    const present = new Set(/** @type {any} */ (cls).fields.map((/** @type {any} */ f) => f.access));
+    const order = ["public", "private", "protected"].filter((a) => present.has(a));
+    vo.children = order.map((access, i) => /** @type {VarObj} */ ({
+      name: `${vo.name}.${access}`, exp: access, parent: vo, index: i, kind: "access",
+      ti: { cls: { fields: /** @type {any} */ (cls).fields.filter((/** @type {any} */ f) => f.access === access) }, node: null, gdbType: "" },
+      children: null, root: vo.root, varName: vo.varName, frameId: vo.frameId, fn: vo.fn, blockId: vo.blockId, global: vo.global,
+      lastValue: "", lastInScope: true, addrName: vo.addrName,
+    }));
+    for (const c of vo.children) this.byName.set(c.name, c);
+    return vo.children;
+  }
+
+  /** Real fields under one access pseudo-node (`v1.public.x`, `exp:"x"`, plain field name/type). @param {VarObj} vo */
+  _ensureClassFields(vo) {
+    if (vo.children) return vo.children;
+    const fields = /** @type {any} */ (vo.ti.cls).fields;
+    vo.children = fields.map((/** @type {any} */ f, /** @type {number} */ i) => {
+      /** @type {VarObj} */
+      const c = {
+        name: `${vo.name}.${f.name}`, exp: f.name, parent: vo, index: i, kind: "classfield", fieldName: f.name,
+        ti: { cls: f.cls, node: f.cls.node, gdbType: f.gdbType }, children: null, root: vo.root, varName: vo.varName,
+        frameId: vo.frameId, fn: vo.fn, blockId: vo.blockId, global: vo.global, lastValue: null, lastInScope: true, addrName: vo.addrName,
+      };
+      c.lastValue = this._value(c);
+      return c;
+    });
+    for (const c of vo.children) this.byName.set(c.name, c);
+    return vo.children;
   }
 
   /** @param {VarObj} vo */
@@ -493,11 +636,22 @@ export class VarObjs {
     }
     const r = this._resolve(e);
     if ("error" in r) return errorItem(r.error, token);
-    if (!isSupported(r.cls)) return errorItem(unsupportedMsg(`type '${r.gdbType}'`), token);
+    const thisPtr = isThisPtr(e, r.cls);
+    if (!isSupported(r.cls) && !thisPtr) return errorItem(unsupportedMsg(`type '${r.gdbType}'`), token);
+    // `this` evaluates to its own pseudo-address, same as var-create's value for it — ground truth:
+    // real GDB shows `this` as a bare address here too. Any OTHER Class* stays rejected above
+    // (isSupported is false and thisPtr is false for it) — see isThisPtr's comment.
+    if (thisPtr) return resultItem({ value: "0x" + this._model.varAddr(r.frameId ?? 0, e).toString(16) }, token);
     const fake = { name: "", exp: e, parent: null, index: -1, ti: { cls: r.cls, node: r.node, gdbType: r.gdbType }, children: null, varName: e, frameId: r.frameId, fn: r.fn, blockId: r.blockId, global: r.global, lastValue: null, lastInScope: true, addrName: e };
     /** @type {any} */ (fake).root = fake;
     // `print`-style value (children included: `{1, 2, 3}`, `std::vector of length 3, capacity 4 = {0, 1, 4}`)
     const cap = r.cls.kind === "vector" || (r.cls.kind === "ref" && r.cls.to.kind === "vector") ? this._capacityOf(/** @type {any} */ (fake)) : undefined;
+    // A class reference evaluates to a BARE address, no `: {...}` suffix (ground truth: unlike a
+    // scalar reference's `@addr: value`, evaluating a `const Acc&` parameter here gives only
+    // `@0xADDR` — the field values are reachable through -var-create/-var-list-children instead).
+    if (r.cls.kind === "ref" && r.cls.to.kind === "class") {
+      return resultItem({ value: `@0x${this._model.varAddr(r.frameId ?? 0, e).toString(16)}` }, token);
+    }
     const pv = printValue(r.cls, this._raw(/** @type {any} */ (fake)), cap);
     return resultItem({ value: r.cls.kind === "ref" ? `@0x${this._model.varAddr(r.frameId ?? 0, e).toString(16)}: ${pv}` : pv }, token);
   }

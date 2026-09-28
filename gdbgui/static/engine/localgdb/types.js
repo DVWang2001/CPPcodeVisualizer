@@ -184,13 +184,14 @@ const CHAR_NAMES = new Set(["char", "signed char", "unsigned char"]);
 const FLOAT_NAMES = new Set(["float", "double", "long double"]);
 
 /**
- * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "deque" | "list" | "stack" | "queue" | "ptr" | "array" | "ref" | "other", node: TypeNode,
- *   unsigned?: boolean, single?: boolean, elem?: TypeNode, to?: Cls, n?: number }} Cls
+ * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "deque" | "list" | "stack" | "queue" | "ptr" | "array" | "ref" | "class" | "other", node: TypeNode,
+ *   unsigned?: boolean, single?: boolean, elem?: TypeNode, to?: Cls, n?: number,
+ *   className?: string, fields?: Array<{ name: string, access: string, cls: Cls, gdbType: string }> }} Cls
  */
 
 /** @param {TypeNode} t @returns {Cls} */
 export function classify(t) {
-  if (t.k === "p") return { kind: "ptr", node: t };
+  if (t.k === "p") return { kind: "ptr", node: t, to: classify(t.to) };
   if (t.k === "a") return { kind: "array", node: t, elem: t.of, n: /^\d+$/.test(t.dim) ? Number(t.dim) : -1 };
   if (t.k === "r") return { kind: "ref", node: t, to: classify(t.to) };
   const name = ALIASES.get(t.name) || t.name;
@@ -235,6 +236,17 @@ export function isSupported(c) {
     case "vector": case "deque": case "list": case "stack": case "queue":
       return isSupported(classify(/** @type {TypeNode} */ (c.elem)));
     case "array": return /** @type {any} */ (c).n >= 0 && isSupported(classify(/** @type {TypeNode} */ (c.elem)));
+    // A user class (TraceModel.typeInfo upgrades "other" to this when the name matches a registered
+    // class; classify() itself never produces it, since a class's field/access shape is per-program
+    // data, not a fact derivable from a type string alone). Supported iff every field's own type is.
+    case "class": return /** @type {any} */ (c).fields.every((/** @type {any} */ f) => isSupported(f.cls));
+    // A pointer stays unsupported here even for pointer-to-class (this's own type): isSupported()
+    // is purely type-based, but only the SPECIFIC name `this` has real dereferenced data to show —
+    // vg.h traces every OTHER pointer as the opaque "<ptr>" placeholder, never the pointee's actual
+    // fields (there is no general "which named variable does this pointer alias" mechanism, the
+    // same limitation `&(name)` has always had). varobj.js carves out `this` explicitly by name
+    // (isThisPtr), not by loosening this type-level check — widening it here previously let ANY
+    // Class* through and silently showed wrong field data (a null pointer even looked non-null).
     default: return false;
   }
 }
@@ -404,6 +416,13 @@ export function printValue(cls, raw, capacity) {
     // printer) don't. Confirmed against a real `gdb -i mi -enable-pretty-printing` session.
     const shown = a.slice(0, PRINT_ELEMENTS).map((x, i) => (cls.kind === "list" ? `[${i}] = ` : "") + printValue(ec, x));
     return `${head} = {${shown.join(", ")}${a.length > PRINT_ELEMENTS ? "..." : ""}}`;
+  }
+  if (cls.kind === "class") {
+    // Flat "field = value" pairs, no access-level grouping (that's a -var-list-children-only
+    // concept — see varobj.js's access pseudo-nodes). Confirmed against a real GDB session.
+    const o = raw && typeof raw === "object" ? raw : {};
+    const parts = cls.fields.map((/** @type {any} */ f) => `${f.name} = ${printValue(f.cls, o[f.name])}`);
+    return `{${parts.join(", ")}}`;
   }
   return formatScalar(cls, raw);
 }

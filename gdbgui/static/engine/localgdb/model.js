@@ -16,13 +16,15 @@ const own = (/** @type {object} */ o, /** @type {string} */ k) => Object.prototy
 
 export class TraceModel {
   /**
-   * @param {{ steps: any[], functions: any, decls: any, globals: any, source: string, exit?: any }} run  engine result (runProgram) + source text
+   * @param {{ steps: any[], functions: any, decls: any, globals: any, source: string, exit?: any, classes?: any }} run  engine result (runProgram) + source text
    */
   constructor(run) {
     this.steps = run.steps;
     this.functions = run.functions || {};
     this.decls = run.decls || {};
     this.globals = run.globals || {};
+    /** Field/access shape of every phase-1-supported class, by name (instrument.js's registerClass). */
+    this.classes = run.classes || {};
     this.exit = run.exit || { reason: "exit", code: 0 };
     this.source = run.source || "";
     this.fnNames = Object.keys(this.functions);
@@ -58,6 +60,8 @@ export class TraceModel {
     });
     /** @type {Map<number, number>} */ this.addrCache = new Map();
     this.typeCache = new Map();
+    /** @type {Map<string, any>} per-class-name cache; see _classCls's comment (self/mutually-referencing pointer fields) */
+    this._classCache = new Map();
     // lines that hold code (GDB can place a breakpoint there)
     this.codeLines = [...new Set(this.steps.map((s) => s.line))].sort((a, b) => a - b);
   }
@@ -98,10 +102,50 @@ export class TraceModel {
     if (!t) {
       let node, cls, g;
       try { node = parseType(qual); cls = classify(node); g = gdbType(node); } catch { node = { k: "n", name: qual, args: [], c: false }; cls = classify(node); g = qual; }
+      cls = this._upgradeClass(cls);
       t = { node, cls, gdbType: g };
       this.typeCache.set(qual, t);
     }
     return t;
+  }
+
+  /**
+   * classify() is pure (no program-specific knowledge), so a user class always comes back "other"
+   * from it, possibly wrapped in "ref"/"ptr" (a reference or pointer to a class — e.g. a
+   * `const Point&` parameter, or `this`, always `Class *`/`const Class *`). Upgrade it here, where
+   * `this.classes` (per-run data) is available, recursing through any ref/ptr wrapper so both
+   * `Point`, `Point&` and `Point*` (this) resolve to the same "class" shape underneath.
+   * @param {any} cls @returns {any}
+   */
+  _upgradeClass(cls) {
+    if (cls.kind === "other" && cls.node.k === "n" && own(this.classes, cls.node.name)) return this._classCls(cls.node.name, cls.node);
+    if (cls.kind === "ref" || cls.kind === "ptr") return { ...cls, to: this._upgradeClass(cls.to) };
+    return cls;
+  }
+
+  /**
+   * The "class" Cls shape for one registered class, by name — cached separately from `typeCache`
+   * (which is keyed by qual STRING, e.g. "Node *", not by class name) because a class can hold a
+   * POINTER to its own type (`struct Node { Node* next; }`, any linked list or tree node — this
+   * project's core content) — unlike a value-typed field, that's perfectly legal C++, since a
+   * pointer's size never needs the pointee's complete layout. Resolving `next`'s field list would
+   * recurse straight back into resolving Node's OWN field list, forever, if each call built a fresh
+   * object: register the (still-being-filled) object in the cache BEFORE recursing into its fields,
+   * so a self- or mutually-referencing pointer field finds and reuses this SAME object — by the time
+   * anyone actually reads ITS `.fields` (always after this call returns, never during), the
+   * in-place mutation below has already filled them in.
+   * @param {string} name @param {any} node @returns {any}
+   */
+  _classCls(name, node) {
+    let c = this._classCache.get(name);
+    if (c) return c;
+    c = { kind: "class", node, className: name, fields: /** @type {any[]} */ ([]) };
+    this._classCache.set(name, c);
+    c.fields = this.classes[name].fields.map((/** @type {any} */ f) => {
+      const fti = this.typeInfo(f.qualType);
+      return { name: f.name, access: f.access, cls: fti.cls, gdbType: fti.gdbType };
+    });
+    return c;
   }
 
   /**
@@ -246,6 +290,7 @@ function zeroFor(cls) {
   if (cls.kind === "array") return Array.from({ length: Math.max(cls.n, 0) }, () => zeroFor(classify(cls.elem)));
   if (cls.kind === "vector" || FLAT_CONTAINER_KINDS.has(cls.kind)) return [];
   if (cls.kind === "string") return "";
+  if (cls.kind === "class") return {};
   return 0;
 }
 
@@ -262,5 +307,6 @@ export function valueOf(cls, raw, capacity) {
     return `std::vector of length ${n}, capacity ${capacity === undefined ? n : capacity}`;
   }
   if (FLAT_CONTAINER_KINDS.has(cls.kind)) return containerHead(cls.kind, Array.isArray(raw) ? raw.length : 0);
+  if (cls.kind === "class") return "{...}"; // GDB's own value for a plain struct/class varobj: always this, never real field data
   return formatScalar(cls, raw);
 }

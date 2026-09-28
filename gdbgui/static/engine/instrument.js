@@ -189,6 +189,91 @@ export function instrumentAst(source, top) {
   const globals = [];
   /** @type {any[]} */
   const functions = [];
+  /** Static field/method shape of every supported class, by name (Slice B/C consume this). */
+  /** @type {Record<string, { tagUsed: string, fields: Array<{ name: string, qualType: string, access: string }> }>} */
+  const classes = Object.create(null);
+
+  /**
+   * Phase-1 class/struct support: data fields + non-virtual, non-static, non-operator, in-class-defined
+   * member functions (incl. constructors/destructors), single class (no base classes). Anything outside
+   * that is an explicit Unsupported, never a silent skip — same policy as the rest of this file.
+   * Registers `d`'s fields into `classes` and pushes its instrumentable methods into `functions`
+   * (each tagged with `__vgFn` = the GDB-style qualified name "Class::method" / "Class::Class" /
+   * "Class::~Class", and `__vgThisType` = the implicit `this` parameter's spelling) for the SAME
+   * per-function instrumentation loop free functions already go through.
+   * @param {any} d
+   */
+  const registerClass = (/** @type {any} */ d) => {
+    const l = locOf(d.range && d.range.begin);
+    const line = l ? lineAt(l.offset) : undefined;
+    if (!d.completeDefinition) return; // forward declaration only: nothing to instrument
+    if (d.tagUsed === "union") throw new Unsupported("union", line);
+    if (d.bases && d.bases.length) throw new Unsupported("class inheritance", line);
+    const className = /** @type {string} */ (d.name);
+    if (!className || !IDENT.test(className)) throw new Unsupported("anonymous or unnamed class", line);
+    /** @type {Array<{ name: string, qualType: string, access: string }>} */
+    const fields = [];
+    let access = d.tagUsed === "struct" ? "public" : "private";
+    for (const c of d.inner || []) {
+      const cl = locOf(c.range && c.range.begin);
+      const cline = cl ? lineAt(cl.offset) : line;
+      if (c.isImplicit) continue; // compiler-synthesised special members (copy/move ctor, etc.): never user code
+      if (c.kind === "AccessSpecDecl") { access = c.access; continue; }
+      if (c.kind === "FieldDecl") {
+        if (Array.isArray(c.inner) && c.inner.length) throw new Unsupported("default member initializer", cline);
+        // Names are spliced into the generated j() specialization as identifiers (`x.NAME`) —
+        // same defensive check probe() applies to traced variable names.
+        if (!IDENT.test(c.name)) throw new Unsupported(`field name ${JSON.stringify(c.name)}`, cline);
+        fields.push({ name: c.name, qualType: (c.type && c.type.qualType) || "?", access });
+        continue;
+      }
+      if (c.kind === "VarDecl") throw new Unsupported("static class member", cline); // static data member
+      if (c.kind === "FriendDecl") throw new Unsupported("friend declaration", cline);
+      if (c.kind === "CXXRecordDecl") throw new Unsupported("nested class", cline);
+      if (TEMPLATE_DECLS.has(c.kind)) throw new Unsupported("template", cline);
+      if (METHOD_DECLS.has(c.kind)) {
+        if (c.kind === "CXXConversionDecl" || /^operator\b/.test(c.name || "")) throw new Unsupported("operator overload", cline);
+        if (c.storageClass === "static") throw new Unsupported("static class member", cline);
+        if (c.virtual) throw new Unsupported("virtual function", cline);
+        if (!(c.inner || []).some((/** @type {any} */ x) => x.kind === "CompoundStmt")) throw new Unsupported("member function without a body", cline);
+        if (/^__vg/.test(c.name || "")) throw new Unsupported("identifier starting with __vg", cline);
+        const isCtor = c.kind === "CXXConstructorDecl", isDtor = c.kind === "CXXDestructorDecl";
+        const vgFn = isCtor ? `${className}::${className}` : isDtor ? `${className}::~${className}` : `${className}::${c.name}`;
+        const isConst = typeof c.type?.qualType === "string" && / const$/.test(c.type.qualType);
+        c.__vgFn = vgFn;
+        c.__vgThisType = `${isConst ? "const " : ""}${className} *`;
+        functions.push(c);
+      }
+      // anything else (TypedefDecl, UsingDecl, StaticAssertDecl, ...) inside the class body: not code, ignore
+    }
+    classes[className] = { tagUsed: d.tagUsed, fields };
+
+    // A generated j<ClassName> specialization (below) needs access to private/protected fields —
+    // befriend the WHOLE j template (not just this one instantiation: getting the exact
+    // friend-a-specific-specialization syntax right, with the primary template already visible at
+    // this point, is unnecessary complexity when befriending the template covers every instantiation).
+    if (fields.length) ins(P(d.range.end, "class"), " template <class __vg_T> friend std::string __vg::j(const __vg_T&); ");
+
+    // C++ has no reflection: vg.h's generic __vg::j(T) can serialise anything with begin()/end() or
+    // a std::stack/queue, but not an arbitrary user struct's named fields. The AST already gave us
+    // those names (`fields`, above), so emit a full specialization right after the class's own `;` —
+    // same source-order trick nested composition relies on: a member of another supported class type
+    // is only valid C++ if that class is already fully defined above this one, so its OWN
+    // specialization is necessarily already emitted above this point too, and ordinary (non-template)
+    // name lookup inside a full specialization's body finds it exactly like it would for a plain
+    // function. `__vg::j` recurses on each field's value the same way it already does for a
+    // std::vector<std::vector<int>> element.
+    let body = 'std::string o = "{";';
+    // `fieldKey` is a C++ string literal for the JSON key syntax `"name":` (`,"name":` after the
+    // first field) — field names are IDENT-validated above, so no JSON/C++ escaping is needed.
+    fields.forEach((f, i) => {
+      const fieldKey = `"${i ? "," : ""}\\"${f.name}\\":"`;
+      body += ` o += ${fieldKey} + __vg::j(x.${f.name});`;
+    });
+    body += ' return o + "}";';
+    ins(endStmt(d, "class"), ` namespace __vg { template <> inline std::string j<${className}>(const ${className}& x) { ${body} } }`);
+  };
+
   for (const d of top) {
     const l = locOf(d.range && d.range.begin);
     const line = l ? lineAt(l.offset) : undefined;
@@ -200,8 +285,8 @@ export function instrumentAst(source, top) {
       if (defines) throw new Unsupported("extern \"C\" block with definitions", line);
       continue;
     }
-    if (METHOD_DECLS.has(d.kind)) throw new Unsupported("class member function", line);
-    if (d.kind === "CXXRecordDecl") { scanForbidden(d); continue; }
+    if (METHOD_DECLS.has(d.kind)) throw new Unsupported("class member function", line); // out-of-line definition (Class::method(...) {...}): phase 1 supports in-class definitions only
+    if (d.kind === "CXXRecordDecl") { registerClass(d); continue; }
     if (d.kind === "VarDecl") {
       scanForbidden(d.inner);
       if (d.storageClass !== "extern" && d.name && l) globals.push({ name: d.name, offset: l.offset, type: d.type && d.type.qualType, id: d.id });
@@ -214,8 +299,9 @@ export function instrumentAst(source, top) {
   }
   const byName = new Map();
   for (const f of functions) {
-    if (byName.has(f.name)) throw new Unsupported(`overloaded function ${f.name}`, lineAt(B(f)));
-    byName.set(f.name, f);
+    const key = f.__vgFn || f.name;
+    if (byName.has(key)) throw new Unsupported(`overloaded function ${key}`, lineAt(B(f)));
+    byName.set(key, f);
   }
 
   /** Static description of every probe site, indexed by probe id. */
@@ -232,7 +318,7 @@ export function instrumentAst(source, top) {
   for (const g of globals) globalTypes[g.name] = g.type;
 
   for (const decl of functions) {
-    const fn = /** @type {string} */ (decl.name);
+    const fn = /** @type {string} */ (decl.__vgFn || decl.name);
     const bodyN = decl.inner.find((/** @type {any} */ c) => c.kind === "CompoundStmt");
     scanForbidden(bodyN);
     scanForbidden((decl.inner || []).filter((/** @type {any} */ c) => c.kind === "ParmVarDecl"));
@@ -274,7 +360,13 @@ export function instrumentAst(source, top) {
       for (const [n, k] of vis) if (k >= 0) u.push([n, k]);
       const id = probes.length;
       probes.push({ line, fn, names, u, w: writesOf(writeNodes, uninitIds) });
-      const vars = names.map((n) => `__vg::v(${cStr(n)}, ${n})`).join(", ");
+      // `this` is traced dereferenced (*this, the object itself — reusing the class's own j()
+      // specialization) rather than as the opaque pointer vg.h's generic j() would otherwise give
+      // it: LocalGdb's varobj.js shows `this` as a pseudo-address computed from (frame, name), never
+      // from the raw trace value, but its CHILDREN (the object's fields, reached by expanding it)
+      // need real field data to index into, not vg.h's `"<ptr>"` placeholder. `this` is a C++
+      // keyword, so no user variable can ever collide with this name.
+      const vars = names.map((n) => `__vg::v(${cStr(n)}, ${n === "this" ? "*this" : n})`).join(", ");
       return `__vg::step(${id}, ${line}, ${cStr(fn)}, {${vars}})`;
     };
 
@@ -421,13 +513,148 @@ export function instrumentAst(source, top) {
       }
     }
 
-    const params = (decl.inner || []).filter((/** @type {any} */ c) => c.kind === "ParmVarDecl" && c.name);
+    // `this` (member functions only): GDB shows it as the frame's first argument, spelled `Class *`
+    // (`const Class *` for a const method) — see instrument.js's header note on classes. It is a
+    // plain traced name like any other parameter; probe()'s generic `__vg::v(name, name)` covers it
+    // with no special case, since `this` is a real, well-formed C++ expression at every probe site.
+    const realParams = (decl.inner || []).filter((/** @type {any} */ c) => c.kind === "ParmVarDecl" && c.name);
+    const params = decl.__vgThisType ? [{ name: "this", type: { qualType: decl.__vgThisType } }, ...realParams] : realParams;
     for (const p of params) addDecl(p.name, p.type);
     /** @type {Scope[]} */
     const scopes = [params.map((/** @type {any} */ p) => /** @type {[string, number]} */ ([p.name, -1])), []];
+
+    // Constructor member-initializer-list: `: x(a), y(b)` runs BEFORE the body's `{`, but GDB already
+    // shows a stop inside "Class::Class" (this activation) for each clause on its own line (measured
+    // against real GDB — see the class-support plan). A body-scoped `Frame` local cannot exist yet at
+    // that point, so the frame is pushed from INSIDE the first clause instead (bare pushFrame(), no
+    // RAII slot to hold it), and a pop-only FrameGuard is declared at the body open instead of Frame.
+    // Only plain `field(expr)` clauses are handled (no base-class initializers — no inheritance in
+    // phase 1; no delegating constructors) — anything else is an explicit Unsupported, never guessed.
+    // A field whose OWN type needs a constructor call to init even when the user never mentioned it
+    // (any class/std::string/std::vector field not named in the initializer list) gets an IMPLICIT
+    // CXXCtorInitializer the AST looks identical to a written one — except its CXXConstructExpr has a
+    // ZERO-WIDTH range sitting at the constructor's own name token, never at real source text (an
+    // explicitly written `field()` has a normal non-zero-width range over "field()", confirmed against
+    // clang's AST for both cases). Such a clause has nothing to probe (no user code ran there) and is
+    // simply skipped — this is common (any class with a std::string/std::vector/class-typed field and
+    // a constructor that doesn't mention it in its initializer list), not an edge case.
+    // A field whose OWN type is a class (or otherwise needs its own constructor call to init, e.g.
+    // `tl(a)` copy-constructing a Point) wraps a GENUINELY WRITTEN clause in a CXXConstructExpr whose
+    // source range covers the WHOLE `tl(a)`, field name included — wrapping THAT in a comma expression
+    // would produce `(probe, tl(a))` where `tl(a)` is expected, a syntax error. Only the single-argument
+    // case (by far the common one: copy/move-constructing from exactly one value) is unwrapped one
+    // level to find the actual value expression; anything with zero (and genuinely written, e.g. an
+    // explicit `field()`) or 2+ constructor arguments is genuinely ambiguous about which sub-expression
+    // "is" the clause's line, so it is rejected rather than guessed.
+    const SKIP = Symbol("implicit constructor initializer");
+    /**
+     * An implicit (nothing written) default-init is only safe to silently skip — no probe, no
+     * frame-order implication — when NOTHING reachable through its field's type is user-instrumented
+     * code (std::string, std::vector, any scalar: their default construction is real but invisible,
+     * no trace records emitted). A field whose type IS, or CONTAINS (e.g. as a std::pair/std::array
+     * template argument), another registered class is different: that class's default constructor,
+     * if any, IS instrumented and DOES emit trace records, and C++ constructs fields in DECLARATION
+     * order regardless of the init-list's own order — so an implicit field declared before any
+     * WRITTEN clause runs its (traced) constructor before this constructor's own frame would
+     * otherwise get pushed (only a written clause can carry the `pushFrame()` call). Silently
+     * skipping it would show that nested call under the WRONG caller frame. Until that ordering is
+     * handled properly, such a field is rejected explicitly instead.
+     *
+     * TWO earlier versions of this check tried to answer "does this field's type name a registered
+     * class" from the SPELLING of `ci.anyInit.type.qualType` (the sugared, as-written form) — matching
+     * against the class registry (missed `const`/array/typedef/using/elaborated spellings of the SAME
+     * class), then a `startsWith("std::")` structural check (safe for a bare class in any spelling,
+     * but wrongly ACCEPTED `std::pair<RegisteredClass, int>`/`std::array<RegisteredClass, N>` — the
+     * class name is right there as a template argument, silently reproducing the wrong-frame bug this
+     * check exists to prevent — and wrongly REJECTED plain `std::string`/`std::vector` fields spelled
+     * without the `std::` prefix under `using namespace std;`, the majority spelling in this project's
+     * own lesson corpus). Both failures share one root cause: the AS-WRITTEN spelling can name a
+     * registered class without literally containing its name (an alias) or hide one inside literally
+     * containing an unrelated prefix (`std::pair<In, int>` "looks like" std). What's actually decidable
+     * is identity, not spelling — and this file already has a free, always-on marker for exactly that:
+     * `instrumentAst`'s caller wraps the ENTIRE user file in `namespace __vg_user { ... }` before
+     * handing it to clang (userast.js, purely so `-ast-dump-filter=__vg_user` can pick the user's own
+     * declarations out of the dump) — meaning EVERY registered class's canonical (desugared) name is
+     * always `__vg_user::ClassName`, and clang's `desugaredQualType` fully resolves sugar recursively,
+     * including through template arguments, typedefs, `using` aliases, and `using namespace std;`
+     * (confirmed empirically: `std::pair<In,int>` desugars to `std::pair<__vg_user::In, int>`;
+     * `std::vector<std::pair<In,int>>` desugars two levels deep to the same; a bare `using namespace
+     * std;` field desugars to plain `std::string`/`std::vector<int>`, no `__vg_user::` anywhere). So:
+     * skip iff the desugared spelling doesn't contain the substring `__vg_user::` — that substring
+     * can only ever come from this file's own synthetic wrapper (user code can't itself declare a
+     * namespace, or an identifier starting with `__vg`, both rejected elsewhere in this file), so its
+     * presence anywhere in the fully-resolved type is an unambiguous, non-spelling-dependent signal
+     * that constructing this field reaches a registered class.
+     *
+     * One narrower gap survives, confirmed empirically: clang's JSON AST dump never populates
+     * `desugaredQualType` for a `ConstantArrayType` (an array-typed field, e.g. `In arr[2];`) at ANY
+     * dump site (the field's own declaration or a reference to it), even when the element type is a
+     * registered class or a typedef/using alias of one — there's no fully-resolved spelling of an
+     * array field's element type in this AST format at all, only the as-written one. For arrays only,
+     * this falls back to that as-written spelling (after stripping const/volatile and the trailing
+     * `[N]` brackets): a round-6 independent verifier found that a literal `std::` PREFIX alone is NOT
+     * a reliable "safe" signal here, since a std container can still carry a registered class as a
+     * template argument (`std::pair<In,int> arr[2];`) — the exact same wrong-call-stack bug F-A
+     * exercised for a non-array field, just reached through an array's as-written spelling instead of
+     * a desugared one. So the array fallback needs BOTH conditions: the bracket-stripped spelling must
+     * start with `std::` (rules out a bare class name, and any alias — those can't be positively
+     * identified as std without desugaring, so they default to rejection same as before), AND it must
+     * not mention any REGISTERED CLASS'S OWN NAME anywhere as a whole identifier (catches one hiding as
+     * a template argument, at any position, any nesting depth — this is reliable specifically because,
+     * unlike the general "is this some registered class" question a bare/aliased spelling can't answer
+     * without desugaring, checking for a SPECIFIC finite list of already-known names against literal
+     * as-written text has no aliasing ambiguity: an alias would hide the name, but an alias also fails
+     * the `std::`-prefix condition already, so it's rejected either way). Two spellings genuinely can't
+     * be told apart without desugaring and default to rejection, the safe direction, over-rejecting a
+     * narrow combination rather than ever silently accepting a wrong one: an array-of-class-type field
+     * named only through an alias, and an array-of-std-type field spelled without `std::`.
+     * @param {any} ci @returns {any | null | typeof SKIP}
+     */
+    const ctorInitExpr = (ci) => {
+      let e = ci.inner && ci.inner[0];
+      if (!e) return null;
+      if (e.kind === "CXXConstructExpr") {
+        const el = locOf(e.range && e.range.begin), er = locOf(e.range && e.range.end);
+        if (el && er && el.offset === er.offset) {
+          const t = ci.anyInit && ci.anyInit.type;
+          const desugared = t && t.desugaredQualType;
+          if (desugared) return desugared.includes("__vg_user::") ? null : SKIP;
+          const bare = ((t && t.qualType) || "")
+            .replace(/^(?:(?:const|volatile)\s+)+/, "")
+            .replace(/(?:\s*\[\s*\d*\s*\])+$/, "")
+            .trim();
+          if (!bare.startsWith("std::")) return null;
+          const mentionsRegisteredClass = Object.keys(classes).some(
+            (name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(bare),
+          );
+          return mentionsRegisteredClass ? null : SKIP;
+        }
+        e = Array.isArray(e.inner) && e.inner.length === 1 ? e.inner[0] : null;
+      }
+      return e && isExpr(e) ? e : null;
+    };
+    const ctorInits = decl.kind === "CXXConstructorDecl" ? (decl.inner || []).filter((/** @type {any} */ c) => c.kind === "CXXCtorInitializer") : [];
+    /** @type {Array<{ e: any }>} */
+    const realInits = [];
+    for (const ci of ctorInits) {
+      if (!ci.anyInit || ci.anyInit.kind !== "FieldDecl") throw new Unsupported("constructor initializer", lineAt(B(decl)));
+      const e = ctorInitExpr(ci);
+      if (e === null) throw new Unsupported("constructor initializer", lineAt(B(decl)));
+      if (e !== SKIP) realInits.push({ e });
+    }
     const open = P(bodyN.range.begin, "function body");
     if (buf[open] !== 123) throw new Unsupported("function body layout", lineAt(open));
-    ins(open + 1, " __vg::Frame __vg_fr; ");
+    if (realInits.length > 0) {
+      realInits.forEach(({ e: initExpr }, /** @type {number} */ i) => {
+        const L2 = lineAt(Bs(initExpr, "constructor initializer"));
+        const pre = i === 0 ? "__vg::pushFrame(), " : "";
+        ins(Bs(initExpr, "constructor initializer"), "(" + pre + probe(L2, scopes, [initExpr]) + ", ");
+        ins(E(initExpr, "constructor initializer"), ")");
+      });
+      ins(open + 1, " __vg::FrameGuard __vg_fg; ");
+    } else {
+      ins(open + 1, " __vg::Frame __vg_fr; ");
+    }
     for (const st of bodyN.inner || []) stmt(st, scopes);
     ins(P(bodyN.range.end, "function body"), probe(closeLine, [scopes[0], scopes[1]], []) + "; ");
     fnMeta[fn] = { line: lineAt(B(decl)), closeLine, params: params.map((/** @type {any} */ p) => p.name), vars: [...knownVars] };
@@ -442,5 +669,5 @@ export function instrumentAst(source, top) {
   }
   out += text(prev, buf.length);
   if (out.split("\n").length !== lineCount) throw new Error("instrumenter changed the line count (internal error)");
-  return { text: out, meta: { lineCount, functions: fnMeta, probes, decls, globals: globalTypes, uninitDecls } };
+  return { text: out, meta: { lineCount, functions: fnMeta, probes, decls, globals: globalTypes, uninitDecls, classes } };
 }

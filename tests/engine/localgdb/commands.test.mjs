@@ -337,7 +337,9 @@ test("-var-create: unsupported types and expressions get an explicit MI error; G
   await send(g, "-break-insert -f 33");
   await send(g, "-exec-run");
   const err = async (e) => { const it = await send(g, `3-var-create - * "${e}"`); const r = it.find((x) => x.type === "result"); assert.equal(r.message, "error", e); assert.equal(r.token, 3); return r.payload.msg; };
-  for (const [e, ty] of [["m", "std::map"], ["p", "int \\*"], ["pt", "Pt"]]) assert.match(await err(e), new RegExp(`^type '${ty}.*' is not supported by the browser engine$`), e);
+  // "pt" (struct Pt { int a; int b; };) used to be unsupported here too — class support (Slice C)
+  // now creates a proper varobj for a plain data struct; see class_support.test.mjs.
+  for (const [e, ty] of [["m", "std::map"], ["p", "int \\*"]]) assert.match(await err(e), new RegExp(`^type '${ty}.*' is not supported by the browser engine$`), e);
   assert.match(await err("*p"), /^expression '\*p' is not supported|^operator '\*' in expression '\*p' is not supported by the browser engine$/);
   assert.match(await err("g[0]"), /^expression 'g\[0\]' \(its value is a container\) is not supported by the browser engine$/);
   assert.equal(await err("x +"), "A syntax error in expression, near `'.");
@@ -346,7 +348,7 @@ test("-var-create: unsupported types and expressions get an explicit MI error; G
   assert.equal(await err("v.capacity()"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("v.size()"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("nosuch"), 'No symbol "nosuch" in current context.');
-  assert.equal(payloadOf(await send(g, "-var-create - * \"x\"")).name, "var12", "11 failed creates each consumed a varN (like GDB)");
+  assert.equal(payloadOf(await send(g, "-var-create - * \"x\"")).name, "var11", "10 failed creates each consumed a varN (like GDB)");
   // unsupported names for the other varobj commands
   assert.equal(payloadOf(await send(g, "-var-list-children --all-values \"var1\"")).msg, "Variable object not found");
   assert.equal(payloadOf(await send(g, "-var-delete var1")).msg, "Variable object not found");
