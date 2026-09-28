@@ -189,6 +189,14 @@ Supported:
   children are not repeat-compressed). A varobj's own `value` stays the short form (`std::vector of length 3, capacity 4`, `[3]`);
 - vectors are dynamic varobjs: `displayhint:"array"`, `dynamic:"1"`, `has_more:"1"` at creation, `numchild:"0"` until the children were
   listed; children `NAME.[i]` (`exp:"[i]"`), `--all-values` / `--simple-values` / `--no-values`, optional `FROM TO` range;
+- `std::deque<T>`, `std::list<T>`, `std::stack<T>`, `std::queue<T>` (T supported) are also dynamic varobjs, flat `NAME.[i]` children
+  like vector's, `has_more` reflecting emptiness (unlike vector's always-`"1"`). Value/type text follows GDB's libstdc++ printers
+  exactly, which are *not* uniform across these four: deque/stack/queue show `std::deque with N elements` / `std::stack wrapping:
+  std::deque with N elements` / `std::queue wrapping: std::deque with N elements` (`"1 element"` singular), `displayhint:"array"`,
+  print format with no per-child index (`{1, 2, 3}`); list has **no displayhint at all**, its type is tagged `std::__cxx11::list<...>`
+  (like `basic_string`'s tag), its value never counts elements — `std::__cxx11::list` / `empty std::__cxx11::list` — and its print
+  format DOES label each child (`{[0] = 4, [1] = 5, [2] = 6}`). `std::map`/`set`/`priority_queue`/`unordered_*` remain unsupported
+  (unordered_* would need libstdc++'s internal hash-bucket iteration order to match GDB, not attempted);
 - `-var-update`: roots **newest first**, children depth-first; reports value changes; `in_scope:"false"` (no value) once when the
   varobj's frame returned or its block was left; the value again when the block is re-entered; a grown/shrunk vector adds
   `new_num_children`;
@@ -198,7 +206,7 @@ Explicit MI errors (never fake data), all `type:"result", message:"error", paylo
 
 | case | msg |
 |---|---|
-| unsupported type (map/set/deque/stack/queue/priority_queue, pointer, struct, arrays of those, `vector<bool>`, `vector<unsupported>`; also `&(name)` of those) | `type 'TYPE' is not supported by the browser engine` |
+| unsupported type (map/set/priority_queue/unordered_*, pointer, struct, arrays of those, `vector<bool>`, `vector<unsupported>`; also `&(name)` of those) | `type 'TYPE' is not supported by the browser engine` |
 | syntax error | ``A syntax error in expression, near `REST'.`` |
 | unsupported operator/construct (`*p`, `f(x)`, `a->b`, array-to-pointer decay such as `cand + 1`, container- or row-valued expression such as `g[0]` / `m[1]`, `&(map)`) | `... is not supported by the browser engine` |
 | `x / 0`, `x % 0` | `Division by zero` |

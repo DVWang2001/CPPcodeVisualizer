@@ -33,7 +33,9 @@ test("type spelling: builtins, string, containers, pointers, references, arrays,
   assert.equal(t("std::map<int, int>"), "std::map<int, int, std::less<int>, std::allocator<std::pair<const int, int> > >");
   assert.equal(t("std::set<int>"), "std::set<int, std::less<int>, std::allocator<int> >");
   assert.equal(t("std::deque<int>"), "std::deque<int, std::allocator<int> >");
+  assert.equal(t("std::list<int>"), "std::__cxx11::list<int, std::allocator<int> >", "GDB tags list with __cxx11 like basic_string");
   assert.equal(t("std::stack<int>"), "std::stack<int, std::deque<int, std::allocator<int> > >");
+  assert.equal(t("std::queue<int>"), "std::queue<int, std::deque<int, std::allocator<int> > >");
   assert.equal(t("std::priority_queue<int>"), "std::priority_queue<int, std::vector<int, std::allocator<int> >, std::less<int> >");
   assert.equal(t("std::pair<int, std::string>"), "std::pair<int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >");
   assert.equal(t("Pt"), "Pt");
@@ -44,10 +46,11 @@ test("type spelling: builtins, string, containers, pointers, references, arrays,
 
 test("classification: supported set, simple values, dynamic (pretty-printed) types", () => {
   const c = (q) => classify(parseType(q));
-  for (const q of ["int", "long long", "bool", "char", "double", "float", "std::string", "std::vector<int>", "std::vector<std::vector<int>>", "std::vector<std::string>", "std::vector<double> &", "unsigned", "int[3]", "int[2][3]", "char[4]", "double[2]", "std::vector<int>[2]", "long long[3]"]) assert.equal(isSupported(c(q)), true, q);
-  for (const q of ["std::map<int,int>", "std::set<int>", "std::deque<int>", "std::stack<int>", "std::queue<int>", "std::priority_queue<int>", "int *", "Pt", "Pt[2]", "int *[2]", "std::map<int,int>[2]", "std::vector<bool>", "std::vector<std::map<int,int>>", "std::pair<int,int>"]) assert.equal(isSupported(c(q)), false, q);
+  for (const q of ["int", "long long", "bool", "char", "double", "float", "std::string", "std::vector<int>", "std::vector<std::vector<int>>", "std::vector<std::string>", "std::vector<double> &", "unsigned", "int[3]", "int[2][3]", "char[4]", "double[2]", "std::vector<int>[2]", "long long[3]",
+    "std::deque<int>", "std::list<int>", "std::stack<int>", "std::queue<int>", "std::deque<std::string>", "std::stack<int> &"]) assert.equal(isSupported(c(q)), true, q);
+  for (const q of ["std::map<int,int>", "std::set<int>", "std::priority_queue<int>", "int *", "Pt", "Pt[2]", "int *[2]", "std::map<int,int>[2]", "std::vector<bool>", "std::vector<std::map<int,int>>", "std::pair<int,int>", "std::deque<std::map<int,int>>"]) assert.equal(isSupported(c(q)), false, q);
   assert.deepEqual(["int", "bool", "char", "double", "int *", "int &", "std::string", "std::vector<int>", "int[3]", "Pt", "std::vector<int> &"].map((q) => isSimple(c(q))), [true, true, true, true, true, true, false, false, false, false, false]);
-  assert.deepEqual(["std::vector<int>", "std::string", "int", "std::vector<int> &"].map((q) => isDynamic(c(q))), [true, true, false, true]);
+  assert.deepEqual(["std::vector<int>", "std::string", "int", "std::vector<int> &", "std::deque<int>", "std::list<int>", "std::stack<int>", "std::queue<int>"].map((q) => isDynamic(c(q))), [true, true, false, true, true, true, true, true]);
 });
 
 test("value formatting like GDB: bool, char escapes, floating point (%g with 17/9 digits), strings", () => {

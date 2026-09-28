@@ -17,6 +17,7 @@
 #include "vgcompat.h"
 #include <wasi/api.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -25,7 +26,9 @@
 #include <iterator>
 #include <list>
 #include <map>
+#include <queue>
 #include <set>
+#include <stack>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -57,6 +60,15 @@ struct has_iter<T, std::void_t<decltype(std::declval<const T&>().begin()), declt
 
 template <class T> struct is_pair : std::false_type {};
 template <class A, class B> struct is_pair<std::pair<A, B>> : std::true_type {};
+
+// std::stack/std::queue are container ADAPTORS: no begin()/end(), so has_iter is false for them and
+// they'd otherwise fall through j()'s default "<?>" case. Matched by exact template head (not just
+// "has top()+push()+pop()") so std::priority_queue is deliberately left unmatched: its GDB display is
+// the raw internal heap array (extraction order via pop() would not match it) — out of scope for now.
+template <class T> struct is_stack : std::false_type {};
+template <class T, class C> struct is_stack<std::stack<T, C>> : std::true_type {};
+template <class T> struct is_queue : std::false_type {};
+template <class T, class C> struct is_queue<std::queue<T, C>> : std::true_type {};
 
 template <class T> std::string j(const T& x);
 
@@ -103,6 +115,20 @@ template <class T> std::string j(const T& x) {
     std::string o = "[";
     for (std::size_t i = 0; i < x.size(); ++i) { if (i) o += ","; o += x[i] ? "1" : "0"; }
     return o + "]";
+  } else if constexpr (is_stack<T>::value) {
+    // top() is the last-pushed element; GDB shows the wrapped deque bottom-to-top (push order), so
+    // draining top()-first and reversing recovers that order without touching the original.
+    T c = x;
+    std::vector<typename T::value_type> tmp;
+    while (!c.empty()) { tmp.push_back(c.top()); c.pop(); }
+    std::reverse(tmp.begin(), tmp.end());
+    return j(tmp);
+  } else if constexpr (is_queue<T>::value) {
+    // front() first is already the wrapped deque's front-to-back order GDB shows.
+    T c = x;
+    std::vector<typename T::value_type> tmp;
+    while (!c.empty()) { tmp.push_back(c.front()); c.pop(); }
+    return j(tmp);
   } else if constexpr (has_iter<T>::value) {
     std::string o = "[";
     bool first = true;

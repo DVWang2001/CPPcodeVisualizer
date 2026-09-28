@@ -13,7 +13,7 @@
 // again when it is re-entered.
 // Plain ES module, no DOM / Node APIs.
 
-import { classify, gdbType, isSupported, isDynamic, isSimple } from "./types.js";
+import { classify, gdbType, isSupported, isDynamic, isSimple, FLAT_CONTAINER_KINDS } from "./types.js";
 import { valueOf } from "./model.js";
 import { printValue } from "./types.js";
 import { resultItem, errorItem, unsupportedMsg } from "./mi.js";
@@ -230,7 +230,8 @@ export class VarObjs {
     if (si < 0) return undefined;
     const s = model.steps[si];
     if (own(s.vars, vo.varName)) return s.vars[vo.varName];
-    return vo.ti.cls.kind === "vector" ? [] : vo.ti.cls.kind === "string" ? "" : 0;
+    const k = vo.ti.cls.kind;
+    return k === "vector" || FLAT_CONTAINER_KINDS.has(k) ? [] : k === "string" ? "" : 0;
   }
 
   /** @param {VarObj} vo */
@@ -291,10 +292,17 @@ export class VarObjs {
     const p = { name: vo.name, numchild: nc, value: this._value(vo), type: vo.ti.gdbType };
     if (!vo.root.global) /** @type {any} */ (p)["thread-id"] = "1";
     if (isDynamic(ecls)) {
-      /** @type {any} */ (p).displayhint = ecls.kind === "string" ? "string" : "array";
+      // GDB's list printer sets no displayhint (unlike vector/deque/stack/queue's "array").
+      if (ecls.kind !== "list") /** @type {any} */ (p).displayhint = ecls.kind === "string" ? "string" : "array";
       /** @type {any} */ (p).dynamic = "1";
     }
-    if (isCreate) /** @type {any} */ (p).has_more = ecls.kind === "vector" ? "1" : "0";
+    if (isCreate) {
+      if (ecls.kind === "vector") /** @type {any} */ (p).has_more = "1";
+      else if (FLAT_CONTAINER_KINDS.has(ecls.kind)) {
+        const raw = this._raw(vo);
+        /** @type {any} */ (p).has_more = Array.isArray(raw) && raw.length > 0 ? "1" : "0";
+      } else /** @type {any} */ (p).has_more = "0";
+    }
     return p;
   }
 
@@ -323,7 +331,7 @@ export class VarObjs {
       });
       return resultItem({ numchild: "1", children: kids, has_more: "0" }, token);
     }
-    if (ecls.kind !== "vector" && ecls.kind !== "array") return resultItem({ numchild: "0", has_more: "0" }, token);
+    if (ecls.kind !== "vector" && ecls.kind !== "array" && !FLAT_CONTAINER_KINDS.has(ecls.kind)) return resultItem({ numchild: "0", has_more: "0" }, token);
     const isArr = ecls.kind === "array";
     const raw = this._raw(vo);
     const n = isArr ? ecls.n : Array.isArray(raw) ? raw.length : 0;
@@ -340,8 +348,9 @@ export class VarObjs {
       if (d.displayhint) { out.displayhint = d.displayhint; out.dynamic = d.dynamic; }
       return out;
     });
-    // a C array is not a dynamic varobj: no displayhint on the result
-    return resultItem(isArr ? { numchild: String(n), children, has_more: "0" } : { numchild: String(n), displayhint: "array", children, has_more: "0" }, token);
+    // a C array is not a dynamic varobj, and GDB's list printer has no displayhint at all: no key on either.
+    const noHint = isArr || ecls.kind === "list";
+    return resultItem(noHint ? { numchild: String(n), children, has_more: "0" } : { numchild: String(n), displayhint: "array", children, has_more: "0" }, token);
   }
 
   /** @param {VarObj} vo @param {number} n */
@@ -431,7 +440,7 @@ export class VarObjs {
       const cls = vo.ti.cls;
       const ecls = cls.kind === "ref" ? cls.to : cls;
       let grew = false;
-      if (vo.children && ecls.kind === "vector") {
+      if (vo.children && (ecls.kind === "vector" || FLAT_CONTAINER_KINDS.has(ecls.kind))) {
         const raw = this._raw(vo);
         const n = Array.isArray(raw) ? raw.length : 0;
         if (n !== vo.children.length) { this._ensureChildren(vo, n); grew = true; }
@@ -443,7 +452,10 @@ export class VarObjs {
         if (withValues) it.value = cur;
         it.in_scope = "true";
         it.type_changed = "false";
-        if (isDynamic(ecls)) { it.displayhint = ecls.kind === "string" ? "string" : "array"; it.dynamic = "1"; }
+        if (isDynamic(ecls)) {
+          if (ecls.kind !== "list") it.displayhint = ecls.kind === "string" ? "string" : "array";
+          it.dynamic = "1";
+        }
         it.has_more = "0";
         if (grew && vo.children) it.new_num_children = String(vo.children.length);
         list.push(it);

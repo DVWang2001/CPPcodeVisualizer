@@ -147,8 +147,10 @@ export function gdbType(t, inTemplate = false) {
   const alloc = (e) => tmpl("std::allocator", [e]);
   let body;
   switch (name) {
-    case "std::vector": case "std::deque": case "std::list": case "std::forward_list":
+    case "std::vector": case "std::deque": case "std::forward_list":
       body = a.length === 1 ? tmpl(name, [a[0], alloc(a[0])]) : tmpl(name, a); break;
+    case "std::list": // GDB's type field spells it std::__cxx11::list (like basic_string's __cxx11 tag)
+      body = a.length === 1 ? tmpl("std::__cxx11::list", [a[0], alloc(a[0])]) : tmpl("std::__cxx11::list", a); break;
     case "std::set": case "std::multiset":
       body = a.length === 1 ? tmpl(name, [a[0], tmpl("std::less", [a[0]]), alloc(a[0])]) : tmpl(name, a); break;
     case "std::map": case "std::multimap":
@@ -182,7 +184,7 @@ const CHAR_NAMES = new Set(["char", "signed char", "unsigned char"]);
 const FLOAT_NAMES = new Set(["float", "double", "long double"]);
 
 /**
- * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "ptr" | "array" | "ref" | "other", node: TypeNode,
+ * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "deque" | "list" | "stack" | "queue" | "ptr" | "array" | "ref" | "other", node: TypeNode,
  *   unsigned?: boolean, single?: boolean, elem?: TypeNode, to?: Cls, n?: number }} Cls
  */
 
@@ -202,8 +204,17 @@ export function classify(t) {
     if (e.k === "n" && e.name === "bool") return { kind: "vectorbool", node: t };
     return { kind: "vector", node: t, elem: e };
   }
+  // deque/list/stack/queue: same flat-children shape as vector (GDB: `.[i]` per element, no capacity).
+  // stack/queue are container adaptors over std::deque — printed by GDB's StdStackOrQueuePrinter as
+  // "std::stack wrapping: std::deque with N elements" (see printValue/valueOf).
+  if ((name === "std::deque" || name === "std::list" || name === "std::stack" || name === "std::queue") && t.args.length >= 1) {
+    return { kind: /** @type {any} */ (name.slice(5)), node: t, elem: t.args[0] };
+  }
   return { kind: "other", node: t };
 }
+
+/** Container kinds with vector-like flat `.[i]` children but no `.capacity()` pseudo-var. */
+export const FLAT_CONTAINER_KINDS = new Set(["deque", "list", "stack", "queue"]);
 
 /** Types shown with a value by `-stack-list-variables --simple-values` (not aggregates/classes). @param {Cls} c */
 export function isSimple(c) {
@@ -221,7 +232,8 @@ export function isSupported(c) {
   switch (c.kind) {
     case "int": case "bool": case "char": case "float": case "string": return true;
     case "ref": return isSupported(/** @type {Cls} */ (c.to));
-    case "vector": return isSupported(classify(/** @type {TypeNode} */ (c.elem)));
+    case "vector": case "deque": case "list": case "stack": case "queue":
+      return isSupported(classify(/** @type {TypeNode} */ (c.elem)));
     case "array": return /** @type {any} */ (c).n >= 0 && isSupported(classify(/** @type {TypeNode} */ (c.elem)));
     default: return false;
   }
@@ -230,7 +242,7 @@ export function isSupported(c) {
 /** True for values GDB prints through a pretty-printer (dynamic children). @param {Cls} c */
 export function isDynamic(c) {
   if (c.kind === "ref") return isDynamic(/** @type {Cls} */ (c.to));
-  return c.kind === "vector" || c.kind === "string";
+  return c.kind === "vector" || c.kind === "string" || FLAT_CONTAINER_KINDS.has(c.kind);
 }
 
 const CHAR_ESC = new Map([[7, "\\a"], [8, "\\b"], [9, "\\t"], [10, "\\n"], [11, "\\v"], [12, "\\f"], [13, "\\r"], [27, "\\033"]]);
@@ -383,5 +395,35 @@ export function printValue(cls, raw, capacity) {
     const shown = a.slice(0, PRINT_ELEMENTS).map((x) => printValue(ec, x));
     return `${head} = {${shown.join(", ")}${a.length > PRINT_ELEMENTS ? "..." : ""}}`;
   }
+  if (FLAT_CONTAINER_KINDS.has(cls.kind)) {
+    const a = Array.isArray(raw) ? raw : [];
+    const head = containerHead(cls.kind, a.length);
+    if (!a.length) return head;
+    const ec = classify(/** @type {TypeNode} */ (cls.elem));
+    // GDB's list printer labels each child `[i] = `; deque/stack/queue (all backed by the deque
+    // printer) don't. Confirmed against a real `gdb -i mi -enable-pretty-printing` session.
+    const shown = a.slice(0, PRINT_ELEMENTS).map((x, i) => (cls.kind === "list" ? `[${i}] = ` : "") + printValue(ec, x));
+    return `${head} = {${shown.join(", ")}${a.length > PRINT_ELEMENTS ? "..." : ""}}`;
+  }
   return formatScalar(cls, raw);
+}
+
+/**
+ * libstdc++'s GDB pretty-printer head text (no children) for deque/list/stack/queue, e.g.
+ * "std::deque with 3 elements", "std::__cxx11::list" / "empty std::__cxx11::list" (no count —
+ * the list printer avoids an O(n) size(), so it only distinguishes empty from non-empty),
+ * "std::stack wrapping: std::deque with 3 elements". Real GDB has been observed to show a garbage
+ * element count for a 1-element deque wrapped in a stack/queue on some runs (an upstream libstdc++
+ * printer quirk reading uninitialised memory for a near-empty deque) — not reproduced here, and not
+ * reliably reproducible in GDB itself either.
+ * @param {"deque"|"list"|"stack"|"queue"} kind @param {number} n
+ */
+export function containerHead(kind, n) {
+  const elems = `${n} element${n === 1 ? "" : "s"}`;
+  switch (kind) {
+    case "deque": return `std::deque with ${elems}`;
+    case "list": return n === 0 ? "empty std::__cxx11::list" : "std::__cxx11::list";
+    case "stack": return `std::stack wrapping: std::deque with ${elems}`;
+    case "queue": return `std::queue wrapping: std::deque with ${elems}`;
+  }
 }

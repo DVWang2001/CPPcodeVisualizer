@@ -4,7 +4,7 @@
 // Plain ES module, no DOM / Node APIs.
 
 import { analyzeScopes, chainAt } from "./scopes.js";
-import { parseType, classify, gdbType, signatureType, formatScalar } from "./types.js";
+import { parseType, classify, gdbType, signatureType, formatScalar, FLAT_CONTAINER_KINDS, containerHead } from "./types.js";
 
 const own = (/** @type {object} */ o, /** @type {string} */ k) => Object.prototype.hasOwnProperty.call(o, k);
 
@@ -238,7 +238,7 @@ export class TraceModel {
 function zeroFor(cls) {
   if (cls.kind === "ref") return zeroFor(cls.to);
   if (cls.kind === "array") return Array.from({ length: Math.max(cls.n, 0) }, () => zeroFor(classify(cls.elem)));
-  if (cls.kind === "vector") return [];
+  if (cls.kind === "vector" || FLAT_CONTAINER_KINDS.has(cls.kind)) return [];
   if (cls.kind === "string") return "";
   return 0;
 }
@@ -255,5 +255,6 @@ export function valueOf(cls, raw, capacity) {
     const n = Array.isArray(raw) ? raw.length : 0;
     return `std::vector of length ${n}, capacity ${capacity === undefined ? n : capacity}`;
   }
+  if (FLAT_CONTAINER_KINDS.has(cls.kind)) return containerHead(cls.kind, Array.isArray(raw) ? raw.length : 0);
   return formatScalar(cls, raw);
 }
