@@ -4,7 +4,7 @@
 // Plain ES module, no DOM / Node APIs.
 
 import { analyzeScopes, chainAt } from "./scopes.js";
-import { parseType, classify, gdbType, signatureType, formatScalar, FLAT_CONTAINER_KINDS, containerHead } from "./types.js";
+import { parseType, classify, gdbType, signatureType, formatScalar, printValue, FLAT_CONTAINER_KINDS, containerHead } from "./types.js";
 
 const own = (/** @type {object} */ o, /** @type {string} */ k) => Object.prototype.hasOwnProperty.call(o, k);
 
@@ -232,6 +232,12 @@ export class TraceModel {
 
   /** Vector capacity for a value: top level from the pseudo variable, nested = length. @param {VarEntry} e */
   topCapacity(e) { return typeof e.capacity === "number" ? e.capacity : Array.isArray(e.raw) ? e.raw.length : 0; }
+}
+
+/** GDB `value` string of a variable entry (print format; refs get the `@0xADDR: ` prefix). @param {TraceModel} model @param {VarEntry} e */
+export function printEntry(model, e) {
+  const s = printValue(e.cls, e.raw, model.topCapacity(e));
+  return e.cls.kind === "ref" ? `@0x${model.varAddr(e.frameId, e.name).toString(16)}: ${s}` : s;
 }
 
 /** @param {any} cls */

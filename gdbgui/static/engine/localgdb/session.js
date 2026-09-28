@@ -4,10 +4,10 @@
 // Plain ES module, no DOM / Node APIs.
 
 import { parseCommand, splitArgs, resultItem, errorItem, notifyItem, consoleItem, logItem, outputItem, doneItem, unsupportedMsg, hex16 } from "./mi.js";
-import { TraceModel } from "./model.js";
+import { TraceModel, printEntry } from "./model.js";
 import { BreakpointTable, ExecState } from "./exec.js";
 import { VarObjs } from "./varobj.js";
-import { isSimple, printValue } from "./types.js";
+import { isSimple } from "./types.js";
 import { parseFastForward, pyJson } from "./fastforward.js";
 import { chainAt } from "./scopes.js";
 
@@ -235,10 +235,7 @@ export class LocalGdbSession {
   frames() { return this.hasStack() ? this.model.chain(this.topStep()) : []; }
 
   /** GDB `value` string of a variable entry. @param {import("./model.js").VarEntry} e */
-  entryValue(e) {
-    const s = printValue(e.cls, e.raw, this.model.topCapacity(e));
-    return e.cls.kind === "ref" ? `@0x${this.model.varAddr(e.frameId, e.name).toString(16)}: ${s}` : s;
-  }
+  entryValue(e) { return printEntry(this.model, e); }
 
   /**
    * Frame record as GDB prints it.

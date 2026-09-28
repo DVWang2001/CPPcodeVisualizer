@@ -60,7 +60,7 @@ const LOAD_TIMEOUT_MS = 30000;
 
 export interface EngineModules {
   engine: { loadEngine: (opts?: any) => Promise<any> };
-  localgdb: { createLocalGdb: (opts: any) => any };
+  localgdb: { createLocalGdb: (opts: any) => any; buildPrerunSnapshots: (model: any) => any[] };
 }
 
 let _modules: Promise<EngineModules> | null = null;
@@ -168,7 +168,7 @@ export interface LocalGdbLike {
     emit: (ev: string, p: any) => any;
     close: () => any;
   };
-  session?: { pid?: number };
+  session?: { pid?: number; model?: any };
   idle: () => Promise<void>;
   setRunToken: (t: string | null) => void;
   close: () => void;
@@ -190,6 +190,11 @@ export class LocalSocket {
 
   get disconnected(): boolean {
     return !this.connected;
+  }
+
+  /** The LocalGdb session currently answering commands, or null before one is attached. */
+  get currentGdb(): LocalGdbLike | null {
+    return this.delegate;
   }
 
   on(ev: string, cb: (payload?: any) => void) {
@@ -647,9 +652,27 @@ export function readFile(data: any): { ok: true; body: any } | { ok: false; mess
   };
 }
 
-/** /api/prerun_calltree: no ghost tree in the browser engine (UI treats !data.ok as "none"). */
+/**
+ * /api/prerun_calltree. The real backend re-runs the already-compiled binary under `gdb --batch`
+ * with a breakpoint on every function, recording one stack snapshot per call (prerun.py). LocalGdb
+ * already has the complete trace from the Run that just finished (GdbApi fires this right after
+ * create_and_upload resolves, so a session is always attached by now), so it derives the identical
+ * `snapshots` shape directly — see ghostSnapshots.js for the correspondence.
+ */
 export function prerunCalltree(): Promise<any> {
-  return Promise.resolve({ ok: false, reason: "browser_engine" });
+  return loadModules().then(
+    (mods) => {
+      const gdb = _socket && _socket.currentGdb;
+      const model = gdb && gdb.session && gdb.session.model;
+      if (!model) return { ok: false, reason: "no_binary" };
+      try {
+        return { ok: true, snapshots: mods.localgdb.buildPrerunSnapshots(model) };
+      } catch (e) {
+        return { ok: false, reason: "prerun_failed" };
+      }
+    },
+    () => ({ ok: false, reason: "prerun_failed" })
+  );
 }
 
 /**

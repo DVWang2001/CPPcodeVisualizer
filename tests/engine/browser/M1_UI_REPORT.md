@@ -72,5 +72,5 @@
 
 **已知功能缺口（依影響排序）**
 1. 幽靈呼叫樹（`/api/prerun_calltree` 在 wasm 模式回 `{ok:false}`）：遞迴教案的呼叫樹疊圖沒有。計畫 S7：由軌跡直接產生。
-2. `std::queue`／`std::stack`／`std::list`／`std::map`／`std::set`／`std::deque` 等容器的視覺化（引擎對這些型別回明確的「不支援」）：Rails、走迷宮、串列走訪受影響。計畫 S4 延伸。
+2. ~~`std::queue`／`std::stack`／`std::list`／`std::deque` 容器的視覺化~~：**2026-09-28 已完成**（commit `9b2c5e4`）。對照正式機真實 GDB 的 pretty-printer 輸出逐位元組核對；新增 `tests/engine/localgdb/containers.test.mjs`。Rails、走迷宮（容器部分）、串列走訪現在應該能畫了——**尚未在真實 UI 上重跑這三份教案確認**（本項只做了 LocalGdb 協定層的單元/整合測試，沒有走瀏覽器）。`std::map`／`std::set`／`std::priority_queue`／`std::unordered_*` 仍不支援：map/set 目前教案語料沒用到；unordered_* 要重現 libstdc++ 內部雜湊桶的走訪順序，成本太高，故意不做。
 3. 跨行條件的停駐精度（走迷宮）。

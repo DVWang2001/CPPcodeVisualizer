@@ -7,6 +7,7 @@ import { LocalSocket } from "./socket.js";
 
 export { FEATURES } from "./session.js";
 export { parseFastForward } from "./fastforward.js";
+export { buildPrerunSnapshots } from "./ghostSnapshots.js";
 
 /**
  * @param {{

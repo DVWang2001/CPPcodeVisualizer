@@ -24,14 +24,14 @@ store.initialize({ ...initialStoreData }, { immutable: false, debounce_ms: 0 });
 const flush = () => new Promise<void>((r) => setTimeout(r, 0));
 
 /** A LocalGdb stand-in: records what it receives, answers each run_gdb_command on a microtask. */
-function fakeGdb(pid = 4242) {
+function fakeGdb(pid = 4242, model: any = undefined) {
   const listeners: { [ev: string]: Array<(p: any) => void> } = {};
   const received: Array<[string, any]> = [];
   const state = { closed: false, runToken: null as string | null };
   const g: LocalGdbLike & { received: typeof received; state: typeof state; fire: (ev: string, p: any) => void } = {
     received,
     state,
-    session: { pid },
+    session: { pid, model },
     socket: {
       on: (ev: string, cb: (p: any) => void) => {
         (listeners[ev] = listeners[ev] || []).push(cb);
@@ -81,10 +81,13 @@ function fakeModules(runResult: any | ((src: string, stdin: string) => any)) {
     engine: { loadEngine: jest.fn(() => Promise.resolve(engine)) },
     localgdb: {
       createLocalGdb: jest.fn((opts: any) => {
-        const g = fakeGdb();
+        // opts.runResult stands in for a TraceModel here (buildPrerunSnapshots is mocked below, so
+        // no real model shape is required — only object identity matters for the assertion).
+        const g = fakeGdb(4242, opts.runResult);
         created.push({ opts, gdb: g });
         return g;
       }),
+      buildPrerunSnapshots: jest.fn((_model: any) => [[{ func: "main", addr: "0x0", line: "1", args: [] }]]),
     },
   };
   return { mods, engine, created, runs };
@@ -599,8 +602,35 @@ describe("/read_file 替代（規格 §7：必須 HTML 跳脫）", () => {
 
 // ---------------------------------------------------------------------------------------------
 describe("其他端點", () => {
-  test("/api/prerun_calltree → ok:false（UI 不顯示幽靈樹）", async () => {
-    expect((await localEngine.prerunCalltree()).ok).toBe(false);
+  test("/api/prerun_calltree：尚未 attach 任何 session → ok:false", async () => {
+    const f = fakeModules(okRun());
+    _test.setModules(f.mods as any);
+    const r = await localEngine.prerunCalltree();
+    expect(r).toEqual({ ok: false, reason: "no_binary" });
+    expect(f.mods.localgdb.buildPrerunSnapshots).not.toHaveBeenCalled();
+  });
+  test("/api/prerun_calltree：Run 完成、session 已 attach → ok:true，把 attach 的 session.model 交給 buildPrerunSnapshots", async () => {
+    const rr = okRun();
+    const f = fakeModules(rr);
+    _test.setModules(f.mods as any);
+    await localEngine.createAndUpload({ code: "int main(){}" });
+    const r = await localEngine.prerunCalltree();
+    expect(r.ok).toBe(true);
+    expect(r.snapshots).toEqual([[{ func: "main", addr: "0x0", line: "1", args: [] }]]);
+    expect(f.mods.localgdb.buildPrerunSnapshots).toHaveBeenCalledTimes(1);
+    // f.created[0] is getSocket()'s "not yet Run" bootstrap session; [1] is this Run's session —
+    // the model handed over must be exactly what createLocalGdb received as runResult for THIS Run.
+    expect(f.created[1].opts.runResult).toBe(rr);
+    expect(f.mods.localgdb.buildPrerunSnapshots.mock.calls[0][0]).toBe(rr);
+  });
+  test("/api/prerun_calltree：buildPrerunSnapshots 丟例外 → ok:false（不讓例外冒出去砸掉呼叫端）", async () => {
+    const f = fakeModules(okRun());
+    (f.mods.localgdb.buildPrerunSnapshots as jest.Mock).mockImplementation(() => {
+      throw new Error("boom");
+    });
+    _test.setModules(f.mods as any);
+    await localEngine.createAndUpload({ code: "int main(){}" });
+    expect(await localEngine.prerunCalltree()).toEqual({ ok: false, reason: "prerun_failed" });
   });
   test("/get_last_modified_unix_sec → 固定值、回傳呼叫端的 path", async () => {
     let got: any = null;
