@@ -32,6 +32,22 @@ const ink = "#17233b";
 const muted = "#667085";
 const amber = "#e9a319";
 
+const answerKeyHead: React.CSSProperties = {
+  padding: "2px",
+  color: "#4676b8",
+  background: "#eef5ff",
+  font: "700 10px/1.2 ui-monospace, Menlo, Consolas, monospace",
+  textAlign: "center",
+  border: "1px solid #d8dee9"
+};
+const answerKeyCell: React.CSSProperties = {
+  padding: "3px 2px",
+  border: "1px solid #d8dee9",
+  font: "700 11px/1.2 ui-monospace, Menlo, Consolas, monospace",
+  textAlign: "center",
+  color: "#237a3b"
+};
+
 export function closeQuizContainer(): boolean {
   (window as any).gdbgui_table_quiz_hides_container = true;
   const entry = ((window as any).gdbgui_collapser_registry || {}).container;
@@ -1005,6 +1021,32 @@ export default function LiveQuizPanel({
                   stats={cellStats}
                   answerCount={answerCount}
                 />
+                {/* 熱區圖只顯示答錯集中在哪，不會透出正確的值本身——老師結束作答
+                    後需要另外一份答案卷才看得到正解，不能只靠展開某一位學生的
+                    個別作答去猜。 */}
+                {question.correct_values && (
+                  <div style={{ marginTop: "10px" }}>
+                    <div style={{ color: muted, fontSize: "13px", marginBottom: "4px" }}>正確答案</div>
+                    <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: "100%" }}>
+                      <tbody>
+                        <tr>
+                          <th style={{ width: "22px" }} aria-hidden="true" />
+                          {(question.col_labels || []).map((label: string, col: number) => (
+                            <th key={col} scope="col" style={answerKeyHead}>{label}</th>
+                          ))}
+                        </tr>
+                        {question.correct_values.map((row: string[], r: number) => (
+                          <tr key={r}>
+                            <th scope="row" style={answerKeyHead}>{(question.row_labels || [])[r]}</th>
+                            {row.map((value, c) => (
+                              <td key={c} style={answerKeyCell}>{value}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 {question.state === "closed" && reviews !== null && (
                   <div style={{ marginTop: "14px" }}>
                     <div style={{ color: muted, fontSize: "13px", marginBottom: "5px" }}>
@@ -1042,13 +1084,17 @@ export default function LiveQuizPanel({
             ) : (question.options || []).map((option: any) => {
               const value = Number(counts[option.id]) || 0;
               const width = answerCount ? Math.round((value / answerCount) * 100) : 0;
+              const isCorrect = option.id === question.correct_option_id;
               return (
                 <div key={option.id} style={{ marginBottom: "8px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
-                    <span>{option.text}</span><span>{value}</span>
+                    <span style={isCorrect ? { color: "#237a3b", fontWeight: 700 } : undefined}>
+                      {isCorrect && "✓ "}{option.text}
+                    </span>
+                    <span>{value}</span>
                   </div>
                   <div style={{ height: "8px", background: "#e6eaf0" }}>
-                    <div style={{ width: `${width}%`, height: "100%", background: "#4676b8" }} />
+                    <div style={{ width: `${width}%`, height: "100%", background: isCorrect ? "#237a3b" : "#4676b8" }} />
                   </div>
                 </div>
               );

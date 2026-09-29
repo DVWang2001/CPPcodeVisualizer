@@ -586,6 +586,60 @@ test("收卷後列出個別作答，點一位展開他那張表", async () => {
   expect(root.innerHTML).toContain("正解 1");
 });
 
+// 實際回報的問題：老師按「結束作答並繼續」之後，彈窗只有熱區圖（哪幾格答錯的
+// 人多），完全沒有正確答案本身，只能一個一個展開學生的作答去猜正解是什麼。
+test("結束作答後，填表題彈窗直接顯示一份正確答案卷，不用展開學生作答去猜", async () => {
+  (liveQuizClient.fetchQuestionResponses as jest.Mock) = jest.fn().mockResolvedValue({ responses: [] });
+  const closed = {
+    ...panelSession(),
+    questions: [{
+      ...panelSession().questions[0],
+      state: "closed",
+      opened_at: "2026-08-20T00:00:00",
+      rows: 2, cols: 2,
+      row_labels: ["r0", "r1"], col_labels: ["c0", "c1"],
+      cell_stats: [0, 0, 0, 0],
+      correct_values: [["1", "2"], ["3", "4"]]
+    }],
+    active_question: null
+  };
+
+  await mountPanel(closed);
+  await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+
+  expect(root.textContent).toContain("正確答案");
+  // 逐一比對，而不是只信賴 textContent 裡有出現這四個字元——確認真的是答案卷
+  // 的表格內容，不是巧合出現在別處的數字（例如作答人數統計）。
+  const answerKeyTable = Array.from(root.querySelectorAll("table")).find(
+    table => table.previousElementSibling?.textContent === "正確答案"
+  );
+  expect(answerKeyTable).toBeDefined();
+  expect(answerKeyTable!.textContent).toContain("1");
+  expect(answerKeyTable!.textContent).toContain("2");
+  expect(answerKeyTable!.textContent).toContain("3");
+  expect(answerKeyTable!.textContent).toContain("4");
+});
+
+test("選擇題彈窗直接在正確選項旁標記，不用另外去猜哪個是正解", async () => {
+  const closed = {
+    ...panelSession(),
+    questions: [{
+      id: "q1", state: "closed", kind: "choice", prompt: "選一個",
+      source_file: "main.cpp", line: 3, opened_at: "2026-08-20T00:00:00",
+      options: [{ id: "a", text: "選項 A" }, { id: "b", text: "選項 B" }],
+      correct_option_id: "b",
+      option_counts: { a: 2, b: 5 }
+    } as any],
+    active_question: null
+  };
+
+  await mountPanel(closed);
+  await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+
+  expect(root.textContent).toContain("✓ 選項 B");
+  expect(root.textContent).not.toContain("✓ 選項 A");
+});
+
 test("開新課堂時暫停播放，讓學生有時間掃碼", async () => {
   // 按 Run 會建立課堂並彈出 QR，但播放若立刻往前跑，到達綁定行時題目就開了——
   // 學生根本來不及掃。空檔必須由老師控制：掃完再按既有的播放鍵繼續。
