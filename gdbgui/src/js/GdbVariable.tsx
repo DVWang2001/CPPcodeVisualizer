@@ -698,6 +698,13 @@ class GdbVariable extends React.Component {
   static fetch_and_show_children_for_var(gdb_var_name: any) {
     let expressions = store.get("expressions");
     let obj = GdbVariable.get_obj_from_gdb_var_name(expressions, gdb_var_name);
+    if (!obj) {
+      // 這個 var 已經被刪除重建過了（同一個表達式短時間內被多個 guide token
+      // 各自觸發 delete+recreate，例如同一行同時引用多個大容器時），這個呼叫
+      // 對應的是已經不存在的舊 var。跟 gdb_created_children_variables() 對
+      // 同一種情境的處理方式一致：安靜跳過，不動已經指向新 var 的畫面。
+      return;
+    }
     // mutate object by reference
     obj.show_children_in_ui = true;
     // update store

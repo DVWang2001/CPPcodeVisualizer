@@ -126,3 +126,35 @@ describe("clear_visualizer_queues(true) — Run/重啟時真的要重置", () =>
     expect(runCmd).toHaveBeenCalledTimes(2);
   });
 });
+
+// 回報（走迷宮教案，maze 是 11x11 的大 vector，好幾行的 @guide 都同時引用
+// {maze}）：瀏覽器 console 直接丟出 uncaught TypeError，整個 processing_guide
+// 任務中斷，容器面板永遠停在空的（跟其他容器 bug 不一樣——這支根本沒走到
+// 判斷空/非空那一步，是提早在抓子節點這一步就當掉了）。
+//
+// 根因：fetch_and_show_children_for_var() 沒有像檔案裡其他每一個呼叫
+// get_obj_from_gdb_var_name() 的地方一樣先判斷 obj 存不存在，直接
+// `obj.show_children_in_ui = true`——同一個表達式短時間內被多個 guide token
+// 各自觸發 delete+recreate 時，晚到的回應會對應到已經不存在的舊 var，
+// obj 是 undefined，整支函式直接炸掉。
+describe("fetch_and_show_children_for_var — 對已經不存在的 var 要安靜跳過，不能炸掉", () => {
+  it("var 已經被刪除（或從來沒被存進 expressions）時，不拋例外、也不寫入任何東西", () => {
+    store.set("expressions", []);
+    expect(() => {
+      GdbVariable.fetch_and_show_children_for_var("var_does_not_exist");
+    }).not.toThrow();
+    expect(store.get("expressions")).toEqual([]);
+  });
+
+  it("正常情境（var 存在）不受這個防呆影響，show_children_in_ui 照常被設成 true", () => {
+    jest.spyOn(GdbApi, "run_gdb_command").mockImplementation(() => {});
+    GdbVariable.create_variable("up", "expr", "foo::up");
+    GdbVariable.gdb_created_root_variable({
+      payload: { name: "var1", numchild: "0", value: "3", type: "int" },
+    });
+    expect(() => {
+      GdbVariable.fetch_and_show_children_for_var("var1");
+    }).not.toThrow();
+    expect(findExpr("foo::up")?.show_children_in_ui).toBe(true);
+  });
+});
