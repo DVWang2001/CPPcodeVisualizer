@@ -7,6 +7,7 @@ import { bstPlugin } from "./BSTPlugin";
 import { linearPlugin, uniformCellWidth } from "./LinearPlugin";
 import { mazePlugin } from "./MazePlugin";
 import { splitForPairing } from "./containerPairing";
+import { resolveChildValues } from "./containerParsers/index";
 import { popCellKey, popGenKey, effectivePopGen, prefersReducedMotion } from "./cellPopKey";
 import { computePullOffsets, formatPullPreview, resolveCrossPull, CrossPullToken } from "./pullAnim";
 import { delay } from "./anim";
@@ -266,9 +267,55 @@ class ContainerVisualizer extends React.Component<{}, State> {
     /** Last run generation we cleared plugin state for. -1 = never. */
     private _lastResetRunGen = -1;
 
+    /**
+     * `__latest_containers` 只在「目前這一行的 @guide 文字剛好引用 {容器名}」時才會被
+     * `VisualizerHelper.js` 的 processing_guide()/checkStore() 重新計算——那是逐行
+     * token 驅動的一次性動作，不是持續同步。has_more 修好之後，容器從空長大時
+     * `numchild`/`children` 常常是插入那一行「之後」才非同步到位；如果教案沒有在
+     * 後面每一行都重複寫 {容器名}，widget 就會永遠卡在插入當下讀到的空狀態，即使
+     * 底層 var-object（`store.get('expressions')`，跟區域變數面板共用同一份）早就
+     * 補齊了子節點（見 M1_UI_REPORT.md「已知功能缺口」第 4 項第 1 點的診斷記錄）。
+     *
+     * 趁每秒的輪詢，對照一次底層 var-object 有沒有比目前快取更新的資料，有的話直接
+     * 用跟 VisualizerHelper.js 相同的 parser 重新解析、蓋掉舊值，不必等到剛好有
+     * guide token 再次命中同一個容器。只處理「目前快取是空的、但 var-object 已經
+     * 有完整子節點」這個已知會卡死的模式——刻意不處理其他型態的資料落後（例如已經
+     * 非空的容器繼續變化），那些情況原本的 guide-token 驅動路徑通常還是會追上，
+     * 範圍越小、越不會動到這條共用邏輯原本就仰賴的其他行為。
+     */
+    _healStaleEmptyContainers(latestContainers: Map<string, any>) {
+        const expressions = store.get("expressions") || [];
+        for (const [key, payload] of Array.from(latestContainers.entries())) {
+            if (!payload || !payload.isContainer || payload.type === "string") continue;
+            if (!Array.isArray(payload.values) || payload.values.length !== 0) continue;
+            const varObj = expressions.find(
+                (e: any) => e.expression === payload.name && e.in_scope === "true"
+            );
+            if (!varObj || !varObj.children) continue;
+            const numchild = parseInt(String(varObj.numchild));
+            if (!numchild || varObj.children.length !== numchild) continue;
+            // 只在 varObj.children 已經完整載入（見上面的 numchild 守門）時才會走到這裡，
+            // parser 的「done:true」快速路徑不會用到 GdbVariable，所以不必為了這裡就把
+            // GdbVariable.tsx 那整條又大又跟 LiveQuizPanel 掛勾的相依鏈拉進這個檔案。
+            const noopGdbVariable = { fetch_and_show_children_for_var: () => {} };
+            const result = resolveChildValues(payload.type, varObj, {
+                trimmedInst: key,
+                expressions,
+                GdbVariable: noopGdbVariable,
+                containerName: payload.type,
+                store,
+            } as any);
+            if (result && result.done && Array.isArray(result.values) && result.values.length > 0) {
+                latestContainers.set(key, { ...payload, values: result.values });
+            }
+        }
+    }
+
     _pollContainers() {
         const latestContainers = (global_variable as any).__latest_containers as Map<string, any>;
         if (!latestContainers) { this.forceUpdate(); return; }
+
+        this._healStaleEmptyContainers(latestContainers);
 
         // pull: 的暫時計算結果不是限時收掉（見 gdbgui_trigger_pull 為什麼），
         // 而是每次輪詢都檢查一次：目標格現在的真實值還跟觸發當下（beforeValue）
