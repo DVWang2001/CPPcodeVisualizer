@@ -640,6 +640,50 @@ test("選擇題彈窗直接在正確選項旁標記，不用另外去猜哪個�
   expect(root.textContent).not.toContain("✓ 選項 A");
 });
 
+// 使用者明確要求：正解只能在結束作答之後才看得到，題目還開著時不能顯示，
+// 不然等於在學生還在作答時就把答案投影出去（老師端常會把畫面直接投影給全班看）。
+test("題目還開著（state==\"open\"）時，填表題彈窗不顯示正確答案", async () => {
+  const opened = {
+    ...panelSession(),
+    questions: [{
+      ...panelSession().questions[0],
+      state: "open",
+      opened_at: "2026-08-20T00:00:00",
+      rows: 2, cols: 2,
+      row_labels: ["r0", "r1"], col_labels: ["c0", "c1"],
+      cell_stats: [0, 0, 0, 0],
+      correct_values: [["1", "2"], ["3", "4"]]
+    }],
+    active_question: null
+  };
+  opened.active_question = { ...opened.questions[0] } as any;
+
+  await mountPanel(opened);
+  await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+
+  expect(root.textContent).not.toContain("正確答案");
+});
+
+test("題目還開著（state==\"open\"）時，選擇題彈窗不標記正確選項", async () => {
+  const opened = {
+    ...panelSession(),
+    questions: [{
+      id: "q1", state: "open", kind: "choice", prompt: "選一個",
+      source_file: "main.cpp", line: 3, opened_at: "2026-08-20T00:00:00",
+      options: [{ id: "a", text: "選項 A" }, { id: "b", text: "選項 B" }],
+      correct_option_id: "b",
+      option_counts: { a: 2, b: 5 }
+    } as any],
+    active_question: null
+  };
+  opened.active_question = { ...opened.questions[0] } as any;
+
+  await mountPanel(opened);
+  await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+
+  expect(root.textContent).not.toContain("✓");
+});
+
 test("開新課堂時暫停播放，讓學生有時間掃碼", async () => {
   // 按 Run 會建立課堂並彈出 QR，但播放若立刻往前跑，到達綁定行時題目就開了——
   // 學生根本來不及掃。空檔必須由老師控制：掃完再按既有的播放鍵繼續。

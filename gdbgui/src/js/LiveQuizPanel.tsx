@@ -1023,8 +1023,9 @@ export default function LiveQuizPanel({
                 />
                 {/* 熱區圖只顯示答錯集中在哪，不會透出正確的值本身——老師結束作答
                     後需要另外一份答案卷才看得到正解，不能只靠展開某一位學生的
-                    個別作答去猜。 */}
-                {question.correct_values && (
+                    個別作答去猜。只在結束作答（state==="closed"）後才顯示：
+                    題目還開著時先亮出正解，等於直接洩題給還在作答的學生看。 */}
+                {question.state === "closed" && question.correct_values && (
                   <div style={{ marginTop: "10px" }}>
                     <div style={{ color: muted, fontSize: "13px", marginBottom: "4px" }}>正確答案</div>
                     <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: "100%" }}>
@@ -1084,7 +1085,8 @@ export default function LiveQuizPanel({
             ) : (question.options || []).map((option: any) => {
               const value = Number(counts[option.id]) || 0;
               const width = answerCount ? Math.round((value / answerCount) * 100) : 0;
-              const isCorrect = option.id === question.correct_option_id;
+              // 題目還開著時不能標正解，會直接洩題給還在作答的學生看。
+              const isCorrect = question.state === "closed" && option.id === question.correct_option_id;
               return (
                 <div key={option.id} style={{ marginBottom: "8px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
