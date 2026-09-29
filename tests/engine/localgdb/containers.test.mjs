@@ -109,6 +109,39 @@ test("-var-create: empty list — 'empty std::__cxx11::list' (not 'with 0 elemen
   assert.deepEqual(kids.children, []);
 });
 
+// Regression: a dynamic container that starts genuinely empty (has_more "0" at -var-create, like
+// deque/set/map/pqueue all do — only vector is unconditionally "1") must still report has_more "1"
+// on the FIRST -var-update once it grows, even though -var-list-children was never called. Ground
+// truth from a real `gdb -i mi -enable-pretty-printing` session against the exact same push sequence.
+// Before this fix, has_more was hardcoded "0" in every -var-update changelist entry: the frontend
+// (GdbVariable.tsx) uses a growing has_more:"1" in the changelist as its ONLY trigger to ever call
+// -var-list-children for a container that started empty (its create-time has_more was already "0",
+// so the create-time recovery path never fires either) — so numchild stayed stuck at 0 forever and
+// the container looked permanently empty in the UI despite `value` correctly updating underneath.
+// No existing test caught this: the deque/stack/queue growth test above starts non-empty (dq/sk/qu
+// already have 3 pushed elements before the tested breakpoint), never exercising empty-to-first-insert.
+for (const [decl, typeDecl, ops, label] of [
+  ["#include <deque>", "deque<int>", ["x.push_back(5);"], "deque"],
+  ["#include <set>", "set<int>", ["x.insert(5);"], "set"],
+  ["#include <map>", "map<int,int>", ["x[1] = 10;"], "map"],
+]) {
+  test(`-var-update: ${label} growing from empty reports has_more "1" without -var-list-children ever being called first`, async () => {
+    const src = [decl, "using namespace std;", "int main() {", `    ${typeDecl} x;`, `    ${ops[0]}`, "    return 0;", "}", ""].join("\n");
+    const localRun = await eng.runProgram(src, "");
+    assert.equal(localRun.ok, true, JSON.stringify(localRun.errors));
+    const g = newGdb(localRun, src);
+    await send(g, "-break-insert -f 5"); // the push_back/insert/[]= line itself, x still empty here
+    await send(g, "-exec-run");
+    const v = payloadOf(await send(g, `3-var-create - * "x"`));
+    assert.equal(v.has_more, "0", "starts empty, like real GDB");
+    await send(g, "-exec-next"); // runs the insert, lands on the next line
+    const upd = payloadOf(await send(g, "-var-update --all-values *")).changelist;
+    const entry = upd.find((u) => u.name === v.name);
+    assert.ok(entry, "x should appear in the changelist (its value changed)");
+    assert.equal(entry.has_more, "1", `${label}: has_more must flip to "1" once non-empty, or the frontend never refetches children`);
+  });
+}
+
 test("-var-create: singular 'element' for a 1-element container", async () => {
   const g = await at(30);
   const v = payloadOf(await send(g, `3-var-create - * "one_sk"`));

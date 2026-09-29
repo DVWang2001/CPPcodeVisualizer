@@ -383,14 +383,31 @@ export class VarObjs {
       else if (ecls.kind !== "list" && ecls.kind !== "set") /** @type {any} */ (p).displayhint = ecls.kind === "string" ? "string" : "array";
       /** @type {any} */ (p).dynamic = "1";
     }
-    if (isCreate) {
-      if (ecls.kind === "vector") /** @type {any} */ (p).has_more = "1";
-      else if (ecls.kind === "map" || FLAT_CONTAINER_KINDS.has(ecls.kind)) {
-        const raw = this._raw(vo);
-        /** @type {any} */ (p).has_more = Array.isArray(raw) && raw.length > 0 ? "1" : "0";
-      } else /** @type {any} */ (p).has_more = "0";
-    }
+    if (isCreate) /** @type {any} */ (p).has_more = this._hasMore(vo, ecls);
     return p;
+  }
+
+  /**
+   * `has_more`: whether this varobj currently has any children to list. `vector` is unconditionally
+   * "1" (GDB quirk, even when empty); every other dynamic container (map + the FLAT_CONTAINER_KINDS
+   * family: deque/list/stack/queue/pqueue/set) is conditional on current emptiness — confirmed against
+   * a real `gdb -i mi -enable-pretty-printing` session, INCLUDING on `-var-update` after a container
+   * grows from empty (real GDB reports `has_more:"1"` there too, not just at `-var-create`). This must
+   * stay in sync between `_describe()` (create) and `update()` (every subsequent stop): the frontend
+   * (`GdbVariable.tsx`) uses a create-time `has_more` of "0" as its ONLY initial "nothing to show yet"
+   * signal for a dynamic varobj (real GDB's `numchild` is always "0" for these until listed), and later
+   * only re-fetches children when a `-var-update` changelist entry reports `has_more:"1"` — a container
+   * that starts empty and is hardcoded to always report "0" here would look permanently empty in the
+   * UI even after real inserts, since nothing would ever prompt a first `-var-list-children` call.
+   * @param {VarObj} vo @param {any} ecls
+   */
+  _hasMore(vo, ecls) {
+    if (ecls.kind === "vector") return "1";
+    if (ecls.kind === "map" || FLAT_CONTAINER_KINDS.has(ecls.kind)) {
+      const raw = this._raw(vo);
+      return Array.isArray(raw) && raw.length > 0 ? "1" : "0";
+    }
+    return "0";
   }
 
   /** @param {string} name */
@@ -667,7 +684,7 @@ export class VarObjs {
           else if (ecls.kind !== "list" && ecls.kind !== "set") it.displayhint = ecls.kind === "string" ? "string" : "array";
           it.dynamic = "1";
         }
-        it.has_more = "0";
+        it.has_more = this._hasMore(vo, ecls);
         if (grew && vo.children) it.new_num_children = String(vo.children.length);
         list.push(it);
       }
