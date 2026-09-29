@@ -324,6 +324,9 @@ test("-var-create: supported types with GDB's type strings, value strings and dy
   assert.deepEqual(await mk("s"), { name: "var4", numchild: "0", value: "\"hi\"", type: "std::string", "thread-id": "1", displayhint: "string", dynamic: "1", has_more: "0" });
   assert.deepEqual((await mk("d")).value, "0.10000000000000001");
   assert.deepEqual([(await mk("b")).value, (await mk("c")).value, (await mk("big")).value, (await mk("y")).type], ["true", "97 'a'", "1234567890123", "int"]);
+  // std::pair as a bare (non-container-element) type — a leaf, no displayhint/dynamic (unlike
+  // vector/map/etc.): its numchild="0" comes from having no children listed, not from pretty-printing.
+  assert.deepEqual(await mk("m"), { name: "var10", numchild: "0", value: "{first = 2, second = 0}", type: "std::pair<int, int>", "thread-id": "1", has_more: "0" });
   // command with explicit name and thread/frame flags
   const named = payloadOf(await send(g, "-var-create myvar * x"));
   assert.equal(named.name, "myvar");
@@ -338,8 +341,10 @@ test("-var-create: unsupported types and expressions get an explicit MI error; G
   await send(g, "-exec-run");
   const err = async (e) => { const it = await send(g, `3-var-create - * "${e}"`); const r = it.find((x) => x.type === "result"); assert.equal(r.message, "error", e); assert.equal(r.token, 3); return r.payload.msg; };
   // "pt" (struct Pt { int a; int b; };) used to be unsupported here too — class support (Slice C)
-  // now creates a proper varobj for a plain data struct; see class_support.test.mjs.
-  for (const [e, ty] of [["m", "std::pair"], ["p", "int \\*"]]) assert.match(await err(e), new RegExp(`^type '${ty}.*' is not supported by the browser engine$`), e);
+  // now creates a proper varobj for a plain data struct; see class_support.test.mjs. "m" (a bare
+  // std::pair<int,int>, not inside a container) used to be unsupported too — see the "supported
+  // types" test above for its var-create now that pair-as-an-element-type is supported.
+  for (const [e, ty] of [["p", "int \\*"]]) assert.match(await err(e), new RegExp(`^type '${ty}.*' is not supported by the browser engine$`), e);
   assert.match(await err("*p"), /^expression '\*p' is not supported|^operator '\*' in expression '\*p' is not supported by the browser engine$/);
   assert.match(await err("g[0]"), /^expression 'g\[0\]' \(its value is a container\) is not supported by the browser engine$/);
   assert.equal(await err("x +"), "A syntax error in expression, near `'.");
@@ -348,7 +353,7 @@ test("-var-create: unsupported types and expressions get an explicit MI error; G
   assert.equal(await err("v.capacity()"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("v.size()"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("nosuch"), 'No symbol "nosuch" in current context.');
-  assert.equal(payloadOf(await send(g, "-var-create - * \"x\"")).name, "var11", "10 failed creates each consumed a varN (like GDB)");
+  assert.equal(payloadOf(await send(g, "-var-create - * \"x\"")).name, "var10", "9 failed creates each consumed a varN (like GDB)");
   // unsupported names for the other varobj commands
   assert.equal(payloadOf(await send(g, "-var-list-children --all-values \"var1\"")).msg, "Variable object not found");
   assert.equal(payloadOf(await send(g, "-var-delete var1")).msg, "Variable object not found");
@@ -475,7 +480,7 @@ test("-data-evaluate-expression: plain variables only; errors like -var-create",
   assert.deepEqual(await ev("c"), { value: "97 'a'" });
   assert.deepEqual(await ev("INF"), { msg: 'No symbol "INF" in current context.' });
   assert.deepEqual(await ev("x * 2"), { value: "12" });
-  assert.match((await ev("m")).msg, /^type 'std::pair<int, int.*' is not supported by the browser engine$/);
+  assert.deepEqual(await ev("m"), { value: "{first = 2, second = 0}" });
   assert.equal((await ev("v.size()")).msg, "Cannot evaluate function -- may be inlined");
   assert.equal((await ev("nosuch")).msg, 'No symbol "nosuch" in current context.');
 });

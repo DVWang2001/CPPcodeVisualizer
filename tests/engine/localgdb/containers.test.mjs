@@ -257,9 +257,60 @@ test("-var-update: priority_queue/set/map growth after push/insert/[]= is reflec
   assert.deepEqual(mpKids.children.map((c) => c.value), ["1", "10", "2", "20", "3", "30"]);
 });
 
-test("still unsupported (documented gap): raw std::pair, and a map/set/priority_queue of an unsupported key/element type", async () => {
+test("still unsupported (documented gap): a map/set/priority_queue of an unsupported key/element type", async () => {
   const { classify, isSupported, parseType } = await import("../../../gdbgui/static/engine/localgdb/types.js");
-  for (const q of ["std::pair<int,int>", "std::map<int,int*>", "std::set<int*>", "std::priority_queue<int*>"]) {
+  for (const q of ["std::map<int,int*>", "std::set<int*>", "std::priority_queue<int*>"]) {
     assert.equal(isSupported(classify(parseType(q))), false, q);
   }
+});
+
+test("std::pair (standalone element type, not map's key/value) is supported when both members are", async () => {
+  const { classify, isSupported, parseType } = await import("../../../gdbgui/static/engine/localgdb/types.js");
+  assert.equal(isSupported(classify(parseType("std::pair<int,int>"))), true);
+  // still correctly rejected when a member itself isn't supported, same as map's key/value check.
+  assert.equal(isSupported(classify(parseType("std::pair<int,int*>"))), false);
+});
+
+// 走迷宮教案（BFS 用 queue<pair<int,int>> 存座標）驗證容器渲染時發現：pair 當某個容器的「元素型別」
+// （不是 map 的 key/value——那條路本來就通）從來沒有支援過，classify() 對 std::pair 直接落到
+// default 的 {kind:"other"}，isSupported() 因此永遠回 false，-var-create 直接被拒絕、回
+// "type '...' is not supported by the browser engine"。對照真實 GDB（docker exec 起
+// `gdb -i mi -enable-pretty-printing`）：一個 queue<pair<int,int>> 元素是葉節點字串
+// "{first = X, second = Y}"（numchild="0"，不會再往下展開），不是 map 那種攤平交錯的 key/value
+// 子節點——這支測試鎖住這個格式。
+test("-var-create: queue<pair<int,int>> — pair elements format as leaf \"{first = X, second = Y}\" strings", async () => {
+  const src = [
+    "#include <queue>",
+    "#include <utility>",
+    "using namespace std;",
+    "int main() {",
+    "    queue<pair<int,int>> q;",
+    "    q.push({1, 0});",
+    "    q.push({2, 3});",
+    "    return 0;",
+    "}",
+    "",
+  ].join("\n");
+  const localRun = await eng.runProgram(src, "");
+  assert.equal(localRun.ok, true, JSON.stringify(localRun.errors));
+  const g = newGdb(localRun, src);
+  await send(g, "-break-insert -f 8");
+  await send(g, "-exec-run");
+  const v = payloadOf(await send(g, `3-var-create - * "q"`));
+  assert.deepEqual(
+    [v.value, v.type, v.numchild, v.displayhint, v.dynamic, v.has_more],
+    [
+      "std::queue wrapping: std::deque with 2 elements",
+      "std::queue<std::pair<int, int>, std::deque<std::pair<int, int>, std::allocator<std::pair<int, int> > > >",
+      "0",
+      "array",
+      "1",
+      "1",
+    ]
+  );
+  const kids = payloadOf(await send(g, `-var-list-children --all-values ${v.name}`));
+  assert.deepEqual(kids.children.map((c) => [c.exp, c.numchild, c.value, c.type]), [
+    ["[0]", "0", "{first = 1, second = 0}", "std::pair<int, int>"],
+    ["[1]", "0", "{first = 2, second = 3}", "std::pair<int, int>"],
+  ]);
 });

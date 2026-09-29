@@ -50,8 +50,9 @@ test("classification: supported set, simple values, dynamic (pretty-printed) typ
     "std::deque<int>", "std::list<int>", "std::stack<int>", "std::queue<int>", "std::deque<std::string>", "std::stack<int> &",
     "std::priority_queue<int>", "std::set<int>", "std::multiset<int>", "std::unordered_set<int>", "std::unordered_multiset<int>",
     "std::map<int,int>", "std::multimap<int,int>", "std::unordered_map<int,int>", "std::unordered_multimap<int,int>",
-    "std::map<int,std::string>", "std::vector<std::map<int,int>>", "std::deque<std::map<int,int>>", "std::map<int,int>[2]"]) assert.equal(isSupported(c(q)), true, q);
-  for (const q of ["int *", "Pt", "Pt[2]", "int *[2]", "std::vector<bool>", "std::pair<int,int>", "std::map<Pt,int>"]) assert.equal(isSupported(c(q)), false, q);
+    "std::map<int,std::string>", "std::vector<std::map<int,int>>", "std::deque<std::map<int,int>>", "std::map<int,int>[2]",
+    "std::pair<int,int>", "std::pair<int,std::string>", "std::queue<std::pair<int,int>>", "std::vector<std::pair<int,int>>"]) assert.equal(isSupported(c(q)), true, q);
+  for (const q of ["int *", "Pt", "Pt[2]", "int *[2]", "std::vector<bool>", "std::pair<int,int*>", "std::map<Pt,int>"]) assert.equal(isSupported(c(q)), false, q);
   assert.deepEqual(["int", "bool", "char", "double", "int *", "int &", "std::string", "std::vector<int>", "int[3]", "Pt", "std::vector<int> &"].map((q) => isSimple(c(q))), [true, true, true, true, true, true, false, false, false, false, false]);
   assert.deepEqual(["std::vector<int>", "std::string", "int", "std::vector<int> &", "std::deque<int>", "std::list<int>", "std::stack<int>", "std::queue<int>", "std::priority_queue<int>", "std::set<int>", "std::map<int,int>"].map((q) => isDynamic(c(q))), [true, true, false, true, true, true, true, true, true, true, true]);
 });

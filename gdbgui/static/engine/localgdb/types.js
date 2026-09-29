@@ -186,8 +186,8 @@ const CHAR_NAMES = new Set(["char", "signed char", "unsigned char"]);
 const FLOAT_NAMES = new Set(["float", "double", "long double"]);
 
 /**
- * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "deque" | "list" | "stack" | "queue" | "pqueue" | "set" | "map" | "ptr" | "array" | "ref" | "class" | "other", node: TypeNode,
- *   unsigned?: boolean, single?: boolean, elem?: TypeNode, keyNode?: TypeNode, valNode?: TypeNode, to?: Cls, n?: number,
+ * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "deque" | "list" | "stack" | "queue" | "pqueue" | "set" | "map" | "pair" | "ptr" | "array" | "ref" | "class" | "other", node: TypeNode,
+ *   unsigned?: boolean, single?: boolean, elem?: TypeNode, keyNode?: TypeNode, valNode?: TypeNode, firstNode?: TypeNode, secondNode?: TypeNode, to?: Cls, n?: number,
  *   className?: string, fields?: Array<{ name: string, access: string, cls: Cls, gdbType: string }> }} Cls
  */
 
@@ -231,6 +231,14 @@ export function classify(t) {
   if ((name === "std::map" || name === "std::multimap" || name === "std::unordered_map" || name === "std::unordered_multimap") && t.args.length >= 2) {
     return { kind: "map", node: t, keyNode: t.args[0], valNode: t.args[1] };
   }
+  // std::pair as a container's ELEMENT type (e.g. queue<pair<int,int>>, vector<pair<int,int>>) — not
+  // map's key/value (those stay as classify(keyNode)/classify(valNode) on the *map*, this is the
+  // standalone-pair case). Ground truth (`gdb -i mi -enable-pretty-printing`): a bare pair value is a
+  // leaf string "{first = X, second = Y}" (numchild="0", no further -var-list-children expansion),
+  // not an aggregate with two named children — see valueOf()'s "pair" case.
+  if (name === "std::pair" && t.args.length >= 2) {
+    return { kind: "pair", node: t, firstNode: t.args[0], secondNode: t.args[1] };
+  }
   return { kind: "other", node: t };
 }
 
@@ -256,6 +264,7 @@ export function isSupported(c) {
     case "vector": case "deque": case "list": case "stack": case "queue": case "pqueue": case "set":
       return isSupported(classify(/** @type {TypeNode} */ (c.elem)));
     case "map": return isSupported(classify(/** @type {TypeNode} */ (c.keyNode))) && isSupported(classify(/** @type {TypeNode} */ (c.valNode)));
+    case "pair": return isSupported(classify(/** @type {TypeNode} */ (c.firstNode))) && isSupported(classify(/** @type {TypeNode} */ (c.secondNode)));
     case "array": return /** @type {any} */ (c).n >= 0 && isSupported(classify(/** @type {TypeNode} */ (c.elem)));
     // A user class (TraceModel.typeInfo upgrades "other" to this when the name matches a registered
     // class; classify() itself never produces it, since a class's field/access shape is per-program
@@ -456,6 +465,12 @@ export function printValue(cls, raw, capacity) {
     const o = raw && typeof raw === "object" ? raw : {};
     const parts = cls.fields.map((/** @type {any} */ f) => `${f.name} = ${printValue(f.cls, o[f.name])}`);
     return `{${parts.join(", ")}}`;
+  }
+  if (cls.kind === "pair") {
+    // Same "{first = X, second = Y}" shape as a bare pair's var-create value (see model.js's
+    // valueOf) — a std::pair prints this way both standalone and as a container element.
+    const parts = Array.isArray(raw) ? raw : [undefined, undefined];
+    return `{first = ${printValue(classify(/** @type {any} */ (cls.firstNode)), parts[0])}, second = ${printValue(classify(/** @type {any} */ (cls.secondNode)), parts[1])}}`;
   }
   return formatScalar(cls, raw);
 }

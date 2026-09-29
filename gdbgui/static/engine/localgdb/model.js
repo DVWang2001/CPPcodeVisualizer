@@ -309,5 +309,13 @@ export function valueOf(cls, raw, capacity) {
   if (cls.kind === "map") return containerHead("map", Array.isArray(raw) ? raw.length : 0);
   if (FLAT_CONTAINER_KINDS.has(cls.kind)) return containerHead(cls.kind, Array.isArray(raw) ? raw.length : 0);
   if (cls.kind === "class") return "{...}"; // GDB's own value for a plain struct/class varobj: always this, never real field data
+  if (cls.kind === "pair") {
+    // Ground truth (`gdb -i mi -enable-pretty-printing`, a queue<pair<int,int>> element): a bare pair
+    // value is "{first = X, second = Y}" as a leaf (numchild="0") — unlike map, which flattens pairs
+    // into alternating key/value children instead. vg.h's is_pair<T> serialises the raw trace value
+    // as a plain 2-element array [first, second] regardless of context, so this just formats that pair.
+    const parts = Array.isArray(raw) ? raw : [undefined, undefined];
+    return `{first = ${valueOf(classify(cls.firstNode), parts[0])}, second = ${valueOf(classify(cls.secondNode), parts[1])}}`;
+  }
   return formatScalar(cls, raw);
 }
