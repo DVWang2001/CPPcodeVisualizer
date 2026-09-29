@@ -117,6 +117,27 @@ button, input { font: inherit; }
   word-break: break-all;
 }
 
+/* 結算（關題）時固定在右上角的測資——結果卡片可能要往下捲才看得完，
+ * 但「為什麼這樣算對/算錯」常常要邊看測資邊看結果，所以用 fixed 讓它
+ * 不隨頁面捲動消失。點一下可以收合成一行標題，避免長時間佔掉螢幕角落。 */
+.test-input-pin {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 30;
+  max-width: 46vw;
+  padding: 6px 9px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid var(--quiz-blue);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(23, 35, 59, .18);
+  cursor: pointer;
+}
+.test-input-pin .test-input-header { margin-bottom: 0; }
+.test-input-pin.open .test-input-header { margin-bottom: 6px; }
+.test-input-pin .test-input-body { max-height: 32vh; max-width: 44vw; }
+
 fieldset { margin: 0; padding: 0; border: 0; }
 
 .answer-option {
@@ -148,6 +169,35 @@ fieldset { margin: 0; padding: 0; border: 0; }
   font-weight: 800;
   cursor: pointer;
 }
+
+.secondary-action {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 10px;
+  padding: 11px 16px;
+  border: 2px solid var(--quiz-line);
+  border-radius: 0;
+  color: var(--quiz-ink);
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.error-state h2 { margin: 0 0 10px; }
+.error-state .error-message { margin: 0 0 16px; }
+
+/* 送出前的確認列：擋在題目/表格下面，逼學生看一眼再按，而不是原生 confirm()
+   彈窗——原生對話框在部分手機瀏覽器裡體驗生硬，也跟卡片式的視覺語言不一致。 */
+.confirm-bar {
+  margin-top: 14px;
+  padding: 14px;
+  border: 2px solid var(--quiz-amber);
+  background: #fffaf0;
+}
+.confirm-bar p { margin: 0 0 4px; line-height: 1.5; }
+.confirm-actions { display: flex; gap: 8px; }
+.confirm-actions .primary-action,
+.confirm-actions .secondary-action { margin-top: 8px; }
 
 button:disabled { cursor: not-allowed; opacity: .5; }
 button:focus-visible, input:focus-visible, .answer-option:focus-within { outline: 3px solid var(--quiz-amber); outline-offset: 3px; }

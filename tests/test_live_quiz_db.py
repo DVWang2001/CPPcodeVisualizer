@@ -183,7 +183,7 @@ def test_non_owner_cannot_create_or_read_a_session(quiz_session, flask_app):
     assert live_quiz.session_owned_by(session["id"], owner.user_id) is not None
 
 
-def test_question_triggers_once_and_answer_retry_is_idempotent(quiz_session):
+def test_question_triggers_once_and_answer_can_be_changed_while_open(quiz_session):
     owner, _, session = quiz_session
     first = live_quiz.trigger_question(session["id"], owner.user_id, "q1", "main.cpp", 3)
     second = live_quiz.trigger_question(session["id"], owner.user_id, "q1", "main.cpp", 3)
@@ -194,15 +194,39 @@ def test_question_triggers_once_and_answer_retry_is_idempotent(quiz_session):
     participant = live_quiz.join_session(session["id"], "小明", guest_hash)
     assert participant["nickname"] == "小明"
     one = live_quiz.answer_question(guest_hash, "q1", "b")
+    # 題目還開著：改答案要真的覆蓋掉，不是靜默回舊答案（公布前都可修改）。
     retry = live_quiz.answer_question(guest_hash, "q1", "a")
     assert one["inserted"] is True
     assert retry["inserted"] is False
-    assert retry["selected_option_id"] == "b"
+    assert retry["selected_option_id"] == "a"
+    assert retry["is_correct"] is False
     assert retry["stats"] == {
+        "answer_count": 1,
+        "correct_count": 0,
+        "option_counts": {"a": 1, "b": 0},
+    }
+
+    # 改回原本的答案，統計要跟著正確地換回來，不能因為改了兩次就累加壞掉。
+    back = live_quiz.answer_question(guest_hash, "q1", "b")
+    assert back["stats"] == {
         "answer_count": 1,
         "correct_count": 1,
         "option_counts": {"a": 0, "b": 1},
     }
+
+
+def test_answer_is_frozen_once_question_closes(quiz_session):
+    owner, _, session = quiz_session
+    live_quiz.trigger_question(session["id"], owner.user_id, "q1", "main.cpp", 3)
+    guest_hash = credential_hash("frozen")
+    live_quiz.join_session(session["id"], "小明", guest_hash)
+    live_quiz.answer_question(guest_hash, "q1", "a")
+
+    live_quiz.close_question(session["id"], owner.user_id, "q1")
+    after_close = live_quiz.answer_question(guest_hash, "q1", "b")
+    assert after_close["inserted"] is False
+    assert after_close["selected_option_id"] == "a"
+    assert after_close["stats"]["option_counts"] == {"a": 1, "b": 0}
 
 
 def test_only_one_question_can_be_open_and_closed_questions_reject_new_answers(quiz_owner):

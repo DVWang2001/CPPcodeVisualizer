@@ -127,6 +127,16 @@ def accumulate_cell_stats(stats, answer, correct):
                 stats[row_index * cols + col_index] += 1
 
 
+def reverse_cell_stats(stats, old_answer, correct):
+    """學生在關題前改答案：先把舊答案曾經算進去的答錯次數扣掉，再讓呼叫端對新答案 accumulate。"""
+    cols = len(correct[0]) if correct else 0
+    for row_index, row in enumerate(correct):
+        for col_index, expected in enumerate(row):
+            if not _table_cell_is_correct(old_answer[row_index][col_index], expected):
+                index = row_index * cols + col_index
+                stats[index] = max(0, stats[index] - 1)
+
+
 def _exact_dict(value, keys, label, optional_keys=()):
     if not isinstance(value, dict):
         raise QuizRejected(f"{label}格式不正確。")
@@ -999,7 +1009,9 @@ def answer_question(credential_hash: str, question_key: str, option_id: str) -> 
                 "WHERE participant_id=? AND question_id=?",
                 (row["participant_id"], row["id"]),
             ).fetchone()
-            if existing is not None:
+            is_open = row["session_state"] == "lobby" and row["state"] == "open"
+            if existing is not None and not is_open:
+                # 老師已經關題／結束課堂：答案在公布前才能改，關題後永遠回舊答案。
                 conn.commit()
                 return {
                     "inserted": False,
@@ -1007,7 +1019,7 @@ def answer_question(credential_hash: str, question_key: str, option_id: str) -> 
                     "is_correct": bool(existing["is_correct"]),
                     "stats": _stats_from_row(row),
                 }
-            if row["session_state"] != "lobby" or row["state"] != "open":
+            if not is_open:
                 raise QuizConflict("這一題目前未開放作答。")
 
             option_ids = {option["id"] for option in json.loads(row["options_json"])}
@@ -1015,15 +1027,30 @@ def answer_question(credential_hash: str, question_key: str, option_id: str) -> 
                 raise QuizRejected("答案選項不存在。")
             is_correct = option_id == row["correct_option_id"]
             counts = json.loads(row["option_counts_json"])
-            counts[option_id] += 1
-            answer_count = int(row["answer_count"]) + 1
-            correct_count = int(row["correct_count"]) + int(is_correct)
-            conn.execute(
-                "INSERT INTO live_quiz_responses "
-                "(participant_id, question_id, selected_option_id, is_correct, answered_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (row["participant_id"], row["id"], option_id, int(is_correct), db._now()),
-            )
+            if existing is not None:
+                # 題目還開著：允許改答案。先把舊選項的計數扣掉，再算新選項，answer_count 不變
+                # （同一個人只算一次「有作答」，不是每次修改都加一次）。
+                old_option = existing["selected_option_id"]
+                if old_option in counts:
+                    counts[old_option] = max(0, counts[old_option] - 1)
+                counts[option_id] = counts.get(option_id, 0) + 1
+                answer_count = int(row["answer_count"])
+                correct_count = int(row["correct_count"]) - int(bool(existing["is_correct"])) + int(is_correct)
+                conn.execute(
+                    "UPDATE live_quiz_responses SET selected_option_id=?, is_correct=?, answered_at=? "
+                    "WHERE participant_id=? AND question_id=?",
+                    (option_id, int(is_correct), db._now(), row["participant_id"], row["id"]),
+                )
+            else:
+                counts[option_id] = counts.get(option_id, 0) + 1
+                answer_count = int(row["answer_count"]) + 1
+                correct_count = int(row["correct_count"]) + int(is_correct)
+                conn.execute(
+                    "INSERT INTO live_quiz_responses "
+                    "(participant_id, question_id, selected_option_id, is_correct, answered_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (row["participant_id"], row["id"], option_id, int(is_correct), db._now()),
+                )
             conn.execute(
                 "UPDATE live_quiz_questions SET answer_count=?, correct_count=?, "
                 "option_counts_json=? WHERE id=?",
@@ -1036,7 +1063,7 @@ def answer_question(credential_hash: str, question_key: str, option_id: str) -> 
             )
             conn.commit()
             return {
-                "inserted": True,
+                "inserted": existing is None,
                 "selected_option_id": option_id,
                 "is_correct": is_correct,
                 "stats": {
@@ -1076,7 +1103,9 @@ def answer_table_question(credential_hash: str, question_key: str, answer) -> di
                 "WHERE participant_id=? AND question_id=?",
                 (row["participant_id"], row["id"]),
             ).fetchone()
-            if existing is not None:
+            is_open = row["session_state"] == "lobby" and row["state"] == "open"
+            if existing is not None and not is_open:
+                # 老師已經關題／結束課堂：答案在公布前才能改，關題後永遠回舊答案。
                 conn.commit()
                 return {
                     "inserted": False,
@@ -1084,7 +1113,7 @@ def answer_table_question(credential_hash: str, question_key: str, answer) -> di
                     "total_cells": int(existing["total_cells"]),
                     "stats": _stats_from_row(row),
                 }
-            if row["session_state"] != "lobby" or row["state"] != "open":
+            if not is_open:
                 raise QuizConflict("這一題目前未開放作答。")
 
             correct = json.loads(row["correct_table_json"])
@@ -1098,23 +1127,46 @@ def answer_table_question(credential_hash: str, question_key: str, answer) -> di
             answer = [[cell[:MAX_CELL_LENGTH] for cell in line] for line in answer]
             right, total = grade_table(answer, correct["values"])
             cell_stats = json.loads(row["cell_stats_json"])
-            accumulate_cell_stats(cell_stats, answer, correct["values"])
-            answer_count = int(row["answer_count"]) + 1
-            correct_count = int(row["correct_count"]) + int(right == total)
+            if existing is not None:
+                # 題目還開著：允許改答案。先把舊答案算進去的答錯次數扣掉，answer_count 不變。
+                old_answer = json.loads(existing["answer_json"])
+                reverse_cell_stats(cell_stats, old_answer, correct["values"])
+                old_all_correct = int(existing["correct_cells"]) == int(existing["total_cells"])
+                accumulate_cell_stats(cell_stats, answer, correct["values"])
+                answer_count = int(row["answer_count"])
+                correct_count = int(row["correct_count"]) - int(old_all_correct) + int(right == total)
+            else:
+                accumulate_cell_stats(cell_stats, answer, correct["values"])
+                answer_count = int(row["answer_count"]) + 1
+                correct_count = int(row["correct_count"]) + int(right == total)
 
-            conn.execute(
-                "INSERT INTO live_quiz_responses "
-                "(participant_id, question_id, answered_at, answer_json, correct_cells, total_cells) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    row["participant_id"],
-                    row["id"],
-                    db._now(),
-                    json.dumps(answer, ensure_ascii=False),
-                    right,
-                    total,
-                ),
-            )
+            if existing is not None:
+                conn.execute(
+                    "UPDATE live_quiz_responses SET answered_at=?, answer_json=?, correct_cells=?, total_cells=? "
+                    "WHERE participant_id=? AND question_id=?",
+                    (
+                        db._now(),
+                        json.dumps(answer, ensure_ascii=False),
+                        right,
+                        total,
+                        row["participant_id"],
+                        row["id"],
+                    ),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO live_quiz_responses "
+                    "(participant_id, question_id, answered_at, answer_json, correct_cells, total_cells) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        row["participant_id"],
+                        row["id"],
+                        db._now(),
+                        json.dumps(answer, ensure_ascii=False),
+                        right,
+                        total,
+                    ),
+                )
             conn.execute(
                 "UPDATE live_quiz_questions SET answer_count=?, correct_count=?, "
                 "cell_stats_json=? WHERE id=?",
@@ -1122,7 +1174,7 @@ def answer_table_question(credential_hash: str, question_key: str, answer) -> di
             )
             conn.commit()
             return {
-                "inserted": True,
+                "inserted": existing is None,
                 "correct_cells": right,
                 "total_cells": total,
                 "stats": {

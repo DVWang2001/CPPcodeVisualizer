@@ -149,28 +149,9 @@ def test_two_table_answers_accumulate_retry_and_survive_end(table_session):
     second = live_quiz.answer_table_question(
         second_hash, "t1", [["7", "9"], ["2", "3"]]
     )
-    retry = live_quiz.answer_table_question(
-        first_hash, "t1", [["9", "9"], ["9", "9"]]
-    )
-
     assert (first["correct_cells"], second["correct_cells"]) == (3, 2)
-    assert retry == {
-        "inserted": False,
-        "correct_cells": 3,
-        "total_cells": 4,
-        "stats": {
-            "answer_count": 2,
-            "correct_count": 0,
-            "cell_stats": [1, 2, 0, 0],
-        },
-    }
-    with pytest.raises(QuizRejected, match="維度"):
-        live_quiz.answer_table_question(third_hash, "t1", [["0"]])
-    with pytest.raises(QuizRejected, match="字串"):
-        live_quiz.answer_table_question(third_hash, "t1", [[0, "1"], ["2", "3"]])
-    with pytest.raises(QuizRejected, match="題型"):
-        live_quiz.answer_question(third_hash, "t1", "a")
 
+    # 長字串要在存進去那一刻就被截斷，這個要在下面的「改答案」蓋掉它之前先查。
     with closing(db.connect()) as conn:
         stored = conn.execute(
             "SELECT answer_json FROM live_quiz_responses r "
@@ -180,9 +161,32 @@ def test_two_table_answers_accumulate_retry_and_survive_end(table_session):
         ).fetchone()[0]
     assert json.loads(stored)[0][1] == "x" * live_quiz.MAX_CELL_LENGTH
 
+    # 題目還開著：改答案要真的重新計分，不是靜默回舊答案（公布前都可修改）。
+    edited = live_quiz.answer_table_question(
+        first_hash, "t1", [["9", "9"], ["9", "9"]]
+    )
+    assert edited == {
+        "inserted": False,
+        "correct_cells": 0,
+        "total_cells": 4,
+        "stats": {
+            "answer_count": 2,
+            "correct_count": 0,
+            # 小明原本 [0][0]/[1][0]/[1][1] 三格答對、改完全部答錯：那三格 cell_stats 各 +1，
+            # 原本就答錯的 [0][1] 維持不動（先扣掉小明舊答案的錯誤貢獻、再算新答案）。
+            "cell_stats": [2, 2, 1, 1],
+        },
+    }
+    with pytest.raises(QuizRejected, match="維度"):
+        live_quiz.answer_table_question(third_hash, "t1", [["0"]])
+    with pytest.raises(QuizRejected, match="字串"):
+        live_quiz.answer_table_question(third_hash, "t1", [[0, "1"], ["2", "3"]])
+    with pytest.raises(QuizRejected, match="題型"):
+        live_quiz.answer_question(third_hash, "t1", "a")
+
     ended = live_quiz.end_session(session["id"], owner.user_id)
     question = ended["questions"][0]
-    assert question["cell_stats"] == [1, 2, 0, 0]
+    assert question["cell_stats"] == [2, 2, 1, 1]
     assert question["answer_count"] == 2
     with closing(db.connect()) as conn:
         assert conn.execute(
@@ -190,6 +194,19 @@ def test_two_table_answers_accumulate_retry_and_survive_end(table_session):
             "JOIN live_quiz_questions q ON q.id=r.question_id WHERE q.session_id=?",
             (session["id"],),
         ).fetchone()[0] == 0
+
+
+def test_table_answer_is_frozen_once_question_closes(table_session):
+    owner, session, _ = table_session
+    guest_hash = credential_hash("table-frozen")
+    live_quiz.join_session(session["id"], "小明", guest_hash)
+    live_quiz.answer_table_question(guest_hash, "t1", [["0", "1"], ["2", "3"]])
+
+    live_quiz.close_question(session["id"], owner.user_id, "t1")
+    after_close = live_quiz.answer_table_question(guest_hash, "t1", [["9", "9"], ["9", "9"]])
+    assert after_close["inserted"] is False
+    assert after_close["correct_cells"] == 4
+    assert after_close["stats"]["cell_stats"] == [0, 0, 0, 0]
 
 
 def test_student_state_only_shows_own_table_answer_and_closed_correct_values(
