@@ -33,6 +33,13 @@ function afterFrame(): Promise<void> {
     return new Promise(resolve => requestAnimationFrame(() => resolve()));
 }
 
+// map/unordered_map entries arrive as {key, value} objects (see MapParser.js); everything else
+// (vector/list/queue/stack/deque/array/string/set) is already a flat scalar/string value.
+function toCellValue(v: any): string {
+    if (v && typeof v === 'object' && 'key' in v && 'value' in v) return `${v.key} → ${v.value}`;
+    return String(v);
+}
+
 // ponytail: O(n²) diff — upgrade to LCS if containers exceed ~1000 elements
 function findInsertIndex(oldVals: string[], newVals: string[]): number {
     for (let i = 0; i < newVals.length; i++) {
@@ -82,7 +89,7 @@ function getHighlight(idx: number, highlights: HighlightEntry[] | undefined, len
 // ── LinearPlugin ──────────────────────────────────────────────────────────────
 
 class LinearPluginImpl implements ContainerPlugin {
-    readonly supportedTypes = ['vector', 'list', 'queue', 'stack', 'deque', 'array', 'string'];
+    readonly supportedTypes = ['vector', 'list', 'queue', 'stack', 'deque', 'array', 'string', 'set', 'map', 'unordered_map'];
 
     private history  = new Map<string, string[]>();
     private prevJson = new Map<string, string>();
@@ -107,7 +114,7 @@ class LinearPluginImpl implements ContainerPlugin {
         const { values } = newData;
         if (values.length > 0 && Array.isArray(values[0])) return [];
 
-        const newVals = values.map(v => String(v));
+        const newVals = values.map(toCellValue);
         const json = JSON.stringify(newVals);
         if (json === this.prevJson.get(containerName)) return [];
         this.prevJson.set(containerName, json);
@@ -371,10 +378,10 @@ class LinearPluginImpl implements ContainerPlugin {
 
         // Lazy init: if cells don't exist yet, create from current values
         if (!this.cells.has(containerName)) {
-            const newCells = (values as any[]).map((v: any) => ({ id: `lin-${++_cellId}`, value: String(v) }));
+            const newCells = (values as any[]).map((v: any) => ({ id: `lin-${++_cellId}`, value: toCellValue(v) }));
             this.cells.set(containerName, newCells);
-            this.history.set(containerName, (values as any[]).map((v: any) => String(v)));
-            this.prevJson.set(containerName, JSON.stringify((values as any[]).map((v: any) => String(v))));
+            this.history.set(containerName, (values as any[]).map(toCellValue));
+            this.prevJson.set(containerName, JSON.stringify((values as any[]).map(toCellValue)));
         }
 
         const cells = this.cells.get(containerName)!;
@@ -487,7 +494,10 @@ class LinearPluginImpl implements ContainerPlugin {
         switch (type) {
             case 'vector':
             case 'array':
-            case 'string': {
+            case 'string':
+            case 'set':
+            case 'map':
+            case 'unordered_map': {
                 const rawCap = data.capacity !== undefined ? parseInt(data.capacity) : cells.length;
                 const cap = (!isNaN(rawCap) && rawCap >= 0) ? rawCap : cells.length;
                 const emptySlots = (cap > cells.length && cap - cells.length < 1000) ? cap - cells.length : 0;

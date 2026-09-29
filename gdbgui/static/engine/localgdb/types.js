@@ -154,11 +154,13 @@ export function gdbType(t, inTemplate = false) {
     case "std::set": case "std::multiset":
       body = a.length === 1 ? tmpl(name, [a[0], tmpl("std::less", [a[0]]), alloc(a[0])]) : tmpl(name, a); break;
     case "std::map": case "std::multimap":
-      body = a.length === 2 ? tmpl(name, [a[0], a[1], tmpl("std::less", [a[0]]), alloc(tmpl("std::pair", ["const " + a[0], a[1]]))]) : tmpl(name, a); break;
+      // GDB prints the pair's key qualifier postfix ("int const"), not the C++-source prefix spelling
+      // ("const int") — confirmed against a real `gdb -i mi -enable-pretty-printing` session.
+      body = a.length === 2 ? tmpl(name, [a[0], a[1], tmpl("std::less", [a[0]]), alloc(tmpl("std::pair", [a[0] + " const", a[1]]))]) : tmpl(name, a); break;
     case "std::unordered_set": case "std::unordered_multiset":
       body = a.length === 1 ? tmpl(name, [a[0], tmpl("std::hash", [a[0]]), tmpl("std::equal_to", [a[0]]), alloc(a[0])]) : tmpl(name, a); break;
     case "std::unordered_map": case "std::unordered_multimap":
-      body = a.length === 2 ? tmpl(name, [a[0], a[1], tmpl("std::hash", [a[0]]), tmpl("std::equal_to", [a[0]]), alloc(tmpl("std::pair", ["const " + a[0], a[1]]))]) : tmpl(name, a); break;
+      body = a.length === 2 ? tmpl(name, [a[0], a[1], tmpl("std::hash", [a[0]]), tmpl("std::equal_to", [a[0]]), alloc(tmpl("std::pair", [a[0] + " const", a[1]]))]) : tmpl(name, a); break;
     case "std::stack": case "std::queue":
       body = a.length === 1 ? tmpl(name, [a[0], tmpl("std::deque", [a[0], alloc(a[0])])]) : tmpl(name, a); break;
     case "std::priority_queue":
@@ -184,8 +186,8 @@ const CHAR_NAMES = new Set(["char", "signed char", "unsigned char"]);
 const FLOAT_NAMES = new Set(["float", "double", "long double"]);
 
 /**
- * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "deque" | "list" | "stack" | "queue" | "ptr" | "array" | "ref" | "class" | "other", node: TypeNode,
- *   unsigned?: boolean, single?: boolean, elem?: TypeNode, to?: Cls, n?: number,
+ * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "deque" | "list" | "stack" | "queue" | "pqueue" | "set" | "map" | "ptr" | "array" | "ref" | "class" | "other", node: TypeNode,
+ *   unsigned?: boolean, single?: boolean, elem?: TypeNode, keyNode?: TypeNode, valNode?: TypeNode, to?: Cls, n?: number,
  *   className?: string, fields?: Array<{ name: string, access: string, cls: Cls, gdbType: string }> }} Cls
  */
 
@@ -211,11 +213,29 @@ export function classify(t) {
   if ((name === "std::deque" || name === "std::list" || name === "std::stack" || name === "std::queue") && t.args.length >= 1) {
     return { kind: /** @type {any} */ (name.slice(5)), node: t, elem: t.args[0] };
   }
+  if (name === "std::priority_queue" && t.args.length >= 1) {
+    return { kind: "pqueue", node: t, elem: t.args[0] };
+  }
+  // set/multiset/unordered_set/unordered_multiset: same flat `.[i]` shape as a vector of the element
+  // type — vg.h's has_iter<T> branch serialises any of them identically (in whatever order the real
+  // container iterates: sorted for the tree-backed ones, hash-bucket order for unordered_*).
+  if ((name === "std::set" || name === "std::multiset" || name === "std::unordered_set" || name === "std::unordered_multiset") && t.args.length >= 1) {
+    return { kind: "set", node: t, elem: t.args[0] };
+  }
+  // map/multimap/unordered_map/unordered_multimap: NOT a single-elem-type flat container like the
+  // others — ground truth against a real `gdb -i mi -enable-pretty-printing` session shows
+  // displayhint:"map" and FLAT alternating children (key, value, key, value, ...; numchild = 2×N,
+  // not N) rather than N pair-struct children. vg.h still serialises the raw trace value as
+  // [[k1,v1],[k2,v2],...] (is_pair<T> inside has_iter<T>) — varobj.js unflattens it itself
+  // (_ensureMapChildren/_raw's map special-case), so classify() just remembers the two element types.
+  if ((name === "std::map" || name === "std::multimap" || name === "std::unordered_map" || name === "std::unordered_multimap") && t.args.length >= 2) {
+    return { kind: "map", node: t, keyNode: t.args[0], valNode: t.args[1] };
+  }
   return { kind: "other", node: t };
 }
 
-/** Container kinds with vector-like flat `.[i]` children but no `.capacity()` pseudo-var. */
-export const FLAT_CONTAINER_KINDS = new Set(["deque", "list", "stack", "queue"]);
+/** Container kinds with vector-like flat `.[i]` children (one elem type, N children) but no `.capacity()` pseudo-var. */
+export const FLAT_CONTAINER_KINDS = new Set(["deque", "list", "stack", "queue", "pqueue", "set"]);
 
 /** Types shown with a value by `-stack-list-variables --simple-values` (not aggregates/classes). @param {Cls} c */
 export function isSimple(c) {
@@ -233,8 +253,9 @@ export function isSupported(c) {
   switch (c.kind) {
     case "int": case "bool": case "char": case "float": case "string": return true;
     case "ref": return isSupported(/** @type {Cls} */ (c.to));
-    case "vector": case "deque": case "list": case "stack": case "queue":
+    case "vector": case "deque": case "list": case "stack": case "queue": case "pqueue": case "set":
       return isSupported(classify(/** @type {TypeNode} */ (c.elem)));
+    case "map": return isSupported(classify(/** @type {TypeNode} */ (c.keyNode))) && isSupported(classify(/** @type {TypeNode} */ (c.valNode)));
     case "array": return /** @type {any} */ (c).n >= 0 && isSupported(classify(/** @type {TypeNode} */ (c.elem)));
     // A user class (TraceModel.typeInfo upgrades "other" to this when the name matches a registered
     // class; classify() itself never produces it, since a class's field/access shape is per-program
@@ -254,7 +275,7 @@ export function isSupported(c) {
 /** True for values GDB prints through a pretty-printer (dynamic children). @param {Cls} c */
 export function isDynamic(c) {
   if (c.kind === "ref") return isDynamic(/** @type {Cls} */ (c.to));
-  return c.kind === "vector" || c.kind === "string" || FLAT_CONTAINER_KINDS.has(c.kind);
+  return c.kind === "vector" || c.kind === "string" || c.kind === "map" || FLAT_CONTAINER_KINDS.has(c.kind);
 }
 
 const CHAR_ESC = new Map([[7, "\\a"], [8, "\\b"], [9, "\\t"], [10, "\\n"], [11, "\\v"], [12, "\\f"], [13, "\\r"], [27, "\\033"]]);
@@ -412,9 +433,21 @@ export function printValue(cls, raw, capacity) {
     const head = containerHead(cls.kind, a.length);
     if (!a.length) return head;
     const ec = classify(/** @type {TypeNode} */ (cls.elem));
-    // GDB's list printer labels each child `[i] = `; deque/stack/queue (all backed by the deque
-    // printer) don't. Confirmed against a real `gdb -i mi -enable-pretty-printing` session.
-    const shown = a.slice(0, PRINT_ELEMENTS).map((x, i) => (cls.kind === "list" ? `[${i}] = ` : "") + printValue(ec, x));
+    // GDB's list/set printers label each child `[i] = `; deque/stack/queue/priority_queue (all
+    // backed by a deque or vector printer, no per-element index) don't. Confirmed against a real
+    // `gdb -i mi -enable-pretty-printing` session.
+    const labelled = cls.kind === "list" || cls.kind === "set";
+    const shown = a.slice(0, PRINT_ELEMENTS).map((x, i) => (labelled ? `[${i}] = ` : "") + printValue(ec, x));
+    return `${head} = {${shown.join(", ")}${a.length > PRINT_ELEMENTS ? "..." : ""}}`;
+  }
+  if (cls.kind === "map") {
+    // "{key = value, ...}", not GDB's default struct printing of a pair — confirmed against a real
+    // `gdb -i mi -enable-pretty-printing` session (`print m` on a std::map).
+    const a = Array.isArray(raw) ? raw : [];
+    const head = containerHead("map", a.length);
+    if (!a.length) return head;
+    const kc = classify(/** @type {TypeNode} */ (cls.keyNode)), vc = classify(/** @type {TypeNode} */ (cls.valNode));
+    const shown = a.slice(0, PRINT_ELEMENTS).map((/** @type {any} */ kv) => `${printValue(kc, kv[0])} = ${printValue(vc, kv[1])}`);
     return `${head} = {${shown.join(", ")}${a.length > PRINT_ELEMENTS ? "..." : ""}}`;
   }
   if (cls.kind === "class") {
@@ -428,14 +461,19 @@ export function printValue(cls, raw, capacity) {
 }
 
 /**
- * libstdc++'s GDB pretty-printer head text (no children) for deque/list/stack/queue, e.g.
- * "std::deque with 3 elements", "std::__cxx11::list" / "empty std::__cxx11::list" (no count —
- * the list printer avoids an O(n) size(), so it only distinguishes empty from non-empty),
+ * libstdc++'s GDB pretty-printer head text (no children) for deque/list/stack/queue/priority_queue/
+ * set/map, e.g. "std::deque with 3 elements", "std::__cxx11::list" / "empty std::__cxx11::list" (no
+ * count — the list printer avoids an O(n) size(), so it only distinguishes empty from non-empty),
  * "std::stack wrapping: std::deque with 3 elements". Real GDB has been observed to show a garbage
  * element count for a 1-element deque wrapped in a stack/queue on some runs (an upstream libstdc++
  * printer quirk reading uninitialised memory for a near-empty deque) — not reproduced here, and not
  * reliably reproducible in GDB itself either.
- * @param {"deque"|"list"|"stack"|"queue"} kind @param {number} n
+ *
+ * ponytail: set/map/pqueue collapse multiset/unordered_set/etc. to one head text each ("std::set
+ * with N elements" for all four set variants) instead of matching each real container name exactly —
+ * this string is only ever regex-scraped for its element count (VisualizerHelper.js), never shown in
+ * the UI, so the imprecision is harmless. Widen if that stops being true.
+ * @param {"deque"|"list"|"stack"|"queue"|"pqueue"|"set"|"map"} kind @param {number} n
  */
 export function containerHead(kind, n) {
   const elems = `${n} element${n === 1 ? "" : "s"}`;
@@ -444,5 +482,8 @@ export function containerHead(kind, n) {
     case "list": return n === 0 ? "empty std::__cxx11::list" : "std::__cxx11::list";
     case "stack": return `std::stack wrapping: std::deque with ${elems}`;
     case "queue": return `std::queue wrapping: std::deque with ${elems}`;
+    case "pqueue": return `std::priority_queue with ${elems}`;
+    case "set": return `std::set with ${elems}`;
+    case "map": return `std::map with ${elems}`;
   }
 }

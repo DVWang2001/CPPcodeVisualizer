@@ -1154,12 +1154,6 @@ class VisualizerHelper {
                 global_variable.__latest_containers.set(trimmedInst, payload);
                 _eagerDiffOps(trimmedInst, payload);
 
-                // Fetch RB-tree structure for ordered containers (values merged on frontend)
-                if (containerName === "set" || containerName === "multiset" ||
-                    containerName === "map" || containerName === "multimap") {
-                  VisualizerHelper.fetchRBTreeData(trimmedInst);
-                }
-
                 const valStr = childValues.join(', ');
                 _gi_result_cache.set(`${displayKey}:${frame_line}`, { payload, outputStr: `{${valStr}}` });
                 resolve(`{${valStr}}`);
@@ -1237,38 +1231,6 @@ class VisualizerHelper {
       targetArray.push(part);
     }
     console.log(JSON.stringify(Object.fromEntries(global_variable.__guide)));
-  }
-
-  static fetchRBTreeData(varName) {
-    // Read only tree STRUCTURE from GDB (color + left/right links via base class).
-    // Values are NOT read here — the frontend merges them from the variable inspector
-    // by matching in-order position (both are sorted, so they align 1:1).
-    const safe = varName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    const pyLines = [
-      'import gdb,json',
-      'def _w(p,ha):',
-      ' try:',
-      '  a=int(p)',
-      '  if a==0 or a==ha:return None',
-      '  d=p.dereference()',
-      '  c="R"if int(d["_M_color"])==0 else"B"',
-      '  return{"c":c,"l":_w(d["_M_left"],ha),"r":_w(d["_M_right"],ha)}',
-      ' except:return None',
-      'try:',
-      ' obj=gdb.parse_and_eval("' + safe + '")',
-      ' tr=obj["_M_t"]',
-      ' try:h=tr["_M_impl"]["_M_header"]',
-      ' except:h=tr["_M_header"]',
-      ' ha=int(h.address)',
-      ' root=_w(h["_M_parent"],ha)',
-      ' print("__GDBGUI_RBTREE__:"+json.dumps({"n":"' + safe + '","t":root}))',
-      'except:pass',
-    ];
-    const script = pyLines.join('\n');
-    const b64 = btoa(script);
-    GdbApi.run_gdb_command(
-      `-interpreter-exec console "python import base64; exec(base64.b64decode('${b64}').decode())"`
-    );
   }
 
   /**

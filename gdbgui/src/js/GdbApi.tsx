@@ -513,7 +513,6 @@ const GdbApi = {
             if (global_variable) {
               (global_variable as any).__guide = new Map();
               (global_variable as any).__containers_guide = new Map();
-              (global_variable as any).__rbtree_data = {};
               // __source_code is intentionally kept so Visualizer stays visible during run
             }
 
@@ -613,7 +612,6 @@ const GdbApi = {
               if (global_variable) {
                 (global_variable as any).__guide = new Map();
                 (global_variable as any).__containers_guide = new Map();
-                (global_variable as any).__rbtree_data = {};
                 (global_variable as any).__visited_lines = new Set<number>();
                 (global_variable as any).__line_visit_count = {};
               }

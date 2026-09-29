@@ -66,7 +66,6 @@ const initial_store_data = {
   locals: [],
   threads: [],
   call_graph_updated: 0,
-  rbtree_updated: 0,
 
   // inline line-annotation panel (gutter ✎): "simple" | "advanced", persists across opens for the session
   annot_panel_mode: "simple",

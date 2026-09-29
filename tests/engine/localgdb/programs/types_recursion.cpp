@@ -1,6 +1,6 @@
 #include <iostream>
-#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 struct Pt { int a; int b; };
 int fact(int n) {
@@ -21,8 +21,8 @@ int main() {
     bool b = true;
     char c = 'a';
     long long big = 1234567890123LL;
-    std::map<int, int> m;
-    m[1] = 2;
+    std::pair<int, int> m;
+    m.first = 2;
     int arr[3] = {1, 2, 3};
     int* p = &x;
     Pt pt = {1, 2};

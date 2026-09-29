@@ -1,8 +1,9 @@
 // GDB variable objects (S4 minimal set) over the recorded trace.
 //
 // Supported: a plain variable name whose type is int-family / bool / char / float / double /
-// std::string, or std::vector<T> (T supported, nested vectors included), or a reference to those.
-// Anything else (map/set/deque/stack/queue/priority_queue, pointers, structs, arrays, arithmetic,
+// std::string, std::vector/deque/list/stack/queue/priority_queue<T>, std::set/multiset/unordered_(multi)set<K>,
+// std::map/multimap/unordered_(multi)map<K,V> (element/key/value types recursively supported), or a
+// reference to any of those. Anything else (pointers other than `this`, structs, arrays, arithmetic,
 // `&x`, `x[i]`, member calls) gets an explicit MI error; `name.method()` gets the error real GDB gives
 // for the libstdc++ methods the UI probes (`Cannot evaluate function -- may be inlined`).
 //
@@ -270,7 +271,7 @@ export class VarObjs {
     const s = model.steps[si];
     if (own(s.vars, vo.varName)) return s.vars[vo.varName];
     const k = vo.ti.cls.kind;
-    return k === "vector" || FLAT_CONTAINER_KINDS.has(k) ? [] : k === "string" ? "" : k === "class" ? {} : 0;
+    return k === "vector" || k === "map" || FLAT_CONTAINER_KINDS.has(k) ? [] : k === "string" ? "" : k === "class" ? {} : 0;
   }
 
   /** @param {VarObj} vo */
@@ -290,7 +291,18 @@ export class VarObjs {
     }
     if (!vo.parent) return this._rawRoot(vo);
     const pr = this._raw(vo.parent);
-    return Array.isArray(pr) ? pr[vo.index] : undefined;
+    if (!Array.isArray(pr)) return undefined;
+    // A map's raw value is [[k1,v1],[k2,v2],...] but its children are FLAT and alternating
+    // (key,value,key,value,...) — see _ensureMapChildren — so a child's index must be unflattened
+    // back into a pair index + which half, not used to index pr directly like every other flat
+    // container's children do.
+    const pcls = /** @type {VarObj} */ (vo.parent).ti.cls;
+    const pecls = pcls.kind === "ref" ? pcls.to : pcls;
+    if (pecls.kind === "map") {
+      const pair = pr[vo.index >> 1];
+      return Array.isArray(pair) ? pair[vo.index & 1] : undefined;
+    }
+    return pr[vo.index];
   }
 
   /** @param {VarObj} vo */
@@ -364,13 +376,16 @@ export class VarObjs {
     const p = { name: vo.name, numchild: nc, value: this._value(vo), type: vo.ti.gdbType };
     if (!vo.root.global) /** @type {any} */ (p)["thread-id"] = "1";
     if (isDynamic(ecls)) {
-      // GDB's list printer sets no displayhint (unlike vector/deque/stack/queue's "array").
-      if (ecls.kind !== "list") /** @type {any} */ (p).displayhint = ecls.kind === "string" ? "string" : "array";
+      // GDB's list/set printers set no displayhint at all; map gets its own "map" hint (flat
+      // alternating key/value children — see _ensureMapChildren); everything else dynamic is "array"
+      // (or "string" for std::string). Confirmed against a real `gdb -i mi -enable-pretty-printing` session.
+      if (ecls.kind === "map") /** @type {any} */ (p).displayhint = "map";
+      else if (ecls.kind !== "list" && ecls.kind !== "set") /** @type {any} */ (p).displayhint = ecls.kind === "string" ? "string" : "array";
       /** @type {any} */ (p).dynamic = "1";
     }
     if (isCreate) {
       if (ecls.kind === "vector") /** @type {any} */ (p).has_more = "1";
-      else if (FLAT_CONTAINER_KINDS.has(ecls.kind)) {
+      else if (ecls.kind === "map" || FLAT_CONTAINER_KINDS.has(ecls.kind)) {
         const raw = this._raw(vo);
         /** @type {any} */ (p).has_more = Array.isArray(raw) && raw.length > 0 ? "1" : "0";
       } else /** @type {any} */ (p).has_more = "0";
@@ -430,6 +445,23 @@ export class VarObjs {
       });
       return resultItem({ numchild: String(kids.length), children, has_more: "0" }, token);
     }
+    if (ecls.kind === "map") {
+      const raw = this._raw(vo);
+      const pairs = Array.isArray(raw) ? raw : [];
+      this._ensureMapChildren(vo, pairs);
+      const kids = /** @type {VarObj[]} */ (vo.children).slice(from ?? 0, to ?? pairs.length * 2);
+      const children = kids.map((c) => {
+        const cc = c.ti.cls;
+        const d = this._describe(c, false);
+        /** @type {any} */
+        const out = { name: d.name, exp: c.exp, numchild: d.numchild };
+        if (values === "all" || (values === "simple" && isSimple(cc))) out.value = d.value;
+        out.type = d.type;
+        out["thread-id"] = "1";
+        return out;
+      });
+      return resultItem({ numchild: String(pairs.length * 2), displayhint: "map", children, has_more: "0" }, token);
+    }
     if (ecls.kind !== "vector" && ecls.kind !== "array" && !FLAT_CONTAINER_KINDS.has(ecls.kind)) return resultItem({ numchild: "0", has_more: "0" }, token);
     const isArr = ecls.kind === "array";
     const raw = this._raw(vo);
@@ -447,8 +479,8 @@ export class VarObjs {
       if (d.displayhint) { out.displayhint = d.displayhint; out.dynamic = d.dynamic; }
       return out;
     });
-    // a C array is not a dynamic varobj, and GDB's list printer has no displayhint at all: no key on either.
-    const noHint = isArr || ecls.kind === "list";
+    // a C array is not a dynamic varobj, and GDB's list/set printers have no displayhint at all: no key on either.
+    const noHint = isArr || ecls.kind === "list" || ecls.kind === "set";
     return resultItem(noHint ? { numchild: String(n), children, has_more: "0" } : { numchild: String(n), displayhint: "array", children, has_more: "0" }, token);
   }
 
@@ -466,6 +498,37 @@ export class VarObjs {
         // GDB child names: pretty-printed vector `var1.[i]` / exp `[i]`; C array `var1.i` / exp `i`
         name: ecls.kind === "array" ? `${vo.name}.${i}` : `${vo.name}.[${i}]`, exp: ecls.kind === "array" ? `${i}` : `[${i}]`, parent: vo, index: i,
         ti: { cls: ecl, node: elemNode, gdbType: gdbType(elemNode, ecls.kind !== "array") } /* array elements keep the declared spelling (typedef std::string); vector children are template arguments (full spelling) */, children: null, root: vo.root, varName: vo.varName,
+        frameId: vo.frameId, fn: vo.fn, blockId: vo.blockId, global: vo.global, lastValue: null, lastInScope: true, addrName: vo.addrName,
+      };
+      c.lastValue = this._value(c);
+      vo.children.push(c);
+      this.byName.set(c.name, c);
+    }
+  }
+
+  /**
+   * A map's children are FLAT and ALTERNATING (key, value, key, value, ...; numchild = 2×N for N
+   * entries), not N pair-struct children — ground truth from a real
+   * `gdb -i mi -enable-pretty-printing` session (displayhint:"map", `.[0]`=key type "const K",
+   * `.[1]`=value type "V", `.[2]`=next key, ...). `pairs` is the raw [[k,v],...] trace value.
+   * @param {VarObj} vo @param {any[]} pairs
+   */
+  _ensureMapChildren(vo, pairs) {
+    const cls = vo.ti.cls;
+    const ecls = cls.kind === "ref" ? cls.to : cls;
+    const keyCl = classify(/** @type {any} */ (ecls).keyNode), valCl = classify(/** @type {any} */ (ecls).valNode);
+    const n = pairs.length * 2;
+    if (!vo.children) vo.children = [];
+    while (vo.children.length > n) { const dead = /** @type {VarObj} */ (vo.children.pop()); this._forget(dead); }
+    for (let i = vo.children.length; i < n; i++) {
+      const isKey = (i & 1) === 0;
+      const elemNode = isKey ? /** @type {any} */ (ecls).keyNode : /** @type {any} */ (ecls).valNode;
+      const ecl = isKey ? keyCl : valCl;
+      /** @type {VarObj} */
+      const c = {
+        name: `${vo.name}.[${i}]`, exp: `[${i}]`, parent: vo, index: i,
+        ti: { cls: ecl, node: elemNode, gdbType: (isKey ? "const " : "") + gdbType(elemNode, true) },
+        children: null, root: vo.root, varName: vo.varName,
         frameId: vo.frameId, fn: vo.fn, blockId: vo.blockId, global: vo.global, lastValue: null, lastInScope: true, addrName: vo.addrName,
       };
       c.lastValue = this._value(c);
@@ -583,7 +646,11 @@ export class VarObjs {
       const cls = vo.ti.cls;
       const ecls = cls.kind === "ref" ? cls.to : cls;
       let grew = false;
-      if (vo.children && (ecls.kind === "vector" || FLAT_CONTAINER_KINDS.has(ecls.kind))) {
+      if (vo.children && ecls.kind === "map") {
+        const raw = this._raw(vo);
+        const pairs = Array.isArray(raw) ? raw : [];
+        if (pairs.length * 2 !== vo.children.length) { this._ensureMapChildren(vo, pairs); grew = true; }
+      } else if (vo.children && (ecls.kind === "vector" || FLAT_CONTAINER_KINDS.has(ecls.kind))) {
         const raw = this._raw(vo);
         const n = Array.isArray(raw) ? raw.length : 0;
         if (n !== vo.children.length) { this._ensureChildren(vo, n); grew = true; }
@@ -596,7 +663,8 @@ export class VarObjs {
         it.in_scope = "true";
         it.type_changed = "false";
         if (isDynamic(ecls)) {
-          if (ecls.kind !== "list") it.displayhint = ecls.kind === "string" ? "string" : "array";
+          if (ecls.kind === "map") it.displayhint = "map";
+          else if (ecls.kind !== "list" && ecls.kind !== "set") it.displayhint = ecls.kind === "string" ? "string" : "array";
           it.dynamic = "1";
         }
         it.has_more = "0";

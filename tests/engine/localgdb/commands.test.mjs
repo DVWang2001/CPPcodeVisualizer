@@ -307,7 +307,7 @@ test("locals follow GDB's block rules: innermost block first, later declarations
   assert.equal("value" in by.v, false, "vector: no value with --simple-values");
   assert.equal("value" in by.s, false, "std::string is a class: no value with --simple-values");
   assert.equal("value" in by.arr, false);
-  assert.deepEqual([by.arr.type, by.p.type, by.pt.type, by.m.type, by.s.type, by.g.type], ["int [3]", "int *", "Pt", "std::map<int, int, std::less<int>, std::allocator<std::pair<const int, int> > >", "std::string", V.vec2]);
+  assert.deepEqual([by.arr.type, by.p.type, by.pt.type, by.m.type, by.s.type, by.g.type], ["int [3]", "int *", "Pt", "std::pair<int, int>", "std::string", V.vec2]);
   assert.equal("value" in by.p, true, "pointers are simple values");
 });
 
@@ -339,12 +339,12 @@ test("-var-create: unsupported types and expressions get an explicit MI error; G
   const err = async (e) => { const it = await send(g, `3-var-create - * "${e}"`); const r = it.find((x) => x.type === "result"); assert.equal(r.message, "error", e); assert.equal(r.token, 3); return r.payload.msg; };
   // "pt" (struct Pt { int a; int b; };) used to be unsupported here too — class support (Slice C)
   // now creates a proper varobj for a plain data struct; see class_support.test.mjs.
-  for (const [e, ty] of [["m", "std::map"], ["p", "int \\*"]]) assert.match(await err(e), new RegExp(`^type '${ty}.*' is not supported by the browser engine$`), e);
+  for (const [e, ty] of [["m", "std::pair"], ["p", "int \\*"]]) assert.match(await err(e), new RegExp(`^type '${ty}.*' is not supported by the browser engine$`), e);
   assert.match(await err("*p"), /^expression '\*p' is not supported|^operator '\*' in expression '\*p' is not supported by the browser engine$/);
   assert.match(await err("g[0]"), /^expression 'g\[0\]' \(its value is a container\) is not supported by the browser engine$/);
   assert.equal(await err("x +"), "A syntax error in expression, near `'.");
   assert.equal(await err("x / 0"), "Division by zero");
-  assert.match(await err("&(m)"), /^type 'std::map.*\*' is not supported by the browser engine$/);
+  assert.match(await err("&(m)"), /^type 'std::pair.*\*' is not supported by the browser engine$/);
   assert.equal(await err("v.capacity()"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("v.size()"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("nosuch"), 'No symbol "nosuch" in current context.');
@@ -475,7 +475,7 @@ test("-data-evaluate-expression: plain variables only; errors like -var-create",
   assert.deepEqual(await ev("c"), { value: "97 'a'" });
   assert.deepEqual(await ev("INF"), { msg: 'No symbol "INF" in current context.' });
   assert.deepEqual(await ev("x * 2"), { value: "12" });
-  assert.match((await ev("m")).msg, /^type 'std::map<int, int.*' is not supported by the browser engine$/);
+  assert.match((await ev("m")).msg, /^type 'std::pair<int, int.*' is not supported by the browser engine$/);
   assert.equal((await ev("v.size()")).msg, "Cannot evaluate function -- may be inlined");
   assert.equal((await ev("nosuch")).msg, 'No symbol "nosuch" in current context.');
 });

@@ -288,7 +288,7 @@ export function printEntry(model, e) {
 function zeroFor(cls) {
   if (cls.kind === "ref") return zeroFor(cls.to);
   if (cls.kind === "array") return Array.from({ length: Math.max(cls.n, 0) }, () => zeroFor(classify(cls.elem)));
-  if (cls.kind === "vector" || FLAT_CONTAINER_KINDS.has(cls.kind)) return [];
+  if (cls.kind === "vector" || cls.kind === "map" || FLAT_CONTAINER_KINDS.has(cls.kind)) return [];
   if (cls.kind === "string") return "";
   if (cls.kind === "class") return {};
   return 0;
@@ -306,6 +306,7 @@ export function valueOf(cls, raw, capacity) {
     const n = Array.isArray(raw) ? raw.length : 0;
     return `std::vector of length ${n}, capacity ${capacity === undefined ? n : capacity}`;
   }
+  if (cls.kind === "map") return containerHead("map", Array.isArray(raw) ? raw.length : 0);
   if (FLAT_CONTAINER_KINDS.has(cls.kind)) return containerHead(cls.kind, Array.isArray(raw) ? raw.length : 0);
   if (cls.kind === "class") return "{...}"; // GDB's own value for a plain struct/class varobj: always this, never real field data
   return formatScalar(cls, raw);

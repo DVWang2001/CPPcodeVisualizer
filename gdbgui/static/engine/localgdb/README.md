@@ -195,8 +195,21 @@ Supported:
   std::deque with N elements` / `std::queue wrapping: std::deque with N elements` (`"1 element"` singular), `displayhint:"array"`,
   print format with no per-child index (`{1, 2, 3}`); list has **no displayhint at all**, its type is tagged `std::__cxx11::list<...>`
   (like `basic_string`'s tag), its value never counts elements — `std::__cxx11::list` / `empty std::__cxx11::list` — and its print
-  format DOES label each child (`{[0] = 4, [1] = 5, [2] = 6}`). `std::map`/`set`/`priority_queue`/`unordered_*` remain unsupported
-  (unordered_* would need libstdc++'s internal hash-bucket iteration order to match GDB, not attempted);
+  format DOES label each child (`{[0] = 4, [1] = 5, [2] = 6}`);
+- `std::priority_queue<T>` (T supported) is also a dynamic varobj, flat `NAME.[i]` children, drained via `top()`/`pop()` at trace time
+  (priority order — vg.h has no begin()/end() to iterate, unlike a real container). This is the extraction order, not real GDB's raw
+  internal heap-array layout, so its print format is a simplified `std::priority_queue with N elements` head, not a byte-match of GDB's;
+- `std::set<K>`/`std::multiset<K>`/`std::unordered_set<K>`/`std::unordered_multiset<K>` (K supported) are dynamic varobjs, flat
+  `NAME.[i]` children of K, in whatever order the real (wasm-compiled) container iterates — sorted for the tree-backed ones,
+  hash-bucket order for `unordered_*` (that bucket order is the wasm sysroot's own libstdc++, not guaranteed to match a native GDB
+  session's for the same input — an accepted engine difference, not attempted to be matched). Head text is simplified to one shared
+  `std::set with N elements` for all four variants (real GDB's exact wording differs per variant; this string is only ever
+  regex-scraped for its element count, never shown in the UI);
+- `std::map<K,V>`/`std::multimap<K,V>`/`std::unordered_map<K,V>`/`std::unordered_multimap<K,V>` (K, V supported) are dynamic varobjs,
+  flat `NAME.[i]` children whose element type is a non-expandable `std::pair<K,V>` (`numchild:"0"`, not itself a dynamic varobj —
+  matches GDB's own plain-struct printing of a pair), printed `{first = K, second = V}` — this is GDB's older map display; the newer
+  `displayhint:"map"` flat-alternating-children format some GDB/libstdc++ versions use is not replicated. Head text simplified the
+  same way as set's (`std::map with N elements` for all four variants);
 - `-var-update`: roots **newest first**, children depth-first; reports value changes; `in_scope:"false"` (no value) once when the
   varobj's frame returned or its block was left; the value again when the block is re-entered; a grown/shrunk vector adds
   `new_num_children`;
@@ -206,7 +219,7 @@ Explicit MI errors (never fake data), all `type:"result", message:"error", paylo
 
 | case | msg |
 |---|---|
-| unsupported type (map/set/priority_queue/unordered_*, pointer, struct, arrays of those, `vector<bool>`, `vector<unsupported>`; also `&(name)` of those) | `type 'TYPE' is not supported by the browser engine` |
+| unsupported type (pointer, struct, arrays of those, `vector<bool>`, `vector<unsupported>`, a map/set/priority_queue with an unsupported element/key/value type; also `&(name)` of those) | `type 'TYPE' is not supported by the browser engine` |
 | syntax error | ``A syntax error in expression, near `REST'.`` |
 | unsupported operator/construct (`*p`, `f(x)`, `a->b`, array-to-pointer decay such as `cand + 1`, container- or row-valued expression such as `g[0]` / `m[1]`, `&(map)`) | `... is not supported by the browser engine` |
 | `x / 0`, `x % 0` | `Division by zero` |

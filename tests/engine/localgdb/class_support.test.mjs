@@ -202,9 +202,9 @@ int main() {
 });
 
 test("a class with a field of an unsupported type is itself unsupported (recursive isSupported), never silently mis-serialised", async () => {
-  const src = `#include <map>
+  const src = `#include <vector>
 struct Weird {
-    std::map<int, int> m;
+    std::vector<bool> m;
 };
 int main() {
     Weird w;

@@ -61,14 +61,15 @@ struct has_iter<T, std::void_t<decltype(std::declval<const T&>().begin()), declt
 template <class T> struct is_pair : std::false_type {};
 template <class A, class B> struct is_pair<std::pair<A, B>> : std::true_type {};
 
-// std::stack/std::queue are container ADAPTORS: no begin()/end(), so has_iter is false for them and
-// they'd otherwise fall through j()'s default "<?>" case. Matched by exact template head (not just
-// "has top()+push()+pop()") so std::priority_queue is deliberately left unmatched: its GDB display is
-// the raw internal heap array (extraction order via pop() would not match it) — out of scope for now.
+// std::stack/std::queue/std::priority_queue are container ADAPTORS: no begin()/end(), so has_iter is
+// false for them and they'd otherwise fall through j()'s default "<?>" case. Matched by exact
+// template head (not just "has top()+push()+pop()").
 template <class T> struct is_stack : std::false_type {};
 template <class T, class C> struct is_stack<std::stack<T, C>> : std::true_type {};
 template <class T> struct is_queue : std::false_type {};
 template <class T, class C> struct is_queue<std::queue<T, C>> : std::true_type {};
+template <class T> struct is_priority_queue : std::false_type {};
+template <class T, class C, class Cmp> struct is_priority_queue<std::priority_queue<T, C, Cmp>> : std::true_type {};
 
 template <class T> std::string j(const T& x);
 
@@ -129,7 +130,16 @@ template <class T> std::string j(const T& x) {
     std::vector<typename T::value_type> tmp;
     while (!c.empty()) { tmp.push_back(c.front()); c.pop(); }
     return j(tmp);
+  } else if constexpr (is_priority_queue<T>::value) {
+    // ponytail: top()-first drain gives priority order, not GDB's raw internal heap-array layout —
+    // fine for the simplified sorted-list visualization, not a byte-match of real GDB's value string.
+    T c = x;
+    std::vector<typename T::value_type> tmp;
+    while (!c.empty()) { tmp.push_back(c.top()); c.pop(); }
+    return j(tmp);
   } else if constexpr (has_iter<T>::value) {
+    // Generic iteration also covers std::set/map/multiset/multimap/unordered_* for free: each element
+    // is either a scalar (set) or a std::pair (map, matched by is_pair above), no special-casing needed.
     std::string o = "[";
     bool first = true;
     for (const auto& e : x) { if (!first) o += ","; first = false; o += j(e); }

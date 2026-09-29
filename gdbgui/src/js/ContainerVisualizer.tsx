@@ -69,7 +69,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             pullPreview: new Map(),
         };
         // @ts-expect-error ts-migrate(2339)
-        store.connectComponentState(this, ["inferior_program", "rbtree_updated", "container_font_size"]);
+        store.connectComponentState(this, ["inferior_program", "container_font_size"]);
     }
 
     componentDidMount() {
@@ -365,12 +365,6 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
         if (!hasOps) {
             this.forceUpdate();
-        }
-    }
-
-    componentDidUpdate(_prevProps: {}, prevState: State) {
-        if ((prevState as any).rbtree_updated !== (this.state as any).rbtree_updated) {
-            this._pollContainers();
         }
     }
 

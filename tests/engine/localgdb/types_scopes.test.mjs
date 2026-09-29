@@ -30,7 +30,7 @@ test("type spelling: builtins, string, containers, pointers, references, arrays,
   assert.equal(t("const std::string &"), "const std::string &");
   assert.equal(t("int[3]"), "int [3]");
   assert.equal(t("int[3][4]"), "int [3][4]");
-  assert.equal(t("std::map<int, int>"), "std::map<int, int, std::less<int>, std::allocator<std::pair<const int, int> > >");
+  assert.equal(t("std::map<int, int>"), "std::map<int, int, std::less<int>, std::allocator<std::pair<int const, int> > >");
   assert.equal(t("std::set<int>"), "std::set<int, std::less<int>, std::allocator<int> >");
   assert.equal(t("std::deque<int>"), "std::deque<int, std::allocator<int> >");
   assert.equal(t("std::list<int>"), "std::__cxx11::list<int, std::allocator<int> >", "GDB tags list with __cxx11 like basic_string");
@@ -47,10 +47,13 @@ test("type spelling: builtins, string, containers, pointers, references, arrays,
 test("classification: supported set, simple values, dynamic (pretty-printed) types", () => {
   const c = (q) => classify(parseType(q));
   for (const q of ["int", "long long", "bool", "char", "double", "float", "std::string", "std::vector<int>", "std::vector<std::vector<int>>", "std::vector<std::string>", "std::vector<double> &", "unsigned", "int[3]", "int[2][3]", "char[4]", "double[2]", "std::vector<int>[2]", "long long[3]",
-    "std::deque<int>", "std::list<int>", "std::stack<int>", "std::queue<int>", "std::deque<std::string>", "std::stack<int> &"]) assert.equal(isSupported(c(q)), true, q);
-  for (const q of ["std::map<int,int>", "std::set<int>", "std::priority_queue<int>", "int *", "Pt", "Pt[2]", "int *[2]", "std::map<int,int>[2]", "std::vector<bool>", "std::vector<std::map<int,int>>", "std::pair<int,int>", "std::deque<std::map<int,int>>"]) assert.equal(isSupported(c(q)), false, q);
+    "std::deque<int>", "std::list<int>", "std::stack<int>", "std::queue<int>", "std::deque<std::string>", "std::stack<int> &",
+    "std::priority_queue<int>", "std::set<int>", "std::multiset<int>", "std::unordered_set<int>", "std::unordered_multiset<int>",
+    "std::map<int,int>", "std::multimap<int,int>", "std::unordered_map<int,int>", "std::unordered_multimap<int,int>",
+    "std::map<int,std::string>", "std::vector<std::map<int,int>>", "std::deque<std::map<int,int>>", "std::map<int,int>[2]"]) assert.equal(isSupported(c(q)), true, q);
+  for (const q of ["int *", "Pt", "Pt[2]", "int *[2]", "std::vector<bool>", "std::pair<int,int>", "std::map<Pt,int>"]) assert.equal(isSupported(c(q)), false, q);
   assert.deepEqual(["int", "bool", "char", "double", "int *", "int &", "std::string", "std::vector<int>", "int[3]", "Pt", "std::vector<int> &"].map((q) => isSimple(c(q))), [true, true, true, true, true, true, false, false, false, false, false]);
-  assert.deepEqual(["std::vector<int>", "std::string", "int", "std::vector<int> &", "std::deque<int>", "std::list<int>", "std::stack<int>", "std::queue<int>"].map((q) => isDynamic(c(q))), [true, true, false, true, true, true, true, true]);
+  assert.deepEqual(["std::vector<int>", "std::string", "int", "std::vector<int> &", "std::deque<int>", "std::list<int>", "std::stack<int>", "std::queue<int>", "std::priority_queue<int>", "std::set<int>", "std::map<int,int>"].map((q) => isDynamic(c(q))), [true, true, false, true, true, true, true, true, true, true, true]);
 });
 
 test("value formatting like GDB: bool, char escapes, floating point (%g with 17/9 digits), strings", () => {
@@ -138,6 +141,6 @@ test("`using namespace std;` programs: unqualified std names (clang prints `vect
   assert.equal(gdbTypeOfQual("vector<string> &"), gdbTypeOfQual("std::vector<std::string> &"));
   assert.equal(gdbTypeOfQual("map<int, int>"), gdbTypeOfQual("std::map<int, int>"));
   assert.equal(isSupported(classify(parseType("vector<vector<int> >"))), true);
-  assert.equal(isSupported(classify(parseType("map<int, int>"))), false);
+  assert.equal(isSupported(classify(parseType("map<int, int>"))), true);
   assert.equal(gdbTypeOfQual("mylib::vector<int>"), "mylib::vector<int>", "qualified user names are left alone");
 });
