@@ -25,6 +25,7 @@ beforeEach(() => {
 });
 
 test("旗標關閉：$.ajax POST /send_signal {signal_name, target}", () => {
+  window.history.pushState({}, "", "/?engine=gdb"); // 2026-09-30 起 wasm 是預設，明確退回伺服器引擎才會走這條路
   Actions.send_signal("SIGINT", "inferior");
   expect(ajax).toHaveBeenCalledTimes(1);
   expect(ajax.mock.calls[0][0]).toMatchObject({ url: "/send_signal", type: "POST", data: { signal_name: "SIGINT", target: "inferior" } });

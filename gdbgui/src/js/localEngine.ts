@@ -1,7 +1,8 @@
 /**
  * vgdb M1 layer B: run student code through the in-browser engine (gdbgui/static/engine) and the
- * LocalGdb GDB/MI emulation instead of the server's GDB. Enabled only by `?engine=wasm` or
- * localStorage `vgdb_engine` = "wasm"; with the flag off nothing in this file runs.
+ * LocalGdb GDB/MI emulation instead of the server's GDB. This is now the DEFAULT (2026-09-30):
+ * everything in this file runs unless the page opts back out via `?engine=gdb` or localStorage
+ * `vgdb_engine` = "gdb" (the one-click fallback link from gdbFallbackUrl() below uses the former).
  * Design and the list of wired call sites: localEngine.README.md.
  *
  * Security (contract §3): nothing here reads or forwards the CSRF token or cookies, talks to the
@@ -25,10 +26,13 @@ function computeEnabled(): boolean {
     /* no location: fall through */
   }
   try {
-    return window.localStorage.getItem("vgdb_engine") === "wasm";
+    const ls = window.localStorage.getItem("vgdb_engine");
+    if (ls === "wasm") return true;
+    if (ls === "gdb") return false; // explicit escape hatch, same as ?engine=gdb
   } catch (e) {
-    return false;
+    /* no localStorage: fall through */
   }
+  return true; // default: the browser engine replaces the server GDB
 }
 
 /**

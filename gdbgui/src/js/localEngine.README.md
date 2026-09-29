@@ -4,9 +4,9 @@
 
 ## 開關
 
-- `?engine=wasm` 開啟、`?engine=gdb` 強制關閉（蓋過 localStorage）；否則看 localStorage `vgdb_engine === "wasm"`。
+- **2026-09-30 起預設開啟**：`?engine=gdb` 或 localStorage `vgdb_engine === "gdb"` 明確退回伺服器 GDB（逃生門，`?engine=gdb` 蓋過 localStorage）；`?engine=wasm` / localStorage `vgdb_engine === "wasm"` 顯式選 wasm（跟預設等冪，主要用於過去的旗標式連結）。
 - 每頁只判定一次（`enabled()` 快取），socket 與 HTTP 端點不可能分屬兩個引擎。
-- 預設關閉。關閉時每個接線點都走原本的 `io.connect` / `$.ajax` / `fetch`，傳入的設定物件與回呼和改動前逐字相同。
+- 關閉時（`?engine=gdb`）每個接線點都走原本的 `io.connect` / `$.ajax` / `fetch`，傳入的設定物件與回呼和改動前逐字相同。
 
 ## 引擎載入（不進 webpack bundle）
 

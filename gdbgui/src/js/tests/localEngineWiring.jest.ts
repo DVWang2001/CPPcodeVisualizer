@@ -61,6 +61,7 @@ function useFakeEngine() {
         created.push({ opts, gdb: g });
         return g;
       }),
+      buildPrerunSnapshots: jest.fn((_model: any) => []),
     },
   });
   return { created, engine };
@@ -83,6 +84,10 @@ beforeEach(() => {
 });
 
 describe("旗標關閉：原路徑不變", () => {
+  beforeEach(() => {
+    window.history.pushState({}, "", "/?engine=gdb"); // 2026-09-30 起 wasm 是預設，明確退回伺服器引擎才會走這條路
+  });
+
   test("GdbApi.init 用 io.connect('/gdb_listener', {query 含 csrf_token})", () => {
     GdbApi.init();
     expect((io as any).connect).toHaveBeenCalledTimes(1);

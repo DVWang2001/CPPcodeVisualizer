@@ -107,31 +107,44 @@ beforeEach(() => {
 
 // ---------------------------------------------------------------------------------------------
 describe("旗標 enabled()", () => {
-  test("預設關閉", () => {
-    expect(enabled()).toBe(false);
+  test("預設開啟（2026-09-30 起 wasm 是預設引擎）", () => {
+    expect(enabled()).toBe(true);
   });
-  test("?engine=wasm 開啟", () => {
+  test("?engine=wasm 開啟（顯式同預設，等冪）", () => {
     window.history.pushState({}, "", "/?engine=wasm");
     expect(enabled()).toBe(true);
   });
-  test("localStorage vgdb_engine=wasm 開啟", () => {
+  test("localStorage vgdb_engine=wasm 開啟（顯式同預設，等冪）", () => {
     window.localStorage.setItem("vgdb_engine", "wasm");
     expect(enabled()).toBe(true);
   });
-  test("?engine=gdb 蓋過 localStorage", () => {
+  test("?engine=gdb 是明確的退回逃生門，關閉引擎", () => {
+    window.history.pushState({}, "", "/?engine=gdb");
+    expect(enabled()).toBe(false);
+  });
+  test("localStorage vgdb_engine=gdb 也是明確的退回逃生門，關閉引擎", () => {
+    window.localStorage.setItem("vgdb_engine", "gdb");
+    expect(enabled()).toBe(false);
+  });
+  test("?engine=gdb 蓋過 localStorage 的 wasm", () => {
     window.localStorage.setItem("vgdb_engine", "wasm");
     window.history.pushState({}, "", "/?engine=gdb");
     expect(enabled()).toBe(false);
   });
-  test("其他值不開啟", () => {
+  test("localStorage 的 gdb 蓋不過 ?engine=wasm（URL 參數優先權更高）", () => {
+    window.localStorage.setItem("vgdb_engine", "gdb");
+    window.history.pushState({}, "", "/?engine=wasm");
+    expect(enabled()).toBe(true);
+  });
+  test("其他值視同沒設，落回預設開啟", () => {
     window.localStorage.setItem("vgdb_engine", "yes");
     window.history.pushState({}, "", "/?engine=WASM");
-    expect(enabled()).toBe(false);
+    expect(enabled()).toBe(true);
   });
   test("一頁只判定一次（中途改 localStorage 不會讓 socket 與端點分屬不同引擎）", () => {
-    expect(enabled()).toBe(false);
-    window.localStorage.setItem("vgdb_engine", "wasm");
-    expect(enabled()).toBe(false);
+    expect(enabled()).toBe(true);
+    window.localStorage.setItem("vgdb_engine", "gdb");
+    expect(enabled()).toBe(true);
   });
 });
 
