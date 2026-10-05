@@ -17,8 +17,9 @@ SECRET_KEY 是第二個。
 
 ## 權限：session 帳號絕對不能讀到這裡
 
-同一個容器裡跑著不可信的使用者 C++ 程式（sandbox/jail_manager.py 的
-per-session 帳號）。資料目錄裡有密碼雜湊與 SECRET_KEY——SECRET_KEY 外洩等於
+伺服器 GDB 時代，同一個容器裡跑著不可信的使用者 C++ 程式（沙箱的 per-session
+帳號；該後端已移除，程式改在瀏覽器內執行，以下權限仍保留作為縱深防禦）。
+資料目錄裡有密碼雜湊與 SECRET_KEY——SECRET_KEY 外洩等於
 可以偽造任何人的 session cookie，也就等於冒充任何使用者、取得任何人的
 owner_key()。所以：
 

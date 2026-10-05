@@ -1,24 +1,20 @@
 """回歸測試：跑子行程時，eventlet hub 不可以停擺。
 
-背景見 gdbgui/server/blocking.py。伺服器是 eventlet 單執行緒，
-`read_and_forward_gdb_and_pty_output`（app.py:230）是 hub 上的 **greenlet**，
-不是 OS thread，而它負責轉發**每一個** session 的 GDB／pty 輸出。所以任何一個
-沒讓出 hub 的阻塞子行程（編譯 30s、gdb pre-run 15s），都會讓其他所有使用者的
-HTTP 請求與 GDB 輸出一起卡住。實測（見 README of blocking.py）第二個使用者的
-`GET /` 從 2-3ms 惡化到 2374ms，另一個使用者的 GDB 單步從 51ms 惡化到 2782ms。
+背景見 gdbgui/server/blocking.py。伺服器是 eventlet 單執行緒，所有請求與
+socket.io 事件（包含 /lesson_quiz 即時測驗）都是同一個 hub 上的 **greenlet**。
+所以任何一個沒讓出 hub 的阻塞子行程（目前是 /tts_audio 的 mpg123／oggenc 轉檔），
+都會讓其他所有使用者的 HTTP 請求與 websocket 事件一起卡住。伺服器 GDB 時代的
+實測（見 blocking.py）：第二個使用者的 `GET /` 從 2-3ms 惡化到 2374ms。
 
-為什麼整批丟到**一個**子行程跑
-------------------------------
-兩個理由，方向相反，所以剛好收斂到「一個子行程、跑完三個情境」：
+這個測試在伺服器 GDB 後端移除後**刻意保留**：它是唯一證明 blocking.run 沒有
+卡住 hub 的測試，而 /tts_audio 仍然依賴這件事。
 
-1. 一定要在子行程裡跑。`eventlet.spawn()` 會在 main thread 建立一個**會留下來**
-   的 hub；pytest 整個 suite 共用一個行程，hub 一旦建立，後面所有測試裡的
-   `blocking.run()` 就都會改走 tpool。測試不該改變它以外的東西的執行模型。
-
-2. 但也只能開**一個**。實測開三個子行程（每個情境一個）會讓
-   test_signal_authz 間歇性失敗 —— 它記下 gdb 的 pid 再去檢查擁有者，而大量
-   建立／回收行程會加速 PID 重用，讓那個檢查看到別人的行程。那是既有的競態
-   （見報告），但新測試沒有理由去踩它。
+為什麼要在子行程裡跑
+--------------------
+`eventlet.spawn()` 會在 main thread 建立一個**會留下來**的 hub；pytest 整個
+suite 共用一個行程，hub 一旦建立，後面所有測試裡的 `blocking.run()` 就都會改走
+tpool。測試不該改變它以外的東西的執行模型。三個情境共用**一個**子行程，只是
+為了少建立幾個行程。
 
 所以：一個乾淨的子行程，依序跑完三個情境，只把量到的數字帶回來。
 """
@@ -55,7 +51,7 @@ stop = [False]
 
 
 def loop():
-    # 模仿 read_and_forward_gdb_and_pty_output 的輪詢 greenlet
+    # 代表 hub 上其他人的工作（請求、socket.io 事件）的輪詢 greenlet
     while not stop[0]:
         ticks.append(time.time())
         eventlet.sleep(TICK)
@@ -132,8 +128,8 @@ def test_blocking_run_keeps_the_hub_responsive(measured):
     assert r["elapsed"] >= SLEEP_SECONDS, "子行程必須真的跑完，不是被略過"
     assert r["stall"] < MAX_ACCEPTABLE_STALL, (
         f"hub 停擺 {r['stall']:.3f}s（子行程 {r['elapsed']:.2f}s）。"
-        " 這代表阻塞呼叫沒有讓出 hub —— 其他 session 的 GDB 輸出在這段時間"
-        " 全部停止轉發。檢查該呼叫是不是繞過了 blocking.run。"
+        " 這代表阻塞呼叫沒有讓出 hub —— 其他使用者的請求與 websocket 事件在這段"
+        " 時間全部停擺。檢查該呼叫是不是繞過了 blocking.run。"
     )
 
 

@@ -48,8 +48,8 @@ _username_counter = 0
 def unique_username(prefix: str = "u") -> str:
     """每次呼叫都不一樣，而且符合 auth.USERNAME_RE。
 
-    測試之間不共用帳號：帳號現在**就是**隔離的單位（一個使用者一個 jail、
-    一個 debug session），共用帳號會讓兩個測試意外地共用一個 GDB。
+    測試之間不共用帳號：帳號就是授權的單位（教案擁有權、即時測驗身分都以它
+    為鍵），共用帳號會讓兩個測試意外地共用同一份狀態。
     """
     global _username_counter
     _username_counter += 1
@@ -67,7 +67,7 @@ class LoggedInUser:
         self.csrf = csrf
         self.owner_key = owner_key_of(app, client)
 
-    # 舊測試用 `visitor.prefix` 這個名字指同一樣東西（jail 的 key）。
+    # 舊測試用 `visitor.prefix` 這個名字指同一樣東西（owner key）。
     @property
     def prefix(self) -> str:
         return self.owner_key
@@ -145,17 +145,11 @@ def login_user(app, username: str, password: str = TEST_PASSWORD) -> LoggedInUse
 def flask_app():
     from gdbgui.server.app import app
 
-    app.config["gdb_command"] = "gdb"
     return app
 
 
 @pytest.fixture
 def logged_in(flask_app):
-    """一個全新的已登入使用者，測試結束時把它的 jail 收掉。"""
-    from gdbgui.server.sandbox import jail_manager
-
+    """一個全新的已登入使用者。"""
     user = register_user(flask_app)
-    try:
-        yield user
-    finally:
-        jail_manager.release(user.owner_key)
+    yield user

@@ -9,13 +9,6 @@ import argparse
 import json
 import logging
 import os
-import platform
-import re
-import shlex
-from typing import List, Optional
-
-import shlex
-from typing import List, Optional
 import atexit
 import shutil
 import signal
@@ -23,7 +16,7 @@ import signal
 
 from gdbgui import __version__
 from gdbgui.server.app import app, socketio
-from gdbgui.server.constants import DEFAULT_GDB_EXECUTABLE, DEFAULT_HOST, DEFAULT_PORT
+from gdbgui.server.constants import DEFAULT_HOST, DEFAULT_PORT
 from gdbgui.server.server import run_server
 
 
@@ -86,44 +79,18 @@ def reject_removed_basic_auth_flags(auth_file, user, password):
         exit(1)
 
 
-def warn_startup_with_shell_off(platform: str, gdb_args: str):
-    """return True if user may need to turn shell off
-    if mac OS version is 16 (sierra) or higher, may need to set shell off due
-    to os's security requirements
-    http://stackoverflow.com/questions/39702871/gdb-kind-of-doesnt-work-on-macos-sierra
-    """
-    darwin_match = re.match(r"darwin-(\d+)\..*", platform)
-    on_darwin = darwin_match is not None and int(darwin_match.groups()[0]) >= 16
-    if on_darwin:
-        shell_is_off = "startup-with-shell off" in gdb_args
-        return not shell_is_off
-    return False
-
-
 def get_parser():
+    # 伺服器 GDB 已移除（程式在瀏覽器內的 wasm 引擎執行），所以 GDB 相關的
+    # 選項（--gdb-cmd、要除錯的執行檔位置參數、--args）都已刪除。傳了它們會被
+    # argparse 當成未知參數直接報錯，不會被安靜地忽略。
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
-    gdb_group = parser.add_argument_group(title="gdb settings")
-    args_group = parser.add_mutually_exclusive_group()
     network = parser.add_argument_group(title="gdbgui network settings")
     security = parser.add_argument_group(title="security settings")
     other = parser.add_argument_group(title="other settings")
 
-    gdb_group.add_argument(
-        "-g",
-        "--gdb-cmd",
-        help="""
-        gdb binary and arguments to run. If passing arguments,
-        enclose in quotes.
-        If using rr, it should be specified here with
-        'rr replay'.
-        Examples: gdb, /path/to/gdb, 'gdb --command=FILE -ix', 'rr replay'
-
-        """,
-        default=DEFAULT_GDB_EXECUTABLE,
-    )
     network.add_argument(
         "-p",
         "--port",
@@ -207,36 +174,7 @@ def get_parser():
         "Pass this flag when debugging gdbgui itself to automatically reload the server when changes are detected",
         action="store_true",
     )
-    args_group.add_argument(
-        "debug_program",
-        nargs="?",
-        help="The executable file you wish to debug, and any arguments to pass to it."
-        " To pass flags to the binary, wrap in quotes, or use --args instead."
-        " Example: gdbgui ./mybinary [other-gdbgui-args...]"
-        " Example: gdbgui './mybinary myarg -flag1 -flag2' [other gdbgui args...]",
-        default=None,
-    )
-    args_group.add_argument(
-        "--args",
-        nargs=argparse.REMAINDER,
-        help="Specify the executable file you wish to debug and any arguments to pass to it. All arguments are"
-        " taken literally, so if used, this must be the last argument. This can also be specified later in the frontend."
-        " passed to gdbgui."
-        " Example: gdbgui [...] --args ./mybinary myarg -flag1 -flag2",
-        default=[],
-    )
     return parser
-
-
-def get_initial_binary_and_args(
-    user_supplied_args: List[str], debug_program_and_args: Optional[str]
-) -> List[str]:
-    if debug_program_and_args:
-        # passed via positional
-        return shlex.split(debug_program_and_args)
-    else:
-        # passed via --args
-        return user_supplied_args
 
 
 def main():
@@ -251,10 +189,6 @@ def main():
         print("Cannot specify no-browser and browser. Must specify one or the other.")
         exit(1)
 
-    app.config["gdb_command"] = args.gdb_cmd
-    app.config["initial_binary_and_args"] = get_initial_binary_and_args(
-        args.args, args.debug_program
-    )
     reject_removed_basic_auth_flags(args.auth_file, args.user, args.password)
     app.config["project_home"] = args.project
     if args.remap_sources:
@@ -270,14 +204,6 @@ def main():
     if args.remote:
         args.host = "0.0.0.0"
         args.no_browser = True
-
-    if warn_startup_with_shell_off(platform.platform().lower(), args.gdb_cmd):
-        logger.warning(
-            "You may need to set startup-with-shell off when running on a mac. i.e.\n"
-            "  gdbgui --gdb-cmd='gdb --init-eval-command=\"set startup-with-shell off\"'\n"
-            "see http://stackoverflow.com/questions/39702871/gdb-kind-of-doesnt-work-on-macos-sierra\n"
-            "and https://sourceware.org/gdb/onlinedocs/gdb/Starting.html"
-        )
 
     logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
 

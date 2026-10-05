@@ -3,7 +3,6 @@ import signal
 import sys
 from pathlib import Path
 
-DEFAULT_GDB_EXECUTABLE = "gdb"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 5000
 USING_WINDOWS = os.name == "nt"

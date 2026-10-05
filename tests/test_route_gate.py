@@ -14,6 +14,8 @@ import pytest
 
 from gdbgui.server.http_util import CSRF_EXEMPT_ENDPOINTS, PUBLIC_ENDPOINTS
 
+from .conftest import register_user
+
 
 #: 這些方法瀏覽器/werkzeug 會自動補上，不代表一條真正的入口。
 _IGNORED_METHODS = {"HEAD", "OPTIONS"}
@@ -104,20 +106,83 @@ def test_the_enumeration_actually_covers_the_real_routes(flask_app):
 
     `_gated_requests` 要是哪天因為 url_map 的形狀變了而回傳空的、或漏掉主要
     路由，上面那條會變成一條永遠通過的空測試。這裡釘住幾個一定要在裡面的
-    endpoint —— 它們是最敏感的那幾條（起 GDB、編譯、送訊號）。
+    endpoint —— 它們是最敏感的那幾條（除錯器頁、會花伺服器錢或資源的 AI/TTS、
+    會寫入或刪除教案的路由、個人檔案、建立即時測驗）。
     """
     covered = {endpoint for endpoint, _, _ in _gated_requests(flask_app)}
     for endpoint in (
         "http_routes.gdbgui",
-        "http_routes.create_and_upload",
-        "http_routes.send_signal",
-        "http_routes.read_file",
-        "http_routes.prerun_calltree",
-        "http_routes.dashboard_data",
-        "http_routes.kill_session",
+        "http_routes.generate_lesson",
+        "http_routes.explain_error",
+        "http_routes.tts_audio",
+        "http_routes.create_lesson",
+        "http_routes.delete_lesson",
+        "http_routes.authoring_guide",
         "auth.profile",
+        "live_quiz.create_session_route",
     ):
         assert endpoint in covered, f"{endpoint} is missing from the gated enumeration"
+
+
+#: 伺服器 GDB 後端移除時一併刪掉的 9 條路由，以及各自原本的 HTTP 方法。
+_REMOVED_GDB_ROUTES = (
+    ("GET", "/dashboard"),
+    ("GET", "/dashboard_data"),
+    ("GET", "/upload"),
+    ("GET", "/read_file"),
+    ("GET", "/get_last_modified_unix_sec"),
+    ("POST", "/create_and_upload"),
+    ("POST", "/send_signal"),
+    ("POST", "/api/prerun_calltree"),
+    ("PUT", "/kill_session"),
+)
+
+
+def test_removed_gdb_routes_are_gone(flask_app):
+    """已登入者對舊的 GDB 路由（含舊書籤）拿到的是乾淨的 404，不是 500、
+    也不是 405（405 代表那條規則還掛在 url_map 上，只是方法不對）。
+
+    變更方法的請求帶著有效 CSRF token，所以 404 不是被 CSRF 擋下的 403。
+    """
+    user = register_user(flask_app)
+    for method, path in _REMOVED_GDB_ROUTES:
+        response = user.http.open(
+            path,
+            method=method,
+            data={"csrf_token": user.csrf},
+            headers={"x-csrftoken": user.csrf},
+        )
+        assert response.status_code == 404, (method, path, response.status_code)
+
+
+def test_removed_gdb_routes_still_do_not_reveal_themselves_to_anonymous_users(flask_app):
+    """鏡像：未登入者（拿著有效 CSRF token）對同樣 9 條路徑一律被登入閘門拒絕，
+    **絕不是 404**——預設拒絕不能讓「這條路徑存不存在」變得可觀察。"""
+    client, csrf = _anonymous_client_with_csrf(flask_app)
+    for method, path in _REMOVED_GDB_ROUTES:
+        response = client.open(
+            path,
+            method=method,
+            data={"csrf_token": csrf},
+            headers={"x-csrftoken": csrf},
+        )
+        assert response.status_code != 404, (method, path)
+        assert _refused(response), (method, path, response.status_code)
+
+
+def test_csrf_check_runs_before_the_login_gate(flask_app):
+    """兩道全域 before_request 都在，而且順序是 CSRF／跨來源檢查在前、登入閘門在後
+    （未登入者因此也沒有一條繞過 CSRF 的捷徑）。"""
+    names = [f.__name__ for f in flask_app.before_request_funcs[None]]
+    assert names == [
+        "csrf_protect_all_post_and_cross_origin_requests",
+        "require_login",
+    ]
+
+
+def test_session_cookie_flags(flask_app):
+    assert flask_app.config["SESSION_COOKIE_HTTPONLY"] is True
+    assert flask_app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
 
 
 def test_unknown_paths_are_refused_too(flask_app):

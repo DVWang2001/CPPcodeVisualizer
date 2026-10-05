@@ -1,11 +1,9 @@
 import logging
 import os
 import socket
-import threading
 import webbrowser
 
 from .constants import DEFAULT_HOST, DEFAULT_PORT, colorize
-from .sandbox import jail_manager
 
 logger = logging.getLogger(__name__)
 
@@ -37,60 +35,6 @@ def get_extra_files():
     return extra_files
 
 
-_REAPER_INTERVAL_SECONDS = 300
-
-
-def _start_execution_isolation():
-    """啟動時清掉上次執行殘留的 session 帳號／目錄，並開一條回收執行緒。
-
-    scratch 依設計不含持久資料，所以無條件清除是安全的；不清的話殘留帳號
-    會一直佔用併發額度（架構 ⑤），重啟幾次之後就再也開不了新 session。
-    """
-    if not jail_manager.isolation_available():
-        if jail_manager.REQUIRE_ISOLATION:
-            raise SystemExit(
-                "GDBGUI_REQUIRE_ISOLATION=1 but per-session execution isolation is "
-                "unavailable on this host. Refusing to start: user programs would "
-                "otherwise all run as the same OS user."
-            )
-        logger.warning(
-            "Per-session execution isolation is NOT active. This is only safe for a "
-            "single trusted local user."
-        )
-        return
-
-    jail_manager.ensure_scratch_root()
-
-    # 取得 scratch root 的獨佔擁有權。拿到的行程才有資格做破壞性的 reap；
-    # 拿不到代表這台機器上已經有一個活著的 gdbgui 在服務（例如在容器裡跑
-    # `pytest tests/`，而 test_backend.py 在 import 時就會呼叫 run_server），
-    # 那時候絕不能清掉線上使用者的帳號與 scratch 目錄。
-    #
-    # 拿不到只跳過 reap，**不跳過**底下的閒置回收執行緒：reap_idle() 只會處理
-    # 本行程自己 _jails 裡的 session，對別人無害，少了它反而會讓這個行程的
-    # session 永遠不被回收、慢慢吃光併發額度。
-    if jail_manager.claim_scratch_root():
-        reaped = jail_manager.reap_orphans()
-        if reaped:
-            logger.info("[jail] reaped %d orphaned session account(s) at startup", reaped)
-    else:
-        logger.warning(
-            "[jail] another live process owns %s -- skipping the startup reap. "
-            "Orphaned accounts from a previous run (if any) are left alone.",
-            jail_manager.SCRATCH_ROOT,
-        )
-
-    def _reaper():
-        while True:
-            try:
-                jail_manager.reap_idle()
-            except Exception:
-                logger.exception("[jail] idle reaper failed")
-            threading.Event().wait(_REAPER_INTERVAL_SECONDS)
-
-    threading.Thread(target=_reaper, name="jail-reaper", daemon=True).start()
-
-
 def run_server(
     *,
     app=None,
@@ -106,8 +50,6 @@ def run_server(
 ):
     """Run the server of the gdb gui"""
 
-    _start_execution_isolation()
-
     kwargs = {}
     ssl_context = get_ssl_context(private_key, certificate)
     if ssl_context:
@@ -117,7 +59,7 @@ def run_server(
         # pass ssl_context to flask
         kwargs["ssl_context"] = ssl_context
 
-    url = "%s:%s" % (host, port) + '/upload'
+    url = "%s:%s" % (host, port)
     if kwargs.get("ssl_context"):
         protocol = "https://"
         url_with_prefix = "https://" + url

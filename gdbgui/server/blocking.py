@@ -9,44 +9,34 @@
     'eventlet'
 
 在 eventlet 模式下，**整個伺服器跑在單一個 OS thread 上**，所有東西都是同一個
-hub 上的 greenlet —— 包含 `read_and_forward_gdb_and_pty_output`
-（app.py:230 用 `socketio.start_background_task` 起的，那不是 OS thread，
-是 greenlet），它負責把**每一個** session 的 GDB／pty 輸出轉發出去。
+hub 上的 greenlet —— 每一個 HTTP 請求與 socket.io 事件（例如 /lesson_quiz
+即時測驗）都是。
 
 專案裡沒有任何地方呼叫 `eventlet.monkey_patch()`，因此 `subprocess.run()` 底下的
-`os.waitpid()` / `read()` 是真正的阻塞 syscall。一個使用者按下 Run 觸發 15 秒的
-gdb pre-run，或 30 秒的編譯，就會把 hub 整個卡住 —— 其他所有使用者的 HTTP 請求
-**和 GDB 輸出轉發**全部停擺。實測（見下）reader greenlet 會停滿子行程的整個執行
-時間。
+`os.waitpid()` / `read()` 是真正的阻塞 syscall。一個要跑好幾秒的子行程（目前是
+/tts_audio 的 mpg123／oggenc 轉檔）若直接在 hub 上等，其他所有使用者的請求與
+websocket 事件全部停擺。伺服器 GDB 時代的實測（見下）：輪詢 greenlet 會停滿子行程
+的整個執行時間。
 
 做法
 ----
 `eventlet.tpool.execute()` 把阻塞呼叫丟到真正的 OS thread 執行，並在等待期間讓出
-hub。量測（容器內，未 monkey-patch，reader greenlet 每 0.05s tick 一次）：
+hub。量測（容器內，未 monkey-patch，輪詢 greenlet 每 0.05s tick 一次）：
 
-    A 直接 subprocess.run : elapsed 2.00s  reader 停擺 2.051s   <- 現況
+    A 直接 subprocess.run : elapsed 2.00s  reader 停擺 2.051s   <- 修之前
     B tpool.execute       : elapsed 2.01s  reader 停擺 0.058s   <- 修好後
     C tpool + timeout=2   : 2.01s 後照常丟 TimeoutExpired，reader 停擺 0.051s
 
 刻意**不**做的事
 ----------------
-不呼叫 `eventlet.monkey_patch()`。那會把 GDB pty I/O 路徑底下的 os.read/select
-全部換掉，而那是全專案時序上最敏感的地方（先前三個間歇性 bug 都是它的順序問題）。
-tpool 只影響這裡指名的幾個呼叫，pty 路徑一行都沒動。
+不呼叫 `eventlet.monkey_patch()`。當初的理由是伺服器 GDB 的 pty I/O 路徑對時序
+極敏感；那條路徑已隨伺服器 GDB 後端移除。是否改成 monkey_patch 是另一個決定，
+這裡維持原狀：tpool 只影響這裡指名的幾個呼叫。
 
-沒有動到的東西（**故意的**）
-----------------------------
-`jail_manager._run()`（useradd/userdel）不走這裡。`jail_manager.acquire()` 全程
-持有 `threading.RLock`（jail_manager.py:342），而那把鎖**沒有**被 monkey-patch；
-如果在持鎖期間讓出 hub，另一個 greenlet 進來搶同一把鎖就會用真正的阻塞方式卡住
-整個 hub，換不到任何好處還多了風險。帳號建立本身是毫秒等級，留在原地。
-
-安全性不變
-----------
-argv 原封不動地交給 `subprocess.run`，所以 `jail_manager.confine()` 疊上的
-setpriv（uid/gid）＋ unshare（user/net namespace）＋ wrapper 的 rlimit 完全照舊。
-timeout 與逾時後的 kill 也還是由 `subprocess.run` 自己做，語意不變 ——
-換的只有「誰在等它」，不是「它怎麼跑」。
+行為不變
+--------
+argv 原封不動地交給 `subprocess.run`。timeout 與逾時後的 kill 也還是由
+`subprocess.run` 自己做，語意不變 —— 換的只有「誰在等它」，不是「它怎麼跑」。
 """
 
 import os
@@ -54,14 +44,11 @@ import subprocess
 import sys
 import time
 
-from .sandbox import jail_manager
-
 # tpool 在 import 當下才讀 EVENTLET_THREADPOOL_SIZE，所以要在 import 之前設。
-# 併發上限是 GDBGUI_MAX_SESSIONS（預設 24），每個 session 最多同時佔一個編譯／
-# pre-run，額外留一點餘裕給 TTS 這類短工作。池子滿了只會排隊，不會失敗。
-os.environ.setdefault(
-    "EVENTLET_THREADPOOL_SIZE", str(max(20, jail_manager.MAX_SESSIONS + 8))
-)
+# 32 是伺服器 GDB 時代的有效預設值（max(20, 預設 24 個 session + 8)），沿用不變。
+# 現在的使用者是 /tts_audio 的轉檔與登入／註冊的密碼雜湊（call()）。
+# 池子滿了只會排隊，不會失敗。
+os.environ.setdefault("EVENTLET_THREADPOOL_SIZE", "32")
 
 
 def eventlet_hub_running() -> bool:
@@ -81,7 +68,7 @@ def call(fn, *args, **kwargs):
 
     用在 CPU 密集、在 C 層裡不會讓出 GIL 的呼叫上——目前是密碼雜湊
     （`werkzeug.security` 的 scrypt，刻意慢，約 100 ms 一次）。scrypt 若直接在
-    hub 上跑，每一次登入或註冊都會讓**所有**使用者的請求與 GDB 輸出轉發停擺
+    hub 上跑，每一次登入或註冊都會讓**所有**使用者的請求與 websocket 事件停擺
     那麼久；而登入沒有速率限制（設計決定），連續打就是一個被放大的 DoS。
 
     雜湊參數一個都沒動，換的只有「誰在等它」。
@@ -99,8 +86,8 @@ def call(fn, *args, **kwargs):
 def sleep(seconds: float) -> None:
     """睡一下，但把 hub 讓給別人。
 
-    有 eventlet hub 時用 `eventlet.sleep`：這個 greenlet 停住，其他請求與 GDB
-    輸出轉發照跑。用 `time.sleep` 會停住整個 OS 執行緒——在這個沒有 monkey_patch
+    有 eventlet hub 時用 `eventlet.sleep`：這個 greenlet 停住，其他請求與
+    websocket 事件照跑。用 `time.sleep` 會停住整個 OS 執行緒——在這個沒有 monkey_patch
     的專案裡，那就是停住**所有**使用者。
 
     沒有 hub 時（pytest）退回 `time.sleep`，語意相同。

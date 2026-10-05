@@ -45,26 +45,6 @@ def test_the_main_page_needs_a_login():
     assert "/login" in response.headers["Location"]
 
 
-def test_dashboard_needs_a_binary_in_this_session(test_client):
-    """/dashboard 一直都有 require_uploaded_binary() 這個前置條件。"""
-    response = test_client.get("/dashboard")
-    assert response.status_code == 302
-    assert "/upload" in response.headers["Location"]
-
-
-def test_load_dashboard(test_client):
-    # 前置條件要自己擺好。以前這個測試會過，是因為 test_load_main_page 順手把
-    # 一支預設 hello world 編出來塞進**全域** app.config["initial_binary_and_args"]
-    # ——而那正是「單純載入一個頁面就配置一個 jail」的來源（pre-auth DoS）。
-    # 頁面渲染不再碰 jail_manager、不再編譯，所以那個跨測試的副作用沒有了。
-    with test_client.session_transaction() as flask_session:
-        flask_session["uploaded_binary"] = "/tmp/not-a-real-binary"
-
-    response = test_client.get("/dashboard")
-    assert response.status_code == 200
-    assert "<!DOCTYPE html>" in response.data.decode()
-
-
 def test_cant_load_bad_url(test_client):
     response = test_client.get("/asdf")
     assert response.status_code == 404
@@ -75,12 +55,17 @@ def test_same_port():
     run_server(testing=True, app=app, socketio=socketio)
 
 
-def test_get_initial_binary_and_args():
-    assert cli.get_initial_binary_and_args([], "./program --args") == [
-        "./program",
-        "--args",
-    ]
-    assert cli.get_initial_binary_and_args(["./program", "--args",], None) == [
-        "./program",
-        "--args",
-    ]
+def test_edit_ignores_a_stale_uploaded_binary_in_an_old_cookie(test_client):
+    """舊 cookie 裡可能還留著伺服器 GDB 時代的 session["uploaded_binary"]。
+    /edit 必須照常渲染，而且不再把那個路徑回音進頁面（initial_binary_and_args 恆為空）。
+
+    用一個**真的存在**的路徑：舊的 /edit 只在檔案不存在時才清掉它，存在就原樣
+    塞進 initial_binary_and_args。"""
+    with test_client.session_transaction() as flask_session:
+        flask_session["uploaded_binary"] = "/bin/sh"
+
+    response = test_client.get("/edit")
+    assert response.status_code == 200
+    body = response.data.decode()
+    assert '"/bin/sh"' not in body
+    assert '"initial_binary_and_args": []' in body

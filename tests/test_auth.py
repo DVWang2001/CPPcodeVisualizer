@@ -7,7 +7,7 @@
   4. 登入錯誤訊息對「帳號不存在」與「密碼錯誤」完全相同
   5. owner_key() 登入後回傳 user id、未登入回 None
   6. 個人檔案頁只列出該使用者的教案
-  8. 未登入的 websocket 連線被拒絕，即使帶著有效的 CSRF token
+  8. 伺服器 GDB 的 websocket namespace（/gdb_listener）已不存在，已登入也連不上
 """
 
 import sqlite3
@@ -437,20 +437,6 @@ def test_owner_key_differs_between_users(flask_app):
     assert a.owner_key != b.owner_key
 
 
-def test_owner_key_is_a_valid_jail_session_key(flask_app):
-    """jail_manager 會把它放進 useradd 的 argv，所以形狀必須通過它的驗證。
-
-    這是兩個模組之間的契約：owner_key() 改成回傳別的形狀（例如 int 的
-    str()、或含連字號的 uuid）時，除錯 session 會在起 GDB 的那一刻才爆掉。
-    """
-    from gdbgui.server.sandbox import jail_manager
-
-    user = register_user(flask_app)
-    assert jail_manager._SESSION_KEY_RE.fullmatch(user.owner_key), user.owner_key
-    # 不會拋 JailError（真的建立 jail 需要 root，那在別的測試檔）
-    assert jail_manager._validate_session_key(user.owner_key) == user.owner_key
-
-
 # ---------------------------------------------------------------------------
 # 6. 個人檔案
 # ---------------------------------------------------------------------------
@@ -535,61 +521,36 @@ def test_a_username_lookup_cannot_be_injected(flask_app):
 
 @pytest.fixture
 def gdbgui_socketio(flask_app):
-    from gdbgui.server.app import manager, socketio
+    """初始化過的 socketio。
+
+    `socketio.server` 要等 run_server()（→ init_app）之後才存在；不在這裡補，
+    這些測試就會依賴「別的測試檔先跑過 run_server」這種執行順序。
+    """
+    from gdbgui.server.app import socketio
     from gdbgui.server.server import run_server
 
     if socketio.server is None:
         run_server(testing=True, app=flask_app, socketio=socketio)
-    try:
-        yield socketio
-    finally:
-        for debug_session in list(manager.debug_session_to_client_ids):
-            manager.remove_debug_session(debug_session)
+    yield socketio
 
 
-def test_an_unauthenticated_websocket_is_refused_even_with_a_valid_csrf_token(
-    flask_app, gdbgui_socketio
-):
-    """HTTP 擋住而 websocket 沒擋等於沒擋——驅動 GDB 的就是這條連線。
+def test_gdb_listener_namespace_no_longer_exists(flask_app, gdbgui_socketio):
+    """伺服器 GDB 後端已移除：/gdb_listener 這個 namespace 不存在了。
 
-    CSRF token 是任何訪客 GET 一次登入頁就拿得到的東西：它證明「這個請求來自
-    這個瀏覽器的 session」，不證明「這個 session 是誰」。所以這條測試刻意帶著
-    一個**有效**的 token，證明擋下來的是身分檢查而不是 CSRF 檢查。
+    刻意用**已登入**、帶有效 CSRF token 的瀏覽器去連：未登入的連線在移除之前
+    就已經被拒絕，用它來測什麼都證明不了。以前這條連線能起 GDB、執行編譯出來
+    的程式；現在就算身分與 token 都對，也必須連不上（不得被別的 namespace 接住）。
     """
-    http = flask_app.test_client()
-    assert http.get("/login").status_code == 200
-    with http.session_transaction() as sess:
-        csrf = sess["csrf_token"]
+    assert "/gdb_listener" not in gdbgui_socketio.server.handlers
 
+    user = register_user(flask_app)
     ws = gdbgui_socketio.test_client(
         flask_app,
         namespace="/gdb_listener",
-        query_string=f"csrf_token={csrf}",
-        flask_test_client=http,
+        query_string=f"csrf_token={user.csrf}",
+        flask_test_client=user.http,
     )
 
     assert not ws.is_connected("/gdb_listener"), (
-        "an anonymous websocket stayed connected -- it can start gdb and run code"
+        "a logged-in websocket connected to /gdb_listener -- the GDB namespace is still served"
     )
-
-
-def test_an_unauthenticated_websocket_starts_no_debug_session(
-    flask_app, gdbgui_socketio
-):
-    from gdbgui.server.app import manager
-
-    before = len(manager.debug_session_to_client_ids)
-
-    http = flask_app.test_client()
-    http.get("/login")
-    with http.session_transaction() as sess:
-        csrf = sess["csrf_token"]
-
-    gdbgui_socketio.test_client(
-        flask_app,
-        namespace="/gdb_listener",
-        query_string=f"csrf_token={csrf}",
-        flask_test_client=http,
-    )
-
-    assert len(manager.debug_session_to_client_ids) == before

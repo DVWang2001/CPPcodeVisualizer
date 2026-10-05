@@ -63,14 +63,14 @@ def current_user_id() -> Optional[int]:
 def owner_key() -> Optional[str]:
     """本次請求的「擁有者身分」—— 授權判斷唯一的身分來源。
 
-    jail 歸屬（jail_manager.acquire）、debug session 擁有權
-    （DebugSession.is_owned_by）與訊號授權全部以它為鍵，所以換掉這裡的來源，
-    那些程式碼一行都不用動就跟著綁到使用者身上。這正是 93e829d 留下的接縫。
+    伺服器 GDB 時代的 jail 歸屬、debug session 擁有權與訊號授權都以它為鍵
+    （那個後端已移除）；現在用到它的是 /edit 的 _session_prefix()。換掉這裡的
+    來源，呼叫端一行都不用動就跟著綁到使用者身上。這正是 93e829d 留下的接縫。
 
     ## 為什麼是 16 位 hex 而不是整數的 user id
 
-    jail_manager 會把這把 key 放進 useradd 的 argv，所以它只接受
-    `[0-9a-f]{8,64}`（jail_manager._SESSION_KEY_RE）。`f"{id:016x}"` 就是那個
+    歷史原因：伺服器 GDB 的沙箱會把這把 key 放進 useradd 的 argv，所以它只接受
+    `[0-9a-f]{8,64}`。`f"{id:016x}"` 就是那個
     user id，只是寫成固定寬度的十六進位——是編碼，不是另一個身分。刻意不做
     雜湊：出事時 `0000000000000007` 能直接對回 users.id = 7，而這把 key 從來
     不是 secret（它只在伺服器端被產生與比對，永遠不從客戶端讀進來）。
