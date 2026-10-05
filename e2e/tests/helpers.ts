@@ -32,12 +32,9 @@ const E2E_PASSWORD = 'e2e-password-1234';
  * spec's own page.goto('/edit') -- the whole site now requires a login, so an
  * anonymous goto('/edit') just redirects to /login and the app never boots.
  *
- * A FRESH account per call, deliberately.  The account is now the unit of
- * isolation: one user gets one jail and one debug session, and a second browser
- * for the same user ATTACHES to the first one's gdb instead of starting its own
- * (that is the documented consequence of keying ownership on the user).  Specs
- * run serially and share a server, so a shared login would let one spec attach
- * to the previous spec's gdb -- still holding the previous spec's binary.
+ * A FRESH account per call, deliberately: specs run serially and share a
+ * server, so a fresh account keeps each spec's server-side state (lessons,
+ * quizzes, profile) separate from the previous spec's.
  * Registration is open, so a unique account costs nothing.
  */
 export async function ensureLoggedIn(page: Page): Promise<void> {

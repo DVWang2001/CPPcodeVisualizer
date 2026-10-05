@@ -25,7 +25,7 @@ const bkptLines = (page: any): Promise<number[]> => page.evaluate(() =>
 /**
  * Regression: breakpoints must survive an F5 reload.
  * Type real code, set breakpoints, run, then reload and confirm they are still
- * there. (gdb's own pending e2e_bp at line 26 is ignored via a subset check.)
+ * there. (Subset check: extra breakpoints in the store are tolerated.)
  */
 test('breakpoints survive F5 after typing + running real code', async ({ page }) => {
     await setupPage(page);
