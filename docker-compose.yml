@@ -7,6 +7,12 @@ services:
       target: runtime
     ports:
       - "5000:5000"
+    # tini 當 PID 1，負責把 SIGTERM 轉給伺服器。別拿掉：kernel 會丟掉送給 PID 1、
+    # 而處理函式是 SIG_DFL 的訊號；cli.py 的 SIGTERM handler 清完 uploads 後會
+    # 改回 SIG_DFL 再對自己重送一次，伺服器若是 PID 1，這次重送就被吃掉、行程不會
+    # 結束，每次 `docker compose stop/down`／重新部署都要等滿 10 秒寬限期再被
+    # SIGKILL（實測 10.56 秒、exit 137；有 init 時立刻結束）。
+    init: true
     volumes:
       # 唯一的持久儲存：使用者資料庫與 Flask 的 SECRET_KEY。
       #
