@@ -1,0 +1,15 @@
+^done
+^done
+^done,bkpt={number="1",type="breakpoint",disp="keep",enabled="y",addr="0x0000000000002325",func="e2e_bp(std::vector<int, std::allocator<int> > const&, std::array<int, 3> const&, std::string const&, std::__cxx11::list<int, std::allocator<int> > const&, std::stack<int, std::deque<int, std::allocator<int> > > const&, std::queue<int, std::deque<int, std::allocator<int> > > const&, std::deque<int, std::allocator<int> > const&, std::set<int, std::less<int>, std::allocator<int> > const&, std::multiset<int, std::less<int>, std::allocator<int> > const&, std::map<int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::less<int>, std::allocator<std::pair<int const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > > const&, std::multimap<int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::less<int>, std::allocator<std::pair<int const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > > const&, std::unordered_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int const, int> > > const&, std::vector<std::vector<int, std::allocator<int> >, std::allocator<std::vector<int, std::allocator<int> > > > const&)",file="e2e_containers.cpp",fullname="/gt/e2e_containers.cpp",line="26",thread-groups=["i1"],times="0",original-location="e2e_bp"}
+^done,name="V",numchild="0",value="std::vector of length 3, capacity 3",type="const std::vector<int, std::allocator<int> > &",thread-id="1",displayhint="array",dynamic="1",has_more="1"
+^done,name="S",numchild="0",value="\"hi\"",type="const std::string &",thread-id="1",displayhint="string",dynamic="1",has_more="0"
+^done,name="A",numchild="1",value="{...}",type="const std::array<int, 3> &",thread-id="1",has_more="0"
+^done,name="D",numchild="0",value="std::set with 3 elements",type="const std::set<int, std::less<int>, std::allocator<int> > &",thread-id="1",dynamic="1",has_more="1"
+^done,numchild="3",displayhint="array",children=[child={name="V.[0]",exp="[0]",numchild="0",value="10",type="int",thread-id="1"},child={name="V.[1]",exp="[1]",numchild="0",value="20",type="int",thread-id="1"},child={name="V.[2]",exp="[2]",numchild="0",value="30",type="int",thread-id="1"}],has_more="0"
+^done,numchild="0",displayhint="string",has_more="0"
+^done,numchild="1",children=[child={name="A.public",exp="public",numchild="1",value="",thread-id="1"}],has_more="0"
+^done,numchild="3",children=[child={name="D.[0]",exp="[0]",numchild="0",value="3",type="int",thread-id="1"},child={name="D.[1]",exp="[1]",numchild="0",value="5",type="int",thread-id="1"},child={name="D.[2]",exp="[2]",numchild="0",value="7",type="int",thread-id="1"}],has_more="0"
+^done,value="\"hi\""
+^done,value="{...}"
+^done,changelist=[]
+^exit

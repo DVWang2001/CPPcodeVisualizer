@@ -382,7 +382,7 @@ test("-var-list-children: nested vectors, numchild after expansion, ranges, valu
   assert.equal(payloadOf(await send(g, "-var-list-children --simple-values \"var1.[1]\"")).children[0].value, "7");
   assert.deepEqual(payloadOf(await send(g, "-var-list-children --all-values var1 1 2")).children.map((c) => c.name), ["var1.[1]"]);
   await send(g, ["3-var-create - * \"s\"", "3-var-create - * \"x\""]);
-  assert.deepEqual(payloadOf(await send(g, "-var-list-children --all-values var2")), { numchild: "0", has_more: "0" });
+  assert.deepEqual(payloadOf(await send(g, "-var-list-children --all-values var2")), { numchild: "0", displayhint: "string", has_more: "0" }); // real GDB 16.3 (real_gdb_refs/e2e_containers.expected.txt, `-var-list-children --all-values S`)
   assert.deepEqual(payloadOf(await send(g, "-var-list-children --all-values var3")), { numchild: "0", has_more: "0" });
   // -var-delete counts the instantiated descendants; -c deletes only children
   assert.deepEqual(payloadOf(await send(g, "-var-delete -c var1")), { ndeleted: "4" }, "var1.[0], var1.[1] and the two listed grandchildren");
@@ -456,12 +456,12 @@ test("vector varobj: growth is reported with new_num_children; the children show
   await send(g, "-exec-run"); // fill line 12: v (reference parameter) is still empty
   const c = payloadOf(await send(g, "3-var-create - * \"v\""));
   assert.equal(c.type, `${V.vec} &`);
-  assert.match(c.value, /^@0x[0-9a-f]+: std::vector of length 0, capacity 0$/);
+  assert.equal(c.value, "std::vector of length 0, capacity 0"); // real GDB 16.3 (tests/engine/localgdb/real_gdb_refs): no @addr prefix on a reference varobj
   assert.equal(payloadOf(await send(g, "-var-list-children --all-values var1")).numchild, "0");
   await send(g, "-exec-next"); // fill's `}` line: 3 elements
   const upd = payloadOf(await send(g, "1-var-update --all-values *")).changelist;
   assert.equal(upd.length, 1);
-  assert.match(upd[0].value, /^@0x[0-9a-f]+: std::vector of length 3, capacity 4$/);
+  assert.equal(upd[0].value, "std::vector of length 3, capacity 4");
   assert.deepEqual([upd[0].name, upd[0].in_scope, upd[0].displayhint, upd[0].dynamic, upd[0].new_num_children], ["var1", "true", "array", "1", "3"]);
   const kids = payloadOf(await send(g, "-var-list-children --all-values var1")).children.map((c) => c.value);
   assert.deepEqual(kids, ["0", "1", "4"]);

@@ -331,13 +331,11 @@ export class VarObjs {
     if (cls.kind === "ptr" && cls.to && cls.to.kind === "class") return "0x" + this._model.varAddr(vo.frameId ?? 0, vo.varName).toString(16);
     const ecls = cls.kind === "ref" ? cls.to : cls;
     const raw = this._raw(vo);
-    const s = valueOf(ecls, raw, ecls.kind === "vector" ? this._capacityOf(vo) : undefined);
-    // A class reference's var-create value is the class's own "{...}", not the usual `@addr: value`
-    // scalar-reference wrap (ground truth: a `const Acc&` parameter's var-create value is exactly
-    // "{...}" with no address at all — only -data-evaluate-expression on one shows a bare address;
-    // see evaluate()).
-    if (cls.kind === "ref" && ecls.kind !== "class") return `@0x${this._model.varAddr(vo.frameId ?? 0, vo.varName).toString(16)}: ${s}`;
-    return s;
+    // A reference varobj shows the referent's value, NEVER an `@0xADDR: ` prefix — for printer types (vector, string,
+    // set), classes (`{...}`) and scalars alike. Ground truth: real GDB 16.3 differential run, committed in
+    // tests/engine/localgdb/real_gdb_refs/ (`-var-create v * cs` -> "\"hi\"", `ci` -> "7", `const Acc&` -> "{...}").
+    // Only -stack-list-variables/-arguments and -data-evaluate-expression carry the prefix (see evaluate()).
+    return valueOf(ecls, raw, ecls.kind === "vector" ? this._capacityOf(vo) : undefined);
   }
 
   /** In scope = the varobj's frame is on the stack and its pc is inside the block the varobj was created in (GDB: contained_in(get_selected_block, valid_block)). @param {VarObj} vo @returns {boolean} */
@@ -479,6 +477,7 @@ export class VarObjs {
       });
       return resultItem({ numchild: String(pairs.length * 2), displayhint: "map", children, has_more: "0" }, token);
     }
+    if (ecls.kind === "string") return resultItem({ numchild: "0", displayhint: "string", has_more: "0" }, token); // real GDB 16.3: string printer, no children
     if (ecls.kind !== "vector" && ecls.kind !== "array" && !FLAT_CONTAINER_KINDS.has(ecls.kind)) return resultItem({ numchild: "0", has_more: "0" }, token);
     const isArr = ecls.kind === "array";
     const raw = this._raw(vo);
@@ -731,9 +730,9 @@ export class VarObjs {
     /** @type {any} */ (fake).root = fake;
     // `print`-style value (children included: `{1, 2, 3}`, `std::vector of length 3, capacity 4 = {0, 1, 4}`)
     const cap = r.cls.kind === "vector" || (r.cls.kind === "ref" && r.cls.to.kind === "vector") ? this._capacityOf(/** @type {any} */ (fake)) : undefined;
-    // A class reference evaluates to a BARE address, no `: {...}` suffix (ground truth: unlike a
-    // scalar reference's `@addr: value`, evaluating a `const Acc&` parameter here gives only
-    // `@0xADDR` — the field values are reachable through -var-create/-var-list-children instead).
+    // -data-evaluate-expression (NOT a varobj command; no real-GDB reference output committed for it): a class
+    // reference evaluates to a BARE address, no `: {...}` suffix, a scalar reference to `@addr: value`. The varobj
+    // commands (-var-create/-var-evaluate-expression/...) never prefix — see _value() and tests/engine/localgdb/real_gdb_refs/.
     if (r.cls.kind === "ref" && r.cls.to.kind === "class") {
       return resultItem({ value: `@0x${this._model.varAddr(r.frameId ?? 0, e).toString(16)}` }, token);
     }

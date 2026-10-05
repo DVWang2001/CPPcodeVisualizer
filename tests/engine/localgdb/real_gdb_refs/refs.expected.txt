@@ -1,0 +1,23 @@
+^done
+^done
+^done,bkpt={number="1",type="breakpoint",disp="keep",enabled="y",addr="0x00000000000012a5",func="f(std::vector<int, std::allocator<int> >&, std::vector<int, std::allocator<int> > const&, std::string&, std::string const&, std::array<int, 3>&, std::set<int, std::less<int>, std::allocator<int> >&, int&, int const&)",file="r.cpp",fullname="/gt/r.cpp",line="7",thread-groups=["i1"],times="0",original-location="f"}
+^done,name="v1",numchild="0",value="std::vector of length 3, capacity 3",type="std::vector<int, std::allocator<int> > &",thread-id="1",displayhint="array",dynamic="1",has_more="1"
+^done,name="v2",numchild="0",value="std::vector of length 3, capacity 3",type="const std::vector<int, std::allocator<int> > &",thread-id="1",displayhint="array",dynamic="1",has_more="1"
+^done,name="v3",numchild="0",value="\"hi\"",type="std::string &",thread-id="1",displayhint="string",dynamic="1",has_more="0"
+^done,name="v4",numchild="0",value="\"hi\"",type="const std::string &",thread-id="1",displayhint="string",dynamic="1",has_more="0"
+^done,name="v5",numchild="1",value="{...}",type="std::array<int, 3> &",thread-id="1",has_more="0"
+^done,name="v6",numchild="0",value="std::set with 2 elements",type="std::set<int, std::less<int>, std::allocator<int> > &",thread-id="1",dynamic="1",has_more="1"
+^done,name="v7",numchild="0",value="7",type="int &",thread-id="1",has_more="0"
+^done,name="v8",numchild="0",value="7",type="const int &",thread-id="1",has_more="0"
+^done,value="\"hi\""
+^done,value="\"hi\""
+^done,value="7"
+^done,stack-args=[frame={level="0",args=[{name="nv",value="std::vector of length 3, capacity 3 = {1, 2, 3}"},{name="cv",value="std::vector of length 3, capacity 3 = {1, 2, 3}"},{name="ns",value="\"hi\""},{name="cs",value="\"hi\""},{name="na",value="@0x7ffeab233c94: {_M_elems = {1, 2, 3}}"},{name="nset",value="std::set with 2 elements = {[0] = 3, [1] = 5}"},{name="ni",value="@0x7ffeab233c5c: 7"},{name="ci",value="@0x7ffeab233c5c: 7"}]}]
+^done
+^done,name="v9",numchild="0",value="\"hi\"",type="std::string",thread-id="1",displayhint="string",dynamic="1",has_more="0"
+^done,name="v10",numchild="0",value="std::vector of length 3, capacity 3",type="std::vector<int, std::allocator<int> >",thread-id="1",displayhint="array",dynamic="1",has_more="1"
+^done,name="v11",numchild="1",value="{...}",type="std::array<int, 3>",thread-id="1",has_more="0"
+^done,numchild="1",children=[child={name="v11.public",exp="public",numchild="1",value="",thread-id="1"}],has_more="0"
+^done,numchild="1",children=[child={name="v11.public._M_elems",exp="_M_elems",numchild="3",value="[3]",type="std::__array_traits<int, 3>::_Type",thread-id="1"}],has_more="0"
+^done,numchild="3",children=[child={name="v11.public._M_elems.0",exp="0",numchild="0",value="1",type="int",thread-id="1"},child={name="v11.public._M_elems.1",exp="1",numchild="0",value="2",type="int",thread-id="1"},child={name="v11.public._M_elems.2",exp="2",numchild="0",value="3",type="int",thread-id="1"}],has_more="0"
+^exit

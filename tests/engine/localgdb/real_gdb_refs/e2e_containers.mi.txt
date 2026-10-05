@@ -1,0 +1,16 @@
+-gdb-set pagination off
+-enable-pretty-printing
+-break-insert e2e_bp
+-exec-run
+-var-create V * v
+-var-create S * s
+-var-create A * a
+-var-create D * se
+-var-list-children --all-values V
+-var-list-children --all-values S
+-var-list-children --all-values A
+-var-list-children --all-values D
+-var-evaluate-expression S
+-var-evaluate-expression A
+-var-update --all-values *
+-gdb-exit

@@ -1,0 +1,24 @@
+-gdb-set pagination off
+-enable-pretty-printing
+-break-insert f
+-exec-run
+-var-create v1 * nv
+-var-create v2 * cv
+-var-create v3 * ns
+-var-create v4 * cs
+-var-create v5 * na
+-var-create v6 * nset
+-var-create v7 * ni
+-var-create v8 * ci
+-var-evaluate-expression v3
+-var-evaluate-expression v4
+-var-evaluate-expression v7
+-stack-list-arguments 1 0 0
+-stack-select-frame 1
+-var-create v9 * s
+-var-create v10 * v
+-var-create v11 * a
+-var-list-children --all-values v11
+-var-list-children --all-values v11.public
+-var-list-children --all-values v11.public._M_elems
+-gdb-exit
