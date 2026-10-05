@@ -3,7 +3,6 @@ import pytest  # type: ignore
 
 from gdbgui.server.server import run_server
 from gdbgui.server.app import app, socketio
-from gdbgui import cli
 
 run_server(testing=True, app=app, socketio=socketio)
 

@@ -163,7 +163,7 @@ def test_an_oversized_body_is_refused_before_it_is_parsed(flask_app, monkeypatch
     """全域 MAX_CONTENT_LENGTH：超過上限的 body 回 413，不會被讀進記憶體。
 
     這條防線刻意是全域的（app.py），不是這條路由自己的——explain_error、
-    generate_lesson、/upload 都靠它。這裡調小上限來測，而不是真的送 16 MB。
+    generate_lesson、/api/lessons 都靠它。這裡調小上限來測，而不是真的送 16 MB。
     """
     user = register_user(flask_app, display_name="api_l")
     lid = _lesson(user.user_id)

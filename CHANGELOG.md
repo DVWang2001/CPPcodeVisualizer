@@ -5,7 +5,7 @@
 - The Flask server remains for login, the lesson library (`/api/lessons*`), live quiz (`/lesson_quiz`), the AI lesson generation proxy and TTS.
 - Removed routes: `/upload`, `/create_and_upload`, `/read_file`, `/get_last_modified_unix_sec`, `/kill_session`, `/send_signal`, `/dashboard`, `/dashboard_data`, `/api/prerun_calltree` and the `/gdb_listener` socket namespace.
 - Removed CLI options `--gdb-cmd`, the positional binary and `--args`.
-- Removed the per-session sandbox (jail accounts, seccomp, tmpfs scratch, pids limit) and the ghost pre-run call tree (prerun).
+- Removed the per-session sandbox (jail accounts, seccomp, tmpfs scratch, pids limit) and the server-side prerun (`/api/prerun_calltree`). The client-side ghost call tree remains and is now computed in the browser by the wasm engine.
 - Docker: the image is now used to build the frontend (webpack + wasm engine assets), deploy (`docker-compose.yml`, target `runtime`) and run e2e/pytest (`docker-compose.test.yml`, target `test` = runtime + g++). The production image no longer contains gdb or g++. `init: true`, `no-new-privileges`, `GDBGUI_REQUIRE_ISOLATION=1` and the `gdbgui-data` volume are kept.
 - Known wasm-engine gaps found during this work: `std::array` function parameters are not resolved at a breakpoint; `std::string` shows as its raw memory representation; BST mode renders no tree in e2e (root cause not investigated).
 - Many e2e specs are failing; they were already stale before this change (since the wasm-default commit) and are not fixed here.

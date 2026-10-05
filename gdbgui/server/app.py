@@ -123,11 +123,11 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("GDBGUI_SECURE_COOKIES") ==
 # 反向代理替我們擋 body，而註冊是開放的——攻擊者資格免費。
 #
 # 刻意訂在**全域**而不是逐路由補：同樣的洞現在至少還在 http_routes 的
-# explain_error、generate_lesson 與 /upload 的 request.files 三處，只補一條會讓
+# explain_error、generate_lesson 與 lessons 的 request.get_json() 幾處，只補一條會讓
 # 下一個人以為這件事已經想過了。之後新增、作者沒想過這件事的路由也自動受保護。
 #
-# 16 MB 是「擋得住 OOM」與「不弄壞 /upload」之間的取捨：/upload 收的是編譯後的
-# 執行檔，帶除錯符號的 C++ binary 輕易好幾 MB，上限訂太低會讓正常使用失敗。
+# 16 MB 是「擋得住 OOM」的上限，同時涵蓋 /api/generate_lesson、/api/lessons 與
+# /api/explain_error 的請求 body（原本為 /upload 收編譯後執行檔而訂，該路由已移除）。
 #
 # http_routes._lesson_payload() 既有的 512 KB 檢查**保留不動**：它比較嚴，繼續
 # 當教案路由自己的上限。這一條是所有路由的地板，不是誰的替代品。

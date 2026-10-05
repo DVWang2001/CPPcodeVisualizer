@@ -199,6 +199,9 @@ export NODE_OPTIONS="--openssl-legacy-provider"   # Node 20 + Webpack 4
 npm install
 npm run build
 
+# Build the in-browser wasm engine assets (git-ignored, required: there is no server-GDB fallback)
+(cd gdbgui/static/engine && npm ci && npm run build-assets)
+
 # Start the server
 python -m gdbgui
 ```

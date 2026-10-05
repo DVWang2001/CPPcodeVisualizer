@@ -98,8 +98,8 @@ Python Flask 伺服器（gdbgui/server/）：登入、教案庫、即時測驗�
 
 ### 系統需求
 
-- **作業系統**：Linux（建議）、macOS、Windows（需 MinGW 或 Cygwin）
-- **Python**：3.7 以上
+- **作業系統**：Linux（建議）、macOS；Windows 無法原生執行伺服器（`setup.py` 會拒絕安裝），請用 Docker 或 WSL
+- **Python**：3.13 以上（見 `setup.py` 的 `python_requires`）
 - **Node.js**：16 以上（僅開發時需要）
 - 不需要安裝 GDB 或編譯器：C++ 由瀏覽器內的 wasm 引擎編譯執行（正式機映像也不含 gdb、g++；只有測試用的 `test` 目標含 g++）
 
@@ -117,7 +117,7 @@ brew install python3
 
 ### Windows 安裝依賴
 
-安裝 Python 3 即可，不再需要 MinGW／gdb／g++。
+不再需要 MinGW／gdb／g++，但伺服器仍無法在原生 Windows 上執行（`setup.py` 會拒絕安裝），請使用 Docker（`docker compose up`）或 WSL。
 
 ### 安裝 Python 依賴
 
@@ -565,15 +565,19 @@ open:container maze sidebar:55 maze:main::maze
 
 | HTTP 方法 | 路由 | 說明 |
 |-----------|------|------|
-| `GET` | `/` | 主要除錯介面 |
+| `GET` | `/` | 主頁：教案庫瀏覽（可搜尋、依標籤篩選） |
+| `GET` | `/edit` | 除錯器（編輯與執行頁面） |
 | `GET/POST` | `/login`、`/register`、`/logout` | 帳號登入／註冊／登出 |
+| `GET` | `/u/<username>` | 使用者個人頁 |
 | `GET/POST/PUT/DELETE` | `/api/lessons*` | 教案資料庫（建立、更新、版本、標籤、刪除） |
-| `GET` | `/lessons` | 教案庫頁面 |
+| `GET` | `/lessons` | 教案庫頁面（舊路徑） |
 | `POST` | `/api/generate_lesson` | AI 教案生成代理 |
+| `POST` | `/api/explain_error` | AI 編譯錯誤解釋 |
+| `GET` | `/docs/authoring-guide` | 教案撰寫指南（原始 markdown） |
 | `GET` | `/tts_audio` | 文字轉語音 |
 | （多個） | `/lesson_quiz` 相關路由 | 即時測驗 |
 
-> 已移除：`/upload`、`/create_and_upload`、`/read_file`、`/get_last_modified_unix_sec`、`/kill_session`、`/send_signal_to_pid`、`/dashboard`、`/dashboard_data`、`/api/prerun_calltree` 與 `/gdb_listener` socket 命名空間。
+> 已移除：`/upload`、`/create_and_upload`、`/read_file`、`/get_last_modified_unix_sec`、`/kill_session`、`/send_signal`、`/dashboard`、`/dashboard_data`、`/api/prerun_calltree` 與 `/gdb_listener` socket 命名空間。
 
 ---
 
@@ -675,7 +679,7 @@ window.gdbgui_global_variable.__call_graph_custom_labels = {
 
 ### Q4：Windows 上無法啟動
 
-**A**：伺服器端 GDB 已移除，Windows 只要有 Python 3 即可啟動伺服器，不再需要 WSL 或 MinGW。
+**A**：`setup.py` 不支援原生 Windows。請使用 Docker（`docker compose up`）或 WSL；伺服器端 GDB 已移除，所以不再需要 MinGW。
 
 ### Q5：Call Graph 出現後圖形大小異常（圖太小或空白）
 

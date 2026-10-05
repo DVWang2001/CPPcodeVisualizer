@@ -19,6 +19,8 @@ images
 docs
 dist
 gdbgui/static/js/main.js
+# 已刪除的 dashboard 頁面遺留在本機的建置產物，Stage 1 會重建 js/，不該從 context 帶進去
+gdbgui/static/js/dashboard.js*
 __pycache__
 *.pyc
 *.pyo
