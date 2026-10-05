@@ -271,7 +271,7 @@ export class VarObjs {
     const s = model.steps[si];
     if (own(s.vars, vo.varName)) return s.vars[vo.varName];
     const k = vo.ti.cls.kind;
-    return k === "vector" || k === "map" || FLAT_CONTAINER_KINDS.has(k) ? [] : k === "string" ? "" : k === "class" ? {} : 0;
+    return k === "vector" || k === "map" || k === "stdarray" || FLAT_CONTAINER_KINDS.has(k) ? [] : k === "string" ? "" : k === "class" ? {} : 0;
   }
 
   /** @param {VarObj} vo */
@@ -287,6 +287,7 @@ export class VarObjs {
     if (vo.kind === "access") return this._raw(/** @type {VarObj} */ (vo.parent));
     if (vo.kind === "classfield") {
       const pr = this._raw(/** @type {VarObj} */ (vo.parent));
+      if (Array.isArray(pr) && vo.fieldName === "_M_elems") return pr; // std::array: the flat trace list IS _M_elems
       return pr && typeof pr === "object" ? pr[/** @type {string} */ (vo.fieldName)] : undefined;
     }
     if (!vo.parent) return this._rawRoot(vo);
@@ -369,6 +370,7 @@ export class VarObjs {
     // (pretty-printed) ones: children listed so far.
     const nc = vo.kind === "ptr" || vo.kind === "basechild" ? "1"
       : ecls.kind === "array" ? String(ecls.n)
+      : ecls.kind === "stdarray" ? "1"
       : ecls.kind === "class" ? String(new Set(ecls.fields.map((/** @type {any} */ f) => f.access)).size)
       : String(vo.children ? vo.children.length : 0);
     const p = { name: vo.name, numchild: nc, value: this._value(vo), type: vo.ti.gdbType };
@@ -451,7 +453,7 @@ export class VarObjs {
       });
       return resultItem({ numchild: String(/** @type {any} */ (vo.ti.cls).fields.length), children, has_more: "0" }, token);
     }
-    if (ecls.kind === "class") {
+    if (ecls.kind === "class" || ecls.kind === "stdarray") {
       const kids = this._ensureAccessChildren(vo);
       const children = kids.map((c) => {
         const d = this._describe(c, false);

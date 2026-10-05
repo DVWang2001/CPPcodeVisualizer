@@ -55,6 +55,11 @@ export function parseType(q) {
       let name = "";
       let args = [];
       if (toks[i] === "::") i++;
+      if (/^\d+$/.test(toks[i])) { // non-type template argument (`std::array<int, 3>`): kept as a leaf node named by its digits
+        name = toks[i++];
+        takeQuals();
+        return { k: "n", name, args, c };
+      }
       for (;;) {
         if (i >= toks.length || !/^[A-Za-z_]/.test(toks[i])) throw new Error("cannot parse type: " + q);
         name += toks[i++];
@@ -186,7 +191,7 @@ const CHAR_NAMES = new Set(["char", "signed char", "unsigned char"]);
 const FLOAT_NAMES = new Set(["float", "double", "long double"]);
 
 /**
- * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "deque" | "list" | "stack" | "queue" | "pqueue" | "set" | "map" | "pair" | "ptr" | "array" | "ref" | "class" | "other", node: TypeNode,
+ * @typedef {{ kind: "int" | "bool" | "char" | "float" | "string" | "vector" | "vectorbool" | "deque" | "list" | "stack" | "queue" | "pqueue" | "set" | "map" | "pair" | "ptr" | "array" | "stdarray" | "ref" | "class" | "other", node: TypeNode,
  *   unsigned?: boolean, single?: boolean, elem?: TypeNode, keyNode?: TypeNode, valNode?: TypeNode, firstNode?: TypeNode, secondNode?: TypeNode, to?: Cls, n?: number,
  *   className?: string, fields?: Array<{ name: string, access: string, cls: Cls, gdbType: string }> }} Cls
  */
@@ -239,6 +244,15 @@ export function classify(t) {
   if (name === "std::pair" && t.args.length >= 2) {
     return { kind: "pair", node: t, firstNode: t.args[0], secondNode: t.args[1] };
   }
+  // std::array<T, N>: real GDB 16.3 has NO pretty-printer for it (tests/engine/localgdb/real_gdb_refs/): a plain
+  // struct varobj whose only member is the public C array `_M_elems` of GDB type `std::__array_traits<T, N>::_Type`.
+  // Modelled as a class-like aggregate (`fields`) so varobj.js's public -> field -> element chain is reused.
+  // vg.h serialises it through has_iter, i.e. the raw trace value is the flat element list.
+  if (name === "std::array" && t.args.length === 2 && /^\d+$/.test(t.args[1].name)) {
+    const n = Number(t.args[1].name);
+    const arr = { kind: "array", node: { k: "a", of: t.args[0], dim: String(n) }, elem: t.args[0], n };
+    return { kind: "stdarray", node: t, elem: t.args[0], n, fields: [{ name: "_M_elems", access: "public", cls: arr, gdbType: `std::__array_traits<${gdbType(t.args[0], true)}, ${n}>::_Type` }] };
+  }
   return { kind: "other", node: t };
 }
 
@@ -265,7 +279,7 @@ export function isSupported(c) {
       return isSupported(classify(/** @type {TypeNode} */ (c.elem)));
     case "map": return isSupported(classify(/** @type {TypeNode} */ (c.keyNode))) && isSupported(classify(/** @type {TypeNode} */ (c.valNode)));
     case "pair": return isSupported(classify(/** @type {TypeNode} */ (c.firstNode))) && isSupported(classify(/** @type {TypeNode} */ (c.secondNode)));
-    case "array": return /** @type {any} */ (c).n >= 0 && isSupported(classify(/** @type {TypeNode} */ (c.elem)));
+    case "stdarray": case "array": return /** @type {any} */ (c).n >= 0 && isSupported(classify(/** @type {TypeNode} */ (c.elem)));
     // A user class (TraceModel.typeInfo upgrades "other" to this when the name matches a registered
     // class; classify() itself never produces it, since a class's field/access shape is per-program
     // data, not a fact derivable from a type string alone). Supported iff every field's own type is.
@@ -429,6 +443,7 @@ export function printValue(cls, raw, capacity) {
     }
     return `{${out.join(", ")}${i < a.length ? "..." : ""}}`;
   }
+  if (cls.kind === "stdarray") return `{_M_elems = ${printValue(/** @type {any} */ (cls).fields[0].cls, raw)}}`; // real GDB: no printer, plain struct
   if (cls.kind === "vector") {
     const a = Array.isArray(raw) ? raw : [];
     const head = `std::vector of length ${a.length}, capacity ${capacity === undefined ? a.length : capacity}`;
