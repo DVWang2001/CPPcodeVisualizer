@@ -16,33 +16,15 @@ RUN NODE_ENV=production node --openssl-legacy-provider node_modules/.bin/webpack
 RUN cd gdbgui/static/engine && npm ci --no-audit && npm run build-assets
 
 # ── Stage 2: Python runtime ────────────────────────────────────────────────
-FROM python:3.13-slim
+FROM python:3.13-slim AS runtime-base
 
-# util-linux -> setpriv/unshare ; passwd -> useradd/userdel ; procps -> pkill.
-# These are the per-session execution isolation primitives (sandbox/jail_manager.py).
+# The only system packages the server still shells out to: /tts_audio decodes the gTTS MP3
+# with `mpg123` and re-encodes it with `oggenc` (from vorbis-tools); if either is missing it
+# silently falls back to MP3. C++ is compiled and debugged in the browser (wasm engine), so
+# there is no compiler, gdb or per-session sandbox tooling in this image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential g++ gdb mpg123 vorbis-tools \
-    util-linux passwd procps \
+    mpg123 vorbis-tools \
     && rm -rf /var/lib/apt/lists/*
-
-# Load libstdc++ Python pretty-printers.
-# python:3.13-slim installs stdlib at /usr/local/lib/python3.13 but GDB's embedded
-# Python looks at /usr/lib/python3.13 — fix the path before importing.
-#
-# This MUST live at the system gdbinit path, not /root/.gdbinit: GDB now runs as a
-# per-session unprivileged account with HOME pointed at that session's scratch dir,
-# so ~/.gdbinit would never be read and every STL pretty-printer would silently
-# disappear (measured: "$1 = {<std::_Vector_base…" instead of "std::vector of length 3").
-# /etc/gdb/gdbinit is read regardless of HOME and is world-readable.
-RUN mkdir -p /etc/gdb && \
-    printf 'set auto-load safe-path /\nset breakpoint pending on\npython\nimport sys\nfor p in ["/usr/local/lib/python3.13","/usr/local/lib/python3.13/lib-dynload","/usr/share/gcc/python"]:\n    if p not in sys.path: sys.path.insert(0, p)\nfrom libstdcxx.v6.printers import register_libstdcxx_printers\nregister_libstdcxx_printers(None)\nend\n' > /etc/gdb/gdbinit && \
-    chmod 0644 /etc/gdb/gdbinit && \
-    cp /etc/gdb/gdbinit /root/.gdbinit
-
-# Container-local scratch root. Deliberately NOT a mounted volume: user-namespace
-# uid mapping makes file ownership inconsistent inside vs outside the namespace.
-# Nothing durable may live here — it is wiped per session and at startup.
-RUN mkdir -p /srv/gdbgui-scratch && chmod 0755 /srv/gdbgui-scratch
 
 WORKDIR /app
 
@@ -63,3 +45,16 @@ RUN python scripts/source_stamp.py > /app/.build-stamp && cat /app/.build-stamp
 
 EXPOSE 5000
 CMD ["python", "-m", "gdbgui", "--host=0.0.0.0", "--port=5000"]
+
+# ── Stage 3 (tests only): runtime + g++ ───────────────────────────────────
+# tests/test_dp_course_lessons.py compiles each DP lesson's .cpp with g++ and checks the
+# printed answer. That is lesson-content checking, not something the server does, so the
+# compiler lives only in this target (docker-compose.test.yml builds `target: test`).
+FROM runtime-base AS test
+RUN apt-get update && apt-get install -y --no-install-recommends g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Final stage = production image (no compiler) ───────────────────────────
+# Must stay LAST: a plain `docker build` / `docker compose build` without a target builds
+# the last stage. docker-compose.yml also names it explicitly (`target: runtime`).
+FROM runtime-base AS runtime

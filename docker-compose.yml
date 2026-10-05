@@ -3,67 +3,40 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.gdbgui
+      # 正式映像：沒有編譯器。Dockerfile 裡的 `test` stage（多一個 g++）只給測試用。
+      target: runtime
     ports:
       - "5000:5000"
-    # tini 當 PID 1 負責回收孤兒行程。使用者程式是 GDB 的子行程，GDB 被殺掉後它
-    # 會被 reparent 給 PID 1；若 PID 1 是不會 waitpid 的 Python 伺服器，每個結束的
-    # session 都會留下 <defunct>，永久佔用 PID（配上 pids_limit 就是可用性問題）。
-    init: true
-    # 刻意沒有 uploads volume。使用者的原始碼與 binary 現在放在容器內的
-    # /srv/gdbgui-scratch，每個 session 一個 0700 目錄。不掛共用 volume 的原因：
-    # user namespace 的 uid 對映會讓 namespace 內外的檔案所有權不一致。持久資料
-    # 屬於資料庫（子專案 A），scratch 裡不該有任何需要保留的東西。
-    tmpfs:
-      # exec 是必要的：使用者編譯出來的程式就在這裡執行，Docker tmpfs 預設 noexec。
-      # size 直接吃 RAM（tmpfs 沒有後備儲存），而且算進下面的 mem_limit。正式機
-      # 只有 1.9G，512m 等於先把四分之一的記憶體讓給暫存檔。
-      - /srv/gdbgui-scratch:exec,mode=0755,size=256m
     volumes:
       # 唯一的持久儲存：使用者資料庫與 Flask 的 SECRET_KEY。
       #
       # SECRET_KEY 必須活過重啟——它以前每次啟動重新產生，有了登入之後那代表
       # 每次部署都把所有人登出。而這個目錄裡同時有密碼雜湊，所以伺服器啟動時會
-      # 把它收成 0700（db.ensure_data_dir）：同一個容器裡跑著不可信的
-      # per-session 帳號，那些帳號連 traverse 這個目錄都不行。
+      # 把它收成 0700（db.ensure_data_dir）。刻意**不是** bind mount。
       #
-      # 刻意**不是** bind mount，也刻意不放在 /srv/gdbgui-scratch 底下（那裡是
-      # tmpfs，而且每個 session 帳號在裡面都有自己的目錄）。
+      # volume 名稱、掛載路徑與內容在移除伺服器 GDB 時刻意一律不動：回滾到
+      # 舊版映像不需要任何資料遷移。
       - gdbgui-data:/var/lib/gdbgui
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
-      # 隔離建立不起來就拒絕啟動／拒絕編譯，絕不默默降級成「所有人共用 root」。
+      # 名稱是沙箱時代留下的，但仍有作用：db.py 看到它等於 1 時，資料目錄或
+      # SECRET_KEY 的權限收不緊就**拒絕啟動**（沒設只會印警告）。別刪。
       - GDBGUI_REQUIRE_ISOLATION=1
-      # 全域併發上限（架構 ⑤）：200 個帳號的尖峰若無上限，一堂課就能耗盡主機資源。
-      # 這個值綁定下面的 cpus——正式機目前只有 1 core，每個 session 都是一個真的
-      # GDB 行程在單步，開太多不是變慢而是全班一起卡死。主機升規格時兩個值一起調。
-      - GDBGUI_MAX_SESSIONS=4
-      - GDBGUI_SESSION_IDLE_SECONDS=3600
       # 必須是學生手機可直接連線的網址；localhost 只會指向學生自己的手機。
       - MOBILE_JOIN_BASE_URL=${MOBILE_JOIN_BASE_URL:?Set MOBILE_JOIN_BASE_URL to a phone-reachable URL such as http://192.168.1.20:5000}
       # AI 功能（explain_error / generate_lesson）的伺服器端金鑰：從宿主機環境變數帶入
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
       - LESSON_AI_API_KEY=${LESSON_AI_API_KEY:-}
     security_opt:
+      # 容器內任何行程都不能透過 setuid/檔案 capability 取得更多權限。
+      # seccomp 用 Docker 預設 profile（原本的自訂 profile 只是為了沙箱的
+      # unshare 而放寬，沙箱移除後就沒有理由比預設更寬）。
       - no-new-privileges:true
-      # Docker 預設 seccomp profile + 唯一一條放寬規則（unshare 的 CLONE_NEWUSER /
-      # CLONE_NEWNET）。**不是** seccomp:unconfined，也不是手寫 allowlist。
-      # 完整說明與 upstream 出處見 seccomp/gdbgui.json 檔頭的 _comment。
-      - seccomp=./seccomp/gdbgui.json
-    # 沒有 cap_add：Docker 預設 capability set 就夠。
-    #   * seccomp:unconfined 與 cap_add: SYS_PTRACE 已移除——實測 GDB 在預設
-    #     seccomp profile 下、不加 SYS_PTRACE 仍可正常下中斷點/單步/繼續。
-    #   * unshare --user --net 同樣不需要任何額外 capability（進了 user
-    #     namespace 之後在該 namespace 內就有 CAP_SYS_ADMIN）。
-    # 也刻意沒有 cap_drop: ALL —— setpriv 降權需要預設集合裡的 CAP_SETUID/
-    # CAP_SETGID，useradd/chown 需要 CAP_CHOWN，清理殘留行程需要 CAP_KILL。
-    # 資源上限（架構 ⑤）。單一 session 的 CPU/記憶體/檔案上限另由
-    # sandbox/wrapper.sh 的 ulimit 負責。
     # 正式機實體記憶體 1.9G。上限設得比實體還大等於沒設——真正動手的會是主機的
     # OOM killer，它挑的是「最肥的行程」而不是「越界的容器」，很可能連 sshd 一起
-    # 帶走。留約 700M 給主機與 docker daemon。含上面那 256m tmpfs 在內。
+    # 帶走。留約 700M 給主機與 docker daemon。
     mem_limit: 1200m
-    pids_limit: 512
     # 不能超過主機實際核心數，否則 daemon 直接拒絕建立容器（"range of CPUs is from
     # 0.01 to 1.00"）。正式機目前是 1 core，所以這裡就是 1.0——這個值是實際硬體的
     # 描述，不是願望；換機器才改，別為了單一台機器加沒版控的 override 檔。

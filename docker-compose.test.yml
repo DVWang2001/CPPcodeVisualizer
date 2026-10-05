@@ -3,13 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.gdbgui
-    command:
-      - bash
-      - -c
-      - |
-        g++ -g /app/examples/cpp/e2e_containers.cpp -o /tmp/e2e_test &&
-        echo 'b e2e_bp' > /tmp/gdb_init.txt &&
-        python -m gdbgui --host=0.0.0.0 --port=5000 --no-browser --gdb-cmd='gdb -x /tmp/gdb_init.txt' /tmp/e2e_test
+      # 正式映像 + g++：tests/test_dp_course_lessons.py 要編譯教案原始碼核對答案。
+      # 伺服器本身不呼叫編譯器；除了 g++ 之外與正式映像（target: runtime）相同。
+      target: test
+    command: ["python", "-m", "gdbgui", "--host=0.0.0.0", "--port=5000", "--no-browser"]
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/')\""]
       interval: 5s
@@ -20,7 +17,6 @@ services:
       - MOBILE_JOIN_BASE_URL=http://app:5000
     security_opt:
       - no-new-privileges:true
-      - seccomp=./seccomp/gdbgui.json
     networks:
       - test-net
 
