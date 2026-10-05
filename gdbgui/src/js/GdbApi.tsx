@@ -232,14 +232,11 @@ const GdbApi = {
             The connection to the gdb session has been closed. This tab will no longer
             function as expected.
           </p>
-          <p className="font-bold">
-            To start a new session or connect to a different session, go to the{" "}
-            <a href="/dashboard">dashboard</a>.
-          </p>
+          <p className="font-bold">Reload the page to start a new session.</p>
         </>
       );
       Actions.add_console_entries(
-        `The connection to the gdb session has been closed. To start a new session, go to ${window.location.origin}/dashboard`,
+        "The connection to the gdb session has been closed. Reload the page to start a new session.",
         constants.console_entry_type.STD_ERR
       );
 

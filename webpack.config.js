@@ -4,7 +4,6 @@ const ForkTsCheckerWebpackPlugin = require("fork-ts-checker-webpack-plugin");
 module.exports = {
   entry: {
     main: "./gdbgui/src/js/gdbgui.tsx",
-    dashboard: "./gdbgui/src/js/dashboard.tsx",
     studentQuiz: "./gdbgui/src/js/studentQuiz.tsx"
   },
   devtool: "source-map",

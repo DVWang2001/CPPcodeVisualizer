@@ -93,11 +93,6 @@ const menu = (
       </a>
       <ul className="dropdown-menu">
         <li>
-          <a title="管理面板" className="pointer" href="/dashboard">
-            管理面板
-          </a>
-        </li>
-        <li>
           <a onClick={show_session_info} className="pointer">
             工作階段資訊
           </a>
