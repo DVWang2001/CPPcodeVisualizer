@@ -25,14 +25,14 @@ test.describe('ordered containers', () => {
         await expect(cells.nth(2)).toHaveAttribute('data-value', '7');
     });
 
-    // wasm engine gap: BST mode renders no tree (no bst-svg/bst-node) under the wasm engine
+    // BST mode renders no tree after Run under the wasm engine; root cause uninvestigated (zz_bst_animation is also red at baseline)
     test.fixme('set: BST mode renders SVG tree with 3 nodes', async () => {
         await enableBSTMode(page, 'se');
         const nodes = page.locator('[data-testid="container-se"] [data-testid="bst-node"]');
         await expect(nodes).toHaveCount(3);
     });
 
-    // wasm engine gap: BST mode renders no tree (no bst-svg/bst-node) under the wasm engine
+    // BST mode renders no tree after Run under the wasm engine; root cause uninvestigated (zz_bst_animation is also red at baseline)
     test.fixme('set: BST nodes carry correct data-key attributes', async () => {
         await enableBSTMode(page, 'se');
         const wrapper = page.locator('[data-testid="container-se"]');
@@ -51,7 +51,7 @@ test.describe('ordered containers', () => {
         await expect(cells.nth(2)).toHaveAttribute('data-value', '4');
     });
 
-    // wasm engine gap: BST mode renders no tree (no bst-svg/bst-node) under the wasm engine
+    // BST mode renders no tree after Run under the wasm engine; root cause uninvestigated (zz_bst_animation is also red at baseline)
     test.fixme('multiset: BST mode renders SVG tree with 3 nodes', async () => {
         await enableBSTMode(page, 'ms');
         const nodes = page.locator('[data-testid="container-ms"] [data-testid="bst-node"]');
@@ -69,7 +69,7 @@ test.describe('ordered containers', () => {
         await expect(rows.nth(1)).toHaveAttribute('data-value', 'b');
     });
 
-    // wasm engine gap: BST mode renders no tree (no bst-svg/bst-node) under the wasm engine
+    // BST mode renders no tree after Run under the wasm engine; root cause uninvestigated (zz_bst_animation is also red at baseline)
     test.fixme('map: BST mode renders SVG tree with 2 nodes', async () => {
         await enableBSTMode(page, 'm');
         const nodes = page.locator('[data-testid="container-m"] [data-testid="bst-node"]');
@@ -87,7 +87,7 @@ test.describe('ordered containers', () => {
         await expect(rows.nth(1)).toHaveAttribute('data-value', 'y');
     });
 
-    // wasm engine gap: BST mode renders no tree (no bst-svg/bst-node) under the wasm engine
+    // BST mode renders no tree after Run under the wasm engine; root cause uninvestigated (zz_bst_animation is also red at baseline)
     test.fixme('multimap: BST mode renders SVG tree', async () => {
         await enableBSTMode(page, 'mm');
         await expect(
