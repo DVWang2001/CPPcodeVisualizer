@@ -33,8 +33,7 @@ test.describe('linear containers', () => {
 
     // ── array ────────────────────────────────────────────────────────────────────
 
-    // wasm engine gap: std::array parameter e2e_bp::a is never resolved (no container-a rendered)
-    test.fixme('array: cells show 1, 2, 3 in order', async () => {
+    test('array: cells show 1, 2, 3 in order', async () => {
         const cells = page.locator('[data-testid="container-a"] [data-testid="container-cell"]');
         await expect(cells).toHaveCount(3);
         await expect(cells.nth(0)).toHaveAttribute('data-value', '1');
@@ -44,8 +43,7 @@ test.describe('linear containers', () => {
 
     // ── string ───────────────────────────────────────────────────────────────────
 
-    // wasm engine gap: std::string renders as raw 0x...: "hi" characters (21 cells) instead of 2 cells h,i
-    test.fixme('string: cells show h and i', async () => {
+    test('string: cells show h and i', async () => {
         const cells = page.locator('[data-testid="container-s"] [data-testid="container-cell"]');
         await expect(cells).toHaveCount(2);
         await expect(cells.nth(0)).toHaveAttribute('data-value', 'h');
