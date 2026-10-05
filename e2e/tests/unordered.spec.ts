@@ -7,7 +7,6 @@ test.describe('unordered containers', () => {
     test.beforeAll(async ({ browser }) => {
         page = await browser.newPage();
         await setupPage(page);
-        await page.goto('/edit');
         await runToBreakpoint(page, '{um}');
         await waitForContainer(page, 'um');
     });
@@ -25,9 +24,9 @@ test.describe('unordered containers', () => {
         await expect(rows.first()).toHaveAttribute('data-value', '99');
     });
 
-    test('unordered_map: Size badge shows Size: 1', async () => {
+    test('unordered_map: Size badge shows size 1', async () => {
         await expect(
-            page.locator('[data-testid="container-um"]').getByText('Size: 1')
+            page.locator('[data-testid="container-um"]').getByText('size 1')
         ).toBeVisible();
     });
 });

@@ -7,7 +7,6 @@ test.describe('restricted containers', () => {
     test.beforeAll(async ({ browser }) => {
         page = await browser.newPage();
         await setupPage(page);
-        await page.goto('/edit');
         await runToBreakpoint(page, '{st} {q} {dq}');
         await waitForContainer(page, 'dq');
     });

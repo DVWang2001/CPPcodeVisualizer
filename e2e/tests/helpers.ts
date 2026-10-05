@@ -110,28 +110,39 @@ export async function waitForContainer(page: Page, name: string, timeoutMs = 20_
     );
 }
 
-export async function runToBreakpoint(page: Page, guide = E2E_GUIDE): Promise<void> {
-    // Forward browser console to test output
-    page.on('console', msg => console.log(`[browser] ${msg.type()}: ${msg.text()}`));
+/** e2e_containers.cpp 當作一份 v1 bundle：第 26 行（e2e_bp 內）設斷點並帶 guide。 */
+export function containersBundle(guide = E2E_GUIDE): any {
+    const source = readFileSync(
+        path.resolve(__dirname, '../../examples/cpp/e2e_containers.cpp'), 'utf8');
+    return {
+        version: '1.0',
+        project_name: 'gdbgui_project',
+        source_code: source,
+        line_data: { [String(E2E_BP_LINE)]: { guide, tts: '' } },
+        program_input: '',
+        breakpoints: [{
+            number: '1', line: String(E2E_BP_LINE), enabled: 'y',
+            is_normal_breakpoint: true, is_parent_breakpoint: false,
+            is_child_breakpoint: false, fullname_to_display: '',
+        }],
+    };
+}
 
-    console.log('[e2e] runToBreakpoint: setupGuide start');
-    await setupGuide(page, guide);
-    console.log('[e2e] runToBreakpoint: setupGuide done, overriding get_editor_value');
-    await page.evaluate(() => {
-        const origPaused = (window as any).Actions?.inferior_program_paused;
-        if (origPaused) {
-            (window as any).Actions.inferior_program_paused = function(frame: any) {
-                console.log('[DBG] inferior_program_paused called, frame=', JSON.stringify(frame));
-                return origPaused.call(this, frame);
-            };
-        }
-        (window as any).gdbgui_get_editor_value = () => "";
+/** 登入、goto('/edit')、匯入 containersBundle、按 Run、等容器資料。呼叫端不要先登入或 goto。 */
+export async function runToBreakpoint(page: Page, guide = E2E_GUIDE): Promise<void> {
+    page.on('console', msg => console.log(`[browser] ${msg.type()}: ${msg.text()}`));
+    await ensureLoggedIn(page);
+    await page.goto('/edit');
+    await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 15_000 });
+    await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });
+    await page.locator('input[type="file"][accept=".json"]').setInputFiles({
+        name: 'e2e_containers.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(JSON.stringify(containersBundle(guide))),
     });
-    console.log('[e2e] runToBreakpoint: clicking #run_button');
+    await page.waitForTimeout(1500);
     await page.click('#run_button');
-    console.log('[e2e] runToBreakpoint: click done, waiting for container data');
-    await waitForContainerData(page);
-    console.log('[e2e] runToBreakpoint: container data ready');
+    await waitForContainerData(page, 60_000);   // 第一次 Run 要下載 wasm 編譯器資產
 }
 
 export async function enableBSTMode(page: Page, containerName: string): Promise<void> {
