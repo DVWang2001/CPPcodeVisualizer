@@ -1,40 +1,17 @@
-This is the command line help output of gdbgui.
+This is the command line help output of gdbgui (abridged; see `gdbgui/cli.py` for the authoritative option list).
 
 ```
-usage: gdbgui [-h] [-g GDB_CMD] [-p PORT] [--host HOST] [-r]
+usage: gdbgui [-h] [-p PORT] [--host HOST] [-r]
               [--auth-file AUTH_FILE] [--user USER] [--password PASSWORD]
               [--key KEY] [--cert CERT] [--remap-sources REMAP_SOURCES]
               [--project PROJECT] [-v] [-n] [-b BROWSER] [--debug]
-              [--args ...]
-              [debug_program]
 
-A server that provides a graphical user interface to the gnu debugger (gdb).
-https://github.com/cs01/gdbgui
-
-positional arguments:
-  debug_program         The executable file you wish to debug, and any
-                        arguments to pass to it. To pass flags to the
-                        binary, wrap in quotes, or use --args instead.
-                        Example: gdbgui ./mybinary [other-gdbgui-args...]
-                        Example: gdbgui './mybinary myarg -flag1 -flag2'
-                        [other gdbgui args...] (default: None)
+A server for the CPPcodeVisualizer web UI. C++ programs are compiled and run
+in the browser (wasm engine); the server no longer runs gdb.
+(--gdb-cmd, the positional debug_program and --args were removed.)
 
 optional arguments:
   -h, --help            show this help message and exit
-  --args ...            Specify the executable file you wish to debug and
-                        any arguments to pass to it. All arguments are taken
-                        literally, so if used, this must be the last
-                        argument. This can also be specified later in the
-                        frontend. passed to gdbgui. Example: gdbgui [...]
-                        --args ./mybinary myarg -flag1 -flag2 (default: [])
-
-gdb settings:
-  -g GDB_CMD, --gdb-cmd GDB_CMD
-                        gdb binary and arguments to run. If passing
-                        arguments, enclose in quotes. If using rr, it should
-                        be specified here with 'rr replay'. Examples: gdb,
-                        /path/to/gdb, 'gdb --command=FILE -ix', 'rr replay'
-                        (default: gdb)
 
 gdbgui network settings:
   -p PORT, --port PORT  The port on which gdbgui will be hosted (default:

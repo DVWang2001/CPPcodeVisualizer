@@ -21,7 +21,7 @@
 13. [終端機模擬（Terminals）](#13-終端機模擬terminals)
 14. [動作中心（Actions）](#14-動作中心actions)
 15. [後端伺服器（http_routes）](#15-後端伺服器http_routes)
-16. [安全沙箱（jail_manager）](#16-安全沙箱jail_manager)
+16. [安全沙箱（已移除）](#16-安全沙箱已移除)
 17. [完整資料流程](#17-完整資料流程)
 18. [教學導覽語法設計](#18-教學導覽語法設計)
 
@@ -42,11 +42,11 @@ CPPcodeVisualizer 是以 [gdbgui](https://github.com/cs01/gdbgui) 為基礎所�
 | 終端機 | xterm.js 4.8.0 |
 | 模組打包 | Webpack 5 |
 | 後端伺服器 | Python Flask |
-| GDB 介面 | GDB/MI（Machine Interface） |
-| 虛擬終端機 | PTY（Pseudo-Terminal）|
-| 沙箱隔離 | Chroot Jail + ulimit 資源限制 |
+| 除錯引擎 | 瀏覽器內 wasm 引擎（唯一引擎），以 GDB/MI 風格訊息回應前端 |
 
 ### 架構分層
+
+> 註：下圖為舊版（伺服器 GDB）架構。現行版本中 GdbApi 的命令由瀏覽器內 wasm 引擎（`localEngine.ts`）回應，Flask 後端只負責登入、教案庫、即時測驗、AI 教案生成代理與 TTS，沒有 jail_manager、PTY 與 GDB 子行程。
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -115,25 +115,21 @@ GDB 提供機器介面（Machine Interface, MI）模式，在此模式下：
 - 所有輸出以結構化的 token 格式回傳
 - 每條回應以 `(gdb)` 作為提示符結束
 
-### Socket.IO 雙向通道
+### 命令通道（瀏覽器內，無伺服器 GDB）
 
 ```
 前端 GdbApi.run_gdb_command(cmd)
     │
-    └──→ socket.emit('run_gdb_command', {data: cmd})
+    └──→ LocalSocket（localEngine.ts，取代原本的 Socket.IO 通道）
                 │
-         Flask-SocketIO 接收
+         LocalGdb 以 wasm 引擎執行並產生 MI 風格回應
                 │
-         將指令寫入 GDB stdin（PTY）
-                │
-         GDB 執行並輸出 MI 回應
-                │
-         Flask 讀取 stdout，emit('gdb_response', data)
-                │
-    ←──── socket.on('gdb_response', callback)
+    ←──── 同一個 'gdb_response' 回呼介面
                 │
          process_gdb_response() 處理回應
 ```
+
+原本的 Socket.IO `/gdb_listener` 命名空間與伺服器端 GDB 子行程已移除；詳見 [gdbgui/src/js/localEngine.README.md](gdbgui/src/js/localEngine.README.md)。
 
 ### 重要設計：Token 機制
 
@@ -517,11 +513,11 @@ ruler:low,high,mid
 
 | 終端機 | 用途 |
 |-------|------|
-| 程式輸入 | 使用者鍵入程式的標準輸入（透過 PTY 傳送） |
+| 程式輸入 | 使用者鍵入程式的標準輸入（交給 wasm 引擎） |
 | 程式輸出 | 被偵錯程式的 stdout/stderr |
-| gdbgui 日誌 | GDB 原始 MI 指令與回應流 |
+| gdbgui 日誌 | MI 風格指令與回應流（由 `LocalGdb` 產生） |
 
-PTY（Pseudo-Terminal）讓程式認為自己連接在真實終端機上，使 `scanf`、`cin` 等互動式輸入函式能正常運作。
+伺服器端 PTY 已隨 GDB 後端移除。
 
 ---
 
@@ -561,30 +557,13 @@ PTY（Pseudo-Terminal）讓程式認為自己連接在真實終端機上，使 `
 | `/` | GET | 主頁面 HTML |
 | `/tts_audio` | GET | 文字轉語音 MP3 串流 |
 | `/api/explain_error` | POST | AI 編譯錯誤解釋 |
-| `/upload` | POST | 原始碼上傳 |
-| `/compile` | POST | 編譯 C/C++ 程式 |
-| `/socket.io/` | WS | GDB 雙向通訊 |
+| `/api/lessons*` | GET/POST/PUT/DELETE | 教案庫（版本、標籤） |
+| `/api/generate_lesson` | POST | AI 教案生成代理 |
+| `/lesson_quiz` 相關路由 | — | 即時測驗 |
 
-### 編譯流程與安全檢查
+### 編譯與執行
 
-```
-POST /compile
-  │
-  ├─ 接收原始碼 → 寫入暫存檔
-  │
-  ├─ 靜態分析（Static Analysis）
-  │   └─ 掃描原始碼中的危險函式呼叫
-  │       ├─ 警告級：fopen/ofstream/socket → 提示訊息
-  │       └─ 封鎖級：system/fork/exec* → 拒絕編譯
-  │
-  ├─ GCC/G++ 編譯
-  │   └─ 加上 -Wl,--wrap=system,--wrap=fork,... 參數
-  │       （連結器層攔截危險函式，替換為返回 EPERM 的 stub）
-  │
-  ├─ 設定沙箱環境 _setup_jail()
-  │
-  └─ GDB 載入編譯後的二進位檔
-```
+伺服器沒有編譯流程：`/upload`、`/create_and_upload`、`/compile` 類路由與 `/gdb_listener` socket 命名空間都已移除，編譯與執行完全在瀏覽器內的 wasm 引擎（`localEngine.ts`）完成。
 
 ### TTS 端點
 
@@ -592,57 +571,9 @@ POST /compile
 
 ---
 
-## 16. 安全沙箱（jail_manager）
+## 16. 安全沙箱（已移除）
 
-**檔案**：[gdbgui/server/sandbox/jail_manager.py](gdbgui/server/sandbox/jail_manager.py)
-
-### 三層防護架構
-
-本系統在公開環境執行使用者上傳的 C++ 程式，需防範惡意程式碼：
-
-**第一層：靜態分析**
-
-在編譯前掃描原始碼，偵測危險函式呼叫（`system`、`popen`、`fork`、`exec*` 等），若發現則拒絕或警告。
-
-**第二層：連結器包裝（Linker Wrapping）**
-
-使用 GCC 連結選項 `-Wl,--wrap=system` 將危險函式重新導向至安全 stub：
-
-```c
-// 編譯時自動注入的 stub
-int __wrap_system(const char *cmd) { errno = EPERM; return -1; }
-pid_t __wrap_fork() { errno = EPERM; return -1; }
-```
-
-即使程式中呼叫了 `system()`，實際執行的是上述 stub，直接返回錯誤。
-
-**第三層：資源限制（ulimit）**
-
-透過包裝腳本在執行前設定：
-
-| 資源 | 限制 |
-|------|------|
-| 檔案寫入 | 512 KB |
-| 子行程數 | 64 個 |
-| CPU 時間 | 30 秒 |
-| 虛擬記憶體 | 512 MB |
-
-### Chroot Jail（需 root）
-
-當伺服器以 root 執行時，可建立完整的 chroot 隔離環境：
-
-```
-<jail_dir>/
-├── app/          ← 使用者二進位檔
-├── lib/          ← bind-mount 共享函式庫（唯讀）
-├── lib64/
-├── usr/
-├── tmp/          ← 唯一可寫目錄
-├── dev/          ← 必要裝置節點（null, zero, urandom）
-└── proc/         ← 掛載 procfs
-```
-
-非 root 模式退回僅 ulimit 限制（仍可配合 GDB 運作）。
+伺服器不再編譯或執行使用者程式（C++ 一律在瀏覽器內的 wasm 引擎中執行），因此原先的 `jail_manager`、靜態分析／連結器包裝、ulimit、chroot jail、seccomp 與 tmpfs 暫存區等伺服器端沙箱機制都已移除。容器仍保留 `no-new-privileges` 與 `GDBGUI_REQUIRE_ISOLATION=1`（資料目錄權限過鬆時直接拒絕啟動）。
 
 ---
 

@@ -11,28 +11,7 @@ launch gdbgui
 gdbgui
 ```
 
-set the inferior program, pass argument, set a breakpoint at main
-
-```
-gdbgui --args ./myprogram myarg -myflag
-```
-
-
-```
-gdbgui "./myprogram myarg -myflag"
-```
-
-use gdb binary not on your $PATH
-
-```
-gdbgui --gdb-cmd build/mygdb
-```
-
-Pass arbitrary arguments directly to gdb when it is launched
-
-```
-gdbgui --gdb-cmd="gdb -x gdbcmds.txt"
-```
+(Loading a program from the command line, `--args`, and `--gdb-cmd` were removed together with the server-side gdb; programs are written in the editor and run by the in-browser wasm engine.)
 
 run on port 8080 instead of the default port
 
@@ -60,17 +39,6 @@ openssl req -newkey rsa:2048 -nodes -keyout private.key -x509 -days 365 -out hos
 ```
 ```
 gdbgui -r --auth --key private.key --cert host.cert
-```
-
-Use Mozilla's [record and replay](https://rr-project.org) (rr) debugging supplement to gdb. rr lets your record a program (usually with a hard-to-reproduce bug in it), then deterministically replay it as many times as you want. You can even step forwards and backwards.
-```
-gdbgui --gdb-cmd "rr replay --"
-```
-
-Use recording other than the most recent one
-
-```
-gdbgui --gdb-cmd "rr replay RECORDED_DIRECTORY --"
 ```
 
 Don't automatically open the browser when launching

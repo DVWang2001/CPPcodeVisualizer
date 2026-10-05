@@ -794,68 +794,9 @@ Export JSON 產生的 `.gdbgui.json` bundle 只有五個欄位——**Guide/TTS/
 
 ---
 
-## 七、沙箱安全機制
+## 七、沙箱安全機制（已移除）
 
-當使用者點擊 **Run / Restart** 編譯並執行程式時，系統會自動啟用三層保護機制，防止惡意程式碼（如 `system("> evil.txt")`、`system("sudo rm -rf /")` 等）破壞伺服器檔案系統。
-
-
-
-
-
-### 7.1 Layer 1 — 靜態分析（編譯前）
-
-編譯前掃描原始碼（已去除注釋與字串常量），依嚴重程度分兩類處理：
-
-- **`[sandbox:封鎖]`**（紅色）— **直接拒絕編譯**，Console 顯示 `EPERM` 錯誤，流程終止。連結層（Layer 2）同樣針對這些函式設有 `--wrap` 攔截，作為雙重防禦。
-- **`[sandbox:警告]`**（黃色）— 允許編譯但在 Console 顯示提示。連結層無法攔截此類呼叫（如 `ofstream`），但 Layer 3 的 ulimit 限制資源消耗，setpriv 降權則防止其覆寫應用程式檔案。
-
-| 分類 | 偵測目標 | 層級 |
-|------|----------|------|
-| Shell 執行 | `system`, `popen` | 封鎖 |
-| 程序建立/取代 | `fork`, `vfork`, `exec*` 系列 | 封鎖 |
-| 刪除檔案 | `unlink`, `unlinkat`, `remove`, `rmdir` | 封鎖 |
-| 改名/移動 | `rename`, `renameat` | 封鎖 |
-| 建立目錄 | `mkdir`, `mkdirat` | 封鎖 |
-| 權限/擁有者 | `chmod`, `fchmod`, `chown`, `fchown` | 封鎖 |
-| 符號/硬連結 | `symlink`, `link` | 封鎖 |
-| 截斷檔案 | `truncate`, `ftruncate` | 封鎖 |
-| 動態載入 | `dlopen` | 封鎖 |
-| 低階寫入 | `open(O_WRONLY)`, `creat`, `mknod`, `mkfifo`, `mkstemp` | 警告 |
-| C 檔案寫入 | `fopen("w"/"a")`, `freopen` | 警告 |
-| C++ 流 | `ofstream`, `fstream`, `std::filesystem::` | 警告 |
-| 網路 | `socket`, `connect`, `bind` | 警告 |
-| 信號/提權 | `kill`, `setuid`, `setgid`, `setenv`, `putenv` | 警告 |
-| 記憶體映射 | `mmap` | 警告 |
-
-### 7.2 Layer 2 — 連結層攔截（--wrap）
-
-所有「封鎖」等級的函式，在編譯時會透過 GCC `-Wl,--wrap=XXX` 連結選項，將呼叫導向 `sandbox/stub.c` 中的替換實作：執行時印出 `[sandbox] XXX() is blocked` 訊息並回傳 `-1`（`errno = EPERM`），**不會真正執行**。
-
-### 7.3 Layer 3 — 執行期資源限制（ulimit）、降權（setpriv）與 Docker 部署隔離
-
-每次執行程式前，GDB 透過 `set exec-wrapper <session>/run.sh` 啟動 per-session wrapper，執行兩項保護：
-
-**（1）ulimit 硬性資源限制**（防 DoS）：
-
-| 資源 | 限制 |
-|------|------|
-| 單檔最大寫入 | 512 KB |
-| Core dump | 禁止 |
-| 子程序數 | 最多 64 個 |
-| CPU 時間 | 30 秒 |
-| 虛擬記憶體 | 512 MB |
-
-**（2）setpriv 降權至 nobody**（防應用程式檔案遭覆寫）：
-
-wrapper 呼叫 `setpriv --reuid=65534 --regid=65534 --clear-groups` 將使用者程式降至 `nobody` 身分執行，使其無法覆寫由 root 擁有的應用程式檔案（如 `http_routes.py`）。GDB 本身仍以 root 執行，保有 `CAP_SYS_PTRACE`，可繼續 ptrace `nobody` 的子行程，中斷點功能不受影響。
-
-對應的 PTY 從裝置 (`/dev/pts/N`) 在建立後會 chmod 為 `0o622`，確保 `nobody` 進程能正常輸出至終端機。
-
-> **為何不使用 chroot 隔離**：GDB 透過 `/proc/PID/exe` 路徑比對來確認執行中的 binary 是否與已載入的符號表相同。chroot 會在 `/proc/PID/exe` 路徑前加上 jail 目錄前綴，造成路徑不符，GDB 無法插入中斷點（回報 `Cannot access memory`）。這是 chroot 與 GDB exec-wrapper 的根本性不相容，無法繞過。
-
-> **檔案系統隔離**：整個應用程式應部署於 Docker 容器中（見 `Dockerfile.gdbgui`）。容器與宿主機的檔案系統完全隔離，即使程式在容器內取得 root，也無法影響宿主機。
-
-即使攻擊者透過 inline asm 繞過 Layer 2，Layer 3 的 ulimit 限制 CPU/記憶體/磁碟消耗，setpriv 則防止其以 root 身分破壞應用程式本身。
+原先的三層防護（編譯前靜態分析 `[sandbox:封鎖]`／`[sandbox:警告]`、連結層 `--wrap` 攔截、ulimit／setpriv 執行期限制）都屬於伺服器端編譯與執行流程，已隨伺服器 GDB 後端一併移除。現在程式只在瀏覽器內的 wasm 引擎中執行，不會在伺服器上執行，因此教案作者不需要再留意這些封鎖／警告訊息。
 
 ---
 

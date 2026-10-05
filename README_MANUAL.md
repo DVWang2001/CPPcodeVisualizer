@@ -39,15 +39,15 @@
 
 **CPPcodeVisualizer** 是一個以瀏覽器為介面的 C/C++ 程式碼執行視覺化工具，基於 [gdbgui](https://github.com/cs01/gdbgui) 開發。它提供：
 
-- 以瀏覽器操作 GNU Debugger（GDB）
+- 在瀏覽器內以 wasm 引擎編譯並單步執行 C++（類 GDB 的除錯操作；伺服器端 GDB 已移除）
 - 即時視覺化 C/C++ 資料結構（`vector`、`queue`、`stack`、`list`、`deque`、字串、二維陣列等）
 - 動態呼叫圖（Call Graph），可即時觀察程式函式呼叫的歷史紀錄與當前執行狀態
 - 記憶體與指標追蹤（Memory Watch）
 - 教學儀表板（WatchTable），方便教學展示
-- 直接上傳 C/C++ 原始碼，自動編譯並開始除錯
+- 在編輯器撰寫 C++ 程式碼，按 Run 即由瀏覽器內的 wasm 引擎編譯並開始除錯
 
 **技術棧**：
-- **後端**：Python 3、Flask、Flask-SocketIO、pygdbmi
+- **後端**：Python 3、Flask、Flask-SocketIO（僅負責登入、教案庫、即時測驗、AI 教案生成代理與 TTS）
 - **前端**：React（TypeScript/TSX）、vis.js（Call Graph 渲染）
 - **通訊**：WebSocket（Socket.IO）
 
@@ -58,11 +58,9 @@
 ```
 瀏覽器（使用者）
     ↕ HTTP / WebSocket
-Python Flask 伺服器（gdbgui/server/）
-    ↕ stdio
-GDB 子行程（GNU Debugger）
-    ↕
-被除錯的 C/C++ 可執行檔
+Python Flask 伺服器（gdbgui/server/）：登入、教案庫、即時測驗、AI 教案生成、TTS
+
+瀏覽器內 wasm 引擎（localEngine.ts）：編譯並執行 C++，以 MI 風格訊息回應前端
 ```
 
 ### 後端組成
@@ -71,8 +69,7 @@ GDB 子行程（GNU Debugger）
 |------|------|
 | `gdbgui/cli.py` | 命令列入口點（`gdbgui` 指令） |
 | `gdbgui/server/app.py` | Flask App 與 SocketIO 初始化 |
-| `gdbgui/server/http_routes.py` | HTTP 路由（上傳、編譯、頁面渲染等） |
-| `gdbgui/server/sessionmanager.py` | GDB 會話管理（每個 WebSocket 對應一個 GDB 子行程） |
+| `gdbgui/server/http_routes.py` | HTTP 路由（頁面渲染、教案庫 API、AI 教案生成、TTS 等） |
 | `gdbgui/server/server.py` | 伺服器啟動邏輯 |
 | `gdbgui/server/constants.py` | 常數定義（預設 port、host 等） |
 
@@ -91,7 +88,7 @@ GDB 子行程（GNU Debugger）
 | `Visualizer.tsx` | 客製化視覺化 |
 | `Locals.tsx` | 區域變數列表 |
 | `Breakpoints.tsx` | 中斷點管理 |
-| `GdbApi.tsx` | 與後端 GDB 的通訊介面 |
+| `GdbApi.tsx` | 除錯命令介面（命令由 `localEngine.ts` 的 wasm 引擎回應） |
 | `SourceCode.tsx` | 原始碼顯示與中斷點設定 |
 | `process_gdb_response.tsx` | 解析 GDB MI 輸出並更新 UI 狀態 |
 
@@ -104,25 +101,23 @@ GDB 子行程（GNU Debugger）
 - **作業系統**：Linux（建議）、macOS、Windows（需 MinGW 或 Cygwin）
 - **Python**：3.7 以上
 - **Node.js**：16 以上（僅開發時需要）
-- **GDB**：GNU Debugger（需安裝於系統 PATH）
-- **編譯器**：`g++`（C++）或 `gcc`（C）
+- 不需要安裝 GDB 或編譯器：C++ 由瀏覽器內的 wasm 引擎編譯執行（正式機映像也不含 gdb、g++；只有測試用的 `test` 目標含 g++）
 
 ### Linux 安裝依賴
 
 ```bash
-sudo apt install gdb g++ python3 python3-pip
+sudo apt install python3 python3-pip
 ```
 
 ### macOS 安裝依賴
 
 ```bash
-brew install python3 gdb
-# 注意：macOS 上需要對 gdb 進行 codesign
+brew install python3
 ```
 
 ### Windows 安裝依賴
 
-建議使用 [MinGW](http://mingw.org/) 安裝 `gdb`、`g++`、`make`，並將 `C:\MinGW\bin\` 加入系統 PATH。
+安裝 Python 3 即可，不再需要 MinGW／gdb／g++。
 
 ### 安裝 Python 依賴
 
@@ -178,13 +173,9 @@ python -m gdbgui --remote
 # 警告：建議同時設定認證
 ```
 
-### 方式四：直接載入可執行檔
+### 方式四：（已移除）直接載入可執行檔
 
-```bash
-python -m gdbgui ./my_program
-# 或帶參數
-python -m gdbgui './my_program arg1 arg2'
-```
+伺服器端 GDB 已移除，`gdbgui ./my_program`、`--args` 等「啟動時載入可執行檔」的用法不再存在；程式碼一律在瀏覽器內的 wasm 引擎編譯與執行。
 
 ### 方式五：開發模式（前後端熱重載）
 
@@ -217,7 +208,7 @@ yarn dev
 │                             │  - Teaching Dashboard │
 │                             │  - Breakpoints        │
 ├─────────────────────────────┴──────────────────────┤
-│  Terminal / GDB Console（底部終端機輸出）            │
+│  Terminal / Console（底部終端機輸出）                │
 └────────────────────────────────────────────────────┘
 ```
 
@@ -225,33 +216,9 @@ yarn dev
 
 ## 6. 核心功能詳解
 
-### 6.1 上傳與編譯 C/C++ 程式
+### 6.1 編譯與執行 C/C++ 程式
 
-本專案自訂了一個上傳頁面（`/upload`），使用者可以：
-
-1. 連至 `http://localhost:5000/upload`
-2. 上傳 `.cpp`、`.c`、`.cc`、`.cxx` 等 C/C++ 原始碼檔
-3. 伺服器自動用 `g++ -g -O0` 編譯成可執行檔
-4. 編譯成功後自動重導向回除錯主頁（`/`）
-
-#### 直接貼上程式碼（API）
-
-透過 POST 請求至 `/create_and_upload`：
-
-```
-POST /create_and_upload
-Content-Type: application/x-www-form-urlencoded
-
-code=<C++原始碼>&filepath=<可選的本機路徑>&program_input=<標準輸入>
-```
-
-- 若 `filepath` 存在且有效，直接修改該檔案並重新編譯
-- 若未指定，自動生成唯一檔案名稱並儲存至 `gdbgui/server/uploads/`
-- `program_input` 會寫入對應的 `.in` 檔案，供程式讀取標準輸入
-
-#### 預設程式
-
-若瀏覽器尚未載入任何程式，伺服器會自動生成並編譯一個 Hello World 範例，方便使用者立即操作。
+程式碼在編輯器中撰寫，按 Run 後由瀏覽器內的 wasm 引擎（`localEngine.ts`）編譯並執行，伺服器不參與編譯。原先的 `/upload`、`/create_and_upload` 上傳／編譯路由與伺服器端沙箱已移除。
 
 ---
 
@@ -263,12 +230,12 @@ code=<C++原始碼>&filepath=<可選的本機路徑>&program_input=<標準輸入
 |-----------|------|-----------|
 | ↺ (Repeat) | **Run**：從頭執行程式 | `r` |
 | ▶ (Play) | **Continue**：繼續執行至下一個中斷點 | `c` |
-| ⏸ (Pause) | **Interrupt**：暫停正在執行的程式（傳送 SIGINT） | — |
+| ⏸ (Pause) | **Interrupt**：暫停正在執行的程式 | — |
 | ⏭ (Step Forward) | **Next**：執行下一行（不進入函式） | `n` 或 `→` |
 | ↓ (Arrow Down) | **Step**：執行下一行（進入函式） | `s` 或 `↓` |
 | ↑ (Arrow Up) | **Return**：執行到目前函式返回 | `u` 或 `↑` |
 
-> **注意**：若 GDB 支援反向除錯（如使用 `rr replay`），可以按住 `Shift` 鍵搭配上述快捷鍵進行反向操作。
+> **注意**：反向除錯（`rr replay`）依賴已移除的伺服器端 GDB，目前無法使用。
 
 ---
 
@@ -561,11 +528,7 @@ open:container maze sidebar:55 maze:main::maze
 
 執行 `python -m gdbgui --help` 或 `gdbgui --help` 可查看所有參數。
 
-### GDB 設定
-
-| 參數 | 說明 | 預設值 |
-|------|------|--------|
-| `-g`, `--gdb-cmd` | 指定 GDB 執行檔路徑與參數 | `gdb` |
+> `--gdb-cmd`、位置參數（可執行檔）與 `--args` 已隨伺服器端 GDB 一併移除。
 
 ### 網路設定
 
@@ -596,31 +559,21 @@ open:container maze sidebar:55 maze:main::maze
 | `-b`, `--browser` | 指定瀏覽器執行檔 |
 | `--debug` | Flask debug 模式（修改伺服器檔案時自動重載） |
 
-### 位置參數
-
-```bash
-# 直接指定可執行檔
-gdbgui ./my_program
-
-# 帶額外參數（包含 flag 時使用 --args）
-gdbgui --args ./my_program arg1 -flag1 -flag2
-```
-
 ---
 
 ## 9. 後端 API 路由說明
 
 | HTTP 方法 | 路由 | 說明 |
 |-----------|------|------|
-| `GET` | `/` | 主要除錯介面（若無程式會自動建立 Hello World） |
-| `GET/POST` | `/upload` | 上傳 C/C++ 原始碼或可執行檔並編譯 |
-| `POST` | `/create_and_upload` | 提交程式碼字串，儲存並編譯，支援 JSON 回傳 |
-| `GET` | `/read_file` | 讀取本機原始碼檔案（含語法高亮） |
-| `GET` | `/dashboard` | 列出所有活躍的 GDB 會話 |
-| `GET` | `/dashboard_data` | 取得 GDB 會話資訊（JSON） |
-| `PUT` | `/kill_session` | 終止指定的 GDB 會話 |
-| `POST` | `/send_signal_to_pid` | 傳送系統信號至指定 PID |
-| `GET` | `/get_last_modified_unix_sec` | 取得檔案最後修改時間 |
+| `GET` | `/` | 主要除錯介面 |
+| `GET/POST` | `/login`、`/register`、`/logout` | 帳號登入／註冊／登出 |
+| `GET/POST/PUT/DELETE` | `/api/lessons*` | 教案資料庫（建立、更新、版本、標籤、刪除） |
+| `GET` | `/lessons` | 教案庫頁面 |
+| `POST` | `/api/generate_lesson` | AI 教案生成代理 |
+| `GET` | `/tts_audio` | 文字轉語音 |
+| （多個） | `/lesson_quiz` 相關路由 | 即時測驗 |
+
+> 已移除：`/upload`、`/create_and_upload`、`/read_file`、`/get_last_modified_unix_sec`、`/kill_session`、`/send_signal_to_pid`、`/dashboard`、`/dashboard_data`、`/api/prerun_calltree` 與 `/gdb_listener` socket 命名空間。
 
 ---
 
@@ -702,7 +655,7 @@ window.gdbgui_global_variable.__call_graph_custom_labels = {
 | `n` 或 `→` | Next（下一行，不進入函式） |
 | `s` 或 `↓` | Step（下一行，進入函式） |
 | `u` 或 `↑` | Return（執行至函式返回） |
-| `Shift + r/c/n/s/u` | 對應的**反向**操作（需 GDB 支援，如 `rr replay`） |
+| `Shift + r/c/n/s/u` | 對應的**反向**操作（依賴已移除的伺服器端 GDB／`rr replay`，目前無法使用） |
 
 ---
 
@@ -712,20 +665,17 @@ window.gdbgui_global_variable.__call_graph_custom_labels = {
 
 **A**：這是正常的初始狀態。需要先載入程式並執行，才會有資料出現在各視覺化面板中。
 
-### Q2：上傳 C++ 檔案後顯示「Compilation failed」
+### Q2：按 Run 後顯示編譯錯誤
 
-**A**：
-1. 確認系統已安裝 `g++`：`g++ --version`
-2. 確認程式碼沒有語法錯誤
-3. 查看錯誤訊息中的 `stderr` 欄位，即為 `g++` 的編譯錯誤輸出
+**A**：確認程式碼沒有語法錯誤，並查看 Console 中的編譯器訊息（由瀏覽器內的 wasm 引擎產生，不需要在本機安裝 `g++`）。若顯示「瀏覽器引擎不支援此語法」，代表該語法超出 wasm 引擎目前的支援範圍。
 
-### Q3：macOS 上 GDB 出現「please check gdb is codesigned」
+### Q3：（已移除）macOS 上 GDB 出現「please check gdb is codesigned」
 
-**A**：需要對 GDB 進行 codesign，詳見 [官方說明](http://andresabino.com/2015/04/14/codesign-gdb-on-mac-os-x-yosemite-10-10-2/)。
+**A**：伺服器端 GDB 已移除，不再需要 codesign。
 
 ### Q4：Windows 上無法啟動
 
-**A**：注意原版 gdbgui 僅在 0.14 以前支援 Windows。本專案在 Windows 上建議使用 WSL（Windows Subsystem for Linux）執行，或透過 MinGW 環境。
+**A**：伺服器端 GDB 已移除，Windows 只要有 Python 3 即可啟動伺服器，不再需要 WSL 或 MinGW。
 
 ### Q5：Call Graph 出現後圖形大小異常（圖太小或空白）
 
@@ -747,11 +697,9 @@ CPPcodeVisualizer/
 │   ├── cli.py                    # 命令列介面（argparse）
 │   ├── server/                   # Flask 後端
 │   │   ├── app.py                # Flask App 與 Socket.IO 設定
-│   │   ├── http_routes.py        # HTTP 路由（上傳、編譯、頁面）
-│   │   ├── sessionmanager.py     # GDB 會話管理
+│   │   ├── http_routes.py        # HTTP 路由（頁面、教案庫 API、AI 教案生成、TTS）
 │   │   ├── server.py             # 伺服器啟動
 │   │   ├── constants.py          # 常數（預設 port、host 等）
-│   │   └── uploads/              # 上傳的原始碼與編譯後的可執行檔（執行期自動清理）
 │   ├── src/
 │   │   └── js/                   # React 前端原始碼（TypeScript/TSX）
 │   │       ├── gdbgui.tsx        # 根元件
@@ -763,12 +711,13 @@ CPPcodeVisualizer/
 │   │       ├── MemoryWatch.tsx   # 記憶體追蹤
 │   │       ├── WatchTable.tsx    # 教學儀表板
 │   │       ├── SourceCode.tsx    # 原始碼顯示
-│   │       ├── GdbApi.tsx        # GDB 通訊介面
-│   │       ├── process_gdb_response.tsx # GDB MI 輸出解析
+│   │       ├── GdbApi.tsx        # 除錯命令介面
+│   │       ├── localEngine.ts    # 瀏覽器內 wasm 引擎（唯一引擎）
+│   │       ├── process_gdb_response.tsx # MI 風格輸出解析
 │   │       ├── InitialStoreData.ts # 全域狀態初始值
 │   │       └── ...
 │   ├── static/                   # 靜態資源（CSS、編譯後的 JS）
-│   └── templates/                # HTML 模板（gdbgui.html、upload.html 等）
+│   └── templates/                # HTML 模板（gdbgui.html、lessons.html 等）
 ├── docs/                         # 文件與教學教案
 │   └── maze_bfs_lesson.json      # BFS 走迷宮教學教案（含 TTS、Guide、Layout 標注）
 ├── maze_gen.cpp                  # 迷宮生成 + BFS 求解範例程式

@@ -45,9 +45,9 @@ CPPcodeVisualizer 是以 [gdbgui](https://github.com/cs01/gdbgui)（瀏覽器版
 | 狀態管理 | statorgfc（輕量 observable store） |
 | 程式碼編輯器 | Monaco Editor |
 | 模組打包 | Webpack 4（注意：**不是** Webpack 5） |
-| 後端伺服器 | Python Flask + Flask-SocketIO |
-| GDB 介面 | GDB/MI（Machine Interface） |
-| 終端機 | xterm.js + PTY |
+| 後端伺服器 | Python Flask + Flask-SocketIO（登入、教案庫、即時測驗、AI 教案生成代理、TTS） |
+| 除錯引擎 | 瀏覽器內 wasm 引擎（`localEngine.ts`，唯一引擎；以 GDB/MI 風格訊息回應前端，伺服器端 GDB 已移除） |
+| 終端機 | xterm.js（顯示 wasm 引擎的程式輸出） |
 
 ### 建置前端
 
@@ -75,9 +75,8 @@ python -m gdbgui
 CPPcodeVisualizer/
 ├── gdbgui/
 │   ├── server/              # Python Flask 後端
-│   │   ├── http_routes.py   # API 端點（/compile, /tts_audio, /upload 等）
-│   │   ├── app.py           # Flask app 初始化
-│   │   └── sessionmanager.py# GDB session 管理
+│   │   ├── http_routes.py   # API 端點（/tts_audio、/api/lessons*、/api/generate_lesson 等）
+│   │   └── app.py           # Flask app 初始化
 │   ├── src/js/              # ★ 前端原始碼（主要修改區域）
 │   │   ├── VisualizerHelper.js   # ★ 最核心：TTS + 容器資料抓取
 │   │   ├── ContainerVisualizer.tsx # ★ 容器圖形渲染
@@ -88,7 +87,7 @@ CPPcodeVisualizer/
 │   │   ├── RightSidebar.tsx      # 右側面板佈局
 │   │   ├── SourceCode.tsx        # 原始碼編輯器（含 Guide/TTS/Layout 欄位）
 │   │   ├── global_variable.js    # window.gdbgui_global_variable 掛載點
-│   │   ├── GdbApi.tsx            # Socket.IO → GDB/MI 通訊
+│   │   ├── GdbApi.tsx            # 除錯命令介面（由 localEngine.ts 回應）
 │   │   └── constants.ts         # 常數定義
 │   └── static/js/main.js    # 建置輸出（勿手動編輯）
 ├── webpack.config.js

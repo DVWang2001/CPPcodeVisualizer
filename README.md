@@ -20,7 +20,7 @@ Built on top of [gdbgui](https://github.com/cs01/gdbgui), CPPcodeVisualizer adds
 - **JSON lesson format** — one file encodes source code, breakpoints, guide text, TTS script, and layout config for every line
 - **Auto-step playback** — `[next]` / `[continue]` / `[step-in]` directives inside TTS scripts drive the debugger automatically
 - **Element highlighting** — mark specific indices with named or custom colors: `{arr[i]:red}`, `{stack[-1]:yellow}`
-- **Sandbox execution** — user programs run in a restricted environment (seccomp filter + resource limits) safe for classroom deployment
+- **In-browser execution** — user programs compile and run in a WebAssembly engine inside the browser, so the server never executes student code (safe for classroom deployment)
 - **13 ready-made lessons** — covering sorting, BFS maze, recursion, linked lists, and more (see [Example Lessons](#example-lessons))
 
 ---
@@ -186,7 +186,6 @@ The `10個經典案例/` directory contains ready-to-use lessons:
 ### Requirements
 
 - Python 3.13+
-- GDB 12+ with libstdc++ pretty-printers
 - Node.js 20+
 
 ### Build and run locally
