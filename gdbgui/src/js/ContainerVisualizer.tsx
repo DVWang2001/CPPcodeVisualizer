@@ -14,8 +14,11 @@ import { delay } from "./anim";
 
 // Register all plugins once at module load.
 // To add a new container type: create a plugin file and call registerPlugin() here.
-registerPlugin(bstPlugin);
+// 順序有意義：registerPlugin 對同一個型別是「後來者蓋掉前者」。LinearPlugin 也列了 'set'/'map'
+// （非 BST 模式的簡化渲染用），所以 bstPlugin 必須最後登錄，否則 getPlugin('set') 會回傳
+// LinearPlugin，BST 模式勾了也畫不出樹。tests/ContainerPluginRegistry.jest.ts 釘住這件事。
 registerPlugin(linearPlugin);
+registerPlugin(bstPlugin);
 
 type ColorRule = { value: string; color: string };
 type HighlightEntry = { index: number; color: string };
