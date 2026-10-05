@@ -1,8 +1,6 @@
 /**
  * vgdb M1 layer B: run student code through the in-browser engine (gdbgui/static/engine) and the
- * LocalGdb GDB/MI emulation instead of the server's GDB. This is now the DEFAULT (2026-09-30):
- * everything in this file runs unless the page opts back out via `?engine=gdb` or localStorage
- * `vgdb_engine` = "gdb" (the one-click fallback link from gdbFallbackUrl() below uses the former).
+ * LocalGdb GDB/MI emulation. It is the ONLY engine: there is no server-side GDB to fall back to.
  * Design and the list of wired call sites: localEngine.README.md.
  *
  * Security (contract §3): nothing here reads or forwards the CSRF token or cookies, talks to the
@@ -10,39 +8,6 @@
  * student data, or touches the lesson APIs. Every HTML-bound string (/read_file) is escaped.
  */
 import { store } from "statorgfc";
-
-// ---------------------------------------------------------------------------------------------
-// flag
-// ---------------------------------------------------------------------------------------------
-
-let _enabled: boolean | null = null;
-
-function computeEnabled(): boolean {
-  try {
-    const q = new URLSearchParams(window.location.search).get("engine");
-    if (q === "wasm") return true;
-    if (q === "gdb") return false; // explicit escape hatch that overrides localStorage
-  } catch (e) {
-    /* no location: fall through */
-  }
-  try {
-    const ls = window.localStorage.getItem("vgdb_engine");
-    if (ls === "wasm") return true;
-    if (ls === "gdb") return false; // explicit escape hatch, same as ?engine=gdb
-  } catch (e) {
-    /* no localStorage: fall through */
-  }
-  return true; // default: the browser engine replaces the server GDB
-}
-
-/**
- * True when the browser engine replaces the server GDB. Evaluated once per page so that the socket
- * and the HTTP endpoints can never be served by different engines.
- */
-export function enabled(): boolean {
-  if (_enabled === null) _enabled = computeEnabled();
-  return _enabled;
-}
 
 // ---------------------------------------------------------------------------------------------
 // constants shared with the simulated endpoints
@@ -152,7 +117,7 @@ export function loadModules(): Promise<EngineModules> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// LocalSocket: the object GdbApi uses instead of io.connect(...) when the flag is on
+// LocalSocket: the socket object GdbApi uses (a socket.io-client look-alike backed by the in-browser engine)
 // ---------------------------------------------------------------------------------------------
 
 type Listener = { cb: (payload?: any) => void; once: boolean };
@@ -405,7 +370,7 @@ export function getSocket(): LocalSocket {
       const pid = boot.session && boot.session.pid ? boot.session.pid : 4242;
       sock.announce(pid);
     },
-    (e) => sock.announceFailure("瀏覽器引擎載入失敗：" + errText(e) + "（請改用伺服器引擎）")
+    (e) => sock.announceFailure("瀏覽器引擎載入失敗：" + errText(e))
   );
   return sock;
 }
@@ -443,7 +408,7 @@ export interface CreateAndUploadRequest {
  * Returns null when the result is debuggable.
  */
 export function mapRunError(r: any): { message: string; stderr?: string } | null {
-  if (!r) return { message: "瀏覽器引擎沒有回傳結果；請改用伺服器引擎" };
+  if (!r) return { message: "瀏覽器引擎沒有回傳結果" };
   const errors: any[] = Array.isArray(r.errors) ? r.errors : [];
   const fatal = errors.filter((e) => e && e.kind !== "trace-truncated" && e.kind !== "width-warning");
   if (r.ok === false || fatal.length) {
@@ -457,54 +422,33 @@ export function mapRunError(r: any): { message: string; stderr?: string } | null
       case "unsupported": {
         const where = typeof e.line === "number" ? `，第 ${e.line} 行` : "";
         const out: { message: string; stderr?: string } = {
-          message: `瀏覽器引擎不支援此語法（${e.construct}${where}）；請改用伺服器引擎`,
+          message: `瀏覽器引擎不支援此語法（${e.construct}${where}）`,
         };
         if (typeof e.line === "number") {
-          out.stderr = `${SOURCE_PATH}:${e.line}:1: error: 瀏覽器引擎不支援此語法：${e.construct}（請改用伺服器引擎）`;
+          out.stderr = `${SOURCE_PATH}:${e.line}:1: error: 瀏覽器引擎不支援此語法：${e.construct}`;
         }
         return out;
       }
       case "compile-timeout":
-        return { message: "瀏覽器引擎編譯逾時；請簡化程式或改用伺服器引擎" };
+        return { message: "瀏覽器引擎編譯逾時；請簡化程式" };
       case "link":
         return { message: "連結失敗（瀏覽器引擎）", stderr: String(e.message || "") };
       case "forbidden-import":
-        return { message: "程式使用了瀏覽器引擎不允許的系統功能；請改用伺服器引擎" };
+        return { message: "程式使用了瀏覽器引擎不允許的系統功能" };
       case "instrumentation-failed":
-        return { message: "瀏覽器引擎無法分析這份程式（插樁失敗）；請改用伺服器引擎" };
+        return { message: "瀏覽器引擎無法分析這份程式（插樁失敗）" };
       default:
-        return { message: `瀏覽器引擎內部錯誤（${e.kind}）；請改用伺服器引擎` };
+        return { message: `瀏覽器引擎內部錯誤（${e.kind}）` };
     }
   }
   const reason = r.exit && r.exit.reason;
   if (reason === "stack-overflow") {
-    const url = gdbFallbackUrl();
-    return {
-      message:
-        "瀏覽器引擎的遞迴深度不足（堆疊溢位），無法完整記錄這次執行" +
-        (url ? `。如需切換為伺服器引擎，請點此連結：${url}` : "；請改用伺服器引擎"),
-    };
+    return { message: "瀏覽器引擎的遞迴深度不足（堆疊溢位），無法完整記錄這次執行" };
   }
   if (reason === "step-limit" || reason === "trace-limit") {
-    return { message: "程式執行步數超過瀏覽器引擎的記錄上限；請縮小輸入或改用伺服器引擎" };
+    return { message: "程式執行步數超過瀏覽器引擎的記錄上限；請縮小輸入" };
   }
   return null;
-}
-
-/**
- * The current page's URL with `engine=gdb` forced (overrides any `engine` param, keeps everything
- * else) — the explicit escape hatch `computeEnabled()` already honours. Printed as a full URL inside
- * a `runWarnings()` message so xterm's web-links addon (Terminals.tsx) turns it into a click-through
- * "switch to the server engine" link, without a dedicated UI control (D5's "one-click fallback").
- */
-export function gdbFallbackUrl(): string | null {
-  try {
-    const u = new URL(window.location.href);
-    u.searchParams.set("engine", "gdb");
-    return u.href;
-  } catch (e) {
-    return null;
-  }
 }
 
 /** Non-fatal notes for `sandbox_warnings` (printed to the console as STD_ERR by the UI). */
@@ -523,10 +467,8 @@ export function runWarnings(r: any): string[] {
     const kinds = Array.from(new Set(widthErrors.map((e) => String(e.construct))));
     const label: Record<string, string> = { long: "long", size_t: "size_t", "sizeof(pointer)": "sizeof(指標)" };
     const desc = kinds.map((k) => label[k] || k).join("、");
-    const url = gdbFallbackUrl();
     out.push(
-      `[瀏覽器引擎] 程式用到 ${desc}：瀏覽器引擎是 32 位元（4 bytes），伺服器 GDB 是 64 位元（8 bytes），數值可能不一致` +
-        (url ? `。如需切換為伺服器引擎，請點此連結：${url}` : "（請改用伺服器引擎：網址加上 ?engine=gdb）")
+      `[瀏覽器引擎] 程式用到 ${desc}：瀏覽器引擎是 32 位元（4 bytes），與 64 位元環境（8 bytes）的數值可能不一致`
     );
   }
   const reason = r.exit && r.exit.reason;
@@ -635,7 +577,7 @@ export function createAndUpload(
         });
       });
     })
-    .catch((e: any) => ({ status: "error", message: "瀏覽器引擎錯誤：" + errText(e) + "（請改用伺服器引擎）" }));
+    .catch((e: any) => ({ status: "error", message: "瀏覽器引擎錯誤：" + errText(e) }));
   return Promise.race([work, aborted]).then(finish);
 }
 
@@ -811,7 +753,6 @@ export function ajax(settings: any, onProgress?: (msg: string) => void): void {
 /** Test hooks (not used by the app). */
 export const _test = {
   reset() {
-    _enabled = null;
     _modules = null;
     _socket = null;
     _enginePromise = null;
@@ -830,7 +771,6 @@ export const _test = {
 };
 
 export default {
-  enabled,
   getSocket,
   ajax,
   createAndUpload,

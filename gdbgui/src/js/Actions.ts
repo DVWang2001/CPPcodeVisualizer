@@ -443,12 +443,8 @@ const Actions = {
       },
       complete: function () { }
     };
-    if (localEngine.enabled()) {
-      // 瀏覽器引擎：中斷進行中的編譯／執行或結束 LocalGdb 階段，不連網
-      localEngine.ajax(request);
-    } else {
-      $.ajax(request);
-    }
+    // 瀏覽器引擎：中斷進行中的編譯／執行或結束 LocalGdb 階段，不連網
+    localEngine.ajax(request);
   }
 };
 

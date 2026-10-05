@@ -1,15 +1,13 @@
-// localEngine.ts（vgdb M1 層 B）單元測試：旗標、LocalSocket、模擬 /create_and_upload、/read_file 跳脫。
+// localEngine.ts（vgdb M1 層 B）單元測試：LocalSocket、模擬 /create_and_upload、/read_file 跳脫。
 // 引擎與 LocalGdb 一律用假的（_test.setModules）；另有一組用真的 LocalGdb 驗「尚未 Run」的命令。
 import { store } from "statorgfc";
 import initialStoreData from "../InitialStoreData";
 import localEngine, {
   _test,
-  enabled,
   LocalSocket,
   LocalGdbLike,
   mapRunError,
   runWarnings,
-  gdbFallbackUrl,
   readFile,
   escapeHtml,
   SOURCE_PATH,
@@ -19,6 +17,7 @@ import localEngine, {
   emptyRunResult,
   stdinFor,
 } from "../localEngine";
+import * as engineNs from "../localEngine";
 
 // @ts-expect-error statorgfc's old declarations omit initialize.
 store.initialize({ ...initialStoreData }, { immutable: false, debounce_ms: 0 });
@@ -103,49 +102,6 @@ beforeEach(() => {
     /* ignore */
   }
   window.history.pushState({}, "", "/");
-});
-
-// ---------------------------------------------------------------------------------------------
-describe("旗標 enabled()", () => {
-  test("預設開啟（2026-09-30 起 wasm 是預設引擎）", () => {
-    expect(enabled()).toBe(true);
-  });
-  test("?engine=wasm 開啟（顯式同預設，等冪）", () => {
-    window.history.pushState({}, "", "/?engine=wasm");
-    expect(enabled()).toBe(true);
-  });
-  test("localStorage vgdb_engine=wasm 開啟（顯式同預設，等冪）", () => {
-    window.localStorage.setItem("vgdb_engine", "wasm");
-    expect(enabled()).toBe(true);
-  });
-  test("?engine=gdb 是明確的退回逃生門，關閉引擎", () => {
-    window.history.pushState({}, "", "/?engine=gdb");
-    expect(enabled()).toBe(false);
-  });
-  test("localStorage vgdb_engine=gdb 也是明確的退回逃生門，關閉引擎", () => {
-    window.localStorage.setItem("vgdb_engine", "gdb");
-    expect(enabled()).toBe(false);
-  });
-  test("?engine=gdb 蓋過 localStorage 的 wasm", () => {
-    window.localStorage.setItem("vgdb_engine", "wasm");
-    window.history.pushState({}, "", "/?engine=gdb");
-    expect(enabled()).toBe(false);
-  });
-  test("localStorage 的 gdb 蓋不過 ?engine=wasm（URL 參數優先權更高）", () => {
-    window.localStorage.setItem("vgdb_engine", "gdb");
-    window.history.pushState({}, "", "/?engine=wasm");
-    expect(enabled()).toBe(true);
-  });
-  test("其他值視同沒設，落回預設開啟", () => {
-    window.localStorage.setItem("vgdb_engine", "yes");
-    window.history.pushState({}, "", "/?engine=WASM");
-    expect(enabled()).toBe(true);
-  });
-  test("一頁只判定一次（中途改 localStorage 不會讓 socket 與端點分屬不同引擎）", () => {
-    expect(enabled()).toBe(true);
-    window.localStorage.setItem("vgdb_engine", "gdb");
-    expect(enabled()).toBe(true);
-  });
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -265,7 +221,7 @@ describe("LocalSocket", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-describe("getSocket（旗標開啟時 GdbApi 用它代替 io.connect）", () => {
+describe("getSocket（GdbApi 的 socket）", () => {
   test("模組載入後掛上「尚未 Run」的 session 並宣告連線；之前送的命令先緩衝", async () => {
     const f = fakeModules(okRun());
     _test.setModules(f.mods as any);
@@ -384,13 +340,12 @@ describe("模擬 /create_and_upload", () => {
     _test.setModules(f.mods as any);
     const r = await localEngine.createAndUpload({ code: "x" });
     expect(r.status).toBe("error");
-    expect(r.message).toBe("瀏覽器引擎不支援此語法（switch，第 12 行）；請改用伺服器引擎");
+    expect(r.message).toBe("瀏覽器引擎不支援此語法（switch，第 12 行）");
     expect(r.stderr).toMatch(/^\/workspace\/main\.cpp:12:1: error: /);
   });
 
   test("堆疊溢位 / 步數上限 → 錯誤路徑；timeout 只是警告", () => {
     expect(mapRunError(okRun({ exit: { reason: "stack-overflow", code: null } }))!.message).toMatch(/堆疊溢位/);
-    expect(mapRunError(okRun({ exit: { reason: "stack-overflow", code: null } }))!.message).toMatch(/engine=gdb/); // D5 同款一鍵連結
     expect(mapRunError(okRun({ exit: { reason: "step-limit", code: null } }))!.message).toMatch(/上限/);
     expect(mapRunError(okRun({ exit: { reason: "timeout", code: null } }))).toBeNull();
     expect(mapRunError(okRun({ errors: [{ kind: "trace-truncated" }] }))).toBeNull();
@@ -398,14 +353,13 @@ describe("模擬 /create_and_upload", () => {
     expect(mapRunError({ ...emptyRunResult(), ok: false, errors: [{ kind: "trace-corrupted" }] })!.message).toMatch(/內部錯誤/);
   });
 
-  test("D5：width-warning 不是致命錯誤，mapRunError 回 null，但 runWarnings 會提示並附上可點連結", () => {
+  test("D5：width-warning 不是致命錯誤，mapRunError 回 null，但 runWarnings 會提示位元寬度差異", () => {
     const r = okRun({ errors: [{ kind: "width-warning", construct: "long", line: 3 }] });
     expect(mapRunError(r)).toBeNull(); // 不阻擋除錯，只是提示
     const warnings = runWarnings(r);
     expect(warnings.length).toBe(1);
     expect(warnings[0]).toMatch(/long/);
-    expect(warnings[0]).toMatch(/https?:\/\//); // 完整網址，讓 xterm web-links 外掛能點擊
-    expect(warnings[0]).toMatch(/engine=gdb/);
+    expect(warnings[0]).toMatch(/32 位元/);
   });
 
   test("D5：多筆 width-warning 的 construct 去重、合併成一則訊息", () => {
@@ -420,19 +374,6 @@ describe("模擬 /create_and_upload", () => {
     expect(warnings.length).toBe(1);
     expect(warnings[0]).toMatch(/long/);
     expect(warnings[0]).toMatch(/sizeof/);
-  });
-
-  test("gdbFallbackUrl：保留其他參數，只覆寫 engine=gdb", () => {
-    const original = window.location.href;
-    try {
-      window.history.pushState({}, "", "/?foo=bar&engine=wasm#frag");
-      const url = gdbFallbackUrl();
-      expect(url).toMatch(/engine=gdb/);
-      expect(url).toMatch(/foo=bar/);
-      expect(url).not.toMatch(/engine=wasm/);
-    } finally {
-      window.history.pushState({}, "", original);
-    }
   });
 
   test("警告進 sandbox_warnings", async () => {
@@ -721,5 +662,59 @@ describe("真的 LocalGdb：「尚未 Run」的 session 回答 run_initial_comma
     await flush();
     const stopped = packets[2].data.filter((it: any) => it.message === "stopped");
     expect(stopped.map((it: any) => it.payload.reason)).toEqual(["exited-normally"]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// 禁止「叫使用者切換到伺服器」的指引；純說明差異的字句（例如位元寬度比較）不在此限。
+const NO_SERVER = /改用伺服器|切換為伺服器|engine=gdb/;
+
+describe("wasm 是唯一引擎", () => {
+  test("enabled() 與逃生門已不存在", () => {
+    expect((engineNs as any).enabled).toBeUndefined();
+    expect((engineNs as any).gdbFallbackUrl).toBeUndefined();
+  });
+
+  test("殘留 localStorage vgdb_engine=gdb 不影響行為", () => {
+    window.localStorage.setItem("vgdb_engine", "gdb");
+    try {
+      const sock = localEngine.getSocket();
+      expect(sock).toBeDefined(); // 仍然是 LocalSocket，不會嘗試連伺服器
+    } finally {
+      window.localStorage.removeItem("vgdb_engine");
+    }
+  });
+
+  test("mapRunError 各種結果都不叫使用者改用伺服器", () => {
+    const results: any[] = [
+      null,
+      { ok: false, errors: [{ kind: "unsupported", construct: "X", line: 3 }] },
+      { ok: false, errors: [{ kind: "compile-timeout" }] },
+      { ok: false, errors: [{ kind: "forbidden-import" }] },
+      { ok: false, errors: [{ kind: "instrumentation-failed" }] },
+      { ok: false, errors: [{ kind: "something-else" }] },
+      { ok: true, exit: { reason: "stack-overflow" } },
+      { ok: true, exit: { reason: "step-limit" } },
+      { ok: true, exit: { reason: "trace-limit" } },
+    ];
+    for (const r of results) {
+      expect(JSON.stringify(mapRunError(r))).not.toMatch(NO_SERVER);
+    }
+  });
+
+  test("runWarnings 的 width-warning 不叫使用者改用伺服器", () => {
+    const w = runWarnings({ errors: [{ kind: "width-warning", construct: "long" }] } as any);
+    expect(JSON.stringify(w)).not.toMatch(NO_SERVER);
+  });
+
+  test("ajax 對未知端點仍回 404（不是靜默無回應）", () => {
+    const error = jest.fn();
+    const success = jest.fn();
+    localEngine.ajax({ url: "/nope", type: "GET", data: {}, success, error } as any);
+    return new Promise<void>((resolve) => setTimeout(resolve, 0)).then(() => {
+      expect(error).toHaveBeenCalled();
+      expect(error.mock.calls[0][0].status).toBe(404);
+      expect(success).not.toHaveBeenCalled();
+    });
   });
 });

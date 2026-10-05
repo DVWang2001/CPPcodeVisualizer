@@ -1,4 +1,4 @@
-// Actions.send_signal 的旗標分支：關閉 → $.ajax /send_signal；開啟 → localEngine（不連網）。
+// Actions.send_signal：走 localEngine（不連網）。
 (global as any)._ = require("lodash");
 jest.mock("../SourceCode", () => ({ __esModule: true, default: {} }));
 jest.mock("../Visualizer", () => ({ __esModule: true, default: {} }));
@@ -24,15 +24,7 @@ beforeEach(() => {
   window.history.pushState({}, "", "/");
 });
 
-test("旗標關閉：$.ajax POST /send_signal {signal_name, target}", () => {
-  window.history.pushState({}, "", "/?engine=gdb"); // 2026-09-30 起 wasm 是預設，明確退回伺服器引擎才會走這條路
-  Actions.send_signal("SIGINT", "inferior");
-  expect(ajax).toHaveBeenCalledTimes(1);
-  expect(ajax.mock.calls[0][0]).toMatchObject({ url: "/send_signal", type: "POST", data: { signal_name: "SIGINT", target: "inferior" } });
-});
-
-test("旗標開啟：不連網，訊息進主控台", async () => {
-  window.history.pushState({}, "", "/?engine=wasm");
+test("不連網，訊息進主控台", async () => {
   const add = jest.spyOn(Actions, "add_console_entries").mockImplementation(() => undefined);
   Actions.send_signal("SIGINT", "inferior");
   await flush();

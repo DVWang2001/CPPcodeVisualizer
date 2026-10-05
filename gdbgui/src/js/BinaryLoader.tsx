@@ -169,16 +169,7 @@ class BinaryLoader extends React.Component<{}, State> {
       //     ))}
       //   </datalist>
       // </form>
-      <button
-        id="upload_button"
-        onClick={() => (window.location.href = "/upload")}
-        type="button"
-        title="Open upload page"
-        className="btn"
-        style={{ display: "none" }}
-      >
-        <span className="glyphicon glyphicon-upload" />
-      </button>
+      null
     );
   }
   componentDidMount() {

@@ -100,12 +100,8 @@ let FileFetcher = {
         FileFetcher._fetch_next();
       }
     };
-    if (localEngine.enabled()) {
-      // 瀏覽器引擎：由前端從除錯中的原始碼產生，逐行 HTML 跳脫（規格 §7）
-      localEngine.ajax(request);
-    } else {
-      $.ajax(request);
-    }
+    // 瀏覽器引擎：由前端從除錯中的原始碼產生，逐行 HTML 跳脫（規格 §7）
+    localEngine.ajax(request);
   },
   _fetch_next: function () {
     if (FileFetcher._is_fetching) {
