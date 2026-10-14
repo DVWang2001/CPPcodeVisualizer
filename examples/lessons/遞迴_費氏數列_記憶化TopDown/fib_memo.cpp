@@ -6,9 +6,9 @@
 
 std::vector<int> memo(7, -1);   // memo[n] ＝ fib(n)，-1 ＝ 還沒算過
 
-int fib(int n) {                       //@ @layout sidebar:50 open:callgraph close:container
+int fib(int n) {
     int result;
-    if (n <= 1) {                      //@ @guide 子問題 fib({n})\n記憶表：{memo} @tts [next] 子問題是 fib {n}，先看是不是 0 或 1 | @2 [next] fib {n}，是 0 或 1 嗎
+    if (n <= 1) {                      //@ @guide 子問題 fib({n})\n記憶表：{memo} @tts [next] 子問題是 fib {n}，先看是不是 0 或 1 | @2 [next] fib {n}，是 0 或 1 嗎 @layout sidebar:50 open:callgraph close:container
         result = n;                    //@ @guide [邊界#gray] fib({n}) = {n} @tts [next] 到底了，fib {n} 就是 {n}
         return result;                 //@ @guide 回傳 {result} ← 邊界 @tts [next] 把 {result} 交回上一層
     }
