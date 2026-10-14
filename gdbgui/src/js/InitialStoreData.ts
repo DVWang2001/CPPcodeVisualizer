@@ -1,6 +1,7 @@
 /* global initial_data */
 /* global debug */
 import constants from "./constants";
+import { loadTtsVolume } from "./ttsVolume";
 
 /**
  * The initial store data. Keys cannot be added after initialization.
@@ -45,6 +46,7 @@ const initial_store_data = {
   autoplay_pending_command: null as string | null, // 暫停時儲存的待執行指令
   quiz_playback_gate: false, // 題目開放時阻止 next/step/continue 與自動播放越過題目
   tts_speed: 1.0, // TTS 播放速度（0.5x ~ 2.0x）
+  tts_volume: loadTtsVolume(), // TTS 音量（0 ~ 6 倍），存在 localStorage
   container_font_size: 1.1, // 容器視覺化的字體大小（em），可在 Settings 或 layout 調整
   monaco_font_size: 14, // Monaco 編輯器字體大小（px），可在 Settings 調整
   monaco_line_height: 21, // Monaco 實際算出的 line height（px），mount 後由 SourceCode.tsx 回寫

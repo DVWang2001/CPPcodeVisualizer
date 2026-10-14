@@ -6,6 +6,7 @@ import constants from "./constants";
 import { store } from "statorgfc";
 import { lessonQuizRuntime } from "./lessonQuizRuntime";
 import { effectiveTtsRate } from "./ttsSpeed";
+import { setTtsVolume, TTS_MAX_VOLUME } from "./ttsVolume";
 
 type State = any;
 
@@ -14,7 +15,7 @@ class ControlButtons extends React.Component<{}, State> {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
     super();
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
-    store.connectComponentState(this, ["gdb_pid", "reverse_supported", "autoplay_enabled", "autoplay_paused", "edit_mode", "inferior_program", "tts_speed", "quiz_playback_gate"]);
+    store.connectComponentState(this, ["gdb_pid", "reverse_supported", "autoplay_enabled", "autoplay_paused", "edit_mode", "inferior_program", "tts_speed", "tts_volume", "quiz_playback_gate"]);
   }
   render() {
     let btn_class = "btn btn-default btn-sm toolbar-btn toolbar-btn-icon";
@@ -222,6 +223,30 @@ class ControlButtons extends React.Component<{}, State> {
               }}
               style={{ width: "70px", cursor: "pointer", accentColor: "#5cb85c" }}
               title={`播放速度：${Number(this.state.tts_speed).toFixed(1)}x（拖曳調整 0.5x ~ 2.0x）`}
+            />
+          </span>
+        )}
+
+        {this.state.autoplay_enabled && (
+          <span
+            title="TTS 音量"
+            style={{ display: "inline-flex", alignItems: "center", gap: "4px", verticalAlign: "middle", marginLeft: "8px" }}
+          >
+            <span className="glyphicon glyphicon-volume-up" style={{ fontSize: "11px", color: "var(--ink-faint)" }} />
+            <span style={{ fontSize: "11px", color: "var(--ink-faint)", userSelect: "none", minWidth: "26px" }}>
+              {Number((this.state as any).tts_volume).toFixed(1)}x
+            </span>
+            <input
+              type="range"
+              min="0"
+              max={TTS_MAX_VOLUME}
+              step="0.5"
+              value={(this.state as any).tts_volume}
+              onChange={(e) => {
+                store.set("tts_volume", setTtsVolume(parseFloat(e.target.value)));
+              }}
+              style={{ width: "70px", cursor: "pointer", accentColor: "#5cb85c" }}
+              title={`音量：${Number((this.state as any).tts_volume).toFixed(1)}x（拖曳調整 0 ~ ${TTS_MAX_VOLUME}x，超過 1x 為放大）`}
             />
           </span>
         )}

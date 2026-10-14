@@ -27,6 +27,7 @@ import { findLatestExpr, findAllExpr } from "./exprLookup";
 import { resolve2DHighlightIndex } from "./gridHighlightIndex";
 import { parseSwapCall } from "./swapDetect";
 import { effectiveTtsRate } from "./ttsSpeed";
+import { applyTtsVolume } from "./ttsVolume";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
@@ -257,6 +258,7 @@ function _tts_play_next(taskId) {
     const watchdog = setTimeout(() => {
       if (!canplayFired && _tts_current_audio === audio && taskId === _tts_task_id) {
         audio.playbackRate = effectiveTtsRate(store.get('tts_speed'));
+        applyTtsVolume(audio);
         audio.play().catch(() => finish());
       }
     }, 5000);
@@ -266,6 +268,7 @@ function _tts_play_next(taskId) {
       clearTimeout(watchdog);
       if (_tts_current_audio !== audio || taskId !== _tts_task_id) return;
       audio.playbackRate = effectiveTtsRate(store.get('tts_speed'));
+      applyTtsVolume(audio);
       if (item.currentTime) {
         audio.currentTime = item.currentTime;
         item.currentTime = 0;
