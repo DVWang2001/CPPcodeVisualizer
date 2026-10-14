@@ -32,11 +32,15 @@ type CallGraphState = {
     hoverKey: string | null;
     viewMode: ViewMode;
     stageSize: { w: number; h: number };
+    stageH: number;
     hasMeasured: boolean;
     risingTokens: RisingToken[];
 };
 
 const RISE_DURATION_MS = 700;
+// 舞台高度在這兩值之間動態調整：側欄剩多少空間就給多少，但不低於 MIN、不高於 MAX。
+const STAGE_MIN_H = 170;
+const STAGE_MAX_H = 360;
 
 function prefersReducedMotion(): boolean {
     return typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -65,7 +69,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
         // very first paint jumps straight to the correct transform.
         this.state = {
             call_graph_updated: 0, locals: [], paused_on_frame: null, expressions: [], hoverKey: null,
-            viewMode: "global", stageSize: { w: 0, h: 360 },
+            viewMode: "global", stageSize: { w: 0, h: 360 }, stageH: STAGE_MAX_H,
             hasMeasured: false, risingTokens: [],
         };
         // @ts-expect-error statorgfc augmentation
@@ -76,17 +80,45 @@ class CallGraph extends React.Component<{}, CallGraphState> {
         this._mounted = true;
         this.measureStage();
         window.addEventListener("resize", this.measureStage);
+        // 同側欄的資料結構視覺化等面板高度會變（有沒有 vector、長了幾格），
+        // 所以監看側欄本身與面板區的尺寸，隨時重算舞台該多高。
+        const RO = (window as any).ResizeObserver;
+        const scroller = this.stageRef.current?.closest(".right-sidebar-content") as HTMLElement | null;
+        if (RO && scroller) {
+            this.sidebarRO = new RO(() => this.fitStageHeight());
+            this.sidebarRO.observe(scroller);
+            const panels = scroller.querySelector(".sidebar-collapsers");
+            if (panels) this.sidebarRO.observe(panels);
+        }
+        this.fitStageHeight();
     }
+
+    private sidebarRO: any = null;
+
+    /** 舞台高度 = 側欄可視高度 − 側欄裡除了舞台以外的所有內容高度，夾在 MIN~MAX。
+     *  這個值跟目前舞台高度無關（舞台自己的高度先扣掉再算），所以不會自己跟自己震盪。 */
+    fitStageHeight = () => {
+        const stage = this.stageRef.current;
+        if (!stage || !this._mounted) return;
+        const scroller = stage.closest(".right-sidebar-content") as HTMLElement | null;
+        if (!scroller) return;
+        const others = scroller.scrollHeight - stage.offsetHeight;
+        const free = scroller.clientHeight - others;
+        const h = Math.round(Math.max(STAGE_MIN_H, Math.min(STAGE_MAX_H, free)));
+        if (Math.abs(h - this.state.stageH) >= 2) this.setState({ stageH: h });
+    };
 
     componentWillUnmount() {
         this._mounted = false;
         window.removeEventListener("resize", this.measureStage);
+        this.sidebarRO?.disconnect();
         this.riseTimers.forEach(t => { cancelAnimationFrame(t.raf); clearTimeout(t.timeout); });
         this.riseTimers.clear();
     }
 
     componentDidUpdate() {
         this.measureStage();
+        this.fitStageHeight();
         this.spawnRisingTokens();
     }
 
@@ -302,12 +334,6 @@ class CallGraph extends React.Component<{}, CallGraphState> {
         }
 
         const { viewMode, stageSize } = this.state;
-        // 資料結構視覺化面板同時打開時，把舞台縮矮，兩張圖才擠得進同一屏；
-        // 只有呼叫圖時維持原本的 360px。面板開關發生在停駐點的 @layout，
-        // 隨後的重繪就會讀到新狀態。
-        const containerEntry = ((window as any).gdbgui_collapser_registry || {}).container;
-        const containerOpen = !!(containerEntry && containerEntry.isOpen && containerEntry.isOpen());
-        const stageHeight = containerOpen ? "clamp(170px, 30vh, 260px)" : "360px";
         const showGhost = usingGhost && viewMode === "global";
         const camera = cameraTransform(
             viewMode, liveW, liveH, stageSize.w, stageSize.h,
@@ -333,7 +359,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                 <div
                     ref={this.stageRef}
                     style={{
-                        width: "100%", height: stageHeight, overflow: "hidden",
+                        width: "100%", height: `${this.state.stageH}px`, overflow: "hidden",
                         border: "1px solid var(--line)", borderRadius: "10px",
                         background: "var(--paper)", position: "relative",
                     }}
