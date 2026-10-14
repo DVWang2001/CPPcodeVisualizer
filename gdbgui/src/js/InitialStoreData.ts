@@ -39,7 +39,7 @@ const initial_store_data = {
   // preferences
   highlight_source_code: true, // get saved boolean to highlight source code
   max_lines_of_code_to_fetch: constants.default_max_lines_of_code_to_fetch,
-  auto_add_breakpoint_to_main: true,
+  auto_add_breakpoint_to_main: false, // 不再自動停在 main；沒斷點就是跑到結束（僅剩遠端連線路徑讀這個值）
   autoplay_enabled: true, // 自動播放模式：TTS 結束後自動執行對應的 GDB 步驟指令
   autoplay_paused: false, // 暫停自動播放：保留進度，下次恢復時從該步驟繼續
   autoplay_pending_command: null as string | null, // 暫停時儲存的待執行指令

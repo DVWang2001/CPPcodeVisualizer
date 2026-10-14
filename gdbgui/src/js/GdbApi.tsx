@@ -525,8 +525,7 @@ const GdbApi = {
                 `-interpreter-exec console "unset substitute-path"`,
                 gdbSubstCmd ? `-interpreter-exec console "${gdbSubstCmd}"` : "",
                 // Set chroot exec-wrapper so every -exec-run spawns the inferior inside the jail
-                safeWrapper ? `-gdb-set exec-wrapper "${safeWrapper}"` : "",
-                store.get("auto_add_breakpoint_to_main") ? "-break-insert -f main" : ""
+                safeWrapper ? `-gdb-set exec-wrapper "${safeWrapper}"` : ""
               ];
 
               // Breakpoints are editor markers decoupled from any specific binary.
@@ -1023,11 +1022,6 @@ const GdbApi = {
     if (_savedSubstCmd) {
       cmds.push(`-interpreter-exec console "unset substitute-path"`);
       cmds.push(`-interpreter-exec console "${_savedSubstCmd}"`);
-    }
-
-    // add breakpoint if we don't already have one
-    if (store.get("auto_add_breakpoint_to_main")) {
-      cmds.push("-break-insert -f main");
     }
 
     // Drop GDB-confirmed numeric breakpoints (ephemeral); keep only frontend_* (persistent markers).

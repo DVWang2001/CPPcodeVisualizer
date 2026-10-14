@@ -19,7 +19,6 @@ class Settings extends React.Component {
       "gdb_version",
       "gdb_pid",
       "show_settings",
-      "auto_add_breakpoint_to_main",
       "pretty_print",
       "refresh_state_after_sending_console_command",
       "show_all_sent_commands_in_console",
@@ -82,10 +81,6 @@ class Settings extends React.Component {
     return (
       <table className="table table-condensed">
         <tbody>
-          {Settings.get_checkbox_row(
-            "auto_add_breakpoint_to_main",
-            "載入執行檔後自動在 main 加上中斷點"
-          )}
           {this.get_update_max_lines_of_code_to_fetch()}
           {Settings.get_checkbox_row(
             "pretty_print",
