@@ -29,11 +29,12 @@
 // improvement (no noise to filter), not a gap; nothing downstream expects or filters libc frames.
 import { printEntry } from "./model.js";
 
-// Matches DEFAULT_MAX_SNAPSHOTS in gdbgui/server/prerun.py — keeps the two engines' behavior
-// consistent on the same rare edge case (pathologically deep/wide recursion), even though the
-// reason for the cap differs (there: an unattended gdb subprocess must not run forever; here: just
-// bounding response size — LocalGdb's trace itself is already capped by VG_MAX_STEPS).
-const MAX_SNAPSHOTS = 300;
+// Only bounds response size — LocalGdb's trace is already capped by VG_MAX_STEPS. It must stay
+// comfortably above any realistic teaching tree: a cap below the real call count truncates the
+// ghost tree, live nodes past the cut never match a ghost signature, the match ratio falls under
+// CallGraph's 0.6 threshold mid-run, and the call tree silently reverts to a shifting live layout
+// (Coin Change n=30 makes 516 calls — a cap of 300 made it look like it had no ghost pre-run).
+const MAX_SNAPSHOTS = 3000;
 
 /**
  * @param {import("./model.js").TraceModel} model
