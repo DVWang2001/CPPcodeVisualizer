@@ -126,6 +126,7 @@ export default class LessonGenPanel extends React.Component<Props, State> {
             <option value="nvidia">NVIDIA NIM（伺服器已設金鑰）</option>
             <option value="zen">OpenCode Zen · big-pickle（很慢，需自備 key）</option>
             <option value="mistral">Mistral（需自備 key）</option>
+            <option value="google">Google AI Studio · Gemini（需自備 key，有免費額度）</option>
             <option value="custom">自訂</option>
           </select>
         </div>

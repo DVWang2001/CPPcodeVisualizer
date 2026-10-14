@@ -6,6 +6,9 @@ export const PRESETS: Record<string, { baseUrl: string; model: string }> = {
   nvidia: { baseUrl: "https://integrate.api.nvidia.com/v1", model: "deepseek-ai/deepseek-v4-flash-0731" },
   zen: { baseUrl: "https://opencode.ai/zen/v1", model: "big-pickle" },
   mistral: { baseUrl: "https://api.mistral.ai/v1", model: "mistral-small-latest" },
+  // Google AI Studio 的 OpenAI 相容端點（後端會接上 /chat/completions，所以不含尾斜線）。
+  // gemini-flash-latest 是 Google 維護的別名，免得型號一汰換就失效；想固定型號可在面板直接改。
+  google: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-flash-latest" },
   custom: { baseUrl: "", model: "" },
 };
 

@@ -63,6 +63,7 @@ def test_env_key_not_shared_with_other_real_providers():
         "https://api.mistral.ai/v1",
         "https://opencode.ai/zen/v1",
         "https://api.openai.com/v1",
+        "https://generativelanguage.googleapis.com/v1beta/openai",
     ):
         assert lesson_gen.env_key_allowed(other) is False
 

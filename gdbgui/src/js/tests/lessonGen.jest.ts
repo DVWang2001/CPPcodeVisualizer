@@ -1,6 +1,13 @@
 import { PRESETS, defaultCfg, applyPreset, buildRequestBody, takeCompleteLines } from "../lessonGen";
 
 describe("applyPreset", () => {
+  test("switching to google fills the Gemini OpenAI-compatible endpoint", () => {
+    const cfg = applyPreset(defaultCfg(), "google");
+    expect(cfg.preset).toBe("google");
+    expect(cfg.baseUrl).toBe("https://generativelanguage.googleapis.com/v1beta/openai");
+    expect(cfg.model).toBe("gemini-flash-latest");
+  });
+
   test("switching to mistral fills its baseUrl/model", () => {
     const cfg = applyPreset(defaultCfg(), "mistral");
     expect(cfg.preset).toBe("mistral");
