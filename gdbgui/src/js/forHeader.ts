@@ -176,8 +176,14 @@ const NO_ADDR_SENTINEL = BigInt(0);
 export function decideForSegment(
   min_addrs: { [line: number]: bigint },
   line: number,
-  addr: unknown
+  addr: unknown,
+  hint?: unknown
 ): "A" | "C" {
+  // 引擎直接告知這一站是迴圈進入（init）還是遞增（incr）時以它為準，不再靠「看過的
+  // 最小位址」推論——推論法在初始化那一站沒被觀察到時（中斷點設在迴圈內、或 continue
+  // 跳過 for 標頭）會把第一個遞增站誤判成 A，標頭就顯示 i=0 而不是 i++ 再 i<n。
+  if (hint === "init") return "A";
+  if (hint === "incr") return "C";
   const parsed = parse_addr(addr);
   if (parsed === null) {
     if (!(line in min_addrs)) {

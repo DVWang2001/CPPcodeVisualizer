@@ -469,7 +469,16 @@ export class LocalGdbSession {
     const items = [];
     if (!o.noRunning) items.push(outputItem("^running\r"));
     items.push(notifyItem("running", { "thread-id": "all" }));
-    const frame = () => this.frameRec(0, "scalars", false);
+    // `for-seg`: on a stop at a `for` header, whether it is the loop-entry (init) or the increment stop. The UI's A/C
+    // split used to infer this from "the smallest address seen so far for that line", which labels an increment stop as
+    // init whenever the init stop was never observed (a breakpoint inside the loop, `continue` over the header) — the
+    // header then showed `i = 0` instead of `i++` then `i < n`. The model knows the truth, so hand it over.
+    const frame = () => {
+      const o = this.frameRec(0, "scalars", false);
+      const fs = o && this.model.forSegment(this.topStep());
+      if (o && fs) o["for-seg"] = fs.seg;
+      return o;
+    };
     const tail = { "thread-id": "1", "stopped-threads": "all", core: "0" };
     switch (info.kind) {
       case "breakpoint": {

@@ -49,7 +49,8 @@ function recompute_for_sub_step(frame: any) {
   const seg = decideForSegment(
     (global_variable as any).__for_line_min_addr,
     line,
-    frame?.addr
+    frame?.addr,
+    frame?.["for-seg"]
   );
   store.set("for_sub_step", { line, seg });
 }

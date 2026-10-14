@@ -163,3 +163,26 @@ describe("decideForSegment", () => {
     expect(decideForSegment(min, 7, "not-an-address")).toBe("C");
   });
 });
+
+describe("decideForSegment — 引擎給的 for-seg 提示優先於位址推論", () => {
+  it("初始化那一站沒被觀察到（continue 跳過 for 標頭）時，第一個遞增站仍判 C，不是 A", () => {
+    const min: { [line: number]: bigint } = {};
+    // 位址推論法在這裡會回 A（第一次看到的位址就是最小值）——這就是 Rail Stack
+    // 的 for 標頭顯示 i=0 而不是 i++ 的原因。
+    expect(decideForSegment(min, 25, "0x4017d0", "incr")).toBe("C");
+  });
+
+  it("提示 init 就是 A，與位址無關", () => {
+    expect(decideForSegment({}, 25, "0x4017d0", "init")).toBe("A");
+  });
+
+  it("沒有提示（舊行為）時維持以位址推論", () => {
+    const min: { [line: number]: bigint } = {};
+    expect(decideForSegment(min, 7, "0x1158")).toBe("A");
+    expect(decideForSegment(min, 7, "0x1167")).toBe("C");
+  });
+
+  it("不認得的提示值被忽略，退回位址推論", () => {
+    expect(decideForSegment({}, 7, "0x1158", "whatever")).toBe("A");
+  });
+});
