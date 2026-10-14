@@ -106,6 +106,9 @@ const Actions = {
     // 導致 VarCreator._is_fetching 永遠為 true，卡死所有後續變數建立。
     // 透過 window 橋接（避免 Actions↔GdbVariable 循環 import）在此 reset。
     (window as any).gdbgui_reset_var_queue?.();
+    // 上一輪 guide 建立的 {expr} 變數物件對新的引擎 session 已經是死的，不丟掉會被
+    // graphics_instruction 複用而顯示上一輪結束時的舊值（見 discard_guide_expressions）。
+    (window as any).gdbgui_discard_guide_expressions?.();
     // 清空 UML 物件圖狀態，否則重跑時面板會殘留上一次的物件框（中止在途輪詢 + 清 __latest_uml）
     (window as any).gdbgui_reset_uml_state?.();
     // 開新的即時課堂已經搬到 GdbApi.click_run_button 裡的 gdbgui_live_quiz_gate_run

@@ -695,6 +695,27 @@ class GdbVariable extends React.Component {
     }
   }
 
+  /**
+   * 重新執行時丟掉上一輪「教案 guide 的 {expr}」建立的變數物件。
+   *
+   * 為什麼要丟：VisualizerHelper.graphics_instruction 看到 store 裡已經有同名、
+   * in_scope 的 varobj 就直接複用（只等 changelist 更新）。但重新執行 = 新的
+   * 引擎 session，上一輪留在 store 的 `expr` 物件對新 session 來說已經是死的：
+   * 它們停在「上一輪結束時」的值（Collatz 的 n=1），算式 `{n/2}` `{3*n+1}`
+   * 不會被新 session 的 changelist 更新，追蹤表就顯示 6/2=0、3*3+1=4 這種舊值；
+   * 引擎重新從 var1 開始編號時，還可能和舊物件同名而錯位。
+   *
+   * 只丟 expr_type === "expr"（guide 產生的，下一個停駐點會重建）；使用者自己加的
+   * watch 與 hover 不動。
+   */
+  static discard_guide_expressions() {
+    const expressions: any[] = store.get("expressions") || [];
+    const kept = expressions.filter((obj: any) => obj.expr_type !== "expr");
+    if (kept.length !== expressions.length) {
+      store.set("expressions", kept);
+    }
+  }
+
   static fetch_and_show_children_for_var(gdb_var_name: any) {
     let expressions = store.get("expressions");
     let obj = GdbVariable.get_obj_from_gdb_var_name(expressions, gdb_var_name);
@@ -933,5 +954,7 @@ class GdbVariable extends React.Component {
 // -var-create 不會讓 _is_fetching 永遠卡死——這裡舊 process 真的被殺了，
 // 所以要 hard reset（見 clear_visualizer_queues 的參數說明）。
 (window as any).gdbgui_reset_var_queue = () => GdbVariable.clear_visualizer_queues(true);
+// 同上理由（循環依賴）：Run/重啟時由 Actions.inferior_program_starting 呼叫。
+(window as any).gdbgui_discard_guide_expressions = () => GdbVariable.discard_guide_expressions();
 
 export default GdbVariable;
