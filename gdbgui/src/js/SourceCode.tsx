@@ -874,7 +874,14 @@ class SourceCode extends React.Component<{}, State> {
   fitPanelToViewport = () => {
     const ed = this.editorInstance, dom = this.panelDomNode;
     if (!ed || !dom) return;
-    dom.style.width = `${ed.getLayoutInfo().contentWidth}px`;
+    // contentWidth 會一路延伸到 minimap（右側欄）底下，面板右上角的「進階／簡單」
+    // 與 ✕ 就被蓋住按不到；寬度要收在 minimap 左緣之前。
+    const li: any = ed.getLayoutInfo();
+    const mmLeft = li.minimap?.minimapLeft ?? li.minimapLeft ?? 0;
+    const mmWidth = li.minimap?.minimapWidth ?? li.minimapWidth ?? 0;
+    let w = li.contentWidth;
+    if (mmWidth > 0 && mmLeft > li.contentLeft) w = Math.min(w, mmLeft - li.contentLeft);
+    dom.style.width = `${Math.max(w - 8, 200)}px`;
     dom.style.transform = `translateX(${ed.getScrollLeft()}px)`;
   };
 
