@@ -6,7 +6,7 @@
 
 std::vector<int> memo(7, -1);   // memo[n] ＝ fib(n)，-1 ＝ 還沒算過
 
-int fib(int n) {                       //@ @layout sidebar:50 open:callgraph,container
+int fib(int n) {                       //@ @layout sidebar:50 open:callgraph close:container
     int result;
     if (n <= 1) {                      //@ @guide 子問題 fib({n})\n記憶表：{memo} @tts [next] 子問題是 fib {n}，先看是不是 0 或 1 | @2 [next] fib {n}，是 0 或 1 嗎
         result = n;                    //@ @guide [邊界#gray] fib({n}) = {n} @tts [next] 到底了，fib {n} 就是 {n}
@@ -23,7 +23,7 @@ int fib(int n) {                       //@ @layout sidebar:50 open:callgraph,con
     return result;                     //@ @guide 回傳 {result} ← {a} + {b} @tts [next] 這一層的答案是 {result}，交回上一層 | @2 [next] 答案 {result}，往上交
 }                                      //@ @tts [next] 這一層結束，沿呼叫樹返回
 int main() {
-    int total = fib(6);                //@ @guide 從 main 呼叫 fib(6)\n記憶表一開始全是 -1（還沒算過）：{memo} @tts [next] 從 main 出發問 fib 六，記憶表現在全是負一，代表都還沒算過 | @2 [next] 全部算完了，回到 main @layout sidebar:50 open:callgraph,container
-    std::cout << total << std::endl;   //@ @guide 答案 {total}\n記憶表：{memo}\n每個 n 只真正算過一次，所以全部只呼叫 11 次（沒有記憶要 25 次） @tts [next] 答案是 {total}。看這張記憶表：每個 n 只真正算過一次，全部呼叫了十一次，沒有記憶的話要二十五次 @layout sidebar:58 open:container
+    int total = fib(6);                //@ @guide 從 main 呼叫 fib(6)\n記憶表一開始全是 -1（還沒算過）：{memo} @tts [next] 從 main 出發問 fib 六，記憶表現在全是負一，代表都還沒算過 | @2 [next] 全部算完了，回到 main @layout sidebar:50 open:callgraph close:container
+    std::cout << total << std::endl;   //@ @guide 答案 {total}\n記憶表：{memo}\n每個 n 只真正算過一次，所以全部只呼叫 11 次（沒有記憶要 25 次） @tts [next] 答案是 {total}。看這張記憶表：每個 n 只真正算過一次，全部呼叫了十一次，沒有記憶的話要二十五次 @layout sidebar:58 open:callgraph close:container
     return 0;                          //@ @tts [continue] 這就是 top-down：從大問題問起，遇到算過的就直接查表。教案播放完畢
 }
