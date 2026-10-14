@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-2604A.cpp",
+  "source_code": "// UML 物件圖教案 CC-2604A：點集合的總和與平均（私有欄位、成員函式讀寫）\n// （改寫自 CF 題目 CC-2604A：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\n#include<vector>\nusing namespace std;\nclass Point{\n   double m_x,m_y;\npublic:\n   Point(double x=0,double y=0):m_x(x),m_y(y){}\n   Point add(Point b){return Point(m_x+b.m_x,m_y+b.m_y);}\n   Point div(double b){return Point(m_x/b,m_y/b);}\n   void read(){cin>>m_x>>m_y;}\n   void print(){cout<<\"(\"<<m_x<<\",\"<<m_y<<\")\";}\n};\nclass PVec{\n   vector<Point> m_pts;\npublic:\n   PVec(int n):m_pts(n){}\n   Point sum(){\n      Point s;\n      for(int k=0;k<m_pts.size();k++) s=s.add(m_pts[k]);\n      return s;\n   }\n   Point avg(){return sum().div(m_pts.size());}\n   void read(){for(int k=0;k<m_pts.size();k++) m_pts[k].read();}\n   void print(){\n      cout<<\"sum:\";sum().print();cout<<endl;\n      cout<<\"avg:\";avg().print();cout<<endl;\n   }\n};\nint main(){\n   int n;cin>>n;\n   PVec pts(n);\n   pts.read();\n   pts.print();  //@ @guide uml:pts\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "35",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 4 53 27 34 44 73 80 53 49 "
+}

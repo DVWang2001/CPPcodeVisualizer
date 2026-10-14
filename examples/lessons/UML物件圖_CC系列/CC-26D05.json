@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-26D05.cpp",
+  "source_code": "// UML 物件圖教案 CC-26D05：箭頭長度（組合：Arrow 有兩個 Complex）\n// （改寫自 CF 題目 CC-26D05：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\n#include<cmath>\nusing namespace std;\nclass Complex{public:\n   double x,y;\n   Complex(double a=0,double b=0):x(a),y(b){}\n   Complex sub(const Complex& b)const{return Complex(x-b.x,y-b.y);}\n   void read(){\n      char c1,c2;\n      cin>>x>>c1>>y>>c2;\n      if(c1=='-')y*=-1;\n   }\n};\nclass Arrow{public:\n   Complex a,b;\n   double len(){\n      Complex d=a.sub(b);\n      return sqrt(d.x*d.x+d.y*d.y);\n   }\n   void read(){a.read();b.read();}\n};\n\nint main(){\n   int n;cin>>n;\n   while(n--){\n      Arrow ar;ar.read();\n      cout<<ar.len()<<endl;  //@ @guide uml:ar\n   }\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "29",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 4  56  +  42  i  45  -  53  i  52  +  34  i  94  -  66  i  26  +  61  i  89  -  48  i  76  +  58  i  86  +  37  i "
+}

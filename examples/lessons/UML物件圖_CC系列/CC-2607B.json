@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-2607B.cpp",
+  "source_code": "// UML 物件圖教案 CC-2607B：分數向量與物件計數（static 計數器改成全域變數）\n// （改寫自 CF 題目 CC-2607B：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\n#include<vector>\nusing namespace std;\nint g_popu=0;   // 原本是 Score 的 static 成員，這裡改成全域變數\nclass Score{\n   double m_x,m_y;\npublic:\n   ~Score(){g_popu--;}\n   Score(double x=0,double y=1):m_x(x),m_y(y){g_popu++;}\n   void addIn(const Score& b){\n      m_x=m_x*b.m_y+b.m_x*m_y;\n      m_y=m_y*b.m_y;\n   }\n   void divInt(int b){m_y*=b;}\n   void read(){\n      double p,q;char c;\n      cin>>p>>c>>q;\n      m_x=p;m_y=q;\n   }\n   void print()const{cout<<m_x<<\"/\"<<m_y;}\n};\nclass FVec{\n   vector<Score> m_vs;\npublic:\n   FVec(int n):m_vs(n){}\n   void sumTo(Score& s)const{\n      for(int k=0;k<m_vs.size();k++) s.addIn(m_vs[k]);\n   }\n   void avgTo(Score& a)const{\n      sumTo(a);\n      a.divInt(m_vs.size());\n   }\n   void read(){for(int k=0;k<m_vs.size();k++) m_vs[k].read();}\n   void print()const{\n      Score s;\n      sumTo(s);\n      cout<<\"sum:\";s.print();cout<<endl;\n      Score a;\n      avgTo(a);\n      cout<<\"avg:\";a.print();cout<<endl;\n   }\n};\nint main(){\n   {\n      int n;cin>>n;\n      FVec pts(n);pts.read();\n      pts.print();cout<<endl;  //@ @guide uml:pts\n      cout<<g_popu<<endl;\n   }\n   cout<<g_popu<<endl;\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "49",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 3  12  /  35  80  /  24  57  /  30 "
+}

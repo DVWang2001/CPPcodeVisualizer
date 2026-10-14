@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-2603B.cpp",
+  "source_code": "// UML 物件圖教案 CC-2603B：分數向量的總和、乘積與平均（FVec 提供 push 與 reduce）\n// （改寫自 CF 題目 CC-2603B：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\n#include<vector>\nusing namespace std;\nint gcd(int a,int b){\n   if(a<0)a=-a;\n   if(b<0)b=-b;\n   return b==0?a:gcd(b,a%b);\n}\nclass Fraction{public:\n   int x,y;\n   Fraction(int a=0,int b=0):x(a),y(b){}\n   Fraction add(Fraction b){\n      return Fraction(x*b.y+y*b.x,y*b.y);\n   }\n   Fraction mul(Fraction b){\n      return Fraction(x*b.x,y*b.y);\n   }\n   Fraction div(int b){\n      return Fraction(x,y*b);\n   }\n   void read(){char c;cin>>x>>c>>y;}\n   void print(){cout<<x<<\"/\"<<y;}\n};\n\nclass FVec{\n   vector<Fraction>fv;\npublic:\n   void push(Fraction f){fv.push_back(f);}\n   Fraction reduce(Fraction f)const{\n      int g=gcd(f.x,f.y);\n      if(g==0) g=1;\n      return Fraction(f.x/g, f.y/g);\n   }\n   Fraction sum(){\n      Fraction s=fv[0];\n      for(int i=1;i<fv.size();i++) s=s.add(fv[i]);\n      return reduce(s);\n   }\n   Fraction pro(){\n      Fraction p=fv[0];\n      for(int i=1;i<fv.size();i++) p=p.mul(fv[i]);\n      return reduce(p);\n   }\n   Fraction avg(){\n      return reduce(sum().div((int)fv.size()));\n   }\n   void read(){\n      int n;cin>>n;\n      for(int i=0;i<n;i++){Fraction f;f.read();push(f);}\n   }\n};\nint main(){\n  FVec a;a.read();\n  a.sum().print();cout<<endl;a.pro().print();cout<<endl;a.avg().print();cout<<endl;  //@ @guide uml:a\n  return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "56",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 3  90  /  82  73  /  13  12  /  57 "
+}

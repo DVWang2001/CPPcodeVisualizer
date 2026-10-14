@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-26D02.cpp",
+  "source_code": "// UML 物件圖教案 CC-26D02：複數向量（逐一輸入，output 成員函式輸出）\n// （改寫自 CF 題目 CC-26D02：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\n#include<cmath>\n#include<vector>\nusing namespace std;\nclass Complex{public:\n   double x,y;\n   Complex(double a=0,double b=0):x(a),y(b){}\n   Complex add(Complex p){return Complex(x+p.x,y+p.y);}\n   Complex mul(Complex p){return Complex(x*p.x-y*p.y,y*p.x+x*p.y);}\n   Complex div(double b){return Complex(x/b,y/b);}\n   void read(){\n      char c1,c2;\n      cin>>x>>c1>>y>>c2;\n      if(c1=='-')y*=-1;\n   }\n   void print(){\n      if(y==0)cout<<x;\n      else if(x==0)cout<<y<<\"i\";\n      else if(y<0) cout<<x<<y<<\"i\";\n      else cout<<x<<\"+\"<<y<<\"i\";\n   }\n};\nclass CVec{\n   vector<Complex>cv;\npublic:\n   void input(Complex c){\n      cv.push_back(c);\n   }\n   void readOne(){\n      Complex c;\n      c.read();\n      input(c);\n   }\n   void output(){\n      cout<<\"sum:\";tol().print();cout<<endl;\n      cout<<\"Cross product:\";cross().print();cout<<endl;\n      cout<<\"avg:\";avg().print();cout<<endl;\n   }\n   Complex tol(){\n      Complex ans=cv[0];\n      for(int i=1;i<cv.size();i++){\n         ans=ans.add(cv[i]);\n      }\n      return ans;\n   }\n   Complex cross(){\n      Complex ans=cv[0];\n      for(int i=1;i<cv.size();i++){\n         ans=ans.mul(cv[i]);\n      }\n      return ans;\n   }\n   Complex avg(){\n      return tol().div(cv.size());\n   }\n};\nint main(){\n   int n;cin>>n;\n   CVec c;\n   while(n--){\n      c.readOne();\n   }\n   c.output();cout<<endl;  //@ @guide uml:c\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "65",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 5  39  +  75  i  57  -  49  i  20  -  97  i  49  +  59  i  61  -  96  i "
+}

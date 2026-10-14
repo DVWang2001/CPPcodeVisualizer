@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-2605B.cpp",
+  "source_code": "// UML 物件圖教案 CC-2605B：分數向量（Fraction 私有欄位，建構時約分）\n// （改寫自 CF 題目 CC-2605B：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\n#include<vector>\nusing namespace std;\nint gcd(int a,int b){\n   if(a<0)a=-a;\n   if(b<0)b=-b;\n   return b==0?a:gcd(b,a%b);\n}\nclass Fraction{\n   int x,y;\npublic:\n   Fraction(int a=0,int b=1):x(a),y(b){reduce();}\n   void reduce(){\n      int g=gcd(x,y);\n      if(g!=0){ x/=g; y/=g; }\n   }\n   Fraction add(Fraction b)const{\n      return Fraction(x*b.y+y*b.x,y*b.y);\n   }\n   Fraction mul(Fraction b)const{\n      return Fraction(x*b.x,y*b.y);\n   }\n   Fraction div(int b)const{\n      return Fraction(x,y*b);\n   }\n   void read(){\n      char c;\n      int p,q;\n      cin>>p>>c>>q;\n      x=p;y=q;\n      reduce();\n   }\n   void print()const{cout<<x<<\"/\"<<y;}\n};\n\nclass FVec{\n   vector<Fraction>fv;\npublic:\n   Fraction tol()const{\n      Fraction ans=fv[0];\n      for(int i=1;i<fv.size();i++){\n         ans=ans.add(fv[i]);\n      }\n      return ans;\n   }\n   Fraction cross()const{\n      Fraction ans=fv[0];\n      for(int i=1;i<fv.size();i++){\n         ans=ans.mul(fv[i]);\n      }\n      return ans;\n   }\n   Fraction avg()const{\n      return tol().div(fv.size());\n   }\n   void read(){\n      int n;cin>>n;\n      for(int i=0;i<n;i++){Fraction f;f.read();fv.push_back(f);}\n   }\n   void print()const{\n      tol().print();cout<<endl;\n      cross().print();cout<<endl;\n      avg().print();cout<<endl;\n   }\n};\n\nint main(){\n   FVec a;a.read();\n   a.print();  //@ @guide uml:a\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "71",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": "4\n40/32\n60/87\n71/12\n69/49\n"
+}

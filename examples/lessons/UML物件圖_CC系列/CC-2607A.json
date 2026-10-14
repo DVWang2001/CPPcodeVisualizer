@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-2607A.cpp",
+  "source_code": "// UML 物件圖教案 CC-2607A：點集合與物件計數（static 計數器改成全域變數）\n// （改寫自 CF 題目 CC-2607A：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\n#include<vector>\nusing namespace std;\nint g_population=0;   // 原本是 Point 的 static 成員，這裡改成全域變數\nclass Point{\n   double m_x,m_y;\npublic:\n   Point(double x=0,double y=0):m_x(x),m_y(y){g_population++;}\n   ~Point(){g_population--;}\n   void addIn(const Point& b){m_x+=b.m_x;m_y+=b.m_y;}\n   void divIn(double b){m_x/=b;m_y/=b;}\n   void read(){cin>>m_x>>m_y;}\n   void print()const{cout<<\"(\"<<m_x<<\",\"<<m_y<<\")\";}\n};\nclass PVec{\n   vector<Point> m_pts;\npublic:\n   PVec(int n):m_pts(n){}\n   void sumTo(Point& s)const{\n      for(int k=0;k<m_pts.size();k++) s.addIn(m_pts[k]);\n   }\n   void avgTo(Point& a)const{\n      sumTo(a);\n      a.divIn(m_pts.size());\n   }\n   void read(){for(int k=0;k<m_pts.size();k++) m_pts[k].read();}\n   void print()const{\n      Point s;\n      sumTo(s);\n      cout<<\"sum:\";s.print();cout<<endl;\n      Point a;\n      avgTo(a);\n      cout<<\"avg:\";a.print();cout<<endl;\n   }\n};\nint main(){\n   {\n      int n;cin>>n;\n      PVec pts(n);pts.read();\n      pts.print();cout<<endl;  //@ @guide uml:pts\n      cout<<g_population<<endl;\n   }\n   cout<<g_population<<endl;\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "42",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 4  49 84 38 44 60 67 60 49 75 63 35 65 "
+}

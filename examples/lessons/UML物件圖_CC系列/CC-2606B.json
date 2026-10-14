@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-2606B.cpp",
+  "source_code": "// UML 物件圖教案 CC-2606B：兩個分數的加減乘除（Frac 建構時約分）\n// （改寫自 CF 題目 CC-2606B：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\nusing namespace std;\nint gcd(int a,int b){\n   if(a<0)a=-a;\n   if(b<0)b=-b;\n   return b==0?a:gcd(b,a%b);\n}\nclass Frac{public:\n  int m_x,m_y;\n  Frac(int n=0,int d=1):m_x(n),m_y(d){\n    int g=gcd(m_x,m_y);\n    if(g!=0){ m_x/=g; m_y/=g; }\n  }\n  Frac add(const Frac& b)const{\n    return Frac(m_x*b.m_y+m_y*b.m_x, m_y*b.m_y);\n  }\n  Frac sub(const Frac& b)const{\n    return Frac(m_x*b.m_y-m_y*b.m_x, m_y*b.m_y);\n  }\n  Frac mul(const Frac& b)const{return Frac(m_x*b.m_x, m_y*b.m_y);}\n  Frac div(const Frac& b)const{return Frac(m_x*b.m_y, m_y*b.m_x);}\n  void read(){\n    int p,q;char c;\n    cin>>p>>c>>q;\n    m_x=p;m_y=q;\n  }\n  void print()const{cout<<m_x<<\"/\"<<m_y;}\n};\n\nint main(){\n  Frac a,b;\n  a.read();b.read();\n  a.add(b).print();cout<<endl;  //@ @guide uml:a\n  a.sub(b).print();cout<<endl;\n  a.mul(b).print();cout<<endl;\n  a.div(b).print();cout<<endl;\n  return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "35",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 2  /  27  8  /  13 "
+}

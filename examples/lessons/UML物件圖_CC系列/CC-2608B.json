@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-2608B.cpp",
+  "source_code": "// UML 物件圖教案 CC-2608B：分數向量（long long 分子分母，約分後輸出）\n// （改寫自 CF 題目 CC-2608B：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\n#include<vector>\nusing namespace std;\ntypedef long long LL;\nLL gcdLL(LL a,LL b){\n   if(a<0)a=-a;\n   if(b<0)b=-b;\n   return b==0?a:gcdLL(b,a%b);\n}\nclass Frac{public:\n  LL m_n,m_d;\n  Frac(LL n=0,LL d=1):m_n(n),m_d(d){}\n  void addTo(Frac b){m_n=m_n*b.m_d+m_d*b.m_n;m_d*=b.m_d;}\n  void mulBy(Frac b){m_n=m_n*b.m_n;m_d*=b.m_d;}\n  Frac div(int b){return  Frac(m_n,m_d*b);}\n  void read(){\n    char c;\n    cin>>m_n>>c>>m_d;\n  }\n  void print(){cout<<m_n<<\"/\"<<m_d;}\n};\nclass FVec{public:\n  vector<Frac> m_vs;\n  Frac reduce(Frac f){\n    LL g=gcdLL(f.m_n,f.m_d);\n    if(g!=0){ f.m_n/=g; f.m_d/=g; }\n    return f;\n  }\n  Frac sum(){\n    Frac s;\n    for(int i=0;i<m_vs.size();i++) s.addTo(m_vs[i]);\n    return reduce(s);\n  }\n  Frac pro(){\n    Frac p(1,1);\n    for(int i=0;i<m_vs.size();i++) p.mulBy(m_vs[i]);\n    return reduce(p);\n  }\n  Frac avg(){\n    return reduce(sum().div((int)m_vs.size()));\n  }\n  void read(){\n    int n;cin>>n;Frac v;\n    while(n--){v.read();m_vs.push_back(v);}\n  }\n};\nint main(){\n  FVec a;a.read();\n  a.sum().print();cout<<endl;a.pro().print();cout<<endl;a.avg().print();cout<<endl;  //@ @guide uml:a\n  return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "51",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 5  71  /  45  25  /  40  43  /  92  60  /  74  80  /  47 "
+}

@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-2610A.cpp",
+  "source_code": "// UML 物件圖教案 CC-2610A：三角形的重心與內心（組合：Triangle 有三個 Point）\n// （改寫自 CF 題目 CC-2610A：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\n#include<cmath>\nusing namespace std;\nclass Point{\n   double m_x,m_y;\npublic:\n   Point(double x=0,double y=0):m_x(x),m_y(y){}\n   Point add(const Point b)const{return Point(m_x+b.m_x,m_y+b.m_y);}\n   Point mul(double b)const{return Point(m_x*b,m_y*b);}\n   Point div(double b)const{return mul(1/b);}\n   Point sub(const Point &a)const{return add(a.mul(-1.));}\n   double toDouble()const{return sqrt(m_x*m_x+m_y*m_y);}\n   void read(){cin>>m_x>>m_y;}\n   void print()const{cout<<\"(\"<<m_x<<\",\"<<m_y<<\")\";}\n};\n\nclass Triangle{public:\n   Point A,B,C;\n   void read(){A.read();B.read();C.read();}\n   void print(){\n      Point G=A.add(B).add(C).div(3);\n      double a=B.sub(C).toDouble();\n      double b=C.sub(A).toDouble();\n      double c=A.sub(B).toDouble();\n      Point I=A.mul(a).add(B.mul(b)).add(C.mul(c)).div(a+b+c);\n      cout<<\"G:\";G.print();cout<<endl;\n      cout<<\"I:\";I.print();\n   }\n};\n\nint main(){\n   Triangle tri;tri.read();\n   tri.print();cout<<endl;  //@ @guide uml:tri\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "35",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 49 21 30 39 73 24 "
+}

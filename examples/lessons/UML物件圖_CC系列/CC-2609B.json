@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "CC-2609B.cpp",
+  "source_code": "// UML 物件圖教案 CC-2609B：n×n 矩陣的加、減、乘（用 new 配置一維陣列）\n// （改寫自 CF 題目 CC-2609B：運算子多載、friend、繼承與 static 改成一般成員函式，才能在瀏覽器引擎逐步執行）\n#include<iostream>\nusing namespace std;\nclass matrix{\n   int *data;\n   int mn;\npublic:\n   matrix(int n){\n      mn=n;\n      data=new int[n*n];\n   }\n   void read(){\n      for(int i=0;i<mn*mn;i++)cin>>data[i];\n   }\n   void print(){\n      for(int i=0;i<mn*mn;i++){\n         if(i!=0 &&i%mn==0)cout<<endl;\n         cout<<data[i]<<\" \";\n      }\n      cout<<endl;\n   }\n   matrix add(matrix m){\n      matrix result(mn);\n      for(int i=0;i<mn*mn;i++)result.data[i]=data[i]+m.data[i];\n      return result;\n   }\n   matrix sub(matrix m){\n      matrix result(mn);\n      for(int i=0;i<mn*mn;i++)result.data[i]=data[i]-m.data[i];\n      return result;\n   }\n   matrix mul(matrix m){\n      matrix result(mn);\n      for(int i=0;i<mn;i++){\n         for(int j=0;j<mn;j++){\n            int sum=0;\n            for(int k=0;k<mn;k++)sum+=data[i*mn+k]*m.data[k*mn+j];\n            result.data[i*mn+j]=sum;\n         }\n      }\n      return result;\n   }\n};\nint main(){\n   int n;\n   cin>>n;\n   matrix a(n);\n   matrix b(n);\n   a.read();b.read();\n   a.add(b).print();cout<<endl;  //@ @guide uml:a\n   a.sub(b).print();cout<<endl;\n   a.mul(b).print();cout<<endl;\n   return 0;\n}\n",
+  "breakpoints": [
+    {
+      "line": "51",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": " 6  78 88 28 60 76 47 51 18 79 74 81 29 17 7 77 69 72 6 74 30 35 83 40 47 31 7 1 2 70 30 79 8 16 77 99 83 30 15 86 19 60 43 38 66 59 55 90 39 93 72 33 34 22 29 15 7 6 93 9 75 37 96 44 1 44 93 97 7 49 81 45 1 "
+}
