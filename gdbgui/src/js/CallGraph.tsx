@@ -302,6 +302,12 @@ class CallGraph extends React.Component<{}, CallGraphState> {
         }
 
         const { viewMode, stageSize } = this.state;
+        // 資料結構視覺化面板同時打開時，把舞台縮矮，兩張圖才擠得進同一屏；
+        // 只有呼叫圖時維持原本的 360px。面板開關發生在停駐點的 @layout，
+        // 隨後的重繪就會讀到新狀態。
+        const containerEntry = ((window as any).gdbgui_collapser_registry || {}).container;
+        const containerOpen = !!(containerEntry && containerEntry.isOpen && containerEntry.isOpen());
+        const stageHeight = containerOpen ? "clamp(170px, 30vh, 260px)" : "360px";
         const showGhost = usingGhost && viewMode === "global";
         const camera = cameraTransform(
             viewMode, liveW, liveH, stageSize.w, stageSize.h,
@@ -327,7 +333,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                 <div
                     ref={this.stageRef}
                     style={{
-                        width: "100%", height: "360px", overflow: "hidden",
+                        width: "100%", height: stageHeight, overflow: "hidden",
                         border: "1px solid var(--line)", borderRadius: "10px",
                         background: "var(--paper)", position: "relative",
                     }}
