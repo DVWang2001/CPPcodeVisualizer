@@ -8,6 +8,7 @@ import { store } from "statorgfc";
 import constants from "./constants";
 import { stripDirective } from "./sourceAnnotations";
 import { resolveGuideText } from "./guideText";
+import { resolveSourceText } from "./sourceText";
 
 type State = any;
 
@@ -68,7 +69,10 @@ class Visualizer extends React.Component<{}, State> {
   }
 
   renderSourceCode() {
-    const sourceText: string = (global_variable as any).__source_text || "";
+    const sourceText: string = resolveSourceText(
+      global_variable as any,
+      (window as any).gdbgui_get_editor_value
+    );
     const lineGuide: Record<string | number, string> = (global_variable as any).__line || {};
     const guide: Map<string, any[]> = (global_variable as any).__guide;
 
