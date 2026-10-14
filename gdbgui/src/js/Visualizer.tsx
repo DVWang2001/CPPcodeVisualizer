@@ -9,12 +9,16 @@ import constants from "./constants";
 import { stripDirective } from "./sourceAnnotations";
 import { resolveGuideText } from "./guideText";
 import { resolveSourceText } from "./sourceText";
+import { nextScrollLeft } from "./traceScroll";
 
 type State = any;
 
 class Visualizer extends React.Component<{}, State> {
   updateInterval: any;
   scrollContainerRef = React.createRef<HTMLDivElement>();
+  // 上一次 render 時的步驟欄數；componentDidUpdate 用它判斷「有沒有新的一欄」
+  renderedSteps = 0;
+  scrolledSteps = 0;
 
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
@@ -86,6 +90,7 @@ class Visualizer extends React.Component<{}, State> {
     const guideArrays = guide ? Array.from(guide.values()) : [];
     const maxSteps = guideArrays.length > 0 ? Math.max(...guideArrays.map(a => a.length)) : 0;
     const stepColCount = Math.max(maxSteps, 1);
+    this.renderedSteps = maxSteps;
 
     const linesWithGuide = new Set<number>();
     lines.forEach((_, idx) => {
@@ -119,9 +124,19 @@ class Visualizer extends React.Component<{}, State> {
         display: "flex", alignItems: "center",
       };
 
+      // 行號與程式碼兩欄固定在左邊（程式對照必須一直看得到），步驟欄在它們底下捲動。
+      // sticky 欄位必須不透明，否則捲過去的步驟欄會從底下透出來；有資料的行
+      // 用漸層把 accent-soft 疊在不透明底色上。
+      const stickyBg = hasData
+        ? "linear-gradient(var(--accent-soft), var(--accent-soft)), var(--surface, #fff)"
+        : "var(--surface, #fff)";
+      const stickyBase: React.CSSProperties = {
+        position: "sticky", background: stickyBg, zIndex: 2,
+      };
+
       cells.push(
         <span key={`n${lineNum}`} style={{
-          ...cellBase, justifyContent: "flex-end",
+          ...cellBase, ...stickyBase, left: 0, justifyContent: "flex-end",
           paddingRight: "6px", color: "var(--ink-faint)", userSelect: "none" as const,
           fontSize: `${Math.round(fs * 0.92)}px`, fontFamily: "var(--font-mono)",
         }}>
@@ -131,8 +146,9 @@ class Visualizer extends React.Component<{}, State> {
 
       cells.push(
         <span key={`c${lineNum}`} style={{
-          ...cellBase,
+          ...cellBase, ...stickyBase, left: 32,
           overflow: "visible",
+          borderRight: "1px solid var(--line)",
           padding: "0 8px", fontFamily: "var(--font-mono)",
           fontSize: `${fs}px`, color: "var(--ink)", whiteSpace: "pre",
         }}>
@@ -201,6 +217,19 @@ class Visualizer extends React.Component<{}, State> {
         this.scrollContainerRef.current.scrollTop = scrollTop;
       }
     };
+  }
+
+  componentDidUpdate() {
+    const el = this.scrollContainerRef.current;
+    if (!el) return;
+    const target = nextScrollLeft(
+      this.scrolledSteps,
+      this.renderedSteps,
+      el.scrollWidth,
+      el.clientWidth
+    );
+    this.scrolledSteps = this.renderedSteps;
+    if (target !== null) el.scrollLeft = target;
   }
 
   componentWillUnmount() {
