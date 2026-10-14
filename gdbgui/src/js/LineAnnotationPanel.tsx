@@ -17,9 +17,19 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
   guideRef = React.createRef<HTMLTextAreaElement>();
   state = { sugg: [] as string[] };
 
-  componentDidMount() { this.report(); this.guideRef.current?.focus(); }
+  ro: any = null;
+  lastH = 0;
+  componentDidMount() {
+    this.report(); this.guideRef.current?.focus();
+    // 寬度變窄（讓出 minimap）或文字換行時高度會變，view zone 要跟著，否則儲存鍵會掉到區塊外
+    if ((window as any).ResizeObserver && this.root.current) {
+      this.ro = new (window as any).ResizeObserver(() => this.report());
+      this.ro.observe(this.root.current);
+    }
+  }
+  componentWillUnmount() { this.ro?.disconnect(); }
   componentDidUpdate(prev: Props) { if (prev.mode !== this.props.mode) this.report(); }
-  report = () => { const h = this.root.current?.offsetHeight || 0; if (h) this.props.onHeight(h); };
+  report = () => { const h = this.root.current?.offsetHeight || 0; if (h && h !== this.lastH) { this.lastH = h; this.props.onHeight(h); } };
 
   insertVariable = (name: string) => {
     const ta = this.guideRef.current;
