@@ -26,20 +26,20 @@ int main() {
         std::cin >> g[i];
     }
 
-    std::vector<std::vector<int>> dp(h + 1, std::vector<int>(w + 1, 0)); //@ @guide 表開 (h+1) x (w+1)，多墊一列、一行\ndp[r][c] 對應地圖上的 (r-1, c-1)；第 0 列、第 0 行整排是墊片，永遠是 0\n（表要等這一行執行完才長出來） @tts [next] 這一行做一張表，故意比地圖多一列、多一行。多出來的那一圈全部先填 0，等一下就知道用途
-    dp[1][1] = 1;                                //@ @guide 地圖起點 (0,0) 對應 dp[1][1]，只有一種走法：待在原地\n{dp}\n後面每一格都要靠「上面」或「左邊」推出來，只有這一格要手動指定——這是這條遞迴式的起點（base case） @tts [next] 起點對應 dp[1][1]，填 1。站在起點本身就是一種走法，這是整張表唯一手動填的格子，剩下的每一格都要靠推導算出來
-    for (int i = 1; i <= h; ++i) {               //@ @guide 外層迴圈：一列一列往下填\n{dp} @tts [next] 先看第 1 列，對應地圖的第 0 列 | @2 [next] 換到第 2 列，對應地圖的第 1 列 | @3 [fast @4] 第 3 列（地圖第 2 列）規則跟前面一模一樣，我們直接跳到算完，看最後的答案 | @4 [next] 第 3 列也用同樣的規則算完了，整張表都填好了 @layout sidebar:55 open:container
-        for (int j = 1; j <= w; ++j) {           //@ @guide 現在填 dp 的第 {i} 列（對應地圖第 {i} - 1 列）\n內層迴圈由左往右走完這一列\n{dp} @tts [next] 內層迴圈由左往右走完這一列 | @2 [next] 這一格算完了，看這一列還有沒有下一格
-            if (i == 1 && j == 1) continue;      //@ @guide dp 第 {i} 列第 {j} 行\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue}\n先看是不是起點：起點已經填過 1 了，跳過不要蓋掉 @tts [next] 起點剛才填過了，跳過 | @2 [next] 不是起點，繼續
-            if (g[i - 1][j - 1] == '#') {        //@ @guide {dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 先看地圖上這一格是不是牆（# 就是牆） @tts [next] 先問這一格是不是牆 | @2 [next] 是牆嗎 @layout pair:dp,g
-                dp[i][j] = 0;                    //@ @guide 這一格是牆，走不進來\n{dp[i][j]:pink} {g[i - 1][j - 1]:pink}\n不管上面或左邊算出多少，牆一律直接填 0——這格不會是任何路徑的最後一步 @tts [next] 這一格是牆，走不進來，所以走法直接算 0，不管上面或左邊有多少種走法都不算數 | @2 [next] 又是牆，一樣填 0
-                continue;                        //@ @guide 這一格處理完了 @tts [next] 這一格處理完了 | @2 [next] 換下一格
+    std::vector<std::vector<int>> dp(h + 1, std::vector<int>(w + 1, 0)); //@ @guide 表開 (h+1) x (w+1)，多墊一列、一行\ndp[r][c] 對應地圖上的 (r-1, c-1)；第 0 列、第 0 行整排是墊片，永遠是 0\n（表要等這一行執行完才長出來） @tts [next] 這一行先做一張表，不過我們故意讓它比地圖多一列、多一行。多出來的那一圈先全部填 0，等一下就知道它有什麼用
+    dp[1][1] = 1;                                //@ @guide 地圖起點 (0,0) 對應 dp[1][1]，只有一種走法：待在原地\n{dp}\n後面每一格都要靠「上面」或「左邊」推出來，只有這一格要手動指定——這是這條遞迴式的起點（base case） @tts [next] 起點對應 dp[1][1]，填 1。因為站在起點本身，就算一種走法。這是整張表唯一手動填的格子，其他每一格都要靠推導算出來
+    for (int i = 1; i <= h; ++i) {               //@ @guide 外層迴圈：一列一列往下填\n{dp} @tts [next] 好，先看第 1 列，也就是地圖的第 0 列 | @2 [next] 換到第 2 列，對應地圖的第 1 列 | @3 [fast @4] 第 3 列的規則一模一樣，我們直接跳到算完，看最後的答案 | @4 [next] 第 3 列也用同樣的規則算完了，整張表都填好了 @layout sidebar:55 open:container
+        for (int j = 1; j <= w; ++j) {           //@ @guide 現在填 dp 的第 {i} 列（對應地圖第 {i} - 1 列）\n內層迴圈由左往右走完這一列\n{dp} @tts [next] 內層迴圈會由左往右，把這一列一格一格走完 | @2 [next] 這一格算完了，看看右邊還有沒有 | @3 [next] 往右一格 | @6 [next] 換第 2 列，一樣由左往右 | @7 [next] 下一格 | @9 [next] 右
+            if (i == 1 && j == 1) continue;      //@ @guide dp 第 {i} 列第 {j} 行\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue}\n先看是不是起點：起點已經填過 1 了，跳過不要蓋掉 @tts [next] 起點剛才已經填過了，這一格跳過 | @2 [next] 不是起點，繼續 | @4 [next] 不是起點 | @6 [next] 繼續
+            if (g[i - 1][j - 1] == '#') {        //@ @guide {dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 先看地圖上這一格是不是牆（# 就是牆） @tts [next] 先問一下，這一格是不是牆 | @2 [next] 是牆嗎 | @4 [next] 牆嗎 | @6 [next] 牆 @layout pair:dp,g
+                dp[i][j] = 0;                    //@ @guide 這一格是牆，走不進來\n{dp[i][j]:pink} {g[i - 1][j - 1]:pink}\n不管上面或左邊算出多少，牆一律直接填 0——這格不會是任何路徑的最後一步 @tts [next] 這一格是牆，走不進來，所以走法直接算 0。不管上面或左邊有多少種走法，都不算數 | @2 [next] 又是牆，一樣填 0
+                continue;                        //@ @guide 這一格處理完了 @tts [next] 這一格處理完了，換下一格 | @2 [next] 換下一格
             }
-            int up = dp[i - 1][j];               //@ @guide 從上面來的走法有幾種？\n{dp[i - 1][j]:orange}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n上面一定是合法的格子——如果 {i} 是 1，上面就是墊片列，本來就是 0，不用特別判斷 @tts [next] 能走到這一格的路，要先看兩個方向的來源。先看上面：dp[i 減 1][j]，直接把上面那一格算好的走法數抄過來 | @2 [next] 上面是 dp[i 減 1][j]，值是 {dp[i - 1][j]} @layout pop:dp:orange
-            int left = dp[i][j - 1];             //@ @guide 再看左邊來的走法有幾種？\n{dp[i][j - 1]:lime}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n左邊也一定是合法的格子——如果 {j} 是 1，左邊就是墊片行，本來就是 0，不用特別判斷 @tts [next] 再看左邊：dp[i][j 減 1]，直接把左邊那一格算好的走法數抄過來 | @2 [next] 左邊是 dp[i][j 減 1]，值是 {dp[i][j - 1]} @layout pop:dp:lime
-            dp[i][j] = (up + left) % MOD;        //@ @guide 把兩個來源加起來，就是這一格的走法數\n{dp[i - 1][j]:orange} 上面\n{dp[i][j - 1]:lime} 左邊\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n為什麼用加的：走到這一格的路，最後一步只有兩種可能——從上面走下來，或從左邊走過來，兩種路徑不會重複，所以把兩邊的走法數直接加起來 @tts [next] 為什麼是用加的：走到這一格的最後一步，只有從上面下來、或從左邊過來這兩種可能，兩種不會重複，所以把兩邊的走法數加起來，就是這一格的答案：上面 {up} 加左邊 {left} | @2 [next] 上面 {up} 加左邊 {left}，寫進這一格 @layout pop:dp
+            int up = dp[i - 1][j];               //@ @guide 從上面來的走法有幾種？\n{dp[i - 1][j]:orange}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n上面一定是合法的格子——如果 {i} 是 1，上面就是墊片列，本來就是 0，不用特別判斷 @tts [next] 要知道怎麼走到這一格，得先看兩個來源。先看上面：dp[i 減 1][j]，直接把上面那一格算好的走法數抄過來 | @2 [next] 上面是 dp[i 減 1][j]，值是 {dp[i - 1][j]} | @3 [next] 上面 {dp[i - 1][j]} @layout pop:dp:orange
+            int left = dp[i][j - 1];             //@ @guide 再看左邊來的走法有幾種？\n{dp[i][j - 1]:lime}\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n左邊也一定是合法的格子——如果 {j} 是 1，左邊就是墊片行，本來就是 0，不用特別判斷 @tts [next] 再看左邊：dp[i][j 減 1]，也是直接把左邊那一格算好的走法數抄過來 | @2 [next] 左邊是 dp[i][j 減 1]，值是 {dp[i][j - 1]} | @3 [next] 左邊 {dp[i][j - 1]} @layout pop:dp:lime
+            dp[i][j] = (up + left) % MOD;        //@ @guide 把兩個來源加起來，就是這一格的走法數\n{dp[i - 1][j]:orange} 上面\n{dp[i][j - 1]:lime} 左邊\n{dp[i][j]:lightblue} {g[i - 1][j - 1]:lightblue} 這一格\n為什麼用加的：走到這一格的路，最後一步只有兩種可能——從上面走下來，或從左邊走過來，兩種路徑不會重複，所以把兩邊的走法數直接加起來 @tts [next] 為什麼用加的？因為走到這一格的最後一步，只有兩種可能：從上面下來，或從左邊過來，而且兩種不會重複。所以把兩邊的走法數加起來就是答案：上面 {up} 加左邊 {left} | @2 [next] 上面 {up} 加左邊 {left}，寫進這一格 | @3 [next] {up} 加 {left} | @5 [next] 加起來 @layout pop:dp
         }
     }
-    std::cout << dp[h][w] << "\n";               //@ @guide 整張表填完了：{dp}\n答案在右下角\n{dp[h][w]:orange} @tts [next] 表填完了，答案就是右下角那一格：每一格都是上面加左邊推出來的，牆是唯一的例外，直接填 0
+    std::cout << dp[h][w] << "\n";               //@ @guide 整張表填完了：{dp}\n答案在右下角\n{dp[h][w]:orange} @tts [next] 表填完了，答案就是右下角那一格。每一格都是上面加左邊推出來的，牆是唯一的例外，直接填 0
     return 0;                                    //@ @tts [continue] 教案播放完畢
 }
