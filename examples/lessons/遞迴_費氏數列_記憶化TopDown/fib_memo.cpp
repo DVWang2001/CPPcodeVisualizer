@@ -20,7 +20,7 @@ int fib(int n) {
     int b = fib(n - 2);                //@ @guide 右子問題 fib({n}-2)，左邊已得 {a} @tts [step-in] 左邊是 {a}，再處理右邊的子問題 fib {n} 減 2 | @2 [step-in] 左邊 {a}，右邊 fib {n} 減 2 | @4 [step-in] 右邊
     result = a + b;                    //@ @guide result = {a} + {b} @tts [next] 左邊 {a} 加右邊 {b} | @2 [next] {a} 加 {b} | @4 [next] 相加
     memo[n] = result;                  //@ @guide 把答案存進記憶表第 {n} 格\n{memo[n]:orange} @tts [next] 把答案 {result} 記進表裡。下次再問到 fib {n}，就不用再算一次 | @2 [next] 把 {result} 記進表裡 | @4 [next] 記進表裡
-    return result;                     //@ @guide 回傳 {result} ← {a} + {b} @tts [next] 這一層的答案是 {result}，交回上一層 | @2 [next] 答案 {result}，往上交
+    return result;                     //@ @guide 回傳 {result} ← {a} + {b}\n已存入記憶表：{memo[n]:orange} @tts [next] 這一層的答案是 {result}，交回上一層 | @2 [next] 答案 {result}，往上交
 }                                      //@ @tts [next] 這一層結束，沿呼叫樹返回
 int main() {
     int total = fib(6);                //@ @guide 從 main 呼叫 fib(6)\n記憶表一開始全是 -1（還沒算過） @tts [next] 從 main 出發問 fib 六，記憶表現在全是負一，代表都還沒算過 | @2 [next] 全部算完了，回到 main @layout sidebar:50 open:callgraph,container
