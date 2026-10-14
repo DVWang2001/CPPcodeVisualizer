@@ -12,14 +12,14 @@ int fib(int n) {
         result = n;                    //@ @guide [邊界#gray] fib({n}) = {n} @tts [next] 到底了，fib {n} 就是 {n}
         return result;                 //@ @guide 回傳 {result} ← 邊界 @tts [next] 把 {result} 交回上一層
     }
-    if (memo[n] >= 0) {                //@ @guide 先查記憶表：fib({n}) 算過了嗎？\n{memo[n]:lightblue} @tts [next] 動手算之前，先查記憶表第 {n} 格 | @2 [next] 先查表第 {n} 格
-        result = memo[n];              //@ @guide [查表命中#green] 算過了，直接抄\n{memo[n]:lime} @tts [next] 命中！fib {n} 算過了，直接拿現成的答案，整棵子樹不用再展開 | @2 [next] 命中，直接抄
+    if (memo[n] >= 0) {                //@ @guide 先查記憶表：fib({n}) 算過了嗎？\n{memo[n]} @tts [next] 動手算之前，先查記憶表第 {n} 格 | @2 [next] 先查表第 {n} 格
+        result = memo[n];              //@ @guide [查表命中#green] 算過了，直接抄\n{memo[n]} @tts [next] 命中！fib {n} 算過了，直接拿現成的答案，整棵子樹不用再展開 | @2 [next] 命中，直接抄
         return result;                 //@ @guide 回傳 {result} ← 查表 @tts [next] 把查到的 {result} 交回上一層
     }
     int a = fib(n - 1);                //@ @guide 沒算過，要自己算。左子問題 fib({n}-1) @tts [step-in] 沒算過，只好自己算。先處理左邊的子問題 fib {n} 減 1 | @2 [step-in] 左邊 fib {n} 減 1 | @4 [step-in] 左邊
     int b = fib(n - 2);                //@ @guide 右子問題 fib({n}-2)，左邊已得 {a} @tts [step-in] 左邊是 {a}，再處理右邊的子問題 fib {n} 減 2 | @2 [step-in] 左邊 {a}，右邊 fib {n} 減 2 | @4 [step-in] 右邊
     result = a + b;                    //@ @guide result = {a} + {b} @tts [next] 左邊 {a} 加右邊 {b} | @2 [next] {a} 加 {b} | @4 [next] 相加
-    memo[n] = result;                  //@ @guide 把答案存進記憶表第 {n} 格\n{memo[n]:orange}\n{memo} @tts [next] 把答案 {result} 記進表裡。下次再問到 fib {n}，就不用再算一次 | @2 [next] 把 {result} 記進表裡 | @4 [next] 記進表裡
+    memo[n] = result;                  //@ @guide 把答案存進記憶表第 {n} 格\n{memo[n]}\n{memo} @tts [next] 把答案 {result} 記進表裡。下次再問到 fib {n}，就不用再算一次 | @2 [next] 把 {result} 記進表裡 | @4 [next] 記進表裡
     return result;                     //@ @guide 回傳 {result} ← {a} + {b} @tts [next] 這一層的答案是 {result}，交回上一層 | @2 [next] 答案 {result}，往上交
 }                                      //@ @tts [next] 這一層結束，沿呼叫樹返回
 int main() {
