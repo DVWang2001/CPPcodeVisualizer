@@ -9,6 +9,13 @@ body.tutorial #middle {
   height: 100% !important;
 }
 
+/* 編輯器上方那排（新草稿、AI 生成教案、Import/Export、課堂題目、存到帳號）與
+   「本機草稿」提示：教學頁用不到，拿掉讓練習區清爽。 */
+body.tutorial .toolbar-row,
+body.tutorial .draft-chip {
+  display: none !important;
+}
+
 /* 最左邊的窗格原本放檔案總管，教學頁拿來放文件。 */
 body.tutorial #folders_view {
   background: #fbfaf6 !important;

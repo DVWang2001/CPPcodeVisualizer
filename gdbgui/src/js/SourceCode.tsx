@@ -2036,6 +2036,7 @@ class SourceCode extends React.Component<{}, State> {
                 </span>
               ) : (
                 <span
+                  className="draft-chip"
                   title="這是瀏覽器本機自動存檔的內容，不是教案庫裡的任何一篇。重新整理不會拿到教案庫的最新版本——要看最新內容，請按左上角「回首頁」重新選一次。"
                   style={{ fontSize: "12px", color: "#8a5a00", background: "#fff3cd", border: "1px solid #ffe08a", borderRadius: "4px", padding: "1px 6px", whiteSpace: "nowrap" }}>
                   ⚠ 本機草稿（未載入教案）
