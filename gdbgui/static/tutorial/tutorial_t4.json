@@ -1,7 +1,7 @@
 {
   "version": "2.0",
   "fullname_to_render": "tutorial_t4.cpp",
-  "source_code": "#include <iostream>\nusing namespace std;\n\nint main() {   //@ @layout open:visualizer sidebar:50\n    int sum = 0;   //@ @tts [next] 先準備 sum，從 0 開始\n    for (int i = 1; i <= 3; i++) {   //@ @tts [next] 進入迴圈 | @2 [next] 看看要不要再來一圈\n        sum += i;   //@ @tts [next] 第 {i} 圈，加進 sum\n    }\n    cout << sum << endl;   //@ @tts [next] 全部跑完，總和是 {sum}\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "source_code": "#include <iostream>\nusing namespace std;\n\nint main() {   //@ @layout open:visualizer\n    int sum = 0;   //@ @tts [next] 先準備 sum，從 0 開始\n    for (int i = 1; i <= 3; i++) {   //@ @tts [next] 進入迴圈 | @2 [next] 看看要不要再來一圈\n        sum += i;   //@ @tts [next] 第 {i} 圈，加進 sum\n    }\n    cout << sum << endl;   //@ @tts [next] 全部跑完，總和是 {sum}\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
   "breakpoints": [
     {
       "line": "5",

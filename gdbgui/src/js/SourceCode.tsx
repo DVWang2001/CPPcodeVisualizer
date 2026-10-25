@@ -1101,7 +1101,8 @@ class SourceCode extends React.Component<{}, State> {
 
       if (key === "sidebar") {
         const pct = parseFloat(val);
-        if (!isNaN(pct)) {
+        // 教學頁三個窗格的寬度是固定的，不跟著教案的 sidebar:N 動。
+        if (!isNaN(pct) && !(window as any).initial_data?.tutorial) {
           try {
             const splitObj = store.get("middle_panes_split_obj");
             console.log("[applyLayout] splitObj:", splitObj, "hasSizes:", typeof splitObj?.setSizes);

@@ -168,7 +168,11 @@ class Collapser extends React.Component<{}, CollapserState> {
     }
 
     return (
-      <div className="collapser" style={play_mode && this.state.collapsed ? { display: "none" } : undefined}>
+      <div
+        className="collapser"
+        // 教學頁一律隱藏收合著的面板：只看到這一課用得到的（@layout open: 打開的）。
+        style={(play_mode || (window as any).initial_data?.tutorial) && this.state.collapsed ? { display: "none" } : undefined}
+      >
         <div
           className={"pointer titlebar" + ((this.props as any).primary ? " titlebar--primary" : "")}
           onClick={this.toggle_visibility.bind(this)}

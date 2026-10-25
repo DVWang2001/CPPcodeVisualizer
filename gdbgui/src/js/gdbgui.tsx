@@ -56,6 +56,9 @@ if (debug) {
 // @ts-expect-error ts-migrate(2339) FIXME: Property 'store' does not exist on type 'Window & ... Remove this comment to see the full error message
 window.store = store;
 
+// @ts-expect-error initial_data is a template global
+if (initial_data.tutorial) document.body.classList.add("tutorial");
+
 class Gdbgui extends React.PureComponent {
   componentWillMount() {
     GdbApi.init();
@@ -70,7 +73,9 @@ class Gdbgui extends React.PureComponent {
 
         <div id="middle" style={{ paddingTop: "32px" }}>
           <div id="folders_view" className="content" style={{ backgroundColor: "#333" }}>
-            <FoldersView />
+            {/* 教學頁：最左邊的窗格放文件（章節、步驟、提示），不放檔案總管。 */}
+            {/* @ts-expect-error initial_data is a template global */}
+            {initial_data.tutorial ? <TutorialShell /> : <FoldersView />}
           </div>
 
           <div id="source_code_view" className="content">
@@ -94,8 +99,6 @@ class Gdbgui extends React.PureComponent {
         </div>
 
         {/* below are elements that are only displayed under certain conditions */}
-        {/* @ts-expect-error initial_data is a template global */}
-        {initial_data.tutorial && <TutorialShell />}
         <Modal />
         <HoverVar />
         <Settings />
@@ -130,7 +133,9 @@ class Gdbgui extends React.PureComponent {
         minSize: 100,
         cursor: "col-resize",
         direction: "horizontal", // horizontal makes a left/right pane, and a divider running vertically
-        sizes: store.get("show_filesystem") ? [30, 40, 29] : [0, 70, 29] // adding to exactly 100% is a little buggy due to splitjs, so keep it to 99
+        // 教學頁：文件 / 編輯器 / 面板 約 34 : 36 : 29。
+        // @ts-expect-error initial_data is a template global
+        sizes: initial_data.tutorial ? [34, 36, 29] : store.get("show_filesystem") ? [30, 40, 29] : [0, 70, 29] // adding to exactly 100% is a little buggy due to splitjs, so keep it to 99
       }
     );
 
