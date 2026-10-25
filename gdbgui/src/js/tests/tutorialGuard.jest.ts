@@ -1,4 +1,22 @@
-import { codePart, skeletonOf, isCommentOnlyEdit, selectionTouchesCode } from "../tutorialGuard";
+import { codePart, skeletonOf, isCommentOnlyEdit, selectionTouchesCode, snapColumn } from "../tutorialGuard";
+
+describe("snapColumn", () => {
+  const line = "    int sum = 0;   //@ @tts hi";
+  test("a caret inside the code jumps to the end of the same line", () => {
+    expect(snapColumn(line, 1)).toBe(line.length + 1);
+    expect(snapColumn(line, 8)).toBe(line.length + 1);
+    expect(snapColumn(line, codePart(line).length)).toBe(line.length + 1);
+  });
+  test("a caret after the code (or in the comment) stays", () => {
+    const codeLen = codePart(line).length;
+    expect(snapColumn(line, codeLen + 1)).toBe(codeLen + 1);
+    expect(snapColumn(line, codeLen + 6)).toBe(codeLen + 6);
+  });
+  test("lines with no code (blank, comment only) never move the caret", () => {
+    expect(snapColumn("", 1)).toBe(1);
+    expect(snapColumn("//@ only", 3)).toBe(3);
+  });
+});
 
 const SRC = [
   "int main() {   //@ @layout open:visualizer",

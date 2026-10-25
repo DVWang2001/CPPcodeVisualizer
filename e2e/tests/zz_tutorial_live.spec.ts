@@ -51,11 +51,14 @@ async function editTtsLineAndEnter(page: Page, suffix: string) {
 test('code is read-only on the tutorial page; only the //@ comments can be edited', async ({ page }) => {
   await openT1(page);
   const value = () => page.evaluate(() => (window as any).gdbgui_get_editor_value());
+  const codeOnly = (t: string) => t.split('\n').map(l => l.split('//')[0].trimEnd()).join('\n');
   const before = await value();
-  // 點在程式碼上打字：內容不變
+  // 點在程式碼上：光標會移到同一行的行尾（不留在程式碼裡），所以打字只會接在註解後面，程式碼不變
   await page.locator('.view-line', { hasText: 'int sum = 0' }).first().click({ position: { x: 30, y: 6 } });
   await page.keyboard.type('zzz');
-  expect(await value()).toBe(before);
+  const afterTyping = await value();
+  expect(codeOnly(afterTyping)).toBe(codeOnly(before));
+  expect(afterTyping).toContain('zzz'); // 接在這一行的註解尾巴，不是程式碼裡
   // 點在註解行尾打字：改得動
   await page.locator('.view-line', { hasText: '@tts' }).first().click();
   await page.keyboard.press('End');

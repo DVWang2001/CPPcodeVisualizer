@@ -17,7 +17,7 @@ import GdbApi from "./GdbApi";
 import { parseAnnotations, parseLineAnnotation, upsertLineAnnotation } from "./sourceAnnotations";
 import { nearestRunnableLine, isRunnableLine, decideEnter, Visit } from "./runToLine";
 import { lineVisitCount } from "./localEngine";
-import { skeletonOf, isCommentOnlyEdit, selectionTouchesCode } from "./tutorialGuard";
+import { skeletonOf, isCommentOnlyEdit, selectionTouchesCode, snapColumn } from "./tutorialGuard";
 import { normalizeBundle } from "./bundleAdapter";
 import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
@@ -210,7 +210,18 @@ class SourceCode extends React.Component<{}, State> {
         reverting = false;
       }
     });
-    editor.onDidChangeCursorSelection(() => {
+    // 光標不要停在程式碼裡（反正不能改）：移到同一行的行尾。行不變，所以點一行再按 Enter 照舊。
+    // 滑鼠只在放開時才移，這樣拖曳選取（想複製程式碼）不會被打斷；方向鍵移進去就立刻移出。
+    const snapCaret = () => {
+      const sel = editor.getSelection();
+      if (!sel || !sel.isEmpty()) return;
+      const line: string = model.getLineContent(sel.positionLineNumber);
+      const col = snapColumn(line, sel.positionColumn);
+      if (col !== sel.positionColumn) editor.setPosition({ lineNumber: sel.positionLineNumber, column: col });
+    };
+    editor.onMouseUp(() => snapCaret());
+    editor.onDidChangeCursorSelection((e: any) => {
+      if (e && e.source === "keyboard") snapCaret();
       if (!reverting) lastSel = editor.getSelections();
       const touches = selectionTouchesCode(model.getLinesContent(), editor.getSelections() || []);
       editor.updateOptions({ readOnly: touches, readOnlyMessage: { value: "教學頁的程式碼不能改，只能改 //@ 註解" } });

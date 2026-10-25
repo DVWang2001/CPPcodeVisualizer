@@ -30,6 +30,15 @@ export function isCommentOnlyEdit(base: string[], text: string): boolean {
   });
 }
 
+/**
+ * 光標（沒選取）如果停在程式碼裡，要移到哪一欄？移到這一行的行尾（註解的位置）；
+ * 不在程式碼裡就維持原欄位。行還是同一行，所以「點一行再按 Enter 執行到那一行」不受影響。
+ */
+export function snapColumn(line: string, col: number): number {
+  const codeLen = codePart(line).length;
+  return codeLen > 0 && col <= codeLen ? line.length + 1 : col;
+}
+
 export type Sel = { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
 
 /**
