@@ -1489,6 +1489,9 @@ class SourceCode extends React.Component<{}, State> {
       : null;
   };
 
+  // 播放模式（Run 之後）編輯器唯讀；教學頁例外——學習者要能改完 //@ 再按 Enter 連續重播。
+  playModeLocksEditor = () => !this.state.edit_mode && !(window as any).initial_data?.tutorial;
+
   setLiveQuizVersionLock = (locked: boolean) => {
     this.liveQuizVersionLock = locked;
     if (locked) {
@@ -1496,7 +1499,7 @@ class SourceCode extends React.Component<{}, State> {
       store.set("edit_mode", false);
     }
     if (this.editorInstance) {
-      const readOnly = locked || !this.state.edit_mode;
+      const readOnly = locked || this.playModeLocksEditor();
       this.editorInstance.updateOptions({
         readOnly,
         extraEditorClassName: readOnly ? "gdbgui-readonly-editor" : "",
@@ -2203,8 +2206,8 @@ class SourceCode extends React.Component<{}, State> {
                   this.handleEditorDidMount(getValue, editor);
                 }}
                 options={{
-                  readOnly: this.liveQuizVersionLock || !this.state.edit_mode,
-                  extraEditorClassName: this.liveQuizVersionLock || !this.state.edit_mode ? 'gdbgui-readonly-editor' : '',
+                  readOnly: this.liveQuizVersionLock || this.playModeLocksEditor(),
+                  extraEditorClassName: this.liveQuizVersionLock || this.playModeLocksEditor() ? 'gdbgui-readonly-editor' : '',
                   glyphMargin: true,
                   lineNumbers: 'on',
                   scrollBeyondLastLine: false,
@@ -2248,8 +2251,8 @@ class SourceCode extends React.Component<{}, State> {
     // Sync Monaco readOnly / cursor class when edit_mode changes
     if (prevState.edit_mode !== this.state.edit_mode && this.editorInstance) {
       this.editorInstance.updateOptions({
-        readOnly: this.liveQuizVersionLock || !this.state.edit_mode,
-        extraEditorClassName: this.liveQuizVersionLock || !this.state.edit_mode ? 'gdbgui-readonly-editor' : '',
+        readOnly: this.liveQuizVersionLock || this.playModeLocksEditor(),
+        extraEditorClassName: this.liveQuizVersionLock || this.playModeLocksEditor() ? 'gdbgui-readonly-editor' : '',
       });
     }
 

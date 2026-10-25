@@ -39,6 +39,7 @@ export default function TutorialShell() {
       .then(bundle => {
         (window as any).gdbgui_apply_bundle?.(bundle);
         setCurrent(p);
+        setOpen(false); // 目錄收起來，只留目標與提示，少擋住程式碼
         setError("");
         const next = { ...done, [p.id]: true };
         setDone(next);
@@ -87,12 +88,12 @@ export default function TutorialShell() {
               </ul>
             </details>
           ))}
-          {current && (
-            <div id="tutorial_current" style={{ borderTop: "1px solid #ddd", marginTop: 6, paddingTop: 6 }}>
-              <div><b>目標：</b>{current.goal}</div>
-              <div style={{ marginTop: 4 }}><b>試著改：</b>{current.hint}</div>
-            </div>
-          )}
+        </div>
+      )}
+      {current && (
+        <div id="tutorial_current" style={{ borderTop: open ? "1px solid #ddd" : "none", marginTop: 6, paddingTop: 6, maxWidth: 280 }}>
+          <div><b>{current.title}</b>｜{current.goal}</div>
+          <div style={{ marginTop: 4 }}><b>試著改：</b>{current.hint}</div>
         </div>
       )}
     </div>
