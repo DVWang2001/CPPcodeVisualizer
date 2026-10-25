@@ -7,22 +7,15 @@
         {
           "id": "g1",
           "title": "單行 guide",
-          "goal": "在行尾寫 @guide，停在那行時導讀面板顯示文字。第一行的 open:visualizer 讓程式追蹤表自動展開。",
-          "hint": "在 for 那行按 Enter，直接執行到那裡；把「迴圈第 {i} 圈」改成別的句子再按 Enter。",
+          "goal": "在行尾寫 @guide，停在那行時程式追蹤表會在旁邊顯示文字；第一行的 open:visualizer 讓它自動展開。",
+          "hint": "在 sum += i 那行按 Enter，直接執行到那裡；把「迴圈第 {i} 圈」改成別的句子再按 Enter。",
           "file": "tutorial_g1.json"
-        },
-        {
-          "id": "g2",
-          "title": "guide 換行",
-          "goal": "用 \\n 讓導讀分成多行。",
-          "hint": "在文字中多加一個 \\n 再寫一句，按 Enter。",
-          "file": "tutorial_g2.json"
         },
         {
           "id": "g3",
           "title": "guide 看變數值",
-          "goal": "用 {變數} 讓導讀逐圈顯示 i 與 sum 的值。",
-          "hint": "把 {sum} 換成 {sum + i}，看看顯示什麼。",
+          "goal": "用 {變數} 讓導讀顯示 i 與 sum 的值。",
+          "hint": "把 {sum} 換成 {sum + i}，看看顯示什麼；再按上方 ▶ 繼續，每回到這行就多一欄。",
           "file": "tutorial_g3.json"
         }
       ]
