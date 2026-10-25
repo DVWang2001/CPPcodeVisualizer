@@ -6,16 +6,16 @@
       "projects": [
         {
           "id": "g1",
-          "title": "單行 guide",
-          "goal": "在行尾寫 @guide，停在那行時程式追蹤表會在旁邊顯示文字；第一行的 open:visualizer 讓它自動展開。",
-          "hint": "在 sum += i 那行按 Enter，直接執行到那裡；把「迴圈第 {i} 圈」改成別的句子再按 Enter。",
+          "title": "guide 只放變數",
+          "goal": "guide 只寫變數，值會顯示在右側程式追蹤表；說明交給 @tts。第一行的 open:visualizer 讓程式追蹤表自動展開。",
+          "hint": "在 sum += i 那行按 Enter，直接執行到那裡；把 {i} 換成 {sum} 再按 Enter，旁邊顯示的值就跟著換。",
           "file": "tutorial_g1.json"
         },
         {
           "id": "g3",
-          "title": "guide 看變數值",
-          "goal": "用 {變數} 讓導讀顯示 i 與 sum 的值。",
-          "hint": "把 {sum} 換成 {sum + i}，看看顯示什麼；再按上方 ▶ 繼續，每回到這行就多一欄。",
+          "title": "guide 逐圈累積",
+          "goal": "同一行每停一次，程式追蹤表就多一欄，看變數怎麼一圈一圈變化。",
+          "hint": "按 Enter 跑到 sum += i，再按上方 ▶ 繼續，每回到這行就多一欄；把 {sum} 換成 {i} 試試。",
           "file": "tutorial_g3.json"
         }
       ]
