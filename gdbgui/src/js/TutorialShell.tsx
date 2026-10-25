@@ -63,11 +63,15 @@ export default function TutorialShell() {
   const [error, setError] = React.useState("");
   const [step, setStep] = React.useState(0);
   const [menuOpen, setMenuOpen] = React.useState(true); // 還沒選課時先打開選單
+  const [openChap, setOpenChap] = React.useState<string>(""); // 手風琴：目前展開的章 id（空 = 全收合）
 
   React.useEffect(() => {
     fetch("/static/tutorial/chapters.json")
       .then(r => r.json())
-      .then(d => setFeatures(d.features || []))
+      .then(d => {
+        setFeatures(d.features || []);
+        setOpenChap((d.features || [])[0]?.id || "");
+      })
       .catch(() => setError("無法載入章節目錄"));
   }, []);
 
@@ -95,6 +99,7 @@ export default function TutorialShell() {
         const f = features.find(x => x.projects.some(q => q.id === p.id));
         window.dispatchEvent(new CustomEvent("tutorial-lesson", { detail: { feature: f ? f.title : "", title: p.title } }));
         setCurrent(p);
+        if (f) setOpenChap(f.id);
         setStep(0);
         setMenuOpen(false);
         setError("");
@@ -123,7 +128,10 @@ export default function TutorialShell() {
           className="tut-chip"
           aria-expanded={menuOpen}
           aria-controls="tutorial_list"
-          onClick={() => setMenuOpen(!menuOpen)}
+          onClick={() => {
+            if (!menuOpen && feature) setOpenChap(feature.id);
+            setMenuOpen(!menuOpen);
+          }}
         >
           {feature ? `第 ${chapterNo} 章　${feature.title}` : "選一課開始"} <span aria-hidden="true">{menuOpen ? "▴" : "▾"}</span>
         </button>
@@ -138,26 +146,46 @@ export default function TutorialShell() {
           <div className="tut-menu-head">
             全部課程　<span>{doneCount} / {flat.length} 已完成</span>
           </div>
-          {features.map((f, fi) => (
-            <div key={f.id}>
-              <div className="tut-feature">第 {fi + 1} 章　{f.title}</div>
-              {f.projects.map(p => (
-                <a
-                  key={p.id}
-                  href="#"
-                  data-project={p.id}
-                  className={current?.id === p.id ? "tut-now" : ""}
-                  onClick={e => {
-                    e.preventDefault();
-                    load(p);
-                  }}
+          {features.map((f, fi) => {
+            const isOpen = openChap === f.id;
+            const nDone = f.projects.filter(p => done[p.id]).length;
+            return (
+              <div key={f.id} className={"tut-chap" + (isOpen ? " open" : openChap ? " dim" : "") + (nDone === f.projects.length ? " all-done" : "")}>
+                <button
+                  type="button"
+                  className="tut-chap-head"
+                  data-chapter={f.id}
+                  aria-expanded={isOpen}
+                  onClick={() => setOpenChap(isOpen ? "" : f.id)}
                 >
-                  <span>{done[p.id] ? "✓" : "○"}</span>
-                  {p.title}
-                </a>
-              ))}
-            </div>
-          ))}
+                  <span className="tut-chap-num">{fi + 1}</span>
+                  <span className="tut-chap-title">{f.title}</span>
+                  <span className="tut-chap-prog">{nDone} / {f.projects.length}</span>
+                  <span className="tut-chap-chev" aria-hidden="true">▾</span>
+                </button>
+                <div className="tut-chap-wrap">
+                  <div className="tut-chap-inner">
+                    {f.projects.map(p => (
+                      <a
+                        key={p.id}
+                        href="#"
+                        data-project={p.id}
+                        tabIndex={isOpen ? 0 : -1}
+                        className={current?.id === p.id ? "tut-now" : ""}
+                        onClick={e => {
+                          e.preventDefault();
+                          load(p);
+                        }}
+                      >
+                        <span>{done[p.id] ? "✓" : current?.id === p.id ? "●" : "○"}</span>
+                        {p.title}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

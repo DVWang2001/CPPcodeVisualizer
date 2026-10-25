@@ -18,6 +18,7 @@ async function openT1(page: Page) {
   await page.goto('/tutorial');
   await page.waitForSelector('#tutorial_doc');
   await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });
+  await page.click('[data-chapter="tts"]');
   await page.click('[data-project="t1"]');
   await expect(page.locator('#tutorial_title')).toContainText('tts 念出變數');
   await expect(page.locator('#tutorial_steps li')).toHaveCount(2);
@@ -87,6 +88,7 @@ test('Enter on a plain code line (no annotation) runs straight to it', async ({ 
 test('pressing Enter again on the same line steps through visits and wraps after n', async ({ page }) => {
   await openT1(page);
   await page.click('#tutorial_menu_btn');
+  await page.click('[data-chapter="guide"]');
   await page.click('[data-project="g3"]');
   const press = async (label: string) => {
     await page.keyboard.press('Enter');
