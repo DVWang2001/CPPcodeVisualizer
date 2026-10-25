@@ -8,14 +8,14 @@
           "id": "g1",
           "title": "guide 只放變數",
           "goal": "guide 只寫變數，值會顯示在右側程式追蹤表；說明交給 @tts。第一行的 open:visualizer 讓程式追蹤表自動展開。",
-          "hint": "在 sum += i 那行按 Enter，直接執行到那裡；把 {i} 換成 {sum} 再按 Enter，旁邊顯示的值就跟著換。",
+          "hint": "在 sum += i 那行按 Enter，直接執行到那裡；把 {i} 換成 {sum} 再按 Enter。按 Restart 從頭自動播到尾。",
           "file": "tutorial_g1.json"
         },
         {
           "id": "g3",
           "title": "guide 逐圈累積",
-          "goal": "同一行每停一次，程式追蹤表就多一欄，看變數怎麼一圈一圈變化。",
-          "hint": "按 Enter 跑到 sum += i，再按上方 ▶ 繼續，每回到這行就多一欄；把 {sum} 換成 {i} 試試。",
+          "goal": "在迴圈裡的行連按 Enter，一次進入一圈，程式追蹤表每次多一列，看變數怎麼一圈一圈變化。",
+          "hint": "在 sum += i 那行連按 Enter：第 1、2、3 次進入，第 3 次之後再按回到第 1 次。把 {sum} 換成 {i} 試試。",
           "file": "tutorial_g3.json"
         }
       ]
@@ -42,14 +42,14 @@
           "id": "t3",
           "title": "tts 多次拜訪",
           "goal": "「| @2」之後的話，從第 2 次停到這行才會說。",
-          "hint": "把 @2 改成 @3，看第 2 圈說什麼。",
+          "hint": "在 for 那行連按 Enter 看第 1、2 次進入說的話不同；把 @2 改成 @3 再試。",
           "file": "tutorial_t3.json"
         },
         {
           "id": "t4",
           "title": "tts 自動播放",
-          "goal": "開頭加 [next]，念完自動執行下一行。",
-          "hint": "把 [next] 刪掉，按 Enter，觀察需不需要自己按下一步。",
+          "goal": "每行開頭的 [next] 讓旁白念完自動執行下一行；按 Restart 就能從頭自動播到尾。",
+          "hint": "把 sum += i 那行的 [next] 刪掉，按 Restart，看自動播放停在哪一行。",
           "file": "tutorial_t4.json"
         }
       ]

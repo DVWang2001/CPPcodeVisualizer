@@ -1,4 +1,26 @@
-import { isRunnableLine, nearestRunnableLine } from "../runToLine";
+import { isRunnableLine, nearestRunnableLine, decideEnter, Visit } from "../runToLine";
+
+describe("decideEnter", () => {
+  const v: Visit = { requested: 7, line: 7, code: "A", k: 1, n: 3 };
+  test("same line, same code, still paused there, not last → continue", () => {
+    expect(decideEnter(v, 7, "A", 7)).toBe("continue");
+    expect(decideEnter({ ...v, k: 2 }, 7, "A", 7)).toBe("continue");
+  });
+  test("last visit wraps back to the first (fresh run)", () => {
+    expect(decideEnter({ ...v, k: 3 }, 7, "A", 7)).toBe("fresh");
+  });
+  test("edited code, other line, not paused there, or n unknown → fresh", () => {
+    expect(decideEnter(v, 7, "B", 7)).toBe("fresh");
+    expect(decideEnter(v, 5, "A", 7)).toBe("fresh");
+    expect(decideEnter(v, 7, "A", 9)).toBe("fresh");
+    expect(decideEnter(v, 7, "A", null)).toBe("fresh");
+    expect(decideEnter({ ...v, n: null }, 7, "A", 7)).toBe("fresh");
+    expect(decideEnter(null, 7, "A", 7)).toBe("fresh");
+  });
+  test("n = 1 never continues", () => {
+    expect(decideEnter({ ...v, n: 1 }, 7, "A", 7)).toBe("fresh");
+  });
+});
 
 describe("isRunnableLine", () => {
   test.each([

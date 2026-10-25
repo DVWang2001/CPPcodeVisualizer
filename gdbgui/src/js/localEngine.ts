@@ -631,6 +631,23 @@ export function readFile(data: any): { ok: true; body: any } | { ok: false; mess
 }
 
 /**
+ * 這一行在整趟執行裡會被「停到」幾次（斷點會命中的次數）。教學頁「連按 Enter 步進第幾次進入」
+ * 用它得到 n。算法跟 BreakpointTable.hitsAt 一致：for 標頭遞增那一站（isLoopRevisit）不算。
+ * 還沒有已錄好的執行（沒 Run 過）回 null。
+ */
+export function lineVisitCount(line: number): number | null {
+  const model = _socket && _socket.currentGdb && _socket.currentGdb.session && _socket.currentGdb.session.model;
+  if (!model || !Array.isArray(model.steps)) return null;
+  let n = 0;
+  for (let i = 0; i < model.steps.length; i++) {
+    if (model.steps[i].line !== line) continue;
+    if (typeof model.isLoopRevisit === "function" && model.isLoopRevisit(i)) continue;
+    n++;
+  }
+  return n > 0 ? n : null;
+}
+
+/**
  * /api/prerun_calltree. The real backend re-runs the already-compiled binary under `gdb --batch`
  * with a breakpoint on every function, recording one stack snapshot per call (prerun.py). LocalGdb
  * already has the complete trace from the Run that just finished (GdbApi fires this right after

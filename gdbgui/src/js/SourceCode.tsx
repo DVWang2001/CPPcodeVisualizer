@@ -15,7 +15,8 @@ import { global_variable } from "./global_variable";
 import VisualizerHelper from "./VisualizerHelper";
 import GdbApi from "./GdbApi";
 import { parseAnnotations, parseLineAnnotation, upsertLineAnnotation } from "./sourceAnnotations";
-import { nearestRunnableLine } from "./runToLine";
+import { nearestRunnableLine, decideEnter, Visit } from "./runToLine";
+import { lineVisitCount } from "./localEngine";
 import { normalizeBundle } from "./bundleAdapter";
 import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
@@ -152,6 +153,23 @@ class SourceCode extends React.Component<{}, State> {
     this.refreshAnnotationGlobals();
     const lines: string[] = this.editorInstance?.getModel?.()?.getLinesContent?.() || [];
     const line = nearestRunnableLine(lines, clicked);
+    const code: string = this.editorInstance?.getValue?.() || "";
+    const pausedLine =
+      this.state.inferior_program === constants.inferior_states.paused && this.state.paused_on_frame
+        ? Number(this.state.paused_on_frame.line)
+        : null;
+
+    // 旁白的 [next]/[continue] 不可以把「停在這一行」推走；按 Restart 才會放開（見 gdbgui_before_run）。
+    (window as any).gdbgui_tutorial_hold = true;
+
+    // 同一行、程式沒改、還停在那裡 → 進到下一次（-exec-continue 就是下一次命中）。
+    if (decideEnter(this._visit, line, code, pausedLine) === "continue" && this._visit) {
+      this._visit.k += 1;
+      this._emitVisit();
+      GdbApi.click_continue_button();
+      return;
+    }
+
     const layoutMap: Record<string, string> = (global_variable as any).__layout || {};
     Object.keys(layoutMap)
       .map(Number)
@@ -160,7 +178,51 @@ class SourceCode extends React.Component<{}, State> {
       .forEach(k => this.applyLayout(k, { panelsOnly: true }));
     store.set("breakpoints", []);
     Breakpoints.add_breakpoint(this.state.fullname_to_render, line);
+    // n 要等這次停下來、引擎軌迹錄好才數得出來（見 componentDidUpdate）。
+    this._visit = { requested: line, line, code, k: 1, n: null };
+    this._visitPending = true;
+    this._emitVisit();
+    this._replaying = true;
     GdbApi.click_run_button();
+  };
+
+  _visit: Visit | null = null;
+  _visitPending = false;
+  _replaying = false;
+  _lessonBreakpoints: any[] = [];
+
+  /** 教學頁目錄上的「第 k / n 次進入」徽章靠這個事件更新。 */
+  _emitVisit = () => {
+    const v = this._visit;
+    window.dispatchEvent(
+      new CustomEvent("tutorial-visit", { detail: v ? { line: v.line, k: v.k, n: v.n } : null })
+    );
+  };
+
+  /** Run/Restart 之前呼叫（GdbApi.click_run_button）。自己按 Enter 觸發的 Run 放行；
+   *  使用者按 Restart：換回教案原本的起點斷點、放開旁白的自動播放，讓它從頭播到尾。 */
+  _beforeRun = () => {
+    if (this._replaying) {
+      this._replaying = false;
+      return;
+    }
+    (window as any).gdbgui_tutorial_hold = false;
+    this._visit = null;
+    this._visitPending = false;
+    this._emitVisit();
+    store.set("breakpoints", this._lessonBreakpoints.map(b => ({ ...b })));
+  };
+
+  /** 這次停下來之後算出 n（這一行總共會被停到幾次）。 */
+  _finishVisit = () => {
+    const v = this._visit;
+    if (!v || !this._visitPending) return;
+    const f = this.state.paused_on_frame;
+    if (!f) return;
+    this._visitPending = false;
+    v.line = Number(f.line);
+    v.n = lineVisitCount(v.line);
+    this._emitVisit();
   };
 
   refreshAnnotationGlobals = () => {
@@ -187,7 +249,17 @@ class SourceCode extends React.Component<{}, State> {
     // 教學頁：章節目錄（TutorialShell）用這個橋把靜態教案 bundle 套進編輯器，
     // 並且不讀 autosave（見 saveAutosave）。
     if ((window as any).initial_data?.tutorial) {
-      (window as any).gdbgui_apply_bundle = (b: any) => this.applyProjectBundle(b);
+      (window as any).gdbgui_apply_bundle = (b: any) => {
+        const r = this.applyProjectBundle(b);
+        // Restart 要回到的起點斷點（見 _beforeRun）；換教案就清掉上一個教案的步進狀態。
+        this._lessonBreakpoints = (store.get("breakpoints") || []).map((x: any) => ({ ...x }));
+        this._visit = null;
+        this._visitPending = false;
+        (window as any).gdbgui_tutorial_hold = false;
+        this._emitVisit();
+        return r;
+      };
+      (window as any).gdbgui_before_run = this._beforeRun;
       return;
     }
     const requestedLesson = this.lessonIdFromUrl();
@@ -2309,6 +2381,16 @@ class SourceCode extends React.Component<{}, State> {
     const curLine  = this.state.paused_on_frame  ? this.state.paused_on_frame.line  : null;
     if (curLine && curLine !== prevLine) {
       this.applyLayout(curLine);
+    }
+    // 教學頁：按 Enter 的那次 Run 停下來了 → 數出這一行共會停到幾次。
+    if (
+      this._visitPending &&
+      this.state.inferior_program === constants.inferior_states.paused &&
+      this.state.paused_on_frame &&
+      (prevState.inferior_program !== constants.inferior_states.paused ||
+        prevState.paused_on_frame !== this.state.paused_on_frame)
+    ) {
+      this._finishVisit();
     }
 
     // 檢查是否有新的 TTS 語音發送過來

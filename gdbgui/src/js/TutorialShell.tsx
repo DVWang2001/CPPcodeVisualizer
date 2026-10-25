@@ -25,6 +25,14 @@ export default function TutorialShell() {
   const [done, setDone] = React.useState<Record<string, boolean>>(readDone);
   const [open, setOpen] = React.useState(true);
   const [error, setError] = React.useState("");
+  const [visit, setVisit] = React.useState<{ line: number; k: number; n: number | null } | null>(null);
+
+  // SourceCode 在連按 Enter 步進時送來「第 k / n 次進入」。
+  React.useEffect(() => {
+    const on = (e: Event) => setVisit((e as CustomEvent).detail || null);
+    window.addEventListener("tutorial-visit", on);
+    return () => window.removeEventListener("tutorial-visit", on);
+  }, []);
 
   React.useEffect(() => {
     fetch("/static/tutorial/chapters.json")
@@ -66,7 +74,7 @@ export default function TutorialShell() {
       {open && (
         <div>
           <div style={{ color: "#666", marginBottom: 6 }}>
-            改任何一行後按 Enter，直接執行到那一行並停住（Shift+Enter 插入新行）。
+            改任何一行後按 Enter，直接執行到那一行並停住；同一行再按 Enter 進到下一次（Shift+Enter 插入新行）。按上方重新整理鍵 Restart，從頭自動播到尾。
           </div>
           {error && <div style={{ color: "#b00" }}>{error}</div>}
           {features.map(f => (
@@ -88,6 +96,14 @@ export default function TutorialShell() {
               </ul>
             </details>
           ))}
+        </div>
+      )}
+      {visit && visit.n && visit.n > 1 && (
+        <div
+          id="tutorial_visit"
+          style={{ marginTop: 6, padding: "4px 10px", borderRadius: 999, background: "#2c5fd8", color: "#fff", fontWeight: 700, width: "max-content" }}
+        >
+          第 {visit.k} / {visit.n} 次進入第 {visit.line} 行
         </div>
       )}
       {current && (

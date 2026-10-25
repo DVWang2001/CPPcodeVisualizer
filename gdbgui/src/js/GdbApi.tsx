@@ -293,6 +293,8 @@ const GdbApi = {
   },
   _waiting_for_response_timeout: null,
   click_run_button: function () {
+    // 教學頁：Run/Restart 前的掛勾（見 SourceCode 的 gdbgui_before_run）。
+    (window as any).gdbgui_before_run?.();
     // 在使用者點擊的當下解鎖瀏覽器音訊上下文（Autoplay Policy）。
     // 若不這樣做，編譯 + GDB 啟動後音訊上下文仍處於 suspended 狀態，
     // 第一句 TTS 的開頭會被瀏覽器靜默延遲而聽不到。
@@ -1136,6 +1138,8 @@ GdbApi.socket = socket;
 
 // 執行自動播放指令（供暫停恢復時呼叫）
 (window as any).gdbgui_run_autoplay_command = (command: string) => {
+  // 教學頁按 Enter「停在這一行」時，旁白的 [next]/[continue] 不能把它往下推走。
+  if ((window as any).gdbgui_tutorial_hold) return;
   switch (command) {
     // autoplay: true —— for 虛步不會產生 GDB pause，被虛步消耗掉的這一次
     // 必須由 click_next_button 自行排接續，否則播放會卡在條件段

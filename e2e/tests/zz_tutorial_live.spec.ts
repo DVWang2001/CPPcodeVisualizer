@@ -53,6 +53,22 @@ test('Enter on a plain code line (no annotation) runs straight to it', async ({ 
   await waitPausedAt(page, 9);
 });
 
+test('pressing Enter again on the same line steps through visits and wraps after n', async ({ page }) => {
+  await openT1(page);
+  await page.click('#tutorial_toggle');
+  await page.click('[data-project="g3"]');
+  const press = async (label: string) => {
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#tutorial_visit')).toContainText(label, { timeout: 90_000 });
+    await page.waitForFunction(() => (window as any).store.get('inferior_program') === 'paused', null, { timeout: 20_000 });
+  };
+  await page.locator('.view-line', { hasText: 'sum += i' }).first().click();
+  await press('1 / 3');
+  await press('2 / 3');
+  await press('3 / 3');
+  await press('1 / 3'); // 第 n 次之後回到第 1 次
+});
+
 test('edit //@ line + Enter replays with the new text, twice in a row', async ({ page }) => {
   await openT1(page);
   await editTtsLineAndEnter(page, '，第一次');
