@@ -17,6 +17,7 @@ import GdbApi from "./GdbApi";
 import { parseAnnotations, parseLineAnnotation, upsertLineAnnotation } from "./sourceAnnotations";
 import { nearestRunnableLine, isRunnableLine, decideEnter, Visit } from "./runToLine";
 import { lineVisitCount } from "./localEngine";
+import { skeletonOf, isCommentOnlyEdit, selectionTouchesCode } from "./tutorialGuard";
 import { normalizeBundle } from "./bundleAdapter";
 import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
@@ -181,6 +182,41 @@ class SourceCode extends React.Component<{}, State> {
     GdbApi.click_run_button();
   };
 
+  /**
+   * 教學頁：程式碼不能改，只能改 `//@` 註解（見 tutorialGuard.ts）。
+   * 兩層：游標碰到程式碼時編輯器自動唯讀（打字沒反應）；再加一道保險，
+   * 任何改到程式碼的內容變更（貼上、拖放、undo…）一律還原到上一個合法狀態。
+   * 換課（程式整份換掉）時基準要重設，見 gdbgui_apply_bundle。
+   */
+  _resetTutorialBase: (() => void) | null = null;
+  _installTutorialGuard = (editor: any) => {
+    const model = editor.getModel();
+    let base: string[] | null = skeletonOf(editor.getValue());
+    let lastGood: string = editor.getValue();
+    let lastSel: any = editor.getSelections();
+    let reverting = false;
+    this._resetTutorialBase = () => { base = null; };
+    editor.onDidChangeModelContent(() => {
+      if (reverting) return;
+      const text: string = editor.getValue();
+      if (base === null) { base = skeletonOf(text); lastGood = text; return; }
+      if (isCommentOnlyEdit(base, text)) { lastGood = text; return; }
+      reverting = true;
+      try {
+        // executeEdits 在唯讀時會直接失敗；用 model 層的 pushEditOperations 才一定做得到。
+        model.pushEditOperations([], [{ range: model.getFullModelRange(), text: lastGood }], () => null);
+        if (lastSel) editor.setSelections(lastSel);
+      } finally {
+        reverting = false;
+      }
+    });
+    editor.onDidChangeCursorSelection(() => {
+      if (!reverting) lastSel = editor.getSelections();
+      const touches = selectionTouchesCode(model.getLinesContent(), editor.getSelections() || []);
+      editor.updateOptions({ readOnly: touches, readOnlyMessage: { value: "教學頁的程式碼不能改，只能改 //@ 註解" } });
+    });
+  };
+
   _visit: Visit | null = null;
   _visitPending = false;
   _replaying = false;
@@ -278,6 +314,7 @@ class SourceCode extends React.Component<{}, State> {
     // 並且不讀 autosave（見 saveAutosave）。
     if ((window as any).initial_data?.tutorial) {
       (window as any).gdbgui_apply_bundle = (b: any) => {
+        this._resetTutorialBase?.(); // 整份程式換掉：下一次內容變更當作新的基準
         const r = this.applyProjectBundle(b);
         // Restart 要回到的起點斷點（見 _beforeRun）；換教案就清掉上一個教案的步進狀態。
         this._lessonBreakpoints = (store.get("breakpoints") || []).map((x: any) => ({ ...x }));
@@ -475,6 +512,7 @@ class SourceCode extends React.Component<{}, State> {
     this.monaco = (window as any).monaco;
     this.refreshDirectiveDecorations();
     if ((window as any).initial_data?.tutorial) {
+      this._installTutorialGuard(editor);
       editor.onKeyDown((e: any) => {
         const K = this.monaco?.KeyCode;
         if (!K || e.keyCode !== K.Enter || e.shiftKey || e.altKey || e.metaKey) return;

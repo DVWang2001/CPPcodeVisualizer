@@ -48,6 +48,21 @@ async function editTtsLineAndEnter(page: Page, suffix: string) {
   );
 }
 
+test('code is read-only on the tutorial page; only the //@ comments can be edited', async ({ page }) => {
+  await openT1(page);
+  const value = () => page.evaluate(() => (window as any).gdbgui_get_editor_value());
+  const before = await value();
+  // 點在程式碼上打字：內容不變
+  await page.locator('.view-line', { hasText: 'int sum = 0' }).first().click({ position: { x: 30, y: 6 } });
+  await page.keyboard.type('zzz');
+  expect(await value()).toBe(before);
+  // 點在註解行尾打字：改得動
+  await page.locator('.view-line', { hasText: '@tts' }).first().click();
+  await page.keyboard.press('End');
+  await page.keyboard.type('XYZ');
+  expect(await value()).toContain('XYZ');
+});
+
 test('home banner and IDE top-bar button both lead to /tutorial', async ({ page }) => {
   await ensureLoggedIn(page);
   await page.goto('/');
