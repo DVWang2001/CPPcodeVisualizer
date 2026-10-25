@@ -13,7 +13,8 @@ import "../../static/css/tutorial.css";
 type Project = { id: string; title: string; goal: string; file: string; steps?: string[]; tip?: string };
 type Feature = { id: string; title: string; projects: Project[] };
 
-const DONE_KEY = "gdbgui_tutorial_done";
+// v2：舊版（開啟一課就算完成）留下的紀錄不適用，新規則是「做完最後一步才算完成」。
+const DONE_KEY = "gdbgui_tutorial_done_v2";
 
 const readDone = (): Record<string, boolean> => {
   try {
