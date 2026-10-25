@@ -94,6 +94,17 @@ body.tutorial #top .btn.toolbar-btn:focus-visible {
 body.tutorial #top .btn.toolbar-btn:disabled {
   opacity: 0.45;
 }
+/* 「從頭」帶文字，不能沿用圖示按鈕的固定 40px 寬（內容會超出灰色底塊）。 */
+body.tutorial #top #run_button.btn.toolbar-btn-icon {
+  width: auto;
+  padding: 0 12px;
+}
+@media (max-width: 1200px) {
+  body.tutorial #top #run_button.btn.toolbar-btn-icon {
+    width: 40px;
+    padding: 0;
+  }
+}
 /* 原本用行內樣式上綠色／橘色表示狀態；教學頁改成深色底表示「開」。 */
 body.tutorial #top #autoplay_button,
 body.tutorial #top #autoplay_pause_button,
