@@ -8,6 +8,92 @@ body.tutorial .gutter.gutter-vertical {
 body.tutorial #middle {
   height: 100% !important;
 }
+/* 字幕帶出現時（非編輯模式），練習區讓出它的高度。 */
+body.tutorial.tut-caption-on #middle {
+  height: calc(100% - 124px) !important;
+}
+
+/* ── 底部全寬字幕帶（設計稿「字幕 1」）── */
+.tut-caption {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 124px;
+  box-sizing: border-box;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 40px;
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+.tut-caption .tut-cap-left {
+  flex: none;
+  min-width: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.tut-caption .tut-cap-line {
+  font: 13px "JetBrains Mono", Consolas, monospace;
+  color: #58a6ff;
+  letter-spacing: 0.05em;
+}
+.tut-caption .tut-cap-visit {
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: #2c5fd8;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+}
+.tut-caption .tut-cap-text {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  font-size: clamp(20px, 2.4vw, 32px);
+  line-height: 1.5;
+  font-weight: 500;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+}
+.tut-caption .tut-cap-right {
+  flex: none;
+  min-width: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  font-size: 13px;
+  color: #7fd1a0;
+}
+.tut-caption .tut-cap-wave {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 22px;
+}
+.tut-caption .tut-cap-wave i {
+  display: block;
+  width: 4px;
+  height: 10px;
+  border-radius: 2px;
+  background: #7fd1a0;
+  animation: tut-wave 0.9s ease-in-out infinite;
+}
+.tut-caption .tut-cap-wave i:nth-child(2) { animation-delay: 0.15s; }
+.tut-caption .tut-cap-wave i:nth-child(3) { animation-delay: 0.3s; }
+.tut-caption .tut-cap-wave i:nth-child(4) { animation-delay: 0.45s; }
+@keyframes tut-wave {
+  0%, 100% { height: 8px; }
+  50% { height: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tut-caption .tut-cap-wave i { animation: none; height: 16px; }
+}
 
 /* ── 單列頂欄（方案 B1）：麵包屑 + 全部 IDE 控制，沿用教學頁的紙色、圓角、線條圖示 ── */
 .tut-ic {

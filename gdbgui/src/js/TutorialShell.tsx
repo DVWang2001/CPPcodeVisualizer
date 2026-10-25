@@ -58,15 +58,6 @@ export default function TutorialShell() {
   const [current, setCurrent] = React.useState<Project | null>(null);
   const [done, setDone] = React.useState<Record<string, boolean>>(readDone);
   const [error, setError] = React.useState("");
-  const [visit, setVisit] = React.useState<{ line: number; k: number; n: number | null } | null>(null);
-
-  // SourceCode 在連按 Enter 步進時送來「第 k / n 次進入」。
-  React.useEffect(() => {
-    const on = (e: Event) => setVisit((e as CustomEvent).detail || null);
-    window.addEventListener("tutorial-visit", on);
-    return () => window.removeEventListener("tutorial-visit", on);
-  }, []);
-
   React.useEffect(() => {
     fetch("/static/tutorial/chapters.json")
       .then(r => r.json())
@@ -109,11 +100,6 @@ export default function TutorialShell() {
         <>
           <h1 id="tutorial_title">{current.title}</h1>
           <p>{renderInline(current.goal)}</p>
-          {visit && visit.n && visit.n > 1 && (
-            <div id="tutorial_visit" className="tut-visit">
-              第 {visit.k} / {visit.n} 次進入第 {visit.line} 行
-            </div>
-          )}
           {current.steps && (
             <ol id="tutorial_steps">
               {current.steps.map((s, i) => (

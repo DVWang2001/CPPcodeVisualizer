@@ -76,4 +76,7 @@ test('edit //@ line + Enter replays with the new text, twice in a row', async ({
   await openT1(page);
   await editTtsLineAndEnter(page, '，第一次');
   await editTtsLineAndEnter(page, '第二次');
+  // 字幕帶：播放模式出現，顯示剛改的旁白（第二次改的字）
+  await expect(page.locator('#tutorial_caption')).toBeVisible();
+  await expect(page.locator('#tutorial_caption')).toContainText('第二次');
 });

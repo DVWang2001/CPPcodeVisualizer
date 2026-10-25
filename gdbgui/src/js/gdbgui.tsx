@@ -29,6 +29,7 @@ import Settings from "./Settings";
 import ToolTip from "./ToolTip";
 import TopBar from "./TopBar";
 import TutorialShell from "./TutorialShell";
+import TutorialCaption from "./TutorialCaption";
 
 import "../../static/css/gdbgui.css";
 import "../../static/css/splitjs-gdbgui.css";
@@ -97,6 +98,10 @@ class Gdbgui extends React.PureComponent {
             <Terminals />
           </div>
         </div>
+
+        {/* 教學頁底部的全寬字幕帶（取代被拿掉的終端機字幕區） */}
+        {/* @ts-expect-error initial_data is a template global */}
+        {initial_data.tutorial && <TutorialCaption />}
 
         {/* below are elements that are only displayed under certain conditions */}
         <Modal />
