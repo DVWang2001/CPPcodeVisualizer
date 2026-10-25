@@ -629,3 +629,124 @@ body.tutorial #folders_view {
   color: #c4c8dd;
   cursor: default;
 }
+
+/* ── 整頁統一成「專注步進」的風格：薰衣草藍灰底、白色大圓角卡片、靛藍強調色 ── */
+body.tutorial,
+body.tutorial .splitjs_container {
+  background: linear-gradient(180deg, #f1f2fb 0%, #e6e9f6 100%) !important;
+}
+
+/* 頂欄：半透明白、淡靛藍分隔，取代原本的米色 */
+body.tutorial #top {
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-bottom: 1px solid #dcdff0 !important;
+  backdrop-filter: blur(8px);
+}
+body.tutorial #top .tut-crumbs {
+  color: #5a6080;
+}
+body.tutorial #top .tut-crumbs b {
+  color: #1c2033;
+}
+body.tutorial #top .tut-sep {
+  color: #b8bdd8;
+}
+body.tutorial #top .toolbar-group {
+  background: #e8eaf8;
+}
+body.tutorial #top .btn.toolbar-btn {
+  color: #1c2033;
+}
+body.tutorial #top .btn.toolbar-btn:hover,
+body.tutorial #top .btn.toolbar-btn:focus-visible {
+  background: #fff;
+  border-color: #d3d7ee;
+}
+body.tutorial #top #autoplay_button.active {
+  background: linear-gradient(135deg, #5b6bff, #3a46d8);
+  box-shadow: 0 4px 12px rgba(58, 70, 216, 0.35);
+}
+body.tutorial #top #autoplay_pause_button.active {
+  background: #eaf0ff;
+  border-color: #8e97ff;
+}
+body.tutorial #top .tut-seg-btn {
+  color: #5a6080;
+}
+body.tutorial #top .tut-seg-btn.on {
+  background: #fff;
+  color: #3a46d8;
+  border-color: #d3d7ee;
+  box-shadow: 0 2px 6px rgba(58, 70, 216, 0.15);
+}
+body.tutorial #top .tut-iconbtn,
+body.tutorial #top #menudropdown > a.dropdown-toggle {
+  background: #fff;
+  border-color: #d3d7ee;
+  color: #1c2033;
+}
+body.tutorial #top .tut-voice-pop {
+  background: #fff;
+  border-color: #d3d7ee;
+  border-radius: 16px;
+  box-shadow: 0 14px 30px rgba(58, 70, 216, 0.16);
+}
+
+/* 三個窗格變成「卡片」：中間留出邊距，編輯器與面板各自是白色大圓角卡片 */
+body.tutorial #middle {
+  padding: 64px 14px 14px !important;
+}
+body.tutorial .gutter.gutter-horizontal {
+  background: transparent !important;
+}
+body.tutorial #source_code_view,
+body.tutorial #controls_sidebar {
+  background: #fff !important;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(58, 70, 216, 0.1), 0 2px 6px rgba(28, 32, 51, 0.05);
+  border: 1px solid #e6e9fb;
+}
+body.tutorial #folders_view {
+  border-radius: 24px;
+  border: 1px solid #e6e9fb;
+  box-shadow: 0 10px 28px rgba(58, 70, 216, 0.08);
+  overflow: auto;
+}
+
+/* 編輯器標題列（main.cpp）與右欄面板標題列：淡靛藍 */
+body.tutorial #source_code_view > div > div:first-child,
+body.tutorial .collapser .titlebar {
+  background: #f4f5ff !important;
+  color: #3a46d8;
+}
+body.tutorial .collapser .titlebar .lighttext {
+  color: #3a46d8 !important;
+  font-weight: 700;
+}
+body.tutorial .collapser {
+  border-bottom: 1px solid #eceef9;
+}
+
+/* 字幕帶：深靛藍黑，強調字改靛紫 */
+.tut-caption {
+  background: linear-gradient(180deg, #23284a, #1c2033) !important;
+}
+.tut-caption .tut-cap-line {
+  color: #9aa4ff !important;
+}
+.tut-caption .tut-cap-visit {
+  background: linear-gradient(135deg, #5b6bff, #3a46d8) !important;
+}
+
+/* 字幕帶也變成浮起的大圓角卡片，跟三個窗格的間距一致（左右、下方各留 14px） */
+.tut-caption {
+  left: 14px !important;
+  right: 14px !important;
+  bottom: 14px !important;
+  border-radius: 24px;
+  box-shadow: 0 14px 30px rgba(28, 32, 51, 0.28);
+}
+body.tutorial.tut-caption-on #middle {
+  height: calc(100% - 138px) !important;
+}
