@@ -222,12 +222,12 @@ lesson("l3", "layout", "layout：兩格飛進來 pull",
        "`@layout pull:` 讓兩個來源格的數字飛進目標格，表達「這一格是由那兩格算出來的」。",
        ["按上方的 **從頭**，看上面和左邊兩格的數字飛進右下角那一格。",
         "把 `orange,lime->lightblue` 的順序對調，再按 **從頭**，看看會發生什麼。"],
-       "顏色要和 `@guide` 裡標的顏色一致；`pull:` 目前只支援兩數相加。",
+       "`pull:` 用到的三個顏色，都要在**同一行**的 `@guide` 裡標出來；目前只支援兩數相加。",
        simple(
            "    vector<vector<int>> dp(2, vector<int>(3, 1));   //@ @tts [next] 準備一張兩列三欄的表，全部填一\n"
            "    int up = dp[0][1];   //@ @guide {dp[0][1]:orange} @tts [next] 先看上面那一格 @layout pop:dp:orange\n"
            "    int left = dp[1][0];   //@ @guide {dp[1][0]:lime} @tts [next] 再看左邊那一格 @layout pop:dp:lime\n"
-           "    dp[1][1] = up + left;   //@ @guide {dp[1][1]:lightblue} @tts [next] 上面加左邊，就是這一格的答案 @layout pull:dp:orange,lime->lightblue\n"
+           "    dp[1][1] = up + left;   //@ @guide {dp[0][1]:orange} {dp[1][0]:lime} {dp[1][1]:lightblue} @tts [next] 上面加左邊，[anim]就是這一格的答案 @layout pull:dp:orange,lime->lightblue\n"
            "    cout << dp[1][1] << endl;   //@ @guide {dp} @tts [next] 這一格現在是 {dp[1][1]}\n"
            "    return 0;   //@ @tts [continue] 程式結束\n",
            includes="#include <vector>\n", layout="open:container"))
