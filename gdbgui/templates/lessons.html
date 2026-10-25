@@ -28,6 +28,23 @@
     .listing-card .library-columns { padding: 0.6rem 0; }
     .listing-card .listing .row:last-child { border-bottom: 0; }
 
+    /* 教學頁入口：第一次來的人要一眼看到；搜尋或篩選時就不顯示，避免擋在結果前面。 */
+    .tutorial-banner {
+      display: flex; align-items: center; gap: 1.1rem;
+      margin: 0 0 1.25rem; padding: 0.9rem 1.1rem;
+      border: 1px solid var(--line); border-radius: 12px;
+      background: var(--accent-soft);
+    }
+    .tutorial-banner .tb-icon {
+      flex: none; width: 2.75rem; height: 2.75rem; border-radius: 10px;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .tutorial-banner .tb-icon svg { width: 1.5rem; height: 1.5rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .tutorial-banner .tb-text { flex: 1 1 auto; min-width: 0; }
+    .tutorial-banner .tb-title { font-weight: 700; font-size: 1.05rem; }
+    .tutorial-banner .tb-sub { color: var(--ink-soft); font-size: 0.9rem; margin-top: 0.15rem; }
+
     /* 分頁參考 Google 搜尋結果的排法：置中一排頁碼，目前頁是深色粗體、
        不是連結，其餘頁碼是可點的連結，頁碼太多時中間縮成刪節號，
        上一頁／下一頁放在兩端。 */
@@ -51,6 +68,19 @@
     {%- set final = others if on else (others + [name]) -%}
     {{ url_for('http_routes.lesson_library', q=q or None, tag=final or None) }}
   {%- endmacro %}
+
+  {% if not q and not selected_tags %}
+  <div class="tutorial-banner" data-testid="tutorial-banner">
+    <span class="tb-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M4 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H4zM20 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/></svg>
+    </span>
+    <div class="tb-text">
+      <div class="tb-title">第一次來？先看 //@ 註解教學</div>
+      <div class="tb-sub">從迴圈裡的變數，到容器、呼叫圖、UML——改一行、按 Enter，就看到效果。</div>
+    </div>
+    <a class="btn-primary" data-testid="tutorial-entry" href="{{ url_for('http_routes.tutorial') }}">開始教學 →</a>
+  </div>
+  {% endif %}
 
   <div class="library-heading">
     <div>

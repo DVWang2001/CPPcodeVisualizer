@@ -48,6 +48,16 @@ async function editTtsLineAndEnter(page: Page, suffix: string) {
   );
 }
 
+test('home banner and IDE top-bar button both lead to /tutorial', async ({ page }) => {
+  await ensureLoggedIn(page);
+  await page.goto('/');
+  await page.getByTestId('tutorial-entry').click();
+  await expect(page).toHaveURL(/\/tutorial/);
+  await page.goto('/edit');
+  await page.getByTestId('go-tutorial').click();
+  await expect(page).toHaveURL(/\/tutorial/);
+});
+
 test('Enter on a plain code line (no annotation) runs straight to it', async ({ page }) => {
   await openT1(page);
   // 第 9 行 cout：沒有任何註解，仍然要停在這行
