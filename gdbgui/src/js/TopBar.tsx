@@ -10,6 +10,8 @@ import GdbApi from "./GdbApi";
 import Actions from "./Actions";
 import constants from "./constants";
 import Util from "./Util";
+import ToolIcon, { isTutorial } from "./ToolIcon";
+import { TutorialCrumbs } from "./TutorialShell";
 
 let onkeyup_jump_to_line = (e: any) => {
   if (e.keyCode === constants.ENTER_BUTTON_NUM) {
@@ -89,7 +91,7 @@ const menu = (
         style={{ height: 25, padding: 0, paddingRight: 20 }}
         className="dropdown-toggle"
       >
-        <span className="glyphicon glyphicon-menu-hamburger"> </span>
+        <ToolIcon name="menu" glyph="menu-hamburger" />
       </a>
       <ul className="dropdown-menu">
         <li>
@@ -286,9 +288,10 @@ class TopBar extends React.Component<{}, State> {
               data-testid="go-home"
               className="btn btn-default btn-sm toolbar-btn"
               title="回首頁，瀏覽所有人的教案">
-              <span className="glyphicon glyphicon-home" />回首頁
+              <ToolIcon name="home" glyph="home" />{isTutorial() ? null : "回首頁"}
             </button>
           </span>
+          {isTutorial() && <TutorialCrumbs />}
 
           {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'initial_user_input' does not exist on ty... Remove this comment to see the full error message */}
 
@@ -299,12 +302,24 @@ class TopBar extends React.Component<{}, State> {
 
           {this.get_controls()}
 
+          {isTutorial() ? (
+            <button
+              type="button"
+              onClick={() => Settings.toggle_key("show_settings")}
+              title="設定"
+              aria-label="設定"
+              className="tut-iconbtn"
+            >
+              <ToolIcon name="gear" glyph="cog" />
+            </button>
+          ) : (
           <span
             onClick={() => Settings.toggle_key("show_settings")}
             title="設定"
             className="pointer glyphicon glyphicon-cog toolbar-group"
             style={{ fontSize: "1.1em", color: "var(--ink-soft)" }}
           />
+          )}
           <span style={{ paddingLeft: "10px" }}>{menu}</span>
         </div>
 

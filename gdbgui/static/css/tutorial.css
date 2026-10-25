@@ -9,6 +9,175 @@ body.tutorial #middle {
   height: 100% !important;
 }
 
+/* ── 單列頂欄（方案 B1）：麵包屑 + 全部 IDE 控制，沿用教學頁的紙色、圓角、線條圖示 ── */
+.tut-ic {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+body.tutorial #top {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  background: #fffdf8 !important;
+  border-bottom: 1px solid #e3ddc9 !important;
+  padding: 0 20px !important;
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+body.tutorial #top > .flexrow {
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+}
+body.tutorial #top > .flexrow + .flexrow {
+  display: none; /* 原本放 jump-to-line 的第二列，教學頁用不到 */
+}
+body.tutorial #middle {
+  padding-top: 64px !important;
+}
+body.tutorial #top .tut-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  font-size: 14px;
+  color: #4a5265;
+  white-space: nowrap;
+}
+body.tutorial #top .tut-crumbs b {
+  color: #1d2433;
+}
+body.tutorial #top .tut-sep {
+  color: #b9b19a;
+}
+body.tutorial #top .toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: none;
+  border-radius: 13px;
+  background: #efe9d6;
+  margin: 0;
+}
+body.tutorial #top .btn.toolbar-btn {
+  height: 40px;
+  min-width: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  color: #1d2433;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+body.tutorial #top .btn.toolbar-btn-icon {
+  width: 40px;
+  padding: 0;
+}
+body.tutorial #top .btn.toolbar-btn:hover,
+body.tutorial #top .btn.toolbar-btn:focus-visible {
+  background: #fffdf8;
+  border-color: #cfc8b4;
+}
+body.tutorial #top .btn.toolbar-btn:disabled {
+  opacity: 0.45;
+}
+/* 原本用行內樣式上綠色／橘色表示狀態；教學頁改成深色底表示「開」。 */
+body.tutorial #top #autoplay_button,
+body.tutorial #top #autoplay_pause_button,
+body.tutorial #top #tut_voice_button {
+  color: #1d2433 !important;
+  font-weight: 600 !important;
+}
+body.tutorial #top #autoplay_button.active {
+  background: #1d2433;
+  color: #fff !important;
+}
+body.tutorial #top #autoplay_pause_button.active {
+  background: #fff6d6;
+  border-color: #d99a00;
+}
+body.tutorial #top .tut-seg {
+  display: inline-flex;
+  gap: 2px;
+}
+body.tutorial #top .tut-seg-btn {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #4a5265;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+body.tutorial #top .tut-seg-btn.on {
+  background: #fffdf8;
+  color: #1d2433;
+  border-color: #cfc8b4;
+  box-shadow: 0 1px 3px rgba(29, 36, 51, 0.12);
+}
+body.tutorial #top .tut-iconbtn,
+body.tutorial #top #menudropdown > a.dropdown-toggle {
+  width: 40px;
+  height: 40px !important;
+  padding: 0 !important;
+  border-radius: 10px;
+  border: 1px solid #cfc8b4;
+  background: #fffdf8;
+  color: #1d2433;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+body.tutorial #top .navbar-nav {
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 1em !important;
+}
+body.tutorial #top .tut-voice-pop {
+  display: none;
+  position: absolute;
+  top: 56px;
+  right: 110px;
+  z-index: 1200;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fffdf8;
+  border: 1px solid #cfc8b4;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(29, 36, 51, 0.18);
+}
+body.tutorial #top .tut-voice-pop.open {
+  display: flex;
+}
+
+/* 文件欄底部的上一課／下一課 */
+#tutorial_doc .tut-pager {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
 /* 編輯器上方那排（新草稿、AI 生成教案、Import/Export、課堂題目、存到帳號）與
    「本機草稿」提示：教學頁用不到，拿掉讓練習區清爽。 */
 body.tutorial .toolbar-row,

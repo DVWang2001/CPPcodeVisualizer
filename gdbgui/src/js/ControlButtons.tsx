@@ -7,6 +7,7 @@ import { store } from "statorgfc";
 import { lessonQuizRuntime } from "./lessonQuizRuntime";
 import { effectiveTtsRate } from "./ttsSpeed";
 import { setTtsVolume, TTS_MAX_VOLUME } from "./ttsVolume";
+import ToolIcon, { isTutorial } from "./ToolIcon";
 
 type State = any;
 
@@ -16,8 +17,37 @@ class ControlButtons extends React.Component<{}, State> {
     super();
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'connectComponentState' does not exist on... Remove this comment to see the full error message
     store.connectComponentState(this, ["gdb_pid", "reverse_supported", "autoplay_enabled", "autoplay_paused", "edit_mode", "inferior_program", "tts_speed", "tts_volume", "quiz_playback_gate"]);
+    // 教學頁：朗讀速度/音量收進一個小浮層（這個 state 與 store 無關，只管浮層開關）。
+    this.state = { ...(this.state || {}), showVoice: false };
   }
+
+  /** 編輯 ⇄ 播放。原本 Edit 按鈕的邏輯，教學頁的「編輯 | 播放」切換共用。 */
+  toggleEditMode = () => {
+    const enteringEditMode = !this.state.edit_mode;
+    if (enteringEditMode) {
+      lessonQuizRuntime.deactivate();
+      // 切回編輯模式時，先終止 inferior（被偵錯的程式）
+      const inf = this.state.inferior_program;
+      if (inf === "running" || inf === "paused") {
+        store.set(
+          "source_code_selection_state",
+          constants.source_code_selection_states.USER_SELECTION
+        );
+        GdbApi.run_gdb_command("kill");
+        Actions.inferior_program_exited();
+      }
+      // 明確還原到使用者的源碼檔案（user_source_fullname），
+      // 不再用脆弱的 includes("uploads/") 路徑比對。
+      // 若從未編譯過，回到空白狀態讓 Monaco 顯示預設模板。
+      const userSrc: string | null = store.get("user_source_fullname") || null;
+      store.set("fullname_to_render", userSrc);
+      store.set("source_code_state", constants.source_code_states.NONE_AVAILABLE);
+    }
+    store.set("edit_mode", enteringEditMode);
+  };
+
   render() {
+    const tut = isTutorial();
     let btn_class = "btn btn-default btn-sm toolbar-btn toolbar-btn-icon";
     let btn_class_text = "btn btn-default btn-sm toolbar-btn";
 
@@ -31,7 +61,8 @@ class ControlButtons extends React.Component<{}, State> {
           title="從頭開始執行程式（快速鍵：r）"
           className={btn_class}
         >
-          <span className="glyphicon glyphicon-repeat" />
+          <ToolIcon name="repeat" glyph="repeat" />
+          {tut && "從頭"}
         </button>
 
         <button
@@ -45,7 +76,7 @@ class ControlButtons extends React.Component<{}, State> {
           className={btn_class}
           disabled={this.state.quiz_playback_gate}
         >
-          <span className="glyphicon glyphicon-play" />
+          <ToolIcon name="play" glyph="play" />
         </button>
 
         <button
@@ -61,7 +92,7 @@ class ControlButtons extends React.Component<{}, State> {
           title="中斷正在執行的程式（送 SIGINT），回到除錯狀態"
           className={btn_class}
         >
-          <span className="glyphicon glyphicon-pause" />
+          <ToolIcon name="pause" glyph="pause" />
         </button>
         </span>
 
@@ -77,7 +108,7 @@ class ControlButtons extends React.Component<{}, State> {
           className={btn_class}
           disabled={this.state.quiz_playback_gate}
         >
-          <span className="glyphicon glyphicon-step-forward" />
+          <ToolIcon name="next" glyph="step-forward" />
         </button>
 
         <button
@@ -91,7 +122,7 @@ class ControlButtons extends React.Component<{}, State> {
           className={btn_class}
           disabled={this.state.quiz_playback_gate}
         >
-          <span className="glyphicon glyphicon-arrow-down" />
+          <ToolIcon name="stepin" glyph="arrow-down" />
         </button>
 
         <button
@@ -102,36 +133,39 @@ class ControlButtons extends React.Component<{}, State> {
           className={btn_class}
           disabled={this.state.quiz_playback_gate}
         >
-          <span className="glyphicon glyphicon-arrow-up" />
+          <ToolIcon name="stepout" glyph="arrow-up" />
         </button>
         </span>
 
         <span className="toolbar-group">
+        {tut ? (
+          // 教學頁：「編輯 | 播放」兩段式切換，邏輯與原本的 Edit 按鈕相同（toggleEditMode）。
+          <span className="tut-seg" role="group" aria-label="模式">
+            <button
+              id="edit_mode_button"
+              type="button"
+              aria-pressed={!!this.state.edit_mode}
+              className={"tut-seg-btn" + (this.state.edit_mode ? " on" : "")}
+              title="編輯模式：終止程式並開啟編輯"
+              onClick={() => { if (!this.state.edit_mode) this.toggleEditMode(); }}
+            >
+              <ToolIcon name="edit" glyph="pencil" />編輯
+            </button>
+            <button
+              id="play_mode_button"
+              type="button"
+              aria-pressed={!this.state.edit_mode}
+              className={"tut-seg-btn" + (!this.state.edit_mode ? " on" : "")}
+              title="播放模式"
+              onClick={() => { if (this.state.edit_mode) this.toggleEditMode(); }}
+            >
+              播放
+            </button>
+          </span>
+        ) : (
         <button
           id="edit_mode_button"
-          onClick={() => {
-            const enteringEditMode = !this.state.edit_mode;
-            if (enteringEditMode) {
-              lessonQuizRuntime.deactivate();
-              // 切回編輯模式時，先終止 inferior（被偵錯的程式）
-              const inf = this.state.inferior_program;
-              if (inf === "running" || inf === "paused") {
-                store.set(
-                  "source_code_selection_state",
-                  constants.source_code_selection_states.USER_SELECTION
-                );
-                GdbApi.run_gdb_command("kill");
-                Actions.inferior_program_exited();
-              }
-              // 明確還原到使用者的源碼檔案（user_source_fullname），
-              // 不再用脆弱的 includes("uploads/") 路徑比對。
-              // 若從未編譯過，回到空白狀態讓 Monaco 顯示預設模板。
-              const userSrc: string | null = store.get("user_source_fullname") || null;
-              store.set("fullname_to_render", userSrc);
-              store.set("source_code_state", constants.source_code_states.NONE_AVAILABLE);
-            }
-            store.set("edit_mode", enteringEditMode);
-          }}
+          onClick={this.toggleEditMode}
           type="button"
           title={this.state.edit_mode
             ? "編輯模式（點擊結束程式並切換至播放模式）"
@@ -141,6 +175,7 @@ class ControlButtons extends React.Component<{}, State> {
         >
           <span className="glyphicon glyphicon-pencil" style={{ color: "inherit" }} />Edit
         </button>
+        )}
 
         <button
           id="autoplay_button"
@@ -160,7 +195,7 @@ class ControlButtons extends React.Component<{}, State> {
           className={btn_class_text + (this.state.autoplay_enabled ? " active" : "")}
           style={this.state.autoplay_enabled ? { color: "#5cb85c", fontWeight: "bold" } : {}}
         >
-          <span className="glyphicon glyphicon-play-circle" style={{ color: "inherit" }} />Auto
+          <ToolIcon name="auto" glyph="play-circle" style={{ color: "inherit" }} />{tut ? "自動播放" : "Auto"}
         </button>
 
         {this.state.autoplay_enabled && (
@@ -196,10 +231,26 @@ class ControlButtons extends React.Component<{}, State> {
                 喇叭圖案語意不準。改用耳機圖案標記「這是 TTS 那條線的控制」，
                 跟 GDB 原生 play/pause 的三角形/長條區隔開；播放/暫停狀態
                 跟旁邊的 Auto 按鈕一樣，交給顏色（橘/綠）表示，圖案本身固定。 */}
-            <span className="glyphicon glyphicon-headphones" style={{ color: "inherit" }} />
+            <ToolIcon name="headphones" glyph="headphones" style={{ color: "inherit" }} />
           </button>
         )}
 
+        {tut && this.state.autoplay_enabled && (
+          <button
+            id="tut_voice_button"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded={!!this.state.showVoice}
+            className="btn btn-default btn-sm toolbar-btn"
+            title="朗讀：速度與音量"
+            onClick={() => this.setState({ showVoice: !this.state.showVoice })}
+          >
+            <ToolIcon name="volume" glyph="volume-up" />
+            {Number(this.state.tts_speed).toFixed(1)}x
+          </button>
+        )}
+
+        <span className={tut ? "tut-voice-pop" + (this.state.showVoice ? " open" : "") : undefined} style={tut ? undefined : { display: "contents" }}>
         {this.state.autoplay_enabled && (
           <span
             title="TTS 播放速度"
@@ -250,6 +301,7 @@ class ControlButtons extends React.Component<{}, State> {
             />
           </span>
         )}
+        </span>
         </span>
 
         {/* <div role="group" className="btn-group btn-group-xs">

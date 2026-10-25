@@ -6,7 +6,6 @@
  * 用 SourceCode 掛上的 window.gdbgui_apply_bundle 套進編輯器。
  */
 import React from "react";
-import GdbApi from "./GdbApi";
 import "../../static/css/tutorial.css";
 
 type Project = { id: string; title: string; goal: string; file: string; steps?: string[]; tip?: string };
@@ -29,6 +28,29 @@ export function renderInline(text: string): React.ReactNode[] {
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) return <b key={i}>{part.slice(2, -2)}</b>;
     return <React.Fragment key={i}>{part}</React.Fragment>;
   });
+}
+
+/** 頂欄的麵包屑：教學 / 章節 / 目前這一課。TutorialShell 載入一課時送 "tutorial-lesson" 事件。 */
+export function TutorialCrumbs() {
+  const [now, setNow] = React.useState<{ feature: string; title: string } | null>(null);
+  React.useEffect(() => {
+    const on = (e: Event) => setNow((e as CustomEvent).detail || null);
+    window.addEventListener("tutorial-lesson", on);
+    return () => window.removeEventListener("tutorial-lesson", on);
+  }, []);
+  return (
+    <nav className="tut-crumbs" aria-label="麵包屑">
+      <span>教學</span>
+      {now && (
+        <>
+          <span className="tut-sep">/</span>
+          <span>{now.feature}</span>
+          <span className="tut-sep">/</span>
+          <b>{now.title}</b>
+        </>
+      )}
+    </nav>
+  );
 }
 
 export default function TutorialShell() {
@@ -61,6 +83,8 @@ export default function TutorialShell() {
       .then(r => r.json())
       .then(bundle => {
         (window as any).gdbgui_apply_bundle?.(bundle);
+        const f = features.find(x => x.projects.some(q => q.id === p.id));
+        window.dispatchEvent(new CustomEvent("tutorial-lesson", { detail: { feature: f ? f.title : "", title: p.title } }));
         setCurrent(p);
         setError("");
         const next = { ...done, [p.id]: true };
@@ -79,23 +103,6 @@ export default function TutorialShell() {
 
   return (
     <div id="tutorial_doc">
-      <div className="tut-crumbs">
-        <span>教學</span>
-        {feature && (
-          <>
-            <span>/</span>
-            <span>{feature.title}</span>
-          </>
-        )}
-        <span className="tut-sp" />
-        <button className="tut-link" id="tutorial_prev" disabled={idx <= 0} onClick={() => go(-1)}>
-          ← 上一課
-        </button>
-        <button className="tut-link" id="tutorial_next" disabled={idx < 0 || idx >= flat.length - 1} onClick={() => go(1)}>
-          下一課 →
-        </button>
-      </div>
-
       {error && <div style={{ color: "#b00" }}>{error}</div>}
 
       {current ? (
@@ -118,14 +125,14 @@ export default function TutorialShell() {
             </ol>
           )}
           {current.tip && <div className="tut-tip">{renderInline(current.tip)}</div>}
-          <button
-            className="tut-restart"
-            id="tutorial_restart"
-            onClick={() => GdbApi.click_run_button()}
-            title="從頭自動播放到結束"
-          >
-            ↻ 從頭自動播放
-          </button>
+          <div className="tut-pager">
+            <button className="tut-link" id="tutorial_prev" disabled={idx <= 0} onClick={() => go(-1)}>
+              ← 上一課
+            </button>
+            <button className="tut-link" id="tutorial_next" disabled={idx < 0 || idx >= flat.length - 1} onClick={() => go(1)}>
+              下一課 →
+            </button>
+          </div>
         </>
       ) : (
         <>
