@@ -14,7 +14,7 @@ import Actions from "./Actions";
 import { global_variable } from "./global_variable";
 import VisualizerHelper from "./VisualizerHelper";
 import GdbApi from "./GdbApi";
-import { parseAnnotations, parseLineAnnotation, upsertLineAnnotation } from "./sourceAnnotations";
+import { parseAnnotations, parseLineAnnotation, upsertLineAnnotation, hasDirective } from "./sourceAnnotations";
 import { normalizeBundle } from "./bundleAdapter";
 import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
@@ -140,6 +140,30 @@ class SourceCode extends React.Component<{}, State> {
     this.is_gdb_paused_on_this_line = this.is_gdb_paused_on_this_line.bind(this);
   }
 
+  _replayBkptNumber: string | null = null;
+
+  /**
+   * 教學頁：在含 `//@` 的行按 Enter，把斷點移到該行並重新 Run，停在那行時
+   * guide / TTS / layout 照常觸發一次。只動自己上次放的那個斷點，教案原有的不碰。
+   */
+  replayAnnotationLine = (line: number) => {
+    this.refreshAnnotationGlobals();
+    const fullname = this.state.fullname_to_render;
+    const bkpts: any[] = store.get("breakpoints") || [];
+    const kept = bkpts.filter((b: any) => b.number !== this._replayBkptNumber);
+    if (!kept.some((b: any) => b.line == line && b.is_normal_breakpoint !== false)) {
+      Breakpoints.add_breakpoint(fullname, line);
+      const added = (store.get("breakpoints") || []).find(
+        (b: any) => b.line == line && String(b.number).startsWith("frontend_")
+      );
+      this._replayBkptNumber = added ? added.number : null;
+    } else {
+      this._replayBkptNumber = null;
+      store.set("breakpoints", kept);
+    }
+    GdbApi.click_run_button();
+  };
+
   refreshAnnotationGlobals = () => {
     const code = this.editorInstance?.getValue?.() || "";
     const { guide, tts, layout } = parseAnnotations(code);
@@ -161,6 +185,12 @@ class SourceCode extends React.Component<{}, State> {
     (window as any).gdbgui_flush_pending_anim = () => this._flushPendingAnimTokens();
     // /?lesson=<id>：從教案庫或個人檔案頁點進來的。伺服器上的那一篇優先於
     // localStorage 的 autosave——使用者剛剛才明確選了要開哪一篇教案。
+    // 教學頁：章節目錄（TutorialShell）用這個橋把靜態教案 bundle 套進編輯器，
+    // 並且不讀 autosave（見 saveAutosave）。
+    if ((window as any).initial_data?.tutorial) {
+      (window as any).gdbgui_apply_bundle = (b: any) => this.applyProjectBundle(b);
+      return;
+    }
     const requestedLesson = this.lessonIdFromUrl();
     if (requestedLesson !== null) {
       window.addEventListener("beforeunload", this.saveAutosave);
@@ -245,6 +275,8 @@ class SourceCode extends React.Component<{}, State> {
   }
 
   saveAutosave = () => {
+    // 教學頁不碰 gdbgui_autosave：否則學習者在教學頁亂改的內容會在 /edit 變成草稿提示。
+    if ((window as any).initial_data?.tutorial) return;
     try {
       const source_code = this.editorInstance?.getValue?.() || "";
       if (!source_code.trim()) {
@@ -343,6 +375,18 @@ class SourceCode extends React.Component<{}, State> {
     this.refreshAnnotationGlobals();
     this.monaco = (window as any).monaco;
     this.refreshDirectiveDecorations();
+    if ((window as any).initial_data?.tutorial) {
+      editor.onKeyDown((e: any) => {
+        const K = this.monaco?.KeyCode;
+        if (!K || e.keyCode !== K.Enter || e.shiftKey || e.altKey || e.metaKey) return;
+        const pos = editor.getPosition();
+        const text = pos && editor.getModel()?.getLineContent(pos.lineNumber);
+        if (!text || !hasDirective(text)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.replayAnnotationLine(pos.lineNumber);
+      });
+    }
     // Expose editor content getter for GdbApi to use
     (window as any).gdbgui_get_editor_value = () => this.editorInstance.getValue();
     (window as any).gdbgui_get_editor_filename = () => this.state.fullname_to_render;

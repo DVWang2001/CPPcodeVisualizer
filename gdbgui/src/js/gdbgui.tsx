@@ -28,6 +28,7 @@ import RightSidebar from "./RightSidebar";
 import Settings from "./Settings";
 import ToolTip from "./ToolTip";
 import TopBar from "./TopBar";
+import TutorialShell from "./TutorialShell";
 
 import "../../static/css/gdbgui.css";
 import "../../static/css/splitjs-gdbgui.css";
@@ -93,6 +94,8 @@ class Gdbgui extends React.PureComponent {
         </div>
 
         {/* below are elements that are only displayed under certain conditions */}
+        {/* @ts-expect-error initial_data is a template global */}
+        {initial_data.tutorial && <TutorialShell />}
         <Modal />
         <HoverVar />
         <Settings />

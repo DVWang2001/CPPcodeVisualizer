@@ -1,0 +1,100 @@
+/**
+ * `//@` 教學頁（/tutorial）的章節目錄。浮在 IDE 左側，不動既有版面。
+ * 章節資料：static/tutorial/chapters.json（features[] → projects[]），
+ * 每個 project 是一份 static/tutorial/<file> 的 v2 教案 bundle，
+ * 用 SourceCode 掛上的 window.gdbgui_apply_bundle 套進編輯器。
+ */
+import React from "react";
+
+type Project = { id: string; title: string; goal: string; file: string; hint: string };
+type Feature = { id: string; title: string; projects: Project[] };
+
+const DONE_KEY = "gdbgui_tutorial_done";
+
+const readDone = (): Record<string, boolean> => {
+  try {
+    return JSON.parse(localStorage.getItem(DONE_KEY) || "{}");
+  } catch (_) {
+    return {};
+  }
+};
+
+export default function TutorialShell() {
+  const [features, setFeatures] = React.useState<Feature[]>([]);
+  const [current, setCurrent] = React.useState<Project | null>(null);
+  const [done, setDone] = React.useState<Record<string, boolean>>(readDone);
+  const [open, setOpen] = React.useState(true);
+  const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    fetch("/static/tutorial/chapters.json")
+      .then(r => r.json())
+      .then(d => setFeatures(d.features || []))
+      .catch(() => setError("無法載入章節目錄"));
+  }, []);
+
+  const load = (p: Project) => {
+    fetch("/static/tutorial/" + p.file)
+      .then(r => r.json())
+      .then(bundle => {
+        (window as any).gdbgui_apply_bundle?.(bundle);
+        setCurrent(p);
+        setError("");
+        const next = { ...done, [p.id]: true };
+        setDone(next);
+        try {
+          localStorage.setItem(DONE_KEY, JSON.stringify(next));
+        } catch (_) {}
+      })
+      .catch(() => setError("無法載入教案：" + p.title));
+  };
+
+  return (
+    <div
+      id="tutorial_shell"
+      style={{
+        position: "fixed", top: 40, left: 8, zIndex: 1000, width: open ? 280 : "auto",
+        maxHeight: "calc(100vh - 60px)", overflowY: "auto", background: "#fffdf7",
+        color: "#222", border: "1px solid #bbb", borderRadius: 6, padding: 8, fontSize: 13,
+        boxShadow: "0 2px 8px rgba(0,0,0,.2)",
+      }}
+    >
+      <button id="tutorial_toggle" onClick={() => setOpen(!open)} style={{ marginBottom: 4 }}>
+        {open ? "收合教學目錄 ◀" : "教學目錄 ▶"}
+      </button>
+      {open && (
+        <div>
+          <div style={{ color: "#666", marginBottom: 6 }}>
+            在含 <code>//@</code> 的行修改後按 Enter，立刻重播該行的效果。
+          </div>
+          {error && <div style={{ color: "#b00" }}>{error}</div>}
+          {features.map(f => (
+            <details key={f.id} open>
+              <summary style={{ fontWeight: 600 }}>{f.title}</summary>
+              <ul style={{ listStyle: "none", paddingLeft: 8, margin: "4px 0" }}>
+                {f.projects.map(p => (
+                  <li key={p.id}>
+                    <a
+                      href="#"
+                      data-project={p.id}
+                      onClick={e => { e.preventDefault(); load(p); }}
+                      style={{ fontWeight: current?.id === p.id ? 700 : 400 }}
+                    >
+                      {done[p.id] ? "✓ " : "○ "}{p.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ))}
+          {current && (
+            <div id="tutorial_current" style={{ borderTop: "1px solid #ddd", marginTop: 6, paddingTop: 6 }}>
+              <div><b>目標：</b>{current.goal}</div>
+              <div style={{ marginTop: 4 }}><b>試著改：</b>{current.hint}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

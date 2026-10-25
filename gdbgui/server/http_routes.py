@@ -154,6 +154,18 @@ def authoring_guide():
 @blueprint.route("/edit", methods=["GET"])
 @authenticate
 def gdbgui():
+    return _render_ide(tutorial=False)
+
+
+# `//@` 註解教學頁：同一個 IDE，前端看到 tutorial 旗標就掛章節目錄並啟用「按 Enter
+# 重播該行」。不在 PUBLIC_ENDPOINTS，與 /edit 一樣必須登入。
+@blueprint.route("/tutorial", methods=["GET"])
+@authenticate
+def tutorial():
+    return _render_ide(tutorial=True)
+
+
+def _render_ide(tutorial: bool):
     # 渲染這一頁只需要身分。未登入在全域 require_login 就被擋下；這一行是
     # 那個不變式壞掉時的第二道網（fail closed，見 _session_prefix）。
     _session_prefix()
@@ -182,6 +194,7 @@ def gdbgui():
         "themes": THEMES,
         "signals": SIGNAL_NAME_TO_OBJ,
         "using_windows": USING_WINDOWS,
+        "tutorial": tutorial,
     }
 
     import time
