@@ -67,7 +67,7 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
           <strong style={{ fontSize: 12, color: "#8b5cf6" }}>第 {this.props.lineNum} 行</strong>
           <div>
             <button data-testid="annot-mode-toggle" onClick={this.props.onToggleMode} style={{ marginRight: 8 }}>
-              {mode === "simple" ? "進階 ▸" : "◂ 簡單"}
+              {mode === "simple" ? "詳細指導 ▸" : "◂ 簡單"}
             </button>
             <button onClick={this.props.onClose}>✕</button>
           </div>

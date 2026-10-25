@@ -1012,6 +1012,13 @@ class SourceCode extends React.Component<{}, State> {
       this.editorInstance.onDidLayoutChange(this.fitPanelToViewport),
     ];
     this.setState({ linePanel: { lineNum, mode, draft, candidates: this.candidatesFor(lineNum) } });
+    // 面板在視野外（例如點到最底下幾行）時把它捲進來，右上角的按鈕才看得到。
+    setTimeout(() => {
+      const ed = this.editorInstance;
+      if (!ed || !this.panelDomNode) return;
+      ed.revealLinesInCenterIfOutsideViewport(lineNum, Math.min(lineNum + 5, model.getLineCount()));
+      this.fitPanelToViewport();
+    }, 0);
   };
 
   fitPanelToViewport = () => {
@@ -2299,7 +2306,9 @@ class SourceCode extends React.Component<{}, State> {
             />
           )}
           <div style={{ flex: 1, width: "100%", display: "flex", overflow: 'hidden' }}>
-            <div style={{ flex: 1, height: "100%", position: 'relative' }}>
+            {/* minWidth: 0 很重要：flex 子項預設 min-width:auto，Monaco 之前算出的像素寬度會把它撐住，
+                窗格變窄後縮不回來，右邊一截（minimap、捲軸、指導面板的按鈕）就被相鄰面板蓋住。 */}
+            <div style={{ flex: 1, minWidth: 0, height: "100%", position: 'relative' }}>
               <MonacoEditor
                 height="100%"
                 language="cpp"
