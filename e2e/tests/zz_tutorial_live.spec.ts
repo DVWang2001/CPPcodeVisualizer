@@ -86,7 +86,7 @@ test('Enter on a plain code line (no annotation) runs straight to it', async ({ 
 
 test('pressing Enter again on the same line steps through visits and wraps after n', async ({ page }) => {
   await openT1(page);
-  await page.click('#tutorial_list summary');
+  await page.click('#tutorial_menu_btn');
   await page.click('[data-project="g3"]');
   const press = async (label: string) => {
     await page.keyboard.press('Enter');

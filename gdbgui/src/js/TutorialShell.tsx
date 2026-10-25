@@ -1,11 +1,13 @@
 /**
- * `//@` 教學頁（/tutorial）左邊的「文件」欄：像講義一樣往下讀——麵包屑、標題、說明、
- * 編號步驟、小提示，以及「從頭自動播放」。右邊是練習區（編輯器＋面板）。
+ * `//@` 教學頁（/tutorial）左邊的欄：「專注步進」——一次只放大一個步驟，做完才往下。
+ * 已完成的步驟收成一行打勾，下一步是灰色預覽；章節與全部課程收在頂端的下拉選單。
+ * 右邊是練習區（編輯器＋面板）。
  * 章節資料：static/tutorial/chapters.json（features[] → projects[]），
  * 每個 project 是一份 static/tutorial/<file> 的 v2 教案 bundle，
  * 用 SourceCode 掛上的 window.gdbgui_apply_bundle 套進編輯器。
  */
 import React from "react";
+import { stepState, nextStep, prevStep } from "./tutorialSteps";
 import "../../static/css/tutorial.css";
 
 type Project = { id: string; title: string; goal: string; file: string; steps?: string[]; tip?: string };
@@ -58,6 +60,9 @@ export default function TutorialShell() {
   const [current, setCurrent] = React.useState<Project | null>(null);
   const [done, setDone] = React.useState<Record<string, boolean>>(readDone);
   const [error, setError] = React.useState("");
+  const [step, setStep] = React.useState(0);
+  const [menuOpen, setMenuOpen] = React.useState(true); // 還沒選課時先打開選單
+
   React.useEffect(() => {
     fetch("/static/tutorial/chapters.json")
       .then(r => r.json())
@@ -68,6 +73,18 @@ export default function TutorialShell() {
   const flat = React.useMemo(() => features.flatMap(f => f.projects.map(p => ({ p, f }))), [features]);
   const idx = current ? flat.findIndex(x => x.p.id === current.id) : -1;
   const feature = idx >= 0 ? flat[idx].f : null;
+  const chapterNo = feature ? features.findIndex(f => f.id === feature.id) + 1 : 0;
+  const doneCount = flat.filter(x => done[x.p.id]).length;
+  const steps = current?.steps || [];
+  const finished = !!current && step >= steps.length;
+
+  const markDone = (id: string) => {
+    const next = { ...done, [id]: true };
+    setDone(next);
+    try {
+      localStorage.setItem(DONE_KEY, JSON.stringify(next));
+    } catch (_) {}
+  };
 
   const load = (p: Project) => {
     fetch("/static/tutorial/" + p.file)
@@ -77,12 +94,9 @@ export default function TutorialShell() {
         const f = features.find(x => x.projects.some(q => q.id === p.id));
         window.dispatchEvent(new CustomEvent("tutorial-lesson", { detail: { feature: f ? f.title : "", title: p.title } }));
         setCurrent(p);
+        setStep(0);
+        setMenuOpen(false);
         setError("");
-        const next = { ...done, [p.id]: true };
-        setDone(next);
-        try {
-          localStorage.setItem(DONE_KEY, JSON.stringify(next));
-        } catch (_) {}
       })
       .catch(() => setError("無法載入教案：" + p.title));
   };
@@ -92,47 +106,40 @@ export default function TutorialShell() {
     if (t) load(t.p);
   };
 
+  const advance = () => {
+    const n = nextStep(step, steps.length);
+    setStep(n);
+    if (current && n >= steps.length) markDone(current.id);
+  };
+
   return (
     <div id="tutorial_doc">
+      {/* 頂端：章節下拉 + 課進度 */}
+      <div className="tut-top">
+        <button
+          type="button"
+          id="tutorial_menu_btn"
+          className="tut-chip"
+          aria-expanded={menuOpen}
+          aria-controls="tutorial_list"
+          onClick={() => setMenuOpen(!menuOpen)}
+        >
+          {feature ? `第 ${chapterNo} 章　${feature.title}` : "選一課開始"} <span aria-hidden="true">{menuOpen ? "▴" : "▾"}</span>
+        </button>
+        <span className="tut-count">{current ? `課 ${idx + 1} / ${flat.length}` : `${flat.length} 課`}</span>
+      </div>
+
       {error && <div style={{ color: "#b00" }}>{error}</div>}
 
-      {current ? (
-        <>
-          <h1 id="tutorial_title">{current.title}</h1>
-          <p>{renderInline(current.goal)}</p>
-          {current.steps && (
-            <ol id="tutorial_steps">
-              {current.steps.map((s, i) => (
-                <li key={i} className="tut-step">
-                  <span className="tut-num">{i + 1}</span>
-                  <span>{renderInline(s)}</span>
-                </li>
-              ))}
-            </ol>
-          )}
-          {current.tip && <div className="tut-tip">{renderInline(current.tip)}</div>}
-          <div className="tut-pager">
-            <button className="tut-link" id="tutorial_prev" disabled={idx <= 0} onClick={() => go(-1)}>
-              ← 上一課
-            </button>
-            <button className="tut-link" id="tutorial_next" disabled={idx < 0 || idx >= flat.length - 1} onClick={() => go(1)}>
-              下一課 →
-            </button>
+      {/* 全部課程（下拉） */}
+      {menuOpen && (
+        <div id="tutorial_list" className="tut-menu">
+          <div className="tut-menu-head">
+            全部課程　<span>{doneCount} / {flat.length} 已完成</span>
           </div>
-        </>
-      ) : (
-        <>
-          <h1>//@ 註解教學</h1>
-          <p>在程式裡改一行、按 Enter，直接看到那一行的效果。從下面選一課開始。</p>
-        </>
-      )}
-
-      <details open={!current} id="tutorial_list">
-        <summary>全部課程</summary>
-        <div className="tut-list">
-          {features.map(f => (
+          {features.map((f, fi) => (
             <div key={f.id}>
-              <div className="tut-feature">{f.title}</div>
+              <div className="tut-feature">第 {fi + 1} 章　{f.title}</div>
               {f.projects.map(p => (
                 <a
                   key={p.id}
@@ -151,7 +158,96 @@ export default function TutorialShell() {
             </div>
           ))}
         </div>
-      </details>
+      )}
+
+      {!menuOpen && current && (
+        <>
+          <div>
+            <h1 id="tutorial_title">{current.title}</h1>
+            <p className="tut-goal">{renderInline(current.goal)}</p>
+          </div>
+
+          {steps.length > 0 && (
+            <div className="tut-dots" aria-label={`步驟 ${Math.min(step + 1, steps.length)} / ${steps.length}`}>
+              {steps.map((_, i) => (
+                <span key={i} className={"tut-dot" + (i <= step ? " on" : "")} />
+              ))}
+              <span className="tut-dots-text">{finished ? "全部完成" : `步驟 ${step + 1} / ${steps.length}`}</span>
+            </div>
+          )}
+
+          <ol id="tutorial_steps">
+            {steps.map((s, i) => {
+              const st = stepState(i, step);
+              if (st === "done")
+                return (
+                  <li key={i} className="tut-step done">
+                    <span className="tut-check" aria-hidden="true">✓</span>
+                    <span className="tut-step-text">{renderInline(s)}</span>
+                  </li>
+                );
+              if (st === "now")
+                return (
+                  <li key={i} className="tut-step now" aria-current="step">
+                    <div className="tut-now-head">
+                      <span className="tut-num-lg">{i + 1}</span>
+                      <span className="tut-now-label">現在做這一步</span>
+                    </div>
+                    <div className="tut-now-text">{renderInline(s)}</div>
+                    <div className="tut-now-actions">
+                      {step > 0 && (
+                        <button type="button" id="tutorial_step_prev" className="tut-btn ghost" onClick={() => setStep(prevStep(step))}>
+                          ← 上一步
+                        </button>
+                      )}
+                      <button type="button" id="tutorial_step_next" className="tut-btn primary" onClick={advance}>
+                        {i < steps.length - 1 ? "我做完了，下一步 →" : "我做完了，完成這一課"}
+                      </button>
+                    </div>
+                  </li>
+                );
+              return (
+                <li key={i} className="tut-step upcoming">
+                  <span className="tut-num-sm" aria-hidden="true">{i + 1}</span>
+                  <span className="tut-step-text">{renderInline(s)}</span>
+                </li>
+              );
+            })}
+          </ol>
+
+          {finished && (
+            <div className="tut-finish">
+              <div className="tut-finish-title">這一課完成了</div>
+              <div className="tut-now-actions">
+                <button type="button" className="tut-btn ghost" onClick={() => setStep(prevStep(step))}>
+                  ← 回到最後一步
+                </button>
+                <button type="button" id="tutorial_next_primary" className="tut-btn primary" disabled={idx >= flat.length - 1} onClick={() => go(1)}>
+                  {idx >= flat.length - 1 ? "全部課程完成" : "下一課 →"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {current.tip && <div className="tut-tip">{renderInline(current.tip)}</div>}
+
+          <div className="tut-bottom">
+            <button className="tut-link" id="tutorial_prev" disabled={idx <= 0} onClick={() => go(-1)}>
+              ← 上一課{idx > 0 ? `　${flat[idx - 1].p.title}` : ""}
+            </button>
+            <button className="tut-link" id="tutorial_next" disabled={idx < 0 || idx >= flat.length - 1} onClick={() => go(1)}>
+              下一課 →
+            </button>
+          </div>
+        </>
+      )}
+
+      {!menuOpen && !current && (
+        <div>
+          <h1>//@ 註解教學</h1>
+          <p className="tut-goal">在程式裡改一行、按 Enter，直接看到那一行的效果。從上面選一課開始。</p>
+        </div>
+      )}
     </div>
   );
 }

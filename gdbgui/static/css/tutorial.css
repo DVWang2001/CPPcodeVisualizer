@@ -299,13 +299,6 @@ body.tutorial #top .tut-voice-pop.open {
   display: flex;
 }
 
-/* 文件欄底部的上一課／下一課 */
-#tutorial_doc .tut-pager {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 8px;
-}
-
 /* 編輯器上方那排（新草稿、AI 生成教案、Import/Export、課堂題目、存到帳號）與
    「本機草稿」提示：教學頁用不到，拿掉讓練習區清爽。 */
 body.tutorial .toolbar-row,
@@ -313,149 +306,326 @@ body.tutorial .draft-chip {
   display: none !important;
 }
 
-/* 最左邊的窗格原本放檔案總管，教學頁拿來放文件。 */
+/* ── 左欄：專注步進（設計稿「左欄 9」）──
+   最左邊的窗格原本放檔案總管，教學頁拿來放這個。 */
 body.tutorial #folders_view {
-  background: #fbfaf6 !important;
-  color: #1d2433;
+  background: linear-gradient(180deg, #f7f8ff 0%, #eceef8 100%) !important;
+  color: #1c2033;
   overflow: auto;
 }
 
 #tutorial_doc {
   box-sizing: border-box;
-  padding: 24px 28px 32px;
+  min-height: 100%;
+  padding: 26px 30px 22px;
   font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
-  color: #1d2433;
+  color: #1c2033;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 #tutorial_doc h1 {
-  margin: 0;
-  font-size: 28px;
-  line-height: 1.25;
+  margin: 0 0 8px;
+  font-size: 30px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
-#tutorial_doc p {
+#tutorial_doc .tut-goal {
   margin: 0;
-  font-size: 16px;
-  line-height: 1.75;
-  color: #3a4256;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #5a6080;
 }
 #tutorial_doc code {
-  font: 14px "JetBrains Mono", Consolas, monospace;
-  background: #efe9d6;
-  padding: 1px 6px;
-  border-radius: 4px;
-  color: #1d2433;
+  font: 0.92em "JetBrains Mono", Consolas, monospace;
+  background: #eef1ff;
+  color: #3a46d8;
+  padding: 1px 7px;
+  border-radius: 7px;
 }
-#tutorial_doc .tut-crumbs {
+
+/* 頂端：章節下拉 + 課進度 */
+#tutorial_doc .tut-top {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+}
+#tutorial_doc .tut-chip {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #d3d7ee;
+  background: #fff;
   font-size: 13px;
-  color: #4a5265;
-  flex-wrap: wrap;
-}
-#tutorial_doc .tut-crumbs .tut-sp {
-  flex-grow: 1;
-}
-#tutorial_doc .tut-link {
-  background: none;
-  border: none;
-  padding: 4px 2px;
-  color: #1f4bb8;
-  font-size: 13px;
+  font-weight: 700;
+  color: #3a46d8;
   cursor: pointer;
 }
-#tutorial_doc .tut-link:disabled {
-  color: #b9b19a;
-  cursor: default;
+#tutorial_doc .tut-count {
+  font-size: 13px;
+  color: #7b819f;
+  font-weight: 600;
 }
+#tutorial_doc button:focus-visible,
+#tutorial_doc a:focus-visible {
+  outline: 3px solid #8e97ff;
+  outline-offset: 3px;
+}
+
+/* 全部課程（下拉） */
+#tutorial_doc .tut-menu {
+  background: #fff;
+  border: 1px solid #dcdff0;
+  border-radius: 20px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 14px 30px rgba(58, 70, 216, 0.1);
+}
+#tutorial_doc .tut-menu-head {
+  font-size: 14px;
+  font-weight: 800;
+}
+#tutorial_doc .tut-menu-head span {
+  font-weight: 600;
+  font-size: 12px;
+  color: #7b819f;
+}
+#tutorial_doc .tut-feature {
+  font-size: 12px;
+  font-weight: 800;
+  color: #7b819f;
+  letter-spacing: 0.06em;
+  margin: 12px 0 4px;
+}
+#tutorial_doc .tut-menu a {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 14.5px;
+  color: #1c2033;
+  text-decoration: none;
+}
+#tutorial_doc .tut-menu a:hover {
+  background: #f1f3ff;
+}
+#tutorial_doc .tut-menu a.tut-now {
+  background: #e7eaff;
+  font-weight: 800;
+  color: #3a46d8;
+}
+
+/* 步驟進度點 */
+#tutorial_doc .tut-dots {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#tutorial_doc .tut-dot {
+  width: 34px;
+  height: 8px;
+  border-radius: 999px;
+  background: #cfd3ea;
+}
+#tutorial_doc .tut-dot.on {
+  background: #3a46d8;
+}
+#tutorial_doc .tut-dots-text {
+  font-size: 12px;
+  color: #7b819f;
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+/* 步驟：已完成收成一行、現在這一步放大、下一步灰色預覽 */
 #tutorial_doc ol {
   margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
-#tutorial_doc li.tut-step {
+#tutorial_doc li.tut-step.done,
+#tutorial_doc li.tut-step.upcoming {
   display: flex;
+  align-items: center;
   gap: 12px;
-  align-items: flex-start;
-  font-size: 15px;
-  line-height: 1.7;
+  padding: 10px 16px;
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.55;
 }
-#tutorial_doc .tut-num {
+#tutorial_doc li.tut-step.done {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid #dfe2f2;
+  color: #7b819f;
+}
+#tutorial_doc li.tut-step.done .tut-step-text {
+  text-decoration: line-through;
+}
+#tutorial_doc li.tut-step.upcoming {
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px dashed #cfd3ea;
+  color: #8b91ad;
+}
+#tutorial_doc li.tut-step.done code,
+#tutorial_doc li.tut-step.upcoming code {
+  background: #f1f2f8;
+  color: #8b91ad;
+  font-size: 0.85em;
+}
+#tutorial_doc .tut-check {
   flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  background: #2c5fd8;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #3ac07f;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  font-size: 13px;
-  margin-top: 1px;
-}
-#tutorial_doc .tut-tip {
-  background: #fff6d6;
-  border-left: 4px solid #d99a00;
-  border-radius: 6px;
-  padding: 10px 14px;
-  font-size: 14px;
-  line-height: 1.7;
-}
-#tutorial_doc .tut-visit {
-  width: max-content;
-  padding: 4px 14px;
-  border-radius: 999px;
-  background: #2c5fd8;
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
-}
-#tutorial_doc .tut-restart {
-  min-height: 44px;
-  padding: 0 18px;
-  border-radius: 8px;
-  border: 1px solid #1d2433;
-  background: #1d2433;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  width: max-content;
-}
-#tutorial_doc details {
-  border-top: 1px solid #e3ddc9;
-  padding-top: 12px;
-}
-#tutorial_doc summary {
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 700;
-  color: #4a5265;
-}
-#tutorial_doc .tut-list a {
-  display: flex;
-  gap: 8px;
-  padding: 7px 8px;
-  border-radius: 8px;
-  font-size: 15px;
-  color: #1d2433;
-  text-decoration: none;
-}
-#tutorial_doc .tut-list a.tut-now {
-  background: #e5ecfb;
-  font-weight: 700;
-  color: #1f4bb8;
-}
-#tutorial_doc .tut-feature {
   font-size: 12px;
+  font-weight: 800;
+}
+#tutorial_doc .tut-num-sm {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #cfd3ea;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+}
+#tutorial_doc li.tut-step.now {
+  padding: 26px 26px 22px;
+  border-radius: 26px;
+  background: #fff;
+  border: 1px solid #e6e9fb;
+  box-shadow: 0 18px 40px rgba(58, 70, 216, 0.16), 0 2px 6px rgba(28, 32, 51, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+#tutorial_doc .tut-now-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#tutorial_doc .tut-num-lg {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #5b6bff, #3a46d8);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 800;
+}
+#tutorial_doc .tut-now-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #3a46d8;
+}
+#tutorial_doc .tut-now-text {
+  font-size: 21px;
+  line-height: 1.55;
   font-weight: 700;
-  color: #7a8194;
-  letter-spacing: 0.04em;
-  margin: 10px 0 4px;
+}
+#tutorial_doc .tut-now-text b {
+  background: linear-gradient(transparent 60%, #ffe27a 60%);
+}
+#tutorial_doc .tut-now-actions {
+  display: flex;
+  gap: 10px;
+}
+#tutorial_doc .tut-btn {
+  padding: 13px 18px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+#tutorial_doc .tut-btn.ghost {
+  flex: none;
+  border: 1px solid #d3d7ee;
+  background: #fff;
+  color: #5a6080;
+}
+#tutorial_doc .tut-btn.primary {
+  flex: 1;
+  border: none;
+  background: linear-gradient(135deg, #5b6bff, #3a46d8);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(58, 70, 216, 0.35);
+}
+#tutorial_doc .tut-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* 整課做完 */
+#tutorial_doc .tut-finish {
+  padding: 22px 26px;
+  border-radius: 26px;
+  background: #fff;
+  border: 1px solid #bfe9d2;
+  box-shadow: 0 14px 30px rgba(58, 192, 127, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+#tutorial_doc .tut-finish-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #1f8f5a;
+}
+
+/* 小提示 */
+#tutorial_doc .tut-tip {
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: #eaf0ff;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #2f3f9e;
+}
+
+/* 底部：上一課／下一課 */
+#tutorial_doc .tut-bottom {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+#tutorial_doc .tut-link {
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  color: #5a6080;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+#tutorial_doc .tut-link:hover:not(:disabled) {
+  color: #3a46d8;
+}
+#tutorial_doc .tut-link:disabled {
+  color: #c4c8dd;
+  cursor: default;
 }
