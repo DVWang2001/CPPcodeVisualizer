@@ -153,11 +153,42 @@ body.tutorial #top .navbar-nav {
   padding: 0 !important;
   font-size: 1em !important;
 }
+/* 右欄最上面的「即時課堂」占位區會把剩餘高度全吃掉，面板內容少時就被擠到最底下；
+   教學頁用不到即時課堂，直接拿掉。 */
+body.tutorial #live-quiz-slot {
+  display: none !important;
+}
+
+/* 窄螢幕：先收掉按鈕文字，只留圖示；麵包屑太長就截斷。 */
+body.tutorial #top .tut-crumbs {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 1200px) {
+  body.tutorial #top .tut-label {
+    display: none;
+  }
+  body.tutorial #top #autoplay_button {
+    width: 40px;
+    padding: 0;
+  }
+}
+@media (max-width: 1100px) {
+  body.tutorial #top .tut-crumbs > :not(b):not(:first-child) {
+    display: none;
+  }
+}
+
+body.tutorial #top .tut-voice-wrap {
+  position: relative;
+  display: inline-flex;
+}
 body.tutorial #top .tut-voice-pop {
   display: none;
   position: absolute;
-  top: 56px;
-  right: 110px;
+  top: 48px;
+  right: 0;
   z-index: 1200;
   flex-direction: column;
   gap: 12px;

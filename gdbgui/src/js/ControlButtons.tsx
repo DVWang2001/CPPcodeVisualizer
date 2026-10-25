@@ -21,6 +21,23 @@ class ControlButtons extends React.Component<{}, State> {
     this.state = { ...(this.state || {}), showVoice: false };
   }
 
+  // 教學頁的朗讀浮層：點到浮層外面或按 Esc 就收起來。
+  _closeVoice = (e: any) => {
+    if (!this.state.showVoice) return;
+    if (e.type === "keydown" && e.key !== "Escape") return;
+    if (e.type === "mousedown" && e.target && (e.target as Element).closest?.(".tut-voice-wrap")) return;
+    this.setState({ showVoice: false });
+  };
+  componentDidMount() {
+    if (!isTutorial()) return;
+    document.addEventListener("mousedown", this._closeVoice);
+    document.addEventListener("keydown", this._closeVoice);
+  }
+  componentWillUnmount() {
+    document.removeEventListener("mousedown", this._closeVoice);
+    document.removeEventListener("keydown", this._closeVoice);
+  }
+
   /** 編輯 ⇄ 播放。原本 Edit 按鈕的邏輯，教學頁的「編輯 | 播放」切換共用。 */
   toggleEditMode = () => {
     const enteringEditMode = !this.state.edit_mode;
@@ -62,7 +79,7 @@ class ControlButtons extends React.Component<{}, State> {
           className={btn_class}
         >
           <ToolIcon name="repeat" glyph="repeat" />
-          {tut && "從頭"}
+          {tut && <span className="tut-label">從頭</span>}
         </button>
 
         <button
@@ -195,7 +212,7 @@ class ControlButtons extends React.Component<{}, State> {
           className={btn_class_text + (this.state.autoplay_enabled ? " active" : "")}
           style={this.state.autoplay_enabled ? { color: "#5cb85c", fontWeight: "bold" } : {}}
         >
-          <ToolIcon name="auto" glyph="play-circle" style={{ color: "inherit" }} />{tut ? "自動播放" : "Auto"}
+          <ToolIcon name="auto" glyph="play-circle" style={{ color: "inherit" }} />{tut ? <span className="tut-label">自動播放</span> : "Auto"}
         </button>
 
         {this.state.autoplay_enabled && (
@@ -235,6 +252,7 @@ class ControlButtons extends React.Component<{}, State> {
           </button>
         )}
 
+        <span className={tut ? "tut-voice-wrap" : undefined} style={tut ? undefined : { display: "contents" }}>
         {tut && this.state.autoplay_enabled && (
           <button
             id="tut_voice_button"
@@ -301,6 +319,7 @@ class ControlButtons extends React.Component<{}, State> {
             />
           </span>
         )}
+        </span>
         </span>
         </span>
 

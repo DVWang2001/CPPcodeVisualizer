@@ -266,7 +266,7 @@ class RightSidebar extends React.Component<any, any> {
           <Collapser id="container" primary title="資料結構視覺化" play_mode={play_mode} content={<ContainerVisualizer />} />
 
           {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
-          <Collapser id="uml_visualizer" title="UML 物件圖" collapsed={false} play_mode={play_mode} content={<UMLVisualizer />} />
+          <Collapser id="uml_visualizer" title="UML 物件圖" collapsed={!!(window as any).initial_data?.tutorial} play_mode={play_mode} content={<UMLVisualizer />} />
 
           {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'title' does not exist on type 'Intrinsic... Remove this comment to see the full error message */}
           <Collapser id="locals" title="區域變數" collapsed={true} play_mode={play_mode} content={<Locals />} />
