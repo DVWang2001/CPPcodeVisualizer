@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_t5.cpp",
+  "source_code": "#include <iostream>\nusing namespace std;\n\nint main() {   //@ @layout open:visualizer\n    int x = 5;   //@ @tts [next] 先把 x 設成五\n    x = x + 1;   //@ @guide {x} @tts [next] 接著更[耕]新 x，把它加一\n    cout << x << endl;   //@ @guide {x} @tts [next] x 變成 {x}\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "5",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

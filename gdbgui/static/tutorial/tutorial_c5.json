@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_c5.cpp",
+  "source_code": "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {   //@ @layout open:container\n    vector<vector<int>> grid(3, vector<int>(3, 0));   //@ @tts [next] 準備一張三乘三的地圖，全部是空地 @layout maze:grid\n    grid[1][1] = 1;   //@ @guide {grid} {grid[1][1]:orange} @tts [next] 在正中間築一道牆\n    grid[0][2] = 1;   //@ @guide {grid} {grid[0][2]:orange} @tts [next] 右上角也築一道牆\n    grid[2][0] = 2;   //@ @guide {grid} {grid[2][0]:lime} @tts [next] 左下角標成二，當作終點\n    cout << grid[1][1] << endl;   //@ @guide {grid} @tts [next] 地圖完成了\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "6",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

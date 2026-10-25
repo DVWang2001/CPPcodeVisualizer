@@ -1,0 +1,16 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_r1.cpp",
+  "source_code": "#include <iostream>\nusing namespace std;\n\nint fact(int n) {\n    int result;   //@ @guide [進入#blue] n={n} @tts [next] 進到階乘，n 是 {n}\n    if (n <= 1) {   //@ @guide [判斷#gray] n={n} @tts [next] 看看是不是到底了\n        result = 1;   //@ @guide [基底#green] 到底了 @tts [next] 到底了，答案是一\n        return result;   //@ @guide [回傳#green] 回傳 {result} ← 基底 @tts [next] 把一傳回去\n    }\n    int sub = fact(n - 1);   //@ @guide [遞迴呼叫#red] 處理 n-1 @tts [step-in] 處理更小的子問題\n    result = n * sub;   //@ @guide [合併#purple] {n} × {sub} @tts [next] 把子問題的答案乘上自己\n    return result;   //@ @guide [回傳#blue] 回傳 {result} ← {n} × {sub} @tts [next] 把答案傳回去\n}   //@ @tts [next] 這一層結束，回到上一層\n\nint main() {   //@ @layout open:callgraph\n    int r = fact(3);   //@ @tts [step-in] 呼叫三的階乘 | @2 [next] 全部回來了\n    cout << r << endl;   //@ @guide {r} @tts [next] 答案是 {r}\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "5",
+      "is_normal_breakpoint": true
+    },
+    {
+      "line": "16",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

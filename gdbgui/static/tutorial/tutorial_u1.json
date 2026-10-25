@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_u1.cpp",
+  "source_code": "#include <iostream>\nusing namespace std;\n\nclass Point {\npublic:\n    int x;\n    int y;\n    Point(int a, int b) { x = a; y = b; }\n};\n\nint main() {   //@ @layout open:uml_visualizer\n    Point p(3, 4);   //@ @tts [next] 建立一個點，座標是三和四\n    cout << p.x << endl;   //@ @guide uml:p @tts [next] 這是 p 現在的樣子\n    p.x = 10;   //@ @guide uml:p @tts [next] 把 x 改成十\n    cout << p.x << endl;   //@ @guide uml:p @tts [next] x 變成十了\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "12",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

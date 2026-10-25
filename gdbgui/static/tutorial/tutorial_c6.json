@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_c6.cpp",
+  "source_code": "#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\n\nint main() {   //@ @layout open:container\n    vector<int> a = {3, 1, 2};   //@ @tts [next] 準備一個陣列\n    int i = 0;   //@ @tts [next] 先指向第零格\n    int j = 1;   //@ @tts [next] 另一個指向第一格\n    swap(a[i], a[j]);   //@ @guide {a[i]:orange} {a[j]:lightblue} @tts [next] 把這兩格交換\n    j = 2;   //@ @guide {a} @tts [next] 第二次，換成跟第二格交換\n    swap(a[i], a[j]);   //@ @guide {a[i]:orange} {a[j]:lightblue} @tts [next] 再交換一次\n    cout << a[0] << endl;   //@ @guide {a} @tts [next] 最小的跑到最前面了\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "7",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

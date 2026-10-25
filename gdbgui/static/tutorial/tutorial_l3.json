@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_l3.cpp",
+  "source_code": "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {   //@ @layout open:container\n    vector<vector<int>> dp(2, vector<int>(3, 1));   //@ @tts [next] 準備一張兩列三欄的表，全部填一\n    int up = dp[0][1];   //@ @guide {dp[0][1]:orange} @tts [next] 先看上面那一格 @layout pop:dp:orange\n    int left = dp[1][0];   //@ @guide {dp[1][0]:lime} @tts [next] 再看左邊那一格 @layout pop:dp:lime\n    dp[1][1] = up + left;   //@ @guide {dp[1][1]:lightblue} @tts [next] 上面加左邊，就是這一格的答案 @layout pull:dp:orange,lime->lightblue\n    cout << dp[1][1] << endl;   //@ @guide {dp} @tts [next] 這一格現在是 {dp[1][1]}\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "6",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

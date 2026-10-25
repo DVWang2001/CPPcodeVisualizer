@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_c4.cpp",
+  "source_code": "#include <iostream>\n#include <map>\n#include <string>\nusing namespace std;\n\nint main() {   //@ @layout open:container\n    map<string, int> m;   //@ @tts [next] 準備一個空的 map\n    m[\"apple\"] = 3;   //@ @guide {m} @tts [next] 放進蘋果，數量三\n    m[\"pear\"] = 5;   //@ @guide {m} @tts [next] 放進梨子，數量五\n    m[\"fig\"] = 2;   //@ @guide {m} @tts [next] 放進無花果，數量二\n    m[\"apple\"] = 4;   //@ @guide {m} @tts [next] 蘋果已經有了，這一行會把它改成四\n    cout << m.size() << endl;   //@ @guide {m} @tts [next] 還是三組，因為蘋果只是被改掉\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "7",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

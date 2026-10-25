@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_l1.cpp",
+  "source_code": "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {   //@ @layout open:visualizer\n    int n = 3;   //@ @tts [next] 先決定要放幾個數字，現在只開程式追蹤表\n    vector<int> v;   //@ @tts [next] 接下來要看容器，所以換成容器面板 @layout open:container close:visualizer\n    for (int i = 1; i <= n; i++) {   //@ @tts [next] 開始放數字 | @2 [next] 下一個\n        v.push_back(i * i);   //@ @guide {v} @tts [next] 放進第 {i} 個平方數\n    }\n    cout << v.size() << endl;   //@ @guide {v} @tts [next] 全部放好了\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "6",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

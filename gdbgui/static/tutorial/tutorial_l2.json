@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_l2.cpp",
+  "source_code": "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {   //@ @layout open:container\n    vector<int> arr = {3, 1, 4};   //@ @tts [next] 準備一個有三個數字的陣列\n    for (int i = 0; i < 3; i++) {   //@ @tts [next] 一格一格處理 | @2 [next] 看看還有沒有下一格\n        arr[i] = arr[i] * 2;   //@ @guide {arr[i]:orange} @tts [next] 第 {i} 格要乘以二 @layout pop:arr\n    }\n    cout << arr[0] << endl;   //@ @guide {arr} @tts [next] 全部乘完了\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "6",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

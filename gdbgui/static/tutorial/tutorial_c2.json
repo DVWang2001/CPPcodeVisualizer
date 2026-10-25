@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_c2.cpp",
+  "source_code": "#include <iostream>\n#include <stack>\n#include <queue>\nusing namespace std;\n\nint main() {   //@ @layout open:container\n    stack<int> s;   //@ @tts [next] 準備一個 stack\n    queue<int> q;   //@ @tts [next] 再準備一個 queue\n    s.push(1);   //@ @guide {s} {q} @tts [next] 兩個都放進一 @layout pair:s,q\n    q.push(1);   //@ @guide {s} {q} @tts [next] queue 也放進一\n    s.push(2);   //@ @guide {s} {q} @tts [next] 放進二\n    q.push(2);   //@ @guide {s} {q} @tts [next] 放進二\n    s.push(3);   //@ @guide {s} {q} @tts [next] 放進三\n    q.push(3);   //@ @guide {s} {q} @tts [next] 放進三\n    s.pop();   //@ @guide {s} {q} @tts [next] stack 拿掉最後放進去的\n    q.pop();   //@ @guide {s} {q} @tts [next] queue 拿掉最先放進去的\n    cout << s.size() << q.size() << endl;   //@ @guide {s} {q} @tts [next] 兩邊各剩兩個，但剩下的不一樣\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "7",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

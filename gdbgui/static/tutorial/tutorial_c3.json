@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_c3.cpp",
+  "source_code": "#include <iostream>\n#include <set>\nusing namespace std;\n\nint main() {   //@ @layout open:container\n    set<int> s;   //@ @tts [next] 準備一個空的 set\n    s.insert(5);   //@ @guide {s} @tts [next] 放進五 @layout bst:s\n    s.insert(3);   //@ @guide {s} @tts [next] 放進三\n    s.insert(8);   //@ @guide {s} @tts [next] 放進八\n    s.insert(1);   //@ @guide {s} @tts [next] 放進一\n    s.insert(4);   //@ @guide {s} @tts [next] 放進四\n    cout << s.size() << endl;   //@ @guide {s} @tts [next] 一共五個數字\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "6",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

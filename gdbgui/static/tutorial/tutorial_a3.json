@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_a3.cpp",
+  "source_code": "#include <iostream>\nusing namespace std;\n\nint main() {   //@ @layout open:visualizer\n    int sum = 0;   //@ @tts [next] 先準備 sum\n    for (int i = 1; i <= 8; i++) {   //@ @tts [next] 進入迴圈 | @2 [next] 下一圈\n        sum += i;   //@ @guide {sum} @tts [fast @8] 前面七圈都快轉過去了，這是第八圈，sum 是 {sum}\n    }\n    cout << sum << endl;   //@ @tts [next] 全部跑完，總和是 {sum}\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "5",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

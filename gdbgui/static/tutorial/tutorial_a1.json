@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_a1.cpp",
+  "source_code": "#include <iostream>\nusing namespace std;\n\nint square(int x) {\n    return x * x;   //@ @guide {x} @tts [step-out] 這裡把 x 乘上 x，然後跳回呼叫它的地方\n}\n\nint main() {   //@ @layout open:visualizer\n    int a = 4;   //@ @tts [next] 先準備 a，值是四\n    int b = square(a);   //@ @tts [step-in] 呼叫 square，進到函式裡面看看 | @2 [next] 回到呼叫的地方，結果存進 b\n    cout << b << endl;   //@ @guide {b} @tts [next] b 現在是 {b}\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "9",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}

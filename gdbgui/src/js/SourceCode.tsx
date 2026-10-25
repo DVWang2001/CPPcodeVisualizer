@@ -170,12 +170,7 @@ class SourceCode extends React.Component<{}, State> {
       return;
     }
 
-    const layoutMap: Record<string, string> = (global_variable as any).__layout || {};
-    Object.keys(layoutMap)
-      .map(Number)
-      .filter(k => k < line)
-      .sort((a, b) => a - b)
-      .forEach(k => this.applyLayout(k, { panelsOnly: true }));
+    this._applyLayoutsBefore(line);
     store.set("breakpoints", []);
     Breakpoints.add_breakpoint(this.state.fullname_to_render, line);
     // n 要等這次停下來、引擎軌迹錄好才數得出來（見 componentDidUpdate）。
@@ -210,7 +205,23 @@ class SourceCode extends React.Component<{}, State> {
     this._visit = null;
     this._visitPending = false;
     this._emitVisit();
-    store.set("breakpoints", this._lessonBreakpoints.map(b => ({ ...b })));
+    const bps = this._lessonBreakpoints.map(b => ({ ...b }));
+    store.set("breakpoints", bps);
+    // 起點斷點之前的行（例如 `int main() {` 上寫的 @layout open:…）不會被停到，
+    // 它們的面板設定要先套一遍，跟按 Enter 時一樣。
+    this.refreshAnnotationGlobals();
+    const firstStop = Math.min(...bps.map(b => Number(b.line)).filter(n => n > 0), Infinity);
+    if (Number.isFinite(firstStop)) this._applyLayoutsBefore(firstStop);
+  };
+
+  /** 套用第 line 行以前所有行的 @layout（只要面板狀態，不重播 pop/pull 動畫）。 */
+  _applyLayoutsBefore = (line: number) => {
+    const layoutMap: Record<string, string> = (global_variable as any).__layout || {};
+    Object.keys(layoutMap)
+      .map(Number)
+      .filter(k => k < line)
+      .sort((a, b) => a - b)
+      .forEach(k => this.applyLayout(k, { panelsOnly: true }));
   };
 
   /** 這次停下來之後算出 n（這一行總共會被停到幾次）。 */

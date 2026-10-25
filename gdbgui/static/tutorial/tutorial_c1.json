@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "fullname_to_render": "tutorial_c1.cpp",
+  "source_code": "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {   //@ @layout open:container\n    vector<int> v;   //@ @tts [next] 從空的 vector 開始\n    v.push_back(3);   //@ @guide {v} @tts [next] 放進三\n    v.push_back(1);   //@ @guide {v} @tts [next] 再放進一\n    v.push_back(4);   //@ @guide {v} @tts [next] 再放進四\n    v.pop_back();   //@ @guide {v} @tts [next] 拿掉最後一個\n    cout << v.size() << endl;   //@ @guide {v} @tts [next] 現在剩下兩個\n    return 0;   //@ @tts [continue] 程式結束\n}\n",
+  "breakpoints": [
+    {
+      "line": "6",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
+}
