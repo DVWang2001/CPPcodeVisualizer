@@ -2,15 +2,36 @@ import { test, expect, Page } from '@playwright/test';
 import { ensureLoggedIn, setupPage } from './helpers';
 
 /**
- * /tutorial：需登入；點章節載入教案；在含 //@ 的行改字後按 Enter，
- * 程式重跑並停在該行，字幕反映「剛改的」文字；連續改兩次都要生效
- * （Run 之後編輯器不可變唯讀）。
+ * /tutorial：需登入；點章節載入教案；在任何一行按 Enter 直接執行到那一行並停住，
+ * 目標行以前的 @layout open: 先把面板開好；改 //@ 後再按 Enter 用新文字；
+ * 連續改兩次都要生效（Run 之後編輯器不可變唯讀）。
  */
 
 test('unauthenticated /tutorial redirects to login', async ({ page }) => {
   await page.goto('/tutorial');
   await expect(page).toHaveURL(/\/login/);
 });
+
+async function openT1(page: Page) {
+  await setupPage(page);
+  await ensureLoggedIn(page);
+  await page.goto('/tutorial');
+  await page.waitForSelector('#tutorial_shell');
+  await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });
+  await page.click('[data-project="t1"]');
+  await expect(page.locator('#tutorial_current')).toContainText('tts 念出變數');
+}
+
+async function waitPausedAt(page: Page, line: number) {
+  await page.waitForFunction(
+    (n) => {
+      const s = (window as any).store;
+      return s.get('inferior_program') === 'paused' && String(s.get('paused_on_frame')?.line) === String(n);
+    },
+    line,
+    { timeout: 90_000 }, // 第一次 Run 要下載 wasm 編譯器
+  );
+}
 
 async function editTtsLineAndEnter(page: Page, suffix: string) {
   await page.locator('.view-line', { hasText: '@tts' }).first().click();
@@ -20,25 +41,20 @@ async function editTtsLineAndEnter(page: Page, suffix: string) {
   await page.waitForFunction(
     (s) => String((window as any).store.get('tts_subtitle')?.text || '').includes(s),
     suffix,
-    { timeout: 90_000 }, // 第一次 Run 要下載 wasm 編譯器
-  );
-  await page.waitForFunction(
-    () => (window as any).store.get('inferior_program') === 'paused',
-    null,
-    { timeout: 20_000 },
+    { timeout: 90_000 },
   );
 }
 
+test('Enter on a plain code line (no annotation) runs straight to it', async ({ page }) => {
+  await openT1(page);
+  // 第 9 行 cout：沒有任何註解，仍然要停在這行
+  await page.locator('.view-line', { hasText: 'cout' }).first().click();
+  await page.keyboard.press('Enter');
+  await waitPausedAt(page, 9);
+});
+
 test('edit //@ line + Enter replays with the new text, twice in a row', async ({ page }) => {
-  await setupPage(page);
-  await ensureLoggedIn(page);
-  await page.goto('/tutorial');
-  await page.waitForSelector('#tutorial_shell');
-  await page.waitForSelector('.monaco-editor textarea', { timeout: 15_000 });
-
-  await page.click('[data-project="t1"]');
-  await expect(page.locator('#tutorial_current')).toContainText('tts 念出變數');
-
+  await openT1(page);
   await editTtsLineAndEnter(page, '，第一次');
   await editTtsLineAndEnter(page, '第二次');
 });

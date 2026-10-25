@@ -4,7 +4,6 @@ import {
   parseLineAnnotation,
   upsertLineAnnotation,
   stripDirective,
-  hasDirective,
 } from "../sourceAnnotations";
 
 describe("stripDirective", () => {
@@ -88,16 +87,5 @@ describe("upsertLineAnnotation", () => {
     const line = "int x = 5;  //@ @tts old";
     expect(upsertLineAnnotation(line, { guide: "", tts: "", layout: "" }))
       .toBe("int x = 5;");
-  });
-});
-
-describe("hasDirective", () => {
-  test("detects a //@ directive anywhere on the line", () => {
-    expect(hasDirective("int x = 5; //@ @guide hi")).toBe(true);
-    expect(hasDirective("//@ @tts hi")).toBe(true);
-  });
-  test("plain comments and code are not directives", () => {
-    expect(hasDirective("int x = 5; // note")).toBe(false);
-    expect(hasDirective("int x = 5;")).toBe(false);
   });
 });

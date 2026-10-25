@@ -37,11 +37,6 @@ export function directiveBody(line: string): string | null {
   return line.slice(idx + 3);
 }
 
-/** True when the line carries a `//@` directive (教學頁：按 Enter 重播該行的判斷). */
-export function hasDirective(line: string): boolean {
-  return line.includes("//@");
-}
-
 /** Return the code portion of a line, with any trailing `//@` directive removed. */
 export function stripDirective(line: string): string {
   const idx = line.indexOf("//@");

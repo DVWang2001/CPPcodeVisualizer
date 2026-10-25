@@ -66,7 +66,7 @@ export default function TutorialShell() {
       {open && (
         <div>
           <div style={{ color: "#666", marginBottom: 6 }}>
-            在含 <code>//@</code> 的行修改後按 Enter，立刻重播該行的效果。
+            改任何一行後按 Enter，直接執行到那一行並停住（Shift+Enter 插入新行）。
           </div>
           {error && <div style={{ color: "#b00" }}>{error}</div>}
           {features.map(f => (

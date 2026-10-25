@@ -14,7 +14,8 @@ import Actions from "./Actions";
 import { global_variable } from "./global_variable";
 import VisualizerHelper from "./VisualizerHelper";
 import GdbApi from "./GdbApi";
-import { parseAnnotations, parseLineAnnotation, upsertLineAnnotation, hasDirective } from "./sourceAnnotations";
+import { parseAnnotations, parseLineAnnotation, upsertLineAnnotation } from "./sourceAnnotations";
+import { nearestRunnableLine } from "./runToLine";
 import { normalizeBundle } from "./bundleAdapter";
 import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
@@ -140,27 +141,25 @@ class SourceCode extends React.Component<{}, State> {
     this.is_gdb_paused_on_this_line = this.is_gdb_paused_on_this_line.bind(this);
   }
 
-  _replayBkptNumber: string | null = null;
-
   /**
-   * 教學頁：在含 `//@` 的行按 Enter，把斷點移到該行並重新 Run，停在那行時
-   * guide / TTS / layout 照常觸發一次。只動自己上次放的那個斷點，教案原有的不碰。
+   * 教學頁：在任何一行按 Enter，直接執行到那一行並停住。
+   *  - 那一行不會被執行（空行、標頭…）就改停在往下第一個會執行的行。
+   *  - 斷點只留目標行這一個，教案原有的斷點不會半路攔下來。
+   *  - 目標行以前所有行的 open:/close: 先套一遍（中間沒停過，面板不會自己開），
+   *    停下來時目標行自己的 @layout 由 componentDidUpdate 照常再套。
    */
-  replayAnnotationLine = (line: number) => {
+  replayToLine = (clicked: number) => {
     this.refreshAnnotationGlobals();
-    const fullname = this.state.fullname_to_render;
-    const bkpts: any[] = store.get("breakpoints") || [];
-    const kept = bkpts.filter((b: any) => b.number !== this._replayBkptNumber);
-    if (!kept.some((b: any) => b.line == line && b.is_normal_breakpoint !== false)) {
-      Breakpoints.add_breakpoint(fullname, line);
-      const added = (store.get("breakpoints") || []).find(
-        (b: any) => b.line == line && String(b.number).startsWith("frontend_")
-      );
-      this._replayBkptNumber = added ? added.number : null;
-    } else {
-      this._replayBkptNumber = null;
-      store.set("breakpoints", kept);
-    }
+    const lines: string[] = this.editorInstance?.getModel?.()?.getLinesContent?.() || [];
+    const line = nearestRunnableLine(lines, clicked);
+    const layoutMap: Record<string, string> = (global_variable as any).__layout || {};
+    Object.keys(layoutMap)
+      .map(Number)
+      .filter(k => k < line)
+      .sort((a, b) => a - b)
+      .forEach(k => this.applyLayout(k, { panelsOnly: true }));
+    store.set("breakpoints", []);
+    Breakpoints.add_breakpoint(this.state.fullname_to_render, line);
     GdbApi.click_run_button();
   };
 
@@ -380,11 +379,11 @@ class SourceCode extends React.Component<{}, State> {
         const K = this.monaco?.KeyCode;
         if (!K || e.keyCode !== K.Enter || e.shiftKey || e.altKey || e.metaKey) return;
         const pos = editor.getPosition();
-        const text = pos && editor.getModel()?.getLineContent(pos.lineNumber);
-        if (!text || !hasDirective(text)) return;
+        if (!pos) return;
+        // Shift+Enter 保留給「插入新行」。
         e.preventDefault();
         e.stopPropagation();
-        this.replayAnnotationLine(pos.lineNumber);
+        this.replayToLine(pos.lineNumber);
       });
     }
     // Expose editor content getter for GdbApi to use
@@ -968,7 +967,7 @@ class SourceCode extends React.Component<{}, State> {
 
   // ─────────────────────────────────────────────────────────────────────────
 
-  applyLayout = (lineNum: string | number) => {
+  applyLayout = (lineNum: string | number, opts: { panelsOnly?: boolean } = {}) => {
     const layoutMap = (global_variable as any).__layout || {};
     if (!layoutMap) return;
     const layoutStr: string = layoutMap[String(lineNum)];
@@ -1083,6 +1082,8 @@ class SourceCode extends React.Component<{}, State> {
           if (names.length === 2 || names.length === 3) setPair(...names);
         }
       } else if (key === "pop" || key === "pull") {
+        // 教學頁補套「路過的行」時只要面板狀態，不重播它們的動畫。
+        if (opts.panelsOnly) continue;
         // pop:/pull: 預設在真的停到新的一行時立刻觸發（見本函式的呼叫端）。
         // 但如果這一行的 @tts 裡寫了 [anim] 標記，代表作者想「等 TTS 講到那裡
         // 才動」——這裡先記下來，改由 _flushPendingAnimTokens 在標記播到時觸發
