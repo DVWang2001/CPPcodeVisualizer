@@ -15,7 +15,7 @@ import { global_variable } from "./global_variable";
 import VisualizerHelper from "./VisualizerHelper";
 import GdbApi from "./GdbApi";
 import { parseAnnotations, parseLineAnnotation, upsertLineAnnotation } from "./sourceAnnotations";
-import { nearestRunnableLine, decideEnter, Visit } from "./runToLine";
+import { nearestRunnableLine, isRunnableLine, decideEnter, Visit } from "./runToLine";
 import { lineVisitCount } from "./localEngine";
 import { normalizeBundle } from "./bundleAdapter";
 import ReactDOM from "react-dom";
@@ -210,8 +210,25 @@ class SourceCode extends React.Component<{}, State> {
     // 起點斷點之前的行（例如 `int main() {` 上寫的 @layout open:…）不會被停到，
     // 它們的面板設定要先套一遍，跟按 Enter 時一樣。
     this.refreshAnnotationGlobals();
-    const firstStop = Math.min(...bps.map(b => Number(b.line)).filter(n => n > 0), Infinity);
-    if (Number.isFinite(firstStop)) this._applyLayoutsBefore(firstStop);
+    this._applyHeaderLayouts();
+  };
+
+  /**
+   * 程式一開始真正執行的是 main 的第一個可執行行；在它之前、本身不會被停到的行
+   * （`int main() {` 標頭、空行…）寫的 @layout 沒有機會觸發，這裡先套一遍。
+   * 會被停到的行等停到時自己套，不在這裡重複。
+   */
+  _applyHeaderLayouts = () => {
+    const lines: string[] = this.editorInstance?.getModel?.()?.getLinesContent?.() || [];
+    const mainIdx = lines.findIndex(l => /^\s*int\s+main\s*\(/.test(l));
+    if (mainIdx < 0) return;
+    const first = nearestRunnableLine(lines, mainIdx + 2);
+    const layoutMap: Record<string, string> = (global_variable as any).__layout || {};
+    Object.keys(layoutMap)
+      .map(Number)
+      .filter(k => k < first && !isRunnableLine(lines[k - 1] || ""))
+      .sort((a, b) => a - b)
+      .forEach(k => this.applyLayout(k, { panelsOnly: true }));
   };
 
   /** 套用第 line 行以前所有行的 @layout（只要面板狀態，不重播 pop/pull 動畫）。 */
