@@ -60,6 +60,31 @@ type State = {
 class ContainerVisualizer extends React.Component<{}, State> {
     updateInterval: any;
 
+    // map 表格視圖（沒開紅黑樹）沒有 plugin，value 被改掉時自己比對、自己放動畫：
+    //  mapPrev：上一次看到的 key → value；mapPopGen：每個 key 的世代號（換 key 重播 keyframe，
+    //  做法同 cellPopKey.ts）；mapPopActive：目前正在亮著的 key（0.9 秒後收掉）。
+    private mapPrev = new Map<string, Map<string, string>>();
+    private mapPopGen = new Map<string, Map<string, number>>();
+    private mapPopActive = new Map<string, Set<string>>();
+
+    /** 比對這一次跟上一次的 map 內容：同一個 key 的 value 變了就亮起來、放大再縮小。 */
+    private diffMapValues(name: string, pairs: { key: unknown; value: unknown }[]) {
+        const cur = new Map<string, string>();
+        for (const p of pairs) cur.set(String(p.key), String(p.value));
+        const prev = this.mapPrev.get(name);
+        this.mapPrev.set(name, cur);
+        if (!prev) return;
+        const changed: string[] = [];
+        cur.forEach((v, k) => { if (prev.has(k) && prev.get(k) !== v) changed.push(k); });
+        if (changed.length === 0 || prefersReducedMotion()) return;
+        const gens = this.mapPopGen.get(name) ?? new Map<string, number>();
+        const active = this.mapPopActive.get(name) ?? new Set<string>();
+        for (const k of changed) { gens.set(k, (gens.get(k) || 0) + 1); active.add(k); }
+        this.mapPopGen.set(name, gens);
+        this.mapPopActive.set(name, active);
+        setTimeout(() => { changed.forEach(k => active.delete(k)); this.forceUpdate(); }, 900);
+    }
+
     constructor(props: {}) {
         super(props);
         this.state = {
@@ -350,6 +375,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
             allPlugins().forEach(p => p.resetAll());
             mazePlugin.resetAll();
             animScheduler.resetAll();
+            this.mapPrev.clear(); this.mapPopGen.clear(); this.mapPopActive.clear();
             this.setState({ pullState: new Map(), pullPreview: new Map() });
             return;
         }
@@ -384,6 +410,11 @@ class ContainerVisualizer extends React.Component<{}, State> {
                     animScheduler.pushOps(name, ops, (op) => mazePlugin.animateOp(name, op, requestRender));
                 }
                 continue;
+            }
+
+            // map 表格視圖：value 被改掉要有動畫（set 沒有 value，維持原樣）
+            if (!isBSTMode && (data.type === 'map' || data.type === 'unordered_map' || data.type === 'multimap')) {
+                this.diffMapValues(name, data.values as any);
             }
 
             // BST types without BST mode: skip (no animation)
@@ -680,10 +711,16 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                 {pairs.map((pair, idx) => {
                                     const hlInfo = getHighlight(idx, highlights, len);
                                     const rowBg = hlInfo ? hlInfo.bg : (idx % 2 === 0 ? "var(--paper)" : "var(--surface)");
+                                    // value 剛被改掉：這一格亮起來並放大再縮小（換 key 讓 keyframe 重播）
+                                    const pk = String(pair.key);
+                                    const gen = this.mapPopGen.get(name)?.get(pk) || 0;
+                                    const changed = !!this.mapPopActive.get(name)?.has(pk);
                                     return (
-                                        <tr key={idx} data-testid="container-row" data-key={String(pair.key)} data-value={String(pair.value)} style={{ backgroundColor: rowBg }}>
+                                        <tr key={idx} data-testid="container-row" data-key={pk} data-value={String(pair.value)} data-changed={changed ? "1" : undefined} style={{ backgroundColor: rowBg }}>
                                             <td style={{ padding: "5px 14px", borderTop: "1px solid var(--line)", borderRight: "2px solid var(--accent-soft)", fontWeight: hlInfo ? 700 : 600, color: "var(--accent)" }}>{pair.key}</td>
-                                            <td style={{ padding: "5px 14px", borderTop: "1px solid var(--line)", fontWeight: hlInfo ? 700 : 400, color: "var(--ink)" }}>{pair.value}</td>
+                                            <td key={`v-${gen}`} className={changed ? "cell-pop" : undefined}
+                                                style={{ padding: "5px 14px", borderTop: "1px solid var(--line)", fontWeight: (hlInfo || changed) ? 700 : 400, color: "var(--ink)",
+                                                    ...(changed ? { backgroundColor: "var(--highlight-soft)", boxShadow: "inset 0 0 0 1px var(--highlight)" } : {}) }}>{pair.value}</td>
                                         </tr>
                                     );
                                 })}
