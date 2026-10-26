@@ -154,3 +154,8 @@ body:not(.tutorial) #top .toolbar-toggle {
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* 頂欄要壓在編輯器／面板卡片上面，下拉選單（檔案、語音）才不會被卡片蓋住 */
+body.cardui #top {
+  z-index: 1100;
+}
