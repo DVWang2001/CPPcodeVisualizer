@@ -330,7 +330,7 @@ def main(argv):
     ap.add_argument("lesson")
     ap.add_argument("--original", help="輸入給模型的原始程式（.cpp），用來檢查 G1")
     ap.add_argument("--judge", action="store_true")
-    ap.add_argument("--judge-model", default=os.environ.get("LESSON_JUDGE_MODEL", "deepseek-ai/deepseek-v4-flash-0731"))
+    ap.add_argument("--judge-model", default=os.environ.get("LESSON_JUDGE_MODEL", "deepseek-ai/deepseek-v4.1-flash"))
     ap.add_argument("--judge-base-url", default="https://integrate.api.nvidia.com/v1")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv[1:])

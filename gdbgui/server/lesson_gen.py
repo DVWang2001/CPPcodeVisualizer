@@ -6,14 +6,14 @@ import re
 #
 #   * OpenCode Zen 的 big-pickle：穩定 1 token/秒，一份教案推估 80 分鐘。而且那把
 #     key 只授權它一個模型（帶 key 查 /models 回 1 個、不帶 key 回 70 個）。
-#   * NVIDIA 的 deepseek-v4-flash：每次請求約 68 秒固定開銷，之後約 29 tok/s
+#   * NVIDIA 的 deepseek-v4-flash（舊名，已下架；現行為 v4.1-flash）：每次請求約 68 秒固定開銷，之後約 29 tok/s
 #     （13 tokens 要 69.5s、800 tokens 要 97.4s——多的 787 個只花 28 秒）。
 #     一份 5000 token 的教案因此約 4 分鐘，落在下面的 timeout 內。
 #
 # 注意 meta/llama-3.3-70b-instruct（本專案原本的預設）已經從 NVIDIA 目錄下架，
 # 換模型前先打 /v1/models 確認它還在。
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
-DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
+DEFAULT_MODEL = "deepseek-ai/deepseek-v4.1-flash"
 MAX_SOURCE_BYTES = 100 * 1024
 
 _SYSTEM_TEMPLATE = (

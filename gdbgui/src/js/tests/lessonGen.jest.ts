@@ -61,7 +61,7 @@ describe("預設要指向能用伺服器金鑰的那一家", () => {
     // 而那個訊息完全看不出真正的原因。
     expect(defaultCfg().preset).toBe("nvidia");
     expect(defaultCfg().baseUrl).toBe("https://integrate.api.nvidia.com/v1");
-    expect(defaultCfg().model).toBe("deepseek-ai/deepseek-v4-flash-0731");
+    expect(defaultCfg().model).toBe("deepseek-ai/deepseek-v4.1-flash");
   });
 });
 
