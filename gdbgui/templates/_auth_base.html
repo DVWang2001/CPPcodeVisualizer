@@ -72,7 +72,31 @@
       }
       .site-nav-spacer { flex: 1; }
       .site-nav .wordmark { font-size: 1.2rem; }
-      .site-account { font-family: var(--font-mono); }
+      /* 頂欄跟正式 IDE 的頂欄同一種做法：白底細框的圓角膠囊。一顆放品牌，一顆放帳號與登出。 */
+      .nav-capsule {
+        display: inline-flex; align-items: center; height: 2.5rem; box-sizing: border-box;
+        border: 1px solid #dcdff0; border-radius: 12px; background: var(--surface);
+      }
+      .site-nav .wordmark.nav-capsule { padding: 0 1rem; }
+      .nav-group { gap: 2px; padding: 3px; }
+      .nav-item {
+        display: inline-flex; align-items: center; gap: 0.5rem; height: 2rem; padding: 0 0.75rem;
+        border-radius: 9px; font-size: 0.82rem; color: var(--ink-soft); text-decoration: none;
+        transition: background 140ms ease, color 140ms ease;
+      }
+      .nav-item:hover { background: var(--ide-title); color: var(--ide-ink); text-decoration: none; }
+      .nav-item svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      /* 「新建教案」是頂欄上唯一的主要動作（只在沒有自己大按鈕的頁面出現） */
+      .nav-item-primary { background: var(--ide-grad); color: #fff; font-weight: 600; }
+      .nav-item-primary:hover { background: var(--ide-grad); color: #fff; filter: brightness(1.08); }
+      .site-account { padding-left: 0.4rem; color: var(--ink); font-family: var(--font-mono); font-size: 0.82rem; }
+      .nav-avatar {
+        width: 1.6rem; height: 1.6rem; border-radius: 50%; flex: none;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--accent-soft); color: var(--ide-ink);
+        font-family: var(--font-body); font-weight: 700; font-size: 0.75rem;
+      }
+      .nav-sep { width: 1px; height: 20px; background: #dcdff0; }
       main.card { margin: 1.5rem auto 0; }
 
       /* ── 品牌 wordmark：角標游標 ▸ 呼應 (gdb) 的 prompt，閃爍節奏跟終端機
@@ -459,8 +483,13 @@
       }
 
       @media (max-width: 640px) {
-        .site-nav { flex-wrap: wrap; }
+        .site-nav { flex-wrap: wrap; gap: 0.5rem; }
         .site-nav .wordmark { order: -1; }
+        /* 手機寬度：膠囊收小，頭像與「登出」二字讓位，頂欄才塞得進一行 */
+        .site-nav .wordmark.nav-capsule { padding: 0 0.8rem; }
+        .nav-avatar, .nav-label { display: none; }
+        .nav-item { padding: 0 0.6rem; }
+        .site-account { padding-left: 0.6rem; }
         .library-heading { align-items: stretch; flex-direction: column; }
         .library-columns { display: none; }
         .listing .lesson-row { grid-template-columns: 2.6rem minmax(0, 1fr) auto; align-items: start; }
@@ -472,14 +501,17 @@
   <body class="{% if navigation_user %}app-shell{% endif %}{% block body_class %}{% endblock %}">
     <header class="site-header"{% if navigation_user %} data-testid="site-header"{% endif %}>
       <nav class="site-nav" aria-label="主要導覽">
-        <a class="wordmark" href="{{ url_for('http_routes.lesson_library') if navigation_user else url_for('http_routes.gdbgui') }}"><span class="wordmark-caret">&#9656;</span>VGDB</a>
+        <a class="wordmark nav-capsule" href="{{ url_for('http_routes.lesson_library') if navigation_user else url_for('http_routes.gdbgui') }}"><span class="wordmark-caret">&#9656;</span>VGDB</a>
         {% if navigation_user %}
           <span class="site-nav-spacer"></span>
-          {% block nav_new_lesson %}<a href="{{ url_for('http_routes.gdbgui') }}">新建教案</a>{% endblock %}
-          <a class="site-account"
-             href="{{ url_for('auth.profile', username=navigation_user['username']) }}"
-             data-testid="account-nav-profile">@{{ navigation_user["username"] }}</a>
-          <a href="{{ url_for('auth.logout') }}">登出</a>
+          <div class="nav-capsule nav-group">
+            {% block nav_new_lesson %}<a class="nav-item nav-item-primary" href="{{ url_for('http_routes.gdbgui') }}">新建教案</a><span class="nav-sep" aria-hidden="true"></span>{% endblock %}
+            <a class="nav-item site-account"
+               href="{{ url_for('auth.profile', username=navigation_user['username']) }}"
+               data-testid="account-nav-profile"><span class="nav-avatar" aria-hidden="true">{{ navigation_user["username"][:1] | upper }}</span>@{{ navigation_user["username"] }}</a>
+            <span class="nav-sep" aria-hidden="true"></span>
+            <a class="nav-item" href="{{ url_for('auth.logout') }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/></svg><span class="nav-label">登出</span></a>
+          </div>
         {% endif %}
       </nav>
     </header>
