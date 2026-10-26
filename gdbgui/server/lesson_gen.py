@@ -47,6 +47,10 @@ _SYSTEM_TEMPLATE = (
     "10. 只在 GDB 真的會停駐的行加 //@：不要標 #include、using namespace、函式簽名行、"
     "全域宣告，也不要標迴圈或 if 的單獨 }}（只有函式右大括號與 main 收尾會停）。\n"
     "11. @N 門檻只用來區分「第一次」與「之後」，除非有具體理由，不要自創 @5、@11 這類數字。\n"
+    "12. @guide 只放要顯示在右側面板的變數或容器（{{x}}、{{v[i]}}），敘述一律寫在 @tts，"
+    "不要在 @guide 把 @tts 的話再講一遍。沒有可顯示的變數就省略 @guide。"
+    "程式只有 main、沒有其他函式時沒有呼叫圖：不寫 [標籤#顏色]，也不寫純文字的 @guide。"
+    "有遞迴或函式呼叫時，呼叫圖標籤（[名稱#顏色] 簡短說明）是唯一可以在 @guide 寫文字的地方。\n"
 )
 
 
@@ -173,6 +177,46 @@ def repair_message(problems):
         "請修正這些問題後，重新輸出完整的 C++ 原始碼（只輸出程式碼，其餘規則不變，"
         "原始碼每一行都要保留）。"
     )
+
+
+_FUNC_DEF_RE = re.compile(r"^[A-Za-z_][\w:<>,\s\*&]*\s+\**&?(\w+)\s*\([^;]*\)\s*(?:const\s*)?\{?\s*$")
+_FIELD_RE = re.compile(r"(@(?:guide|tts|layout)\b)")
+
+
+def defines_other_functions(code):
+    """程式有沒有 main 以外的函式（有就會有呼叫圖，guide 才需要寫文字標籤）。"""
+    for line in code.split("\n"):
+        m = _FUNC_DEF_RE.match(line.split("//@", 1)[0].rstrip())
+        if m and m.group(1) != "main" and not line.startswith(("if", "for", "while", "switch", "return")):
+            return True
+    return False
+
+
+def drop_prose_guides(code):
+    """只有 main 的程式：移除沒有 {變數} 的 @guide。回傳 (新程式碼, 移除幾行)。
+
+    實測（6 題 × 3 次共 169 行 guide）：25% 是純敘述、22% 與 @tts 高度重疊；人工教案裡
+    沒有函式呼叫的程式（factor_sum、collatz、palindrome）根本沒有 guide。沒有呼叫圖時
+    guide 只該顯示變數，敘述屬於 @tts。有其他函式時 guide 的文字標籤是呼叫圖在用，不動。
+    """
+    if defines_other_functions(code):
+        return code, 0
+    lines, dropped = code.split("\n"), 0
+    for i, line in enumerate(lines):
+        if "//@" not in line:
+            continue
+        head, tail = line.split("//@", 1)
+        parts = _FIELD_RE.split(tail)  # [前導空白, 關鍵字, 內容, 關鍵字, 內容, ...]
+        kept, removed = [], False
+        for kw, val in zip(parts[1::2], parts[2::2]):
+            if kw == "@guide" and "{" not in val:
+                removed = True
+            else:
+                kept.append(kw + val)
+        if removed:
+            lines[i] = head + "//@" + parts[0] + "".join(kept) if kept else head.rstrip()
+            dropped += 1
+    return "\n".join(lines), dropped
 
 
 _UNSET_RE = re.compile(r"建構的 \{(\w+)\}")

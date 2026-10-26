@@ -171,3 +171,28 @@ def test_restore_dropped_comments_never_restores_real_code():
     src = "int a = 1;\nint b = 2;\n"
     fixed, restored = lesson_gen.restore_dropped_comments(src, "int a = 1;\n")
     assert restored == 0 and lesson_gen.code_unchanged(src, fixed) is not None
+
+
+_MAIN_ONLY = (
+    "int main() {\n"
+    "   int sum = 0;  //@ @guide [初始化#blue] 宣告 sum @tts [next] 開始\n"
+    "   sum += 1;  //@ @guide 目前 {sum} @tts [next] 加一 @layout open:locals\n"
+    "   sum += 2;  //@ @guide 把 sum 加二 @layout open:locals @tts [next] 再加\n"
+    "}  //@ @tts [continue] 結束\n"
+)
+
+
+def test_drop_prose_guides_keeps_variable_guides_and_other_fields():
+    fixed, n = lesson_gen.drop_prose_guides(_MAIN_ONLY)
+    lines = fixed.split("\n")
+    assert n == 2
+    assert "@guide" not in lines[1] and "@tts [next] 開始" in lines[1]
+    assert "@guide 目前 {sum}" in lines[2] and "open:locals" in lines[2]
+    assert "@guide" not in lines[3] and "@layout open:locals" in lines[3] and "@tts [next] 再加" in lines[3]
+
+
+def test_drop_prose_guides_leaves_programs_with_functions_alone():
+    code = "int f(int n) {\n   return n;  //@ @guide [回傳#green] 回傳 n @tts [next] 好\n}\nint main() {\n}  //@ @tts [continue] 完\n"
+    assert lesson_gen.defines_other_functions(code)
+    assert lesson_gen.drop_prose_guides(code) == (code, 0)
+    assert not lesson_gen.defines_other_functions(_MAIN_ONLY)

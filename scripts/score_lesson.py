@@ -243,6 +243,15 @@ def s5(lines):
     return tier(len(fails), 0, 1), "; ".join(fails) if fails else "ok"
 
 
+def s7(lines):
+    """沒有呼叫圖（只有 main）時，guide 只該放變數；純敘述的 @guide 是在重講 @tts。"""
+    if set(functions(lines)) - {"main"}:
+        return None, "不適用（有 main 以外的函式，guide 文字標籤給呼叫圖用）"
+    bad = [n for n, ln in enumerate(lines, 1)
+           if (cl.fields(ln) or {}).get("guide") and "{" not in cl.fields(ln)["guide"]]
+    return tier(len(bad), 0, 2), f"純敘述的 @guide：{bad[:8]}" if bad else "ok"
+
+
 def s6(lines):
     if cl.mode_of("\n".join(lines)) != "autoplay":
         return None, "不適用（不是自動播放教案）"
@@ -317,7 +326,7 @@ def score(source, program_input="", breakpoints=None, original=None, raw=None):
     gates["G6"] = "; ".join(f"{n}:{m}" for n, m in gate_g6(lines)) or None
     failed = {k: v for k, v in gates.items() if v}
     s = {"S1": s1(lines), "S2": s2(lines), "S3": s3(lines),
-         "S4": s4(lines, program_input), "S5": s5(lines), "S6": s6(lines)}
+         "S4": s4(lines, program_input), "S5": s5(lines), "S6": s6(lines), "S7": s7(lines)}
     got = [v[0] for v in s.values() if v[0] is not None]
     pct = round(100 * sum(got) / (2 * len(got))) if got else 0
     return {"gates_failed": failed, "gates_passed": not failed,

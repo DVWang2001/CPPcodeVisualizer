@@ -30,7 +30,7 @@ import run_eval as ev  # noqa: E402  (只借它的考題與 load_task)
 import score_lesson as sl  # noqa: E402
 from gdbgui.server.app import app  # noqa: E402
 
-OUT = Path("/tmp/route_eval")
+OUT = Path(os.environ.get("EVAL_OUT", "/tmp/route_eval"))
 
 
 def new_user(i):
@@ -59,6 +59,11 @@ def one(i, task, rep, model):
     rec["http"] = resp.status_code
     last = events[-1] if events else {}
     rec["saw_repair"] = any("status" in e for e in events)
+    # 完整原始事件流（含每個 delta／status／done）逐份存下來，論文要用
+    (OUT / f"{task}_{rep}.events.ndjson").write_text(
+        "\n".join(json.dumps(e, ensure_ascii=False) for e in events), encoding="utf-8")
+    rec["prose_guides_dropped"] = last.get("prose_guides_dropped")
+    rec["comments_restored"] = last.get("comments_restored")
     if last.get("done"):
         rec["repaired"] = last.get("repaired")
         rec["warnings"] = last.get("warnings", [])
@@ -83,6 +88,8 @@ def summarize(recs):
         "first_pass_clean": sum(1 for r in clean if not r.get("saw_repair")),
         "needed_repair": sum(1 for r in ok if r.get("saw_repair")),
         "with_warnings": sum(1 for r in ok if r.get("warnings")),
+        "prose_guides_dropped_total": sum(r.get("prose_guides_dropped") or 0 for r in ok),
+        "runs_with_prose_dropped": sum(1 for r in ok if r.get("prose_guides_dropped")),
         "S_mean_all": round(statistics.mean(r["score"]["S_percent"] for r in ok), 1) if ok else None,
         "S_mean_of_gate_passers": round(statistics.mean(r["score"]["S_percent"] for r in clean), 1) if clean else None,
         "S_stdev_all": round(statistics.pstdev(pcts), 1) if len(pcts) > 1 else None,

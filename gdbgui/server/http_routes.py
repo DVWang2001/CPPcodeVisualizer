@@ -460,13 +460,17 @@ def generate_lesson():
         warnings = []
         if restored:
             warnings.append(f"模型刪掉了 {restored} 行 // 註解或空行，已放回原位")
+        code, prose = lesson_gen.drop_prose_guides(code)
+        if prose:
+            warnings.append(f"沒有呼叫圖的程式，已移除 {prose} 行純敘述的 @guide（敘述請放 @tts）")
         if problems:
             code, fixed = lesson_gen.drop_unset_refs(code, problems)
             warnings += [f"已自動移除第 {n} 行註解裡的 {{{name}}}（該行還沒賦值，會顯示垃圾值）"
                          for n, name in fixed]
             problems = lesson_gen.find_problems(check, code)
         warnings += [f"第 {n} 行：{m}" if n else m for n, m in problems]
-        yield event({"done": True, "code": code, "warnings": warnings, "repaired": repaired})
+        yield event({"done": True, "code": code, "warnings": warnings, "repaired": repaired,
+                     "prose_guides_dropped": prose, "comments_restored": restored})
 
     return current_app.response_class(
         relay(),
