@@ -7,7 +7,7 @@ import { store } from "statorgfc";
 import { lessonQuizRuntime } from "./lessonQuizRuntime";
 import { effectiveTtsRate } from "./ttsSpeed";
 import { setTtsVolume, TTS_MAX_VOLUME } from "./ttsVolume";
-import ToolIcon, { isTutorial } from "./ToolIcon";
+import ToolIcon, { cardUi } from "./ToolIcon";
 
 type State = any;
 
@@ -29,7 +29,7 @@ class ControlButtons extends React.Component<{}, State> {
     this.setState({ showVoice: false });
   };
   componentDidMount() {
-    if (!isTutorial()) return;
+    if (!cardUi()) return;
     document.addEventListener("mousedown", this._closeVoice);
     document.addEventListener("keydown", this._closeVoice);
   }
@@ -64,7 +64,7 @@ class ControlButtons extends React.Component<{}, State> {
   };
 
   render() {
-    const tut = isTutorial();
+    const tut = cardUi();
     let btn_class = "btn btn-default btn-sm toolbar-btn toolbar-btn-icon";
     let btn_class_text = "btn btn-default btn-sm toolbar-btn";
 

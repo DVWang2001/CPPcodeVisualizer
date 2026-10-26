@@ -15,7 +15,7 @@ body:not(.tutorial) #top {
 
 /* 三個窗格變成卡片：左右與下方留邊距（上方沿用行內的 paddingTop） */
 body:not(.tutorial) #middle {
-  padding-top: 52px !important; /* 頂欄約 47px，卡片不要壓到它 */
+  padding-top: 64px !important; /* 頂欄 64px（單列），卡片不要壓到它 */
   padding-left: 14px;
   padding-right: 14px;
   padding-bottom: 6px;
@@ -79,4 +79,78 @@ body:not(.tutorial) #bottom_content > div > div:first-child button {
 body:not(.tutorial) #bottom_content .bg-gray-100 {
   background: #f4f5ff;
   color: #3a46d8;
+}
+
+/* ── 頂欄 1：單列整合（設計稿「頂欄 1」）──
+   編輯器上方那排按鈕搬進頂欄：新草稿／AI 生成教案／Import／Export 收進「檔案 ▾」，
+   課堂題目、即時課堂、存到我的帳號、版本歷史直接排在頂欄上（由 ToolbarHost 放進 #top_file_slot）。 */
+body:not(.tutorial) #top .top-file-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+body:not(.tutorial) #top .tut-pill {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid #d3d7ee;
+  background: #fff;
+  color: #1c2033;
+  font-weight: 700;
+}
+body:not(.tutorial) #top .tut-pill:hover {
+  border-color: #8e97ff;
+  color: #3a46d8;
+}
+body:not(.tutorial) #top .file-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+body:not(.tutorial) #top .file-menu-pop {
+  display: none;
+  position: absolute;
+  top: 48px;
+  left: 0;
+  z-index: 1200;
+  min-width: 190px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #d3d7ee;
+  border-radius: 16px;
+  box-shadow: 0 14px 30px rgba(58, 70, 216, 0.16);
+}
+body:not(.tutorial) #top .file-menu-pop.open {
+  display: block;
+}
+body:not(.tutorial) #top .file-menu-pop .toolbar-group {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: transparent;
+  padding: 0;
+  gap: 2px;
+}
+body:not(.tutorial) #top .file-menu-pop .btn.toolbar-btn {
+  justify-content: flex-start;
+  height: 38px;
+  width: 100%;
+}
+/* 「存到我的帳號」是頂欄上唯一的主要動作 */
+body:not(.tutorial) #top [data-testid="save-lesson-to-account"] {
+  background: linear-gradient(135deg, #5b6bff, #3a46d8);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(58, 70, 216, 0.35);
+}
+body:not(.tutorial) #top [data-testid="save-lesson-to-account"]:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+body:not(.tutorial) #top .toolbar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
 }

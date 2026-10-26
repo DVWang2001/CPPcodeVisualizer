@@ -290,19 +290,8 @@ class TopBar extends React.Component<{}, State> {
               title="回首頁，瀏覽所有人的教案">
               <ToolIcon name="home" glyph="home" />{isTutorial() ? null : "回首頁"}
             </button>
-            {/* 正式 IDE 的教學入口（教學頁自己已經在教學裡，不需要）。 */}
-            {!isTutorial() && (
-              <button
-                onClick={() => { window.location.href = "/tutorial"; }}
-                data-testid="go-tutorial"
-                className="btn btn-default btn-sm toolbar-btn"
-                title="//@ 註解教學：25 課，改一行按 Enter 就看到效果"
-                style={{ color: "var(--accent, #2c5fd8)", borderColor: "var(--accent, #2c5fd8)", fontWeight: 600 }}>
-                <span className="glyphicon glyphicon-book" />教學
-              </button>
-            )}
           </span>
-          {isTutorial() && <TutorialCrumbs />}
+          {isTutorial() ? <TutorialCrumbs /> : <span className="tut-crumbs" />}
 
           {/* @ts-expect-error ts-migrate(2322) FIXME: Property 'initial_user_input' does not exist on ty... Remove this comment to see the full error message */}
 
@@ -313,24 +302,29 @@ class TopBar extends React.Component<{}, State> {
 
           {this.get_controls()}
 
-          {isTutorial() ? (
+          {/* 正式 IDE：檔案選單、課堂題目、存到帳號由 SourceCode 的 ToolbarHost 放進這個槽。 */}
+          {!isTutorial() && <span id="top_file_slot" className="top-file-slot" />}
+
+          {/* 正式 IDE 的教學入口（教學頁自己已經在教學裡，不需要）。 */}
+          {!isTutorial() && (
             <button
-              type="button"
-              onClick={() => Settings.toggle_key("show_settings")}
-              title="設定"
-              aria-label="設定"
-              className="tut-iconbtn"
-            >
-              <ToolIcon name="gear" glyph="cog" />
+              onClick={() => { window.location.href = "/tutorial"; }}
+              data-testid="go-tutorial"
+              className="btn btn-default btn-sm toolbar-btn tut-pill"
+              title="//@ 註解教學：25 課，改一行按 Enter 就看到效果">
+              <span className="glyphicon glyphicon-book" />教學
             </button>
-          ) : (
-          <span
+          )}
+
+          <button
+            type="button"
             onClick={() => Settings.toggle_key("show_settings")}
             title="設定"
-            className="pointer glyphicon glyphicon-cog toolbar-group"
-            style={{ fontSize: "1.1em", color: "var(--ink-soft)" }}
-          />
-          )}
+            aria-label="設定"
+            className="tut-iconbtn"
+          >
+            <ToolIcon name="gear" glyph="cog" />
+          </button>
           <span style={{ paddingLeft: "10px" }}>{menu}</span>
         </div>
 

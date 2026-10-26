@@ -106,7 +106,7 @@ body.tutorial.tut-caption-on #middle {
   stroke-linejoin: round;
   flex: none;
 }
-body.tutorial #top {
+body.cardui #top {
   height: 64px;
   display: flex;
   align-items: center;
@@ -115,18 +115,18 @@ body.tutorial #top {
   padding: 0 20px !important;
   font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
 }
-body.tutorial #top > .flexrow {
+body.cardui #top > .flexrow {
   width: 100%;
   align-items: center;
   gap: 10px;
 }
-body.tutorial #top > .flexrow + .flexrow {
+body.cardui #top > .flexrow + .flexrow {
   display: none; /* 原本放 jump-to-line 的第二列，教學頁用不到 */
 }
 body.tutorial #middle {
   padding-top: 64px !important;
 }
-body.tutorial #top .tut-crumbs {
+body.cardui #top .tut-crumbs {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -135,13 +135,13 @@ body.tutorial #top .tut-crumbs {
   color: #4a5265;
   white-space: nowrap;
 }
-body.tutorial #top .tut-crumbs b {
+body.cardui #top .tut-crumbs b {
   color: #1d2433;
 }
-body.tutorial #top .tut-sep {
+body.cardui #top .tut-sep {
   color: #b9b19a;
 }
-body.tutorial #top .toolbar-group {
+body.cardui #top .toolbar-group {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -151,7 +151,7 @@ body.tutorial #top .toolbar-group {
   background: #efe9d6;
   margin: 0;
 }
-body.tutorial #top .btn.toolbar-btn {
+body.cardui #top .btn.toolbar-btn {
   height: 40px;
   min-width: 40px;
   padding: 0 12px;
@@ -168,49 +168,49 @@ body.tutorial #top .btn.toolbar-btn {
   justify-content: center;
   gap: 6px;
 }
-body.tutorial #top .btn.toolbar-btn-icon {
+body.cardui #top .btn.toolbar-btn-icon {
   width: 40px;
   padding: 0;
 }
-body.tutorial #top .btn.toolbar-btn:hover,
-body.tutorial #top .btn.toolbar-btn:focus-visible {
+body.cardui #top .btn.toolbar-btn:hover,
+body.cardui #top .btn.toolbar-btn:focus-visible {
   background: #fffdf8;
   border-color: #cfc8b4;
 }
-body.tutorial #top .btn.toolbar-btn:disabled {
+body.cardui #top .btn.toolbar-btn:disabled {
   opacity: 0.45;
 }
 /* 「從頭」帶文字，不能沿用圖示按鈕的固定 40px 寬（內容會超出灰色底塊）。 */
-body.tutorial #top #run_button.btn.toolbar-btn-icon {
+body.cardui #top #run_button.btn.toolbar-btn-icon {
   width: auto;
   padding: 0 12px;
 }
 @media (max-width: 1200px) {
-  body.tutorial #top #run_button.btn.toolbar-btn-icon {
+  body.cardui #top #run_button.btn.toolbar-btn-icon {
     width: 40px;
     padding: 0;
   }
 }
 /* 原本用行內樣式上綠色／橘色表示狀態；教學頁改成深色底表示「開」。 */
-body.tutorial #top #autoplay_button,
-body.tutorial #top #autoplay_pause_button,
-body.tutorial #top #tut_voice_button {
+body.cardui #top #autoplay_button,
+body.cardui #top #autoplay_pause_button,
+body.cardui #top #tut_voice_button {
   color: #1d2433 !important;
   font-weight: 600 !important;
 }
-body.tutorial #top #autoplay_button.active {
+body.cardui #top #autoplay_button.active {
   background: #1d2433;
   color: #fff !important;
 }
-body.tutorial #top #autoplay_pause_button.active {
+body.cardui #top #autoplay_pause_button.active {
   background: #fff6d6;
   border-color: #d99a00;
 }
-body.tutorial #top .tut-seg {
+body.cardui #top .tut-seg {
   display: inline-flex;
   gap: 2px;
 }
-body.tutorial #top .tut-seg-btn {
+body.cardui #top .tut-seg-btn {
   height: 40px;
   padding: 0 12px;
   border-radius: 10px;
@@ -224,14 +224,14 @@ body.tutorial #top .tut-seg-btn {
   gap: 6px;
   cursor: pointer;
 }
-body.tutorial #top .tut-seg-btn.on {
+body.cardui #top .tut-seg-btn.on {
   background: #fffdf8;
   color: #1d2433;
   border-color: #cfc8b4;
   box-shadow: 0 1px 3px rgba(29, 36, 51, 0.12);
 }
-body.tutorial #top .tut-iconbtn,
-body.tutorial #top #menudropdown > a.dropdown-toggle {
+body.cardui #top .tut-iconbtn,
+body.cardui #top #menudropdown > a.dropdown-toggle {
   width: 40px;
   height: 40px !important;
   padding: 0 !important;
@@ -244,7 +244,7 @@ body.tutorial #top #menudropdown > a.dropdown-toggle {
   justify-content: center;
   cursor: pointer;
 }
-body.tutorial #top .navbar-nav {
+body.cardui #top .navbar-nav {
   height: auto !important;
   margin: 0 !important;
   padding: 0 !important;
@@ -257,31 +257,31 @@ body.tutorial #live-quiz-slot {
 }
 
 /* 窄螢幕：先收掉按鈕文字，只留圖示；麵包屑太長就截斷。 */
-body.tutorial #top .tut-crumbs {
+body.cardui #top .tut-crumbs {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 @media (max-width: 1200px) {
-  body.tutorial #top .tut-label {
+  body.cardui #top .tut-label {
     display: none;
   }
-  body.tutorial #top #autoplay_button {
+  body.cardui #top #autoplay_button {
     width: 40px;
     padding: 0;
   }
 }
 @media (max-width: 1100px) {
-  body.tutorial #top .tut-crumbs > :not(b):not(:first-child) {
+  body.cardui #top .tut-crumbs > :not(b):not(:first-child) {
     display: none;
   }
 }
 
-body.tutorial #top .tut-voice-wrap {
+body.cardui #top .tut-voice-wrap {
   position: relative;
   display: inline-flex;
 }
-body.tutorial #top .tut-voice-pop {
+body.cardui #top .tut-voice-pop {
   display: none;
   position: absolute;
   top: 48px;
@@ -295,7 +295,7 @@ body.tutorial #top .tut-voice-pop {
   border-radius: 12px;
   box-shadow: 0 6px 20px rgba(29, 36, 51, 0.18);
 }
-body.tutorial #top .tut-voice-pop.open {
+body.cardui #top .tut-voice-pop.open {
   display: flex;
 }
 
@@ -735,55 +735,55 @@ body.tutorial .splitjs_container {
 }
 
 /* 頂欄：半透明白、淡靛藍分隔，取代原本的米色 */
-body.tutorial #top {
+body.cardui #top {
   background: rgba(255, 255, 255, 0.82) !important;
   border-bottom: 1px solid #dcdff0 !important;
   backdrop-filter: blur(8px);
 }
-body.tutorial #top .tut-crumbs {
+body.cardui #top .tut-crumbs {
   color: #5a6080;
 }
-body.tutorial #top .tut-crumbs b {
+body.cardui #top .tut-crumbs b {
   color: #1c2033;
 }
-body.tutorial #top .tut-sep {
+body.cardui #top .tut-sep {
   color: #b8bdd8;
 }
-body.tutorial #top .toolbar-group {
+body.cardui #top .toolbar-group {
   background: #e8eaf8;
 }
-body.tutorial #top .btn.toolbar-btn {
+body.cardui #top .btn.toolbar-btn {
   color: #1c2033;
 }
-body.tutorial #top .btn.toolbar-btn:hover,
-body.tutorial #top .btn.toolbar-btn:focus-visible {
+body.cardui #top .btn.toolbar-btn:hover,
+body.cardui #top .btn.toolbar-btn:focus-visible {
   background: #fff;
   border-color: #d3d7ee;
 }
-body.tutorial #top #autoplay_button.active {
+body.cardui #top #autoplay_button.active {
   background: linear-gradient(135deg, #5b6bff, #3a46d8);
   box-shadow: 0 4px 12px rgba(58, 70, 216, 0.35);
 }
-body.tutorial #top #autoplay_pause_button.active {
+body.cardui #top #autoplay_pause_button.active {
   background: #eaf0ff;
   border-color: #8e97ff;
 }
-body.tutorial #top .tut-seg-btn {
+body.cardui #top .tut-seg-btn {
   color: #5a6080;
 }
-body.tutorial #top .tut-seg-btn.on {
+body.cardui #top .tut-seg-btn.on {
   background: #fff;
   color: #3a46d8;
   border-color: #d3d7ee;
   box-shadow: 0 2px 6px rgba(58, 70, 216, 0.15);
 }
-body.tutorial #top .tut-iconbtn,
-body.tutorial #top #menudropdown > a.dropdown-toggle {
+body.cardui #top .tut-iconbtn,
+body.cardui #top #menudropdown > a.dropdown-toggle {
   background: #fff;
   border-color: #d3d7ee;
   color: #1c2033;
 }
-body.tutorial #top .tut-voice-pop {
+body.cardui #top .tut-voice-pop {
   background: #fff;
   border-color: #d3d7ee;
   border-radius: 16px;

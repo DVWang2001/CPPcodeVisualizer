@@ -22,8 +22,11 @@ const PATHS: Record<string, string> = {
 
 export const isTutorial = (): boolean => !!(window as any).initial_data?.tutorial;
 
+/** 頂欄的新外觀（線條圖示、分段切換、圓角膠囊）：教學頁與正式 IDE 共用。 */
+export const cardUi = (): boolean => true;
+
 export default function ToolIcon({ name, glyph, style }: { name: string; glyph: string; style?: React.CSSProperties }) {
-  if (!isTutorial()) return <span className={"glyphicon glyphicon-" + glyph} style={style} />;
+  if (!cardUi()) return <span className={"glyphicon glyphicon-" + glyph} style={style} />;
   return (
     <svg className="tut-ic" viewBox="0 0 24 24" aria-hidden="true">
       <path d={PATHS[name] || ""} />

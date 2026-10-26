@@ -30,6 +30,7 @@ import LessonHistoryDialog from "./LessonHistoryDialog";
 import QuizAuthoringDialog from "./QuizAuthoringDialog";
 import LessonSaveDialog from "./LessonSaveDialog";
 import AutosavePromptDialog from "./AutosavePromptDialog";
+import ToolbarHost from "./ToolbarHost";
 import LiveQuizPanel from "./LiveQuizPanel";
 import { resolveContainerAutoOpenSuppression } from "./containerAutoOpenGate";
 import { cloneQuiz, QuizSpec, validateQuiz } from "./quizSchema";
@@ -2127,7 +2128,7 @@ class SourceCode extends React.Component<{}, State> {
                 </span>
               )}
             </div>
-            <div className="toolbar-row">
+            <ToolbarHost>
               <span className="toolbar-group">
                 <button
                   onClick={this.startNewDraft}
@@ -2234,7 +2235,7 @@ class SourceCode extends React.Component<{}, State> {
                 </button>
               </span>
               */}
-            </div>
+            </ToolbarHost>
           </div>
           {(this.state as any).showLessonGen && (
             <LessonGenPanel

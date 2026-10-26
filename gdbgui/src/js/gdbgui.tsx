@@ -59,6 +59,8 @@ window.store = store;
 
 // @ts-expect-error initial_data is a template global
 if (initial_data.tutorial) document.body.classList.add("tutorial");
+// 頂欄的新外觀（單列膠囊）：教學頁與正式 IDE 共用，樣式在 tutorial.css 的 body.cardui #top。
+document.body.classList.add("cardui");
 
 class Gdbgui extends React.PureComponent {
   componentWillMount() {
