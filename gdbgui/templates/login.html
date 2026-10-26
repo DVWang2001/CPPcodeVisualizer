@@ -1,7 +1,16 @@
 {% extends "_auth_base.html" %}
 {% block title %}登入 · VGDB{% endblock %}
+{% block card_head %}
+  <div class="card-head">
+    <span class="card-tab is-active" aria-current="page">登入</span>
+    <a class="card-tab" href="{{ url_for('auth.register') }}">註冊</a>
+  </div>
+{% endblock %}
 {% block hero %}
-  <p class="slogan">程式碼即教案</p>
+  <div>
+    <p class="slogan">程式碼即教案</p>
+    <p class="lede" style="margin: 0.5rem 0 0; font-size: 1rem">寫教案、逐行示範、分享給其他人。</p>
+  </div>
 
   {# 跟 ContainerVisualizer.tsx／LinearPlugin.tsx 實際的渲染規則對齊：frame、
      cell、「↑ top」標籤、{ } 括號的樣式都是同一份 token，不是另外畫的插畫。 #}
@@ -30,18 +39,18 @@
         <span class="demo-chip">size 4</span>
       </span>
     </div>
-    <svg width="100%" height="190" viewBox="0 0 260 190" style="display: block;">
-      <line x1="130" y1="32" x2="70" y2="94" stroke="#999" stroke-width="1.5"/>
-      <line x1="130" y1="32" x2="190" y2="94" stroke="#999" stroke-width="1.5"/>
-      <line x1="190" y1="94" x2="230" y2="156" stroke="#999" stroke-width="1.5"/>
-      <circle cx="130" cy="32" r="22" fill="#ff9800" stroke="#e65100" stroke-width="2"/>
-      <text x="130" y="36" text-anchor="middle" fill="#222" font-size="11" font-family="var(--font-mono)" font-weight="bold">5</text>
-      <circle cx="70" cy="94" r="22" fill="#ffffff" stroke="#333" stroke-width="2"/>
-      <text x="70" y="98" text-anchor="middle" fill="#222" font-size="11" font-family="var(--font-mono)" font-weight="bold">2</text>
-      <circle cx="190" cy="94" r="22" fill="#ffffff" stroke="#333" stroke-width="2"/>
-      <text x="190" y="98" text-anchor="middle" fill="#222" font-size="11" font-family="var(--font-mono)" font-weight="bold">8</text>
-      <circle cx="230" cy="156" r="22" fill="#ffffff" stroke="#333" stroke-width="2"/>
-      <text x="230" y="160" text-anchor="middle" fill="#222" font-size="11" font-family="var(--font-mono)" font-weight="bold">9</text>
+    <svg width="100%" height="150" viewBox="0 0 260 190" role="img" aria-label="二元搜尋樹" style="display: block;">
+      <line x1="130" y1="32" x2="70" y2="94" stroke="#99a2ae" stroke-width="1.5"/>
+      <line x1="130" y1="32" x2="190" y2="94" stroke="#99a2ae" stroke-width="1.5"/>
+      <line x1="190" y1="94" x2="230" y2="156" stroke="#99a2ae" stroke-width="1.5"/>
+      <circle cx="130" cy="32" r="22" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+      <text x="130" y="36" text-anchor="middle" fill="#1b1f24" font-size="12" font-family="var(--font-mono)" font-weight="bold">5</text>
+      <circle cx="70" cy="94" r="22" fill="#ffffff" stroke="#cbd2da" stroke-width="2"/>
+      <text x="70" y="98" text-anchor="middle" fill="#1b1f24" font-size="12" font-family="var(--font-mono)" font-weight="bold">2</text>
+      <circle cx="190" cy="94" r="22" fill="#ffffff" stroke="#cbd2da" stroke-width="2"/>
+      <text x="190" y="98" text-anchor="middle" fill="#1b1f24" font-size="12" font-family="var(--font-mono)" font-weight="bold">8</text>
+      <circle cx="230" cy="156" r="22" fill="#ffffff" stroke="#cbd2da" stroke-width="2"/>
+      <text x="230" y="160" text-anchor="middle" fill="#1b1f24" font-size="12" font-family="var(--font-mono)" font-weight="bold">9</text>
     </svg>
     <div class="demo-tree-note">傳統二元搜尋樹（按插入順序建樹，無旋轉）</div>
     <div class="demo-caption">seen.find(9)</div>

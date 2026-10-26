@@ -31,31 +31,49 @@
         --highlight: #f59e0b;
         --danger: #b42318;
 
+        /* 與 ide-theme.css／tutorial.css 同源的卡片語彙 */
+        --ide-line: #e6e9fb;
+        --ide-title: #f4f5ff;
+        --ide-ink: #3a46d8;
+        --ide-shadow: 0 10px 28px rgba(58, 70, 216, 0.1), 0 2px 6px rgba(28, 32, 51, 0.05);
+        --ide-grad: linear-gradient(135deg, #5b6bff, #3a46d8);
+
         --font-display: "Space Grotesk", system-ui, sans-serif;
         --font-body: "Inter", system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
         --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
       }
 
       * { box-sizing: border-box; }
+      html { background: #e6e9f6; }
 
       body {
         margin: 0;
         min-height: 100vh;
-        padding: 2rem 1rem;
-        background: var(--paper);
+        padding: 0 1rem 2rem;
+        /* 與正式 IDE（ide-theme.css）同一層底：薰衣草藍灰漸層，卡片浮在上面。 */
+        background: linear-gradient(180deg, #f1f2fb 0%, #e6e9f6 100%) fixed;
         color: var(--ink);
         font-family: var(--font-body);
         line-height: 1.6;
         -webkit-font-smoothing: antialiased;
       }
 
-      body.app-shell { padding: 0 1rem 2rem; }
-      .site-header { width: min(74rem, 100%); margin: 0 auto; }
-      .site-nav { display: flex; align-items: center; gap: 0.9rem; min-height: 3.75rem; }
+      /* 頂欄跟 IDE 的 #top 一樣：半透明白、底線、背景模糊。抵銷 body 的左右 padding
+         讓它撐滿整個視窗寬，裡面的 nav 再回到內容寬度。 */
+      .site-header {
+        margin: 0 -1rem; position: sticky; top: 0; z-index: 20;
+        background: rgba(255, 255, 255, 0.82);
+        border-bottom: 1px solid #dcdff0;
+        backdrop-filter: blur(8px);
+      }
+      .site-nav {
+        display: flex; align-items: center; gap: 0.9rem; min-height: 3.75rem;
+        width: min(74rem, calc(100% - 2rem)); margin: 0 auto;
+      }
       .site-nav-spacer { flex: 1; }
-      .site-nav .wordmark { font-size: 1.1rem; }
+      .site-nav .wordmark { font-size: 1.2rem; }
       .site-account { font-family: var(--font-mono); }
-      body.app-shell .card { margin: 1.25rem auto 0; }
+      main.card { margin: 1.5rem auto 0; }
 
       /* ── 品牌 wordmark：角標游標 ▸ 呼應 (gdb) 的 prompt，閃爍節奏跟終端機
          游標一樣——這是整個品牌唯一的動態元素，其餘一律安靜。 ──────────── */
@@ -67,7 +85,7 @@
       }
       .slogan {
         margin: 0; font-family: var(--font-display); font-weight: 600;
-        font-size: 1.6rem; line-height: 1.3; color: var(--ink);
+        font-size: 2.6rem; line-height: 1.15; letter-spacing: -0.02em; color: var(--ink);
       }
       .wordmark-caret {
         font-family: var(--font-mono); font-weight: 600; color: var(--accent);
@@ -76,32 +94,49 @@
 
       .auth-shell {
         display: flex; align-items: center; justify-content: center;
-        gap: 3rem; flex-wrap: wrap; min-height: calc(100vh - 4rem);
+        gap: 3rem; flex-wrap: wrap; min-height: calc(100vh - 3.75rem - 3rem);
       }
-      .auth-shell .brand-col { display: flex; flex-direction: column; gap: 1.5rem; max-width: 22rem; }
-      .auth-shell .card { flex: none; }
+      .auth-shell .brand-col { display: flex; flex-direction: column; gap: 1.5rem; flex: 0 1 28.75rem; max-width: 28.75rem; }
+      .auth-shell .card { flex: none; margin: 0; }
+      /* 沒有品牌欄內容的頁面（註冊）：整欄不佔位，卡片才會置中 */
+      .auth-shell .brand-col.is-empty { display: none; }
 
+      /* 卡片＝IDE 的面板：20px 大圓角、靛藍調陰影。內距交給 .card-body，這樣可以有
+         一條貼邊的 .card-head 標題列（淡靛底，跟 IDE 右欄面板標題列同一種）。 */
       .card {
         width: min(var(--card-width, 26rem), 100%);
         background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 1.75rem;
+        border: 1px solid var(--ide-line);
+        border-radius: 20px;
+        box-shadow: var(--ide-shadow);
+        overflow: hidden;
       }
+      .card-body { padding: 1.75rem; }
+      .card-head {
+        display: flex; gap: 0.4rem; padding: 0.6rem 1rem;
+        background: var(--ide-title); border-bottom: 1px solid #eceef9;
+      }
+      .card-tab {
+        padding: 0.2rem 1rem; border-radius: 8px;
+        font-size: 0.82rem; font-weight: 500; color: var(--ink-soft); text-decoration: none;
+      }
+      a.card-tab:hover { color: var(--ide-ink); text-decoration: none; background: rgba(255, 255, 255, 0.6); }
+      .card-tab.is-active { background: #fff; color: var(--ide-ink); font-weight: 700; }
 
       /* ── 首頁 hero：實際的容器視覺化畫法，不是插畫 ──────────────────────
          frame／cell／「↑ top」標籤／{ } 括號全部照 ContainerVisualizer.tsx
          與 LinearPlugin.tsx 現有的渲染規則，這樣品牌畫面跟老師課堂上真正
          看到的東西是同一種語言，不是行銷用的另一套皮。 */
       .demo-card {
-        border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
-        padding: 0.75rem; box-shadow: 0 1px 2px rgba(27, 31, 36, 0.04);
+        border: 1px solid var(--ide-line); border-radius: 16px; background: var(--surface);
+        box-shadow: var(--ide-shadow); overflow: hidden;
       }
       .demo-head {
         display: flex; justify-content: space-between; align-items: center;
-        gap: 0.4rem; margin-bottom: 0.5rem;
+        gap: 0.4rem; padding: 0.5rem 1rem;
+        background: var(--ide-title); border-bottom: 1px solid #eceef9;
       }
-      .demo-name { font-family: var(--font-mono); font-weight: 700; color: var(--ink); font-size: 0.82rem; }
+      .demo-name { font-family: var(--font-mono); font-weight: 700; color: var(--ide-ink); font-size: 0.82rem; }
       .demo-type {
         color: var(--ink-soft); font-weight: 400; font-size: 0.85em;
         border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; margin-left: 2px;
@@ -111,7 +146,7 @@
         background: var(--accent-soft); border-radius: 999px; padding: 2px 8px;
       }
       .demo-toggle { font-family: var(--font-body); font-size: 0.7rem; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; }
-      .demo-row { display: flex; align-items: stretch; gap: 4px; }
+      .demo-row { display: flex; align-items: stretch; gap: 4px; padding: 0.85rem 1rem 0.4rem; }
       .demo-frame {
         display: flex; border: 1px solid var(--line); border-radius: 10px;
         background: var(--paper); padding: 6px; gap: 4px; flex-grow: 1;
@@ -130,7 +165,7 @@
         text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap;
       }
       .demo-brace { color: var(--accent); font-weight: 700; font-size: 1.4rem; display: flex; align-items: center; padding: 0 8px; }
-      .demo-caption { margin-top: 6px; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); }
+      .demo-caption { padding: 0 1rem 0.7rem; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); }
       .demo-tree-note { text-align: center; font-size: 0.62rem; color: var(--ink-faint); margin-top: -4px; }
 
       @media (max-width: 640px) {
@@ -176,9 +211,9 @@
       }
       input[type="text"], input[type="password"] {
         width: 100%;
-        padding: 0.55rem 0.7rem;
+        height: 2.9rem; padding: 0 0.9rem;
         border: 1px solid var(--struct-border);
-        border-radius: 8px;
+        border-radius: 12px;
         font-size: 1rem;
         font-family: inherit;
         color: var(--ink);
@@ -196,10 +231,11 @@
       button {
         margin-top: 1.5rem;
         width: 100%;
-        padding: 0.6rem;
-        border: 1px solid var(--accent);
-        border-radius: 8px;
-        background: var(--accent);
+        padding: 0.6rem; min-height: 3rem;
+        border: 0;
+        border-radius: 12px;
+        background: var(--ide-grad);
+        box-shadow: 0 8px 20px rgba(58, 70, 216, 0.28);
         color: #fff;
         font: inherit;
         font-weight: 600;
@@ -336,6 +372,8 @@
         border: 1px solid #fecaca;
       }
       .lesson-delete:hover { background: #fef2f2; filter: none; }
+      /* 全域按鈕變成大漸層按鈕之後，頁面上的小按鈕（刪除、儲存標籤）要退回小尺寸 */
+      .lesson-delete, .tag-edit button { min-height: 0; box-shadow: none; border-radius: 8px; }
 
       .empty { margin: 0; padding: 1.25rem 0; color: var(--ink-soft); font-size: 0.9rem; }
 
@@ -431,28 +469,31 @@
       }
     </style>
   </head>
-  <body{% if navigation_user %} class="app-shell"{% endif %}>
-    {% if navigation_user %}
-      <header class="site-header" data-testid="site-header">
-        <nav class="site-nav" aria-label="主要導覽">
-          <a class="wordmark" href="{{ url_for('http_routes.lesson_library') }}"><span class="wordmark-caret">&#9656;</span>VGDB</a>
+  <body class="{% if navigation_user %}app-shell{% endif %}{% block body_class %}{% endblock %}">
+    <header class="site-header"{% if navigation_user %} data-testid="site-header"{% endif %}>
+      <nav class="site-nav" aria-label="主要導覽">
+        <a class="wordmark" href="{{ url_for('http_routes.lesson_library') if navigation_user else url_for('http_routes.gdbgui') }}"><span class="wordmark-caret">&#9656;</span>VGDB</a>
+        {% if navigation_user %}
           <span class="site-nav-spacer"></span>
           {% block nav_new_lesson %}<a href="{{ url_for('http_routes.gdbgui') }}">新建教案</a>{% endblock %}
           <a class="site-account"
              href="{{ url_for('auth.profile', username=navigation_user['username']) }}"
              data-testid="account-nav-profile">@{{ navigation_user["username"] }}</a>
           <a href="{{ url_for('auth.logout') }}">登出</a>
-        </nav>
-      </header>
-    {% else %}
+        {% endif %}
+      </nav>
+    </header>
+    {% if not navigation_user %}
       <div class="auth-shell">
-        <div class="brand-col">
-          <a class="wordmark" href="{{ url_for('http_routes.gdbgui') }}"><span class="wordmark-caret">&#9656;</span>VGDB</a>
+        <div class="brand-col{% block brand_col_class %}{% endblock %}">
           {% block hero %}{% endblock %}
         </div>
     {% endif %}
       <main class="card">
-        {% block body %}{% endblock %}
+        {% block card_head %}{% endblock %}
+        <div class="card-body">
+          {% block body %}{% endblock %}
+        </div>
       </main>
     {% if not navigation_user %}
       </div>

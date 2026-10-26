@@ -1,5 +1,12 @@
 {% extends "_auth_base.html" %}
 {% block title %}註冊 · VGDB{% endblock %}
+{% block brand_col_class %} is-empty{% endblock %}
+{% block card_head %}
+  <div class="card-head">
+    <a class="card-tab" href="{{ url_for('auth.login') }}">登入</a>
+    <span class="card-tab is-active" aria-current="page">註冊</span>
+  </div>
+{% endblock %}
 {% block body %}
   <h1>建立帳號</h1>
   <p class="lede">寫教案、逐行示範、分享給其他人。</p>

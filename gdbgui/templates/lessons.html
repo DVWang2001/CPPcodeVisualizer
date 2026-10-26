@@ -1,5 +1,8 @@
 {% extends "_auth_base.html" %}
 {% block title %}教案庫 · VGDB{% endblock %}
+{# 只有教案庫才用的版面：內容卡本身透明，裡面再分成搜尋卡、兩張入口卡、清單卡
+   （方案一「卡片工作台」，跟正式 IDE 同一套外殼）。其他頁面不受影響。 #}
+{% block body_class %} page-library{% endblock %}
 {# 導覽列的「新建教案」跟下面的實心按鈕是同一個動作，這頁已經有按鈕了，
    導覽列那份留著就是純粹的重複——拿掉。 #}
 {% block nav_new_lesson %}{% endblock %}
@@ -8,42 +11,73 @@
      一律靠它轉義；這一頁沒有任何 |safe，也沒有任何使用者字串被插進 <script>
      或 HTML 屬性裡——底下那段 JS 只讀 data-lesson-id（整數）。 #}
   <style>
-    .card { --card-width: 74rem; }
-    /* 首頁該有首頁的份量：h1 比其他頁面大一號，「新建教案」從純文字連結
-       升格成實心按鈕——這是整頁唯一的主要動作，不該跟其他連結長得一樣。 */
-    .library-heading h1 { font-size: 1.9rem; }
-    .btn-primary {
-      display: inline-flex; align-items: center; gap: 0.5rem;
-      height: 2.5rem; padding: 0 1.1rem; border-radius: 8px;
-      background: var(--accent); color: #fff; font-weight: 600;
-      text-decoration: none; white-space: nowrap; flex: none;
-      transition: filter 140ms ease, transform 140ms ease;
-    }
-    .btn-primary:hover { filter: brightness(1.08); transform: translateY(-2px); }
-    .btn-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    /* 清單包一層跟容器視覺化同款的邊框卡片，呼應除錯器介面裡「東西裝在
-       一個有邊框的容器裡」那套語言，教案庫看起來才像同一個產品的首頁，
-       不是另外做的一張行政表格。 */
-    .listing-card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 0 1rem; }
-    .listing-card .library-columns { padding: 0.6rem 0; }
-    .listing-card .listing .row:last-child { border-bottom: 0; }
+    /* 內容卡變透明：卡片本身由下面各區塊自己畫 */
+    .page-library main.card { --card-width: 74rem; width: min(74rem, 100%); background: transparent; border: 0; box-shadow: none; overflow: visible; }
+    .page-library .card-body { padding: 0; }
 
-    /* 教學頁入口：第一次來的人要一眼看到；搜尋或篩選時就不顯示，避免擋在結果前面。 */
-    .tutorial-banner {
-      display: flex; align-items: center; gap: 1.1rem;
-      margin: 0 0 1.25rem; padding: 0.9rem 1.1rem;
-      border: 1px solid var(--line); border-radius: 12px;
-      background: var(--accent-soft);
+    .lib-top { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: stretch; margin-bottom: 1.25rem; }
+    .lib-panel { background: var(--surface); border: 1px solid var(--ide-line); border-radius: 20px; box-shadow: var(--ide-shadow); }
+    .lib-search { flex: 999 1 34rem; min-width: 0; padding: 1.6rem 1.75rem; display: flex; flex-direction: column; gap: 1rem; }
+    .lib-search .library-heading { margin: 0; }
+    .lib-search .library-heading h1 { font-size: 2rem; letter-spacing: -0.02em; margin: 0; }
+    .lib-search .lede { margin: 0.15rem 0 0; font-size: 0.95rem; }
+    .lib-search .search-form { margin: 0; }
+    .lib-search .facets { margin: 0; }
+
+    .lib-side { flex: 1 1 19rem; min-width: 0; display: flex; flex-direction: column; gap: 1.25rem; }
+    /* 入口卡：整張卡是一個動作。新建＝實心漸層（整頁唯一的主要動作），教學＝白卡 */
+    .lib-action {
+      flex: 1 1 0; display: flex; align-items: center; gap: 1rem; padding: 1.25rem 1.5rem;
+      border-radius: 20px; text-decoration: none; color: var(--ink);
+      transition: transform 140ms ease, box-shadow 140ms ease;
     }
-    .tutorial-banner .tb-icon {
-      flex: none; width: 2.75rem; height: 2.75rem; border-radius: 10px;
-      background: var(--accent); color: #fff;
+    a.lib-action:hover { text-decoration: none; transform: translateY(-2px); }
+    .lib-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .lib-action .la-icon {
+      flex: none; width: 2.9rem; height: 2.9rem; border-radius: 14px;
       display: flex; align-items: center; justify-content: center;
     }
-    .tutorial-banner .tb-icon svg { width: 1.5rem; height: 1.5rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .tutorial-banner .tb-text { flex: 1 1 auto; min-width: 0; }
-    .tutorial-banner .tb-title { font-weight: 700; font-size: 1.05rem; }
-    .tutorial-banner .tb-sub { color: var(--ink-soft); font-size: 0.9rem; margin-top: 0.15rem; }
+    .lib-action .la-icon svg { width: 1.5rem; height: 1.5rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .lib-action .la-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+    .lib-action .la-title { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; }
+    .lib-action .la-sub { font-size: 0.82rem; }
+    .lib-action-primary { background: var(--ide-grad); color: #fff; box-shadow: 0 10px 28px rgba(58, 70, 216, 0.28); }
+    .lib-action-primary:hover { color: #fff; box-shadow: 0 14px 32px rgba(58, 70, 216, 0.34); }
+    .lib-action-primary .la-icon { background: rgba(255, 255, 255, 0.18); color: #fff; }
+    .lib-action-primary .la-sub { color: rgba(255, 255, 255, 0.92); }
+    .tutorial-banner { background: var(--surface); border: 1px solid var(--ide-line); box-shadow: var(--ide-shadow); }
+    .tutorial-banner .la-icon { background: var(--accent-soft); color: var(--ide-ink); }
+    .tutorial-banner .la-sub { color: var(--ink-soft); }
+    .tutorial-banner .la-go { margin-top: 0.35rem; font-weight: 600; font-size: 0.9rem; white-space: nowrap; align-self: flex-start; }
+
+    /* 搜尋框與按鈕：跟 IDE 的輸入欄同一個圓角 */
+    .page-library .search-row { gap: 0.6rem; }
+    .page-library .search-row input[type="search"] { height: 2.9rem; padding: 0 0.9rem 0 2.6rem; border-radius: 12px; }
+    .page-library .search-row button { height: 2.9rem; min-height: 0; padding: 0 1.4rem; background: var(--accent); box-shadow: none; }
+    .search-field { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
+    .search-field input { width: 100%; }
+    .search-field svg { position: absolute; left: 0.9rem; top: 50%; transform: translateY(-50%); width: 1.1rem; height: 1.1rem; fill: none; stroke: var(--ink-soft); stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+
+    /* 標籤：淡靛底小膠囊（選中＝實心靛） */
+    .page-library .tag { background: var(--accent-soft); border-color: transparent; color: var(--ide-ink); font-size: 0.8rem; padding: 0.1rem 0.7rem; }
+    .page-library .tag:hover { border-color: var(--accent); }
+    .page-library .tag.on { background: var(--accent); color: #fff; }
+    .page-library .tag .n { color: var(--ink-soft); }
+    .page-library .tag.on .n { color: #fff; }
+    .page-library .facets .facet-label { color: var(--ink-soft); }
+
+    /* 清單卡：IDE 面板（淡靛標題列）。圓角靠標題列自己帶，不用 overflow 以免吃掉列的 hover 浮起 */
+    .listing-card { border: 1px solid var(--ide-line); border-radius: 20px; background: var(--surface); box-shadow: var(--ide-shadow); padding: 0 0 0.25rem; }
+    .list-titlebar {
+      display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 1.5rem;
+      background: var(--ide-title); border-bottom: 1px solid #eceef9; border-radius: 20px 20px 0 0;
+    }
+    .list-titlebar b { font-size: 0.85rem; color: var(--ide-ink); }
+    .list-titlebar .lt-count { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-soft); }
+    .list-titlebar .lt-legend { margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--ink-soft); }
+    .listing-card .library-columns { margin: 0 1.5rem; padding: 0.6rem 0; }
+    .listing-card .listing, .listing-card .empty { margin-left: 1.5rem; margin-right: 1.5rem; }
+    .listing-card .listing .row:last-child { border-bottom: 0; }
 
     /* 分頁參考 Google 搜尋結果的排法：置中一排頁碼，目前頁是深色粗體、
        不是連結，其餘頁碼是可點的連結，頁碼太多時中間縮成刪節號，
@@ -60,6 +94,15 @@
     .pager a.page-num:hover { background: var(--accent-soft); }
     .pager .page-num.is-current { color: var(--ink); font-weight: 700; background: var(--accent-soft); }
     .pager .page-ellipsis { color: var(--ink-faint); padding: 0 0.3rem; }
+
+    @media (max-width: 640px) {
+      .lib-search { padding: 1.25rem; }
+      .lib-search .library-heading h1 { font-size: 1.6rem; }
+      .list-titlebar { padding: 0.6rem 1rem; }
+      .list-titlebar .lt-legend { display: none; }
+      .listing-card .library-columns { margin: 0 1rem; }
+      .listing-card .listing, .listing-card .empty { margin-left: 1rem; margin-right: 1rem; }
+    }
   </style>
 
   {# 目前的篩選條件，用來組「加上／拿掉一個標籤」的連結。 #}
@@ -69,63 +112,81 @@
     {{ url_for('http_routes.lesson_library', q=q or None, tag=final or None) }}
   {%- endmacro %}
 
-  {% if not q and not selected_tags %}
-  <div class="tutorial-banner" data-testid="tutorial-banner">
-    <span class="tb-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><path d="M4 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H4zM20 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/></svg>
-    </span>
-    <div class="tb-text">
-      <div class="tb-title">第一次來？先看 //@ 註解教學</div>
-      <div class="tb-sub">從迴圈裡的變數，到容器、呼叫圖、UML——改一行、按 Enter，就看到效果。</div>
-    </div>
-    <a class="btn-primary" data-testid="tutorial-entry" href="{{ url_for('http_routes.tutorial') }}">開始教學 →</a>
-  </div>
-  {% endif %}
+  <div class="lib-top">
+    <section class="lib-panel lib-search">
+      <div class="library-heading">
+        <div>
+          <h1>教案庫</h1>
+          <p class="lede">
+            {% if q or selected_tags %}
+              <span class="count" data-testid="lesson-browse-total">{{ total }}</span> 篇符合條件
+            {% else %}
+              共 <span class="count" data-testid="lesson-browse-total">{{ total }}</span> 篇教案，最近更新的在前。
+            {% endif %}
+          </p>
+        </div>
+      </div>
 
-  <div class="library-heading">
-    <div>
-      <h1>教案庫</h1>
-      <p class="lede">
-        {% if q or selected_tags %}
-          <span class="count" data-testid="lesson-browse-total">{{ total }}</span> 篇符合條件
-        {% else %}
-          共 <span class="count" data-testid="lesson-browse-total">{{ total }}</span> 篇教案，最近更新的在前。
-        {% endif %}
-      </p>
-    </div>
-    <a class="btn-primary" href="{{ url_for('http_routes.gdbgui') }}">新建教案</a>
-  </div>
+      <form class="search-form" method="get" action="{{ url_for('http_routes.lesson_library') }}">
+        {# 已選的標籤跟著送出去，否則打字會把標籤篩選清掉。 #}
+        {% for name in selected_tags %}
+          <input type="hidden" name="tag" value="{{ name }}" />
+        {% endfor %}
+        <div class="search-row">
+          <span class="search-field">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input type="search" name="q" value="{{ q }}"
+                   placeholder="搜尋標題、作者或標籤…"
+                   aria-label="搜尋教案"
+                   data-testid="lesson-browse-search" />
+          </span>
+          <button type="submit">搜尋</button>
+        </div>
+      </form>
 
-  <form class="search-form" method="get" action="{{ url_for('http_routes.lesson_library') }}">
-    {# 已選的標籤跟著送出去，否則打字會把標籤篩選清掉。 #}
-    {% for name in selected_tags %}
-      <input type="hidden" name="tag" value="{{ name }}" />
-    {% endfor %}
-    <div class="search-row">
-      <input type="search" name="q" value="{{ q }}"
-             placeholder="搜尋標題、作者或標籤…"
-             aria-label="搜尋教案"
-             data-testid="lesson-browse-search" />
-      <button type="submit">搜尋</button>
-    </div>
-  </form>
-
-  {% if facets or selected_tags %}
-    <p class="facets">
-      <span class="facet-label">標籤</span>
-      {% for facet in facets %}
-        {% set on = facet['name'] in selected_tags %}
-        <a class="tag {% if on %}on{% endif %}"
-           href="{{ tag_url(facet['name'], on) }}"
-           data-testid="lesson-browse-facet">{{ facet["name"] }} <span class="n">{{ facet["n"] }}</span></a>
-      {% endfor %}
-      {% if not show_all_tags and facet_total > facets | length %}
-        <a class="tag" href="{{ url_for('http_routes.lesson_library', q=q or None, tag=selected_tags or None, alltags='1') }}">全部 {{ facet_total }} 個 →</a>
+      {% if facets or selected_tags %}
+        <p class="facets">
+          <span class="facet-label">標籤</span>
+          {% for facet in facets %}
+            {% set on = facet['name'] in selected_tags %}
+            <a class="tag {% if on %}on{% endif %}"
+               href="{{ tag_url(facet['name'], on) }}"
+               data-testid="lesson-browse-facet">{{ facet["name"] }} <span class="n">{{ facet["n"] }}</span></a>
+          {% endfor %}
+          {% if not show_all_tags and facet_total > facets | length %}
+            <a class="tag" href="{{ url_for('http_routes.lesson_library', q=q or None, tag=selected_tags or None, alltags='1') }}">全部 {{ facet_total }} 個 →</a>
+          {% endif %}
+        </p>
       {% endif %}
-    </p>
-  {% endif %}
+    </section>
+
+    <div class="lib-side">
+      <a class="lib-action lib-action-primary" href="{{ url_for('http_routes.gdbgui') }}">
+        <span class="la-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+        <span class="la-text"><span class="la-title">新建教案</span><span class="la-sub">空白草稿，或讓 AI 先生成</span></span>
+      </a>
+      {# 教學頁入口：第一次來的人要一眼看到；搜尋或篩選時就不顯示，避免擋在結果前面。 #}
+      {% if not q and not selected_tags %}
+      <div class="lib-action tutorial-banner" data-testid="tutorial-banner">
+        <span class="la-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H4zM20 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/></svg>
+        </span>
+        <span class="la-text">
+          <span class="la-title">第一次來？看教學</span>
+          <span class="la-sub">25 課 //@ 註解，改一行、按 Enter 就看到效果。</span>
+          <a class="la-go" data-testid="tutorial-entry" href="{{ url_for('http_routes.tutorial') }}">開始教學 →</a>
+        </span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
 
   <div class="listing-card">
+  <div class="list-titlebar">
+    <b>{% if q or selected_tags %}搜尋結果{% else %}最近更新{% endif %}</b>
+    <span class="lt-count">{{ total }}</span>
+    <span class="lt-legend"><span class="bp" aria-hidden="true"></span>琥珀圓點＝你的教案</span>
+  </div>
   <div class="library-columns" aria-hidden="true" data-testid="lesson-browse-columns">
     <span>#</span><span>教案</span><span>作者</span><span>更新</span><span></span>
   </div>
