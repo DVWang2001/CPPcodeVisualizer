@@ -17,8 +17,8 @@ test('WebSocket connection is established', async ({ page }) => {
     );
 });
 
-test('GDB terminal toggle button is present', async ({ page }) => {
+test('standard input/output panes are present', async ({ page }) => {
     await ensureLoggedIn(page);
     await page.goto('/edit');
-    await expect(page.getByText('查看 Terminal')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('標準輸入')).toBeVisible({ timeout: 10_000 });
 });

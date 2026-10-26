@@ -265,25 +265,13 @@ const Actions = {
       entries = [entries];
     }
 
-    const pty = store.get("gdbguiPty");
-    if (pty) {
-      entries.forEach((data: string) => {
-        const entriesToIgnore = [
-          // No registers. appears when refresh commands are run when program hasn't started.
-          // TODO The real fix for this is to not refresh commands when the program is not running.
-          "No registers."
-        ];
-        if (entriesToIgnore.indexOf(data) > -1) {
-          return;
-        }
-        // @ts-expect-error ts-migrate(2339) FIXME: Property 'colorTypeMap' does not exist on type 'Re... Remove this comment to see the full error message
-        pty.write(constants.colorTypeMap[type] ?? constants.xtermColors["reset"]);
-        pty.writeln(data);
-        pty.write(constants.xtermColors["reset"]);
-      });
-    } else {
-      console.error("Pty not available. New entries are:", entries);
-    }
+    // 原本寫進底部的 gdbgui 輸出 xterm（已拿掉）；現在只留在瀏覽器 console。
+    const log = type === constants.console_entry_type.STD_ERR ? console.error : console.log;
+    entries.forEach((data: string) => {
+      // No registers. appears when refresh commands are run when program hasn't started.
+      if (data === "No registers.") return;
+      log("[gdbgui]", data);
+    });
   },
   add_gdb_response_to_console(mi_obj: any) {
     if (!mi_obj) {

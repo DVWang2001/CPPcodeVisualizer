@@ -127,7 +127,6 @@ const initial_store_data = {
 
   show_filesystem: false,
   middle_panes_split_obj: {},
-  gdbguiPty: null,
   tts_subtitle: null,
   tts_focus_var: null as string | null,
   condition_overlay: null as any,
