@@ -199,3 +199,9 @@ body:not(.tutorial) .collapser .titlebar--primary {
   border-left: 0;
   box-shadow: inset 4px 0 0 #3a46d8;
 }
+
+/* 右欄最上面的「即時課堂」預留位置：沒有即時課堂面板（槽是空的）時不佔高度，
+   不然它會把剩下的高度全吃掉，面板被擠到最底下。有面板時（槽裡有內容）不受影響。 */
+#live-quiz-slot:empty {
+  display: none;
+}
