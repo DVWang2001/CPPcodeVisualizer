@@ -20,6 +20,7 @@ import { lineVisitCount } from "./localEngine";
 import { skeletonOf, isCommentOnlyEdit, selectionTouchesCode, snapColumn } from "./tutorialGuard";
 import { normalizeBundle } from "./bundleAdapter";
 import { toFrontendBreakpoints } from "./lessonGen";
+import { dropOutOfRange, shiftBreakpoints } from "./breakpointShift";
 import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
 import { lineIdentifiers } from "./lineIdentifiers";
@@ -600,53 +601,28 @@ class SourceCode extends React.Component<{}, State> {
     // Initial set
     updateLineCount();
 
-    // 當程式碼行數增減時，shift 既有斷點的行號（guide/tts/layout 已內嵌於原始碼中，
-    // 會隨程式碼本身一起移動，不需要額外對齊機制）
-    const shiftBreakpointsOnLineChange = (changes: any[]) => {
-      // Monaco changes 是由上到下排列，需倒序處理避免偏移累積
-      const sortedChanges = [...changes].sort(
-        (a, b) => b.range.startLineNumber - a.range.startLineNumber
-      );
-      const anyChange = sortedChanges.some((change) => {
-        const removedLines = change.range.endLineNumber - change.range.startLineNumber;
-        const addedLines = (change.text.match(/\n/g) || []).length;
-        return addedLines - removedLines !== 0;
+    // 編輯時斷點要跟著程式碼走：行號平移、被刪掉那一行的斷點一起刪、不得超出程式末尾。
+    // 細節與歷史 bug 見 breakpointShift.ts。guide/tts/layout 已內嵌於原始碼，會隨程式碼
+    // 一起移動，不需要額外對齊機制。只更新 store 的前端表示，不重新呼叫 GDB。
+    let trackedLineCount = editor.getModel()?.getLineCount() ?? 0;
+    const shiftBreakpointsOnLineChange = (e: any) => {
+      const model = editor.getModel();
+      if (!model) return;
+      const lineCount = model.getLineCount();
+      const current: any[] = store.get("breakpoints") || [];
+      const next = shiftBreakpoints(current, e.changes, {
+        prevLineCount: trackedLineCount,
+        lineCount,
+        isFlush: !!e.isFlush,
       });
-      if (!anyChange) return;
-
-      // 斷點行號 shift（只更新 store 的前端表示，不重新呼叫 GDB）
-      const currentFile = this.state.fullname_to_render;
-      if (currentFile) {
-        const bkpts: any[] = store.get("breakpoints");
-        let bkptsChanged = false;
-        const newBkpts = bkpts.map((b: any) => {
-          if (b.fullname_to_display !== currentFile) return b;
-          const bLine = parseInt(b.line);
-          if (isNaN(bLine)) return b;
-          // 套用每個 change 的 delta
-          let shifted = bLine;
-          for (const change of sortedChanges) {
-            const startLine = change.range.startLineNumber;
-            const removedLines = change.range.endLineNumber - change.range.startLineNumber;
-            const addedLines = (change.text.match(/\n/g) || []).length;
-            const delta = addedLines - removedLines;
-            if (delta === 0) continue;
-            if (shifted > startLine) {
-              shifted += delta;
-              bkptsChanged = true;
-            }
-          }
-          if (shifted === bLine) return b;
-          return { ...b, line: String(shifted), original_location: b.original_location?.replace(`:${bLine}`, `:${shifted}`) };
-        });
-        if (bkptsChanged) store.set("breakpoints", newBkpts);
-      }
+      trackedLineCount = lineCount;
+      if (next !== current) store.set("breakpoints", next);
     };
 
     // Listen for changes
     let saveTimeout: any;
     editor.onDidChangeModelContent((e: any) => {
-      shiftBreakpointsOnLineChange(e.changes);
+      shiftBreakpointsOnLineChange(e);
       updateLineCount();
       const lessonDirty = Boolean(
         this.lessonBaseline && editor.getValue() !== this.lessonBaseline.bundle.source_code
@@ -2614,6 +2590,14 @@ class SourceCode extends React.Component<{}, State> {
     }
   }
   click_gutter(line_num: any) {
+    // 以前遺留的殘影（行號超出程式末尾的斷點，Monaco 把它畫在最後一行）會讓使用者點最後
+    // 一行時只是多加一個、舊的永遠點不掉。這是使用者主動點擊、內容已穩定的時機，順手清掉。
+    const lineCount = this.editorInstance?.getModel?.()?.getLineCount?.();
+    if (lineCount) {
+      const current = store.get("breakpoints") || [];
+      const cleaned = dropOutOfRange(current, lineCount);
+      if (cleaned !== current) store.set("breakpoints", cleaned);
+    }
     Breakpoints.add_or_remove_breakpoint(this.state.fullname_to_render || "", line_num);
   }
 
