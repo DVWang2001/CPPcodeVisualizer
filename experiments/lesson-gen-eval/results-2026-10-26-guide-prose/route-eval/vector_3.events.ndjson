@@ -1,0 +1,341 @@
+{"delta": "#include"}
+{"delta": " <iostream>\n#include <vector"}
+{"delta": ">\n#include <algorithm>\nusing"}
+{"delta": " namespace std;\n\nvoid"}
+{"delta": " bubbleSort(vector<int>& arr"}
+{"delta": ") {\n"}
+{"delta": "    int n = arr"}
+{"delta": ".size();  //@"}
+{"delta": " @"}
+{"delta": "guide [初始化"}
+{"delta": "#"}
+{"delta": "blue] n={"}
+{"delta": "n} @tts"}
+{"delta": " [next"}
+{"delta": "] 進入泡沫"}
+{"delta": "排序，陣"}
+{"delta": "列長"}
+{"delta": "度 n"}
+{"delta": " 是 {n}"}
+{"delta": " @layout sidebar"}
+{"delta": ":55"}
+{"delta": " open:container"}
+{"delta": " close"}
+{"delta": ":locals"}
+{"delta": "\n    for (int"}
+{"delta": " i = 0; i"}
+{"delta": " < n; i++) {"}
+{"delta": "  //@ @guide ["}
+{"delta": "外層"}
+{"delta": "迴"}
+{"delta": "圈#green"}
+{"delta": "] 第"}
+{"delta": " {i} 輪"}
+{"delta": " @tts [next]"}
+{"delta": " 開始第 {"}
+{"delta": "i} 輪，每一"}
+{"delta": "輪會"}
+{"delta": "把目前"}
+{"delta": "最大的數字"}
+{"delta": "推到右"}
+{"delta": "邊 |"}
+{"delta": " @2"}
+{"delta": " [next] 這一"}
+{"delta": "輪做"}
+{"delta": "完了，看還有"}
+{"delta": "沒有下一輪 @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "        for (int j ="}
+{"delta": " 0; j < n"}
+{"delta": " - i - 1;"}
+{"delta": " j++) {  //@"}
+{"delta": " @guide [內層"}
+{"delta": "迴圈#yellow"}
+{"delta": "] 這一"}
+{"delta": "輪要比"}
+{"delta": "到"}
+{"delta": "第 {j} "}
+{"delta": "格 @tts [next"}
+{"delta": "] 從左"}
+{"delta": "邊開始，一"}
+{"delta": "對"}
+{"delta": "一"}
+{"delta": "對往"}
+{"delta": "右比 | @2 ["}
+{"delta": "next] 換"}
+{"delta": "下一對"}
+{"delta": "相"}
+{"delta": "鄰的"}
+{"delta": "格子 @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "            if (arr[j]"}
+{"delta": " > arr[j + 1"}
+{"delta": "]) {  //@ @"}
+{"delta": "guide {"}
+{"delta": "arr[j]:"}
+{"delta": "light"}
+{"delta": "blue} {arr[j +"}
+{"delta": " 1]:orange} @"}
+{"delta": "tts [next] "}
+{"delta": "比一比"}
+{"delta": "第"}
+{"delta": " {j} 格 {"}
+{"delta": "arr[j]} 和第"}
+{"delta": " {j}"}
+{"delta": " 格右"}
+{"delta": "邊的 {arr[j +"}
+{"delta": " 1]}，前面"}
+{"delta": "比較"}
+{"delta": "大嗎 @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "                swap"}
+{"delta": "(arr[j], arr[j +"}
+{"delta": " 1]);  //@"}
+{"delta": " @guide {arr[j]:"}
+{"delta": "lightblue} {arr[j"}
+{"delta": " + 1]:orange}"}
+{"delta": " @tts [next]"}
+{"delta": " 前面比較"}
+{"delta": "大，把"}
+{"delta": " {"}
+{"delta": "arr[j]} 和 {"}
+{"delta": "arr[j + 1]}"}
+{"delta": " 交換過來"}
+{"delta": " @layout sidebar:55 open"}
+{"delta": ":container\n"}
+{"delta": "            }\n        }\n   "}
+{"delta": " }\n}"}
+{"delta": "  //@"}
+{"delta": " @tt"}
+{"delta": "s [next] 泡沫"}
+{"delta": "排序結束，陣"}
+{"delta": "列已經排好了"}
+{"delta": " @layout sidebar"}
+{"delta": ":55 open:container\n\n"}
+{"delta": "int main() {\n    vector"}
+{"delta": "<int> arr = {3"}
+{"delta": ", 1, 2"}
+{"delta": "};  //@ @guide"}
+{"delta": " {"}
+{"delta": "arr} @tts ["}
+{"delta": "next] 一開始"}
+{"delta": "的陣列是 {arr"}
+{"delta": "}，我們"}
+{"delta": "要把它由"}
+{"delta": "小排"}
+{"delta": "到大 @layout sidebar"}
+{"delta": ":55 open:container close"}
+{"delta": ":locals\n    bubbleSort"}
+{"delta": "(arr);  //@ @"}
+{"delta": "guide {"}
+{"delta": "arr} @tts ["}
+{"delta": "step-in"}
+{"delta": "] 呼叫"}
+{"delta": "泡沫"}
+{"delta": "排序，進入"}
+{"delta": "函"}
+{"delta": "式看看"}
+{"delta": "它怎麼比"}
+{"delta": " |"}
+{"delta": " @2"}
+{"delta": " [next] 排序完成"}
+{"delta": "，回到 main"}
+{"delta": "，陣列變成"}
+{"delta": " {arr} @layout sidebar"}
+{"delta": ":55 open:container,c"}
+{"delta": "allgraph\n    cout <<"}
+{"delta": " \"排序後"}
+{"delta": "：\";  //@"}
+{"delta": " @tts [next]"}
+{"delta": " 把"}
+{"delta": "排好的"}
+{"delta": "結果"}
+{"delta": "印"}
+{"delta": "出來 @"}
+{"delta": "layout sidebar:55 open:"}
+{"delta": "container\n    for (int"}
+{"delta": " x : arr)"}
+{"delta": " cout << x <<"}
+{"delta": " \" \";  //@ @"}
+{"delta": "guide {arr} @"}
+{"delta": "tts [next] "}
+{"delta": "依序印出"}
+{"delta": " {"}
+{"delta": "arr} @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "    cout << endl"}
+{"delta": ";  //@"}
+{"delta": " @tts [next]"}
+{"delta": " 換行，"}
+{"delta": "程式"}
+{"delta": "結束 @layout sidebar:"}
+{"delta": "55 open:container\n   "}
+{"delta": " return 0;  //"}
+{"delta": "@ @tts [continue"}
+{"delta": "] 全部完成"}
+{"delta": " @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "}"}
+{"status": "檢查發現 2 個問題，自動修正一輪…"}
+{"reset": true}
+{"delta": "//"}
+{"delta": " 教案"}
+{"delta": "：泡沫"}
+{"delta": "排序（Bubble Sort）"}
+{"delta": "—— 相鄰兩個比"}
+{"delta": "一比，比錯"}
+{"delta": "順序就交換"}
+{"delta": "\n//\n"}
+{"delta": "// 核心動作"}
+{"delta": "只有一個：從"}
+{"delta": "左走到右，每次"}
+{"delta": "看相鄰兩格，"}
+{"delta": "前面比後面大就交換"}
+{"delta": "。\n// 走"}
+{"delta": "完一輪，最大的數字"}
+{"delta": "一定會被「"}
+{"delta": "推」到最右邊"}
+{"delta": "；走 n"}
+{"delta": " 輪整個"}
+{"delta": "陣列就排好了。\n"}
+{"delta": "// 陣列故意用"}
+{"delta": " 3 個數字，"}
+{"delta": "走一輪半就能看完"}
+{"delta": "一次交換、一次不"}
+{"delta": "交換、排序完成。\n#include"}
+{"delta": " <iostream>\n#include <vector"}
+{"delta": ">\n#include <algorithm>\nusing"}
+{"delta": " namespace std;\n\nvoid"}
+{"delta": " bubbleSort(vector<int>& arr"}
+{"delta": ") {\n    int n ="}
+{"delta": " arr.size();  //@"}
+{"delta": " @tts"}
+{"delta": " [next"}
+{"delta": "] 進入泡沫"}
+{"delta": "排序，先"}
+{"delta": "取得"}
+{"delta": "陣列長度 @"}
+{"delta": "layout sidebar"}
+{"delta": ":55 open:container"}
+{"delta": " close:locals\n    for"}
+{"delta": " (int i = 0"}
+{"delta": "; i < n; i"}
+{"delta": "++) {  //@"}
+{"delta": " @guide [外"}
+{"delta": "層迴圈#"}
+{"delta": "green] n"}
+{"delta": "={n} 第 {"}
+{"delta": "i} 輪 @"}
+{"delta": "tts [next] "}
+{"delta": "開始"}
+{"delta": "第 {i} 輪"}
+{"delta": "，每一"}
+{"delta": "輪會"}
+{"delta": "把目前最大的"}
+{"delta": "數字推到右邊 |"}
+{"delta": " @2"}
+{"delta": " [next] 這一"}
+{"delta": "輪做完了，看"}
+{"delta": "還有沒有下一輪 @layout"}
+{"delta": " sidebar:55 open:container"}
+{"delta": "\n        for"}
+{"delta": " (int j = 0"}
+{"delta": "; j < n - i"}
+{"delta": " - 1; j++)"}
+{"delta": " {  //@ @guide"}
+{"delta": " [內層迴圈#"}
+{"delta": "yellow] 這一輪要比"}
+{"delta": "到第 {j} "}
+{"delta": "格 @tts [next"}
+{"delta": "] 從"}
+{"delta": "左邊開始，一"}
+{"delta": "對一對往"}
+{"delta": "右比 | @2 ["}
+{"delta": "next] 換下一對"}
+{"delta": "相鄰的格子 @layout"}
+{"delta": " sidebar:55 open:container"}
+{"delta": "\n            if (arr[j"}
+{"delta": "] > arr[j + "}
+{"delta": "1]) {  //@"}
+{"delta": " @guide {arr[j]:"}
+{"delta": "lightblue} {arr[j"}
+{"delta": " + 1]:orange}"}
+{"delta": " @tts [next]"}
+{"delta": " 比一比第"}
+{"delta": " {j} 格 {"}
+{"delta": "arr[j]} 和第"}
+{"delta": " {j} 格"}
+{"delta": "右邊的 {arr[j"}
+{"delta": " + 1]}，前面"}
+{"delta": "比較大嗎 @"}
+{"delta": "layout sidebar:55 open:"}
+{"delta": "container\n               "}
+{"delta": " swap(arr[j], arr[j"}
+{"delta": " + 1]);  //"}
+{"delta": "@ @guide {arr[j"}
+{"delta": "]:lightblue} {arr"}
+{"delta": "[j + 1]:orange"}
+{"delta": "} @tts [next"}
+{"delta": "] 前面比較大，"}
+{"delta": "把 {arr[j]} "}
+{"delta": "和 {arr[j + "}
+{"delta": "1]} 交換過來"}
+{"delta": " @layout sidebar:55 open"}
+{"delta": ":container\n            }\n       "}
+{"delta": " }\n    }\n}"}
+{"delta": "  //@"}
+{"delta": " @tts [next]"}
+{"delta": " 泡沫排序結束"}
+{"delta": "，陣列已經"}
+{"delta": "排好了 @layout sidebar"}
+{"delta": ":55 open:container\n\n"}
+{"delta": "int main() {\n    vector"}
+{"delta": "<int> arr = {3"}
+{"delta": ", 1, 2"}
+{"delta": "};  //@ @tt"}
+{"delta": "s [next] 先"}
+{"delta": "建立"}
+{"delta": "一個陣列，我們"}
+{"delta": "要把它由"}
+{"delta": "小排到大"}
+{"delta": " @layout sidebar:55 open"}
+{"delta": ":container close:locals"}
+{"delta": "\n    bubbleSort(arr);"}
+{"delta": "  //@ @guide {"}
+{"delta": "arr} @tts ["}
+{"delta": "step-in] 一開始的"}
+{"delta": "陣列是 {arr}"}
+{"delta": "，呼叫泡沫排序，進入"}
+{"delta": "函式看看它怎麼"}
+{"delta": "比 | @2"}
+{"delta": " [next"}
+{"delta": "] 排序完成"}
+{"delta": "，回到 main"}
+{"delta": "，陣列變成"}
+{"delta": " {arr} @layout sidebar"}
+{"delta": ":55 open:container,c"}
+{"delta": "allgraph\n    cout <<"}
+{"delta": " \"排序後：\"; "}
+{"delta": " //@ @tts ["}
+{"delta": "next] 把排"}
+{"delta": "好的結果印出來 @"}
+{"delta": "layout sidebar:55 open:"}
+{"delta": "container\n    for (int"}
+{"delta": " x : arr) cout <<"}
+{"delta": " x << \" \";  //"}
+{"delta": "@ @guide {arr}"}
+{"delta": " @tts [next]"}
+{"delta": " 依序印出 {"}
+{"delta": "arr} @layout sidebar:"}
+{"delta": "55 open:container\n   "}
+{"delta": " cout << endl;  //"}
+{"delta": "@ @tts [next"}
+{"delta": "] 換行，程式"}
+{"delta": "結束 @layout sidebar:55"}
+{"delta": " open:container\n    return"}
+{"delta": " 0;  //@"}
+{"delta": " @tts [continue]"}
+{"delta": " 全部完成 @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "}"}
+{"done": true, "code": "// 教案：泡沫排序（Bubble Sort）—— 相鄰兩個比一比，比錯順序就交換\n//\n// 核心動作只有一個：從左走到右，每次看相鄰兩格，前面比後面大就交換。\n// 走完一輪，最大的數字一定會被「推」到最右邊；走 n 輪整個陣列就排好了。\n// 陣列故意用 3 個數字，走一輪半就能看完一次交換、一次不交換、排序完成。\n#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\n\nvoid bubbleSort(vector<int>& arr) {\n    int n = arr.size();  //@ @tts [next] 進入泡沫排序，先取得陣列長度 @layout sidebar:55 open:container close:locals\n    for (int i = 0; i < n; i++) {  //@ @guide [外層迴圈#green] n={n} 第 {i} 輪 @tts [next] 開始第 {i} 輪，每一輪會把目前最大的數字推到右邊 | @2 [next] 這一輪做完了，看還有沒有下一輪 @layout sidebar:55 open:container\n        for (int j = 0; j < n - i - 1; j++) {  //@ @guide [內層迴圈#yellow] 這一輪要比到第 {j} 格 @tts [next] 從左邊開始，一對一對往右比 | @2 [next] 換下一對相鄰的格子 @layout sidebar:55 open:container\n            if (arr[j] > arr[j + 1]) {  //@ @guide {arr[j]:lightblue} {arr[j + 1]:orange} @tts [next] 比一比第 {j} 格 {arr[j]} 和第 {j} 格右邊的 {arr[j + 1]}，前面比較大嗎 @layout sidebar:55 open:container\n                swap(arr[j], arr[j + 1]);  //@ @guide {arr[j]:lightblue} {arr[j + 1]:orange} @tts [next] 前面比較大，把 {arr[j]} 和 {arr[j + 1]} 交換過來 @layout sidebar:55 open:container\n            }\n        }\n    }\n}  //@ @tts [next] 泡沫排序結束，陣列已經排好了 @layout sidebar:55 open:container\n\nint main() {\n    vector<int> arr = {3, 1, 2};  //@ @tts [next] 先建立一個陣列，我們要把它由小排到大 @layout sidebar:55 open:container close:locals\n    bubbleSort(arr);  //@ @guide {arr} @tts [step-in] 一開始的陣列是 {arr}，呼叫泡沫排序，進入函式看看它怎麼比 | @2 [next] 排序完成，回到 main，陣列變成 {arr} @layout sidebar:55 open:container,callgraph\n    cout << \"排序後：\";  //@ @tts [next] 把排好的結果印出來 @layout sidebar:55 open:container\n    for (int x : arr) cout << x << \" \";  //@ @guide {arr} @tts [next] 依序印出 {arr} @layout sidebar:55 open:container\n    cout << endl;  //@ @tts [next] 換行，程式結束 @layout sidebar:55 open:container\n    return 0;  //@ @tts [continue] 全部完成 @layout sidebar:55 open:container\n}", "warnings": [], "repaired": true, "prose_guides_dropped": 0, "comments_restored": 0}

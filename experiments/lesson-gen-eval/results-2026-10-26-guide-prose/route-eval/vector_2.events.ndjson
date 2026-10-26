@@ -1,0 +1,55 @@
+{"delta": "//"}
+{"delta": " 教案"}
+{"delta": "：泡沫"}
+{"delta": "排序（Bubble Sort）"}
+{"delta": "—— 相鄰兩個"}
+{"delta": "比一比，比錯"}
+{"delta": "順序就交換"}
+{"delta": "\n//\n"}
+{"delta": "// 核心動作"}
+{"delta": "只有一個：從左"}
+{"delta": "走到右，每次"}
+{"delta": "看相鄰兩格，"}
+{"delta": "前面比後面大"}
+{"delta": "就交換。\n// 走"}
+{"delta": "完一輪，最大的"}
+{"delta": "數字一定會被「推」"}
+{"delta": "到最右邊；走"}
+{"delta": " n 輪整個"}
+{"delta": "陣列就排好了。\n"}
+{"delta": "// 陣列故意"}
+{"delta": "用 3 個數字"}
+{"delta": "，走一"}
+{"delta": "輪半就能看完一次"}
+{"delta": "交換、一次不"}
+{"delta": "交換、排序完成。\n#include"}
+{"delta": " <iostream>\n#include <vector"}
+{"delta": ">\n#include <algorithm>\nusing"}
+{"delta": " namespace std;\n\nvoid"}
+{"delta": " bubbleSort(vector<int>& arr"}
+{"delta": ") {\n   "}
+{"delta": " int n = arr.size();\n"}
+{"delta": "    for (int i ="}
+{"delta": " 0; i < n"}
+{"delta": "; i++) {\n"}
+{"delta": "        for"}
+{"delta": " (int j = 0"}
+{"delta": "; j < n - i"}
+{"delta": " - 1; j++)"}
+{"delta": " {\n            if (arr[j"}
+{"delta": "] > arr[j + "}
+{"delta": "1]) {\n                swap"}
+{"delta": "(arr[j], arr[j +"}
+{"delta": " 1]);\n            }\n       "}
+{"delta": " }\n    }\n}\n\nint main"}
+{"delta": "() {\n    vector<int>"}
+{"delta": " arr = {3, "}
+{"delta": "1, 2};\n   "}
+{"delta": " bubbleSort(arr);\n    cout"}
+{"delta": " << \"排序後"}
+{"delta": "：\";\n    for (int"}
+{"delta": " x : arr) cout <<"}
+{"delta": " x << \" \";\n    cout"}
+{"delta": " << endl;\n    return "}
+{"delta": "0;\n}"}
+{"done": true, "code": "// 教案：泡沫排序（Bubble Sort）—— 相鄰兩個比一比，比錯順序就交換\n//\n// 核心動作只有一個：從左走到右，每次看相鄰兩格，前面比後面大就交換。\n// 走完一輪，最大的數字一定會被「推」到最右邊；走 n 輪整個陣列就排好了。\n// 陣列故意用 3 個數字，走一輪半就能看完一次交換、一次不交換、排序完成。\n#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\n\nvoid bubbleSort(vector<int>& arr) {\n    int n = arr.size();\n    for (int i = 0; i < n; i++) {\n        for (int j = 0; j < n - i - 1; j++) {\n            if (arr[j] > arr[j + 1]) {\n                swap(arr[j], arr[j + 1]);\n            }\n        }\n    }\n}\n\nint main() {\n    vector<int> arr = {3, 1, 2};\n    bubbleSort(arr);\n    cout << \"排序後：\";\n    for (int x : arr) cout << x << \" \";\n    cout << endl;\n    return 0;\n}", "warnings": [], "repaired": false, "prose_guides_dropped": 0, "comments_restored": 0}

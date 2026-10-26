@@ -1,0 +1,337 @@
+{"delta": "#include"}
+{"delta": " <iostream>\n#include"}
+{"delta": " <vector>\nusing namespace std"}
+{"delta": ";\n\nint main() {\n   "}
+{"delta": " int n = 6;"}
+{"delta": "  //@ @"}
+{"delta": "guide {"}
+{"delta": "n} @tt"}
+{"delta": "s ["}
+{"delta": "next] 我們"}
+{"delta": "從"}
+{"delta": " n"}
+{"delta": " "}
+{"delta": "等於 {n} "}
+{"delta": "開始，接下來"}
+{"delta": "要"}
+{"delta": "玩"}
+{"delta": "一個"}
+{"delta": "很有"}
+{"delta": "名的數列"}
+{"delta": "遊戲 @"}
+{"delta": "layout sidebar"}
+{"delta": ":50"}
+{"delta": " open:container close"}
+{"delta": ":locals\n    vector<int"}
+{"delta": "> sequence;  //@"}
+{"delta": " @guide {"}
+{"delta": "sequence} @tts ["}
+{"delta": "next] 先準備"}
+{"delta": "一個空的向量 sequence"}
+{"delta": "，用來記錄走"}
+{"delta": "過的每一個"}
+{"delta": "數字 @layout sidebar:55"}
+{"delta": " open:container\n    sequence"}
+{"delta": ".push_back(n);  //"}
+{"delta": "@ @guide {sequence"}
+{"delta": "} @tts [next"}
+{"delta": "] 把起始值"}
+{"delta": " {n} 放進"}
+{"delta": "數"}
+{"delta": "列的第一"}
+{"delta": "格 @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "    while (n"}
+{"delta": " != 1) { "}
+{"delta": " //@ @guide 目前"}
+{"delta": "數"}
+{"delta": "列：{sequence"}
+{"delta": "} @tts [next"}
+{"delta": "] 只要 n 還"}
+{"delta": "不是 1，就繼續"}
+{"delta": "往下"}
+{"delta": "算 | @2"}
+{"delta": " ["}
+{"delta": "next] 這一"}
+{"delta": "輪做"}
+{"delta": "完了，再看 n 是不是"}
+{"delta": "已經"}
+{"delta": "變成 1 | @4"}
+{"delta": " [next] 繼續"}
+{"delta": "檢查 n"}
+{"delta": " 是否"}
+{"delta": "等"}
+{"delta": "於 1 | @6"}
+{"delta": " [next] 再"}
+{"delta": "檢查一次 |"}
+{"delta": " @8"}
+{"delta": " [next] 再看"}
+{"delta": "一次 | @10"}
+{"delta": " [next] 最後確認"}
+{"delta": "一次 @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "        if (n %"}
+{"delta": " 2 == 0)"}
+{"delta": " {  //@ @guide"}
+{"delta": " {"}
+{"delta": "n} @tts ["}
+{"delta": "next] 判斷"}
+{"delta": " n"}
+{"delta": " 是奇"}
+{"delta": "數還是偶數，"}
+{"delta": "現在"}
+{"delta": " n 是 {n}"}
+{"delta": " | @2 [next]"}
+{"delta": " 再判斷"}
+{"delta": "一次，n "}
+{"delta": "是 {n} | @"}
+{"delta": "4 [next] n"}
+{"delta": " 是 {n} |"}
+{"delta": " @6 [next]"}
+{"delta": " n 是 {n}"}
+{"delta": " | @8 [next]"}
+{"delta": " n 是 {n}"}
+{"delta": " @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "           "}
+{"delta": " n = n / 2"}
+{"delta": ";  //@ @guide"}
+{"delta": " {n} @tts"}
+{"delta": " [next] n"}
+{"delta": " 是偶數，把它"}
+{"delta": "除以 2 |"}
+{"delta": " @2 [next] "}
+{"delta": "又是"}
+{"delta": "偶數，再"}
+{"delta": "除以 2 | @4"}
+{"delta": " [next] 除以"}
+{"delta": " 2 | @"}
+{"delta": "6 [next] 除以"}
+{"delta": " 2 @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "        } else {"}
+{"delta": "  //@ @guide {"}
+{"delta": "n} @tts ["}
+{"delta": "next] n"}
+{"delta": " 是奇數，要走"}
+{"delta": "另一"}
+{"delta": "條路 |"}
+{"delta": " @2 [next] "}
+{"delta": "這次也是"}
+{"delta": "奇數 | @4"}
+{"delta": " [next] 又是"}
+{"delta": "奇數 | @6"}
+{"delta": " [next] 奇"}
+{"delta": "數 @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "           "}
+{"delta": " n = 3 * n"}
+{"delta": " + 1;  //"}
+{"delta": "@ @guide {n}"}
+{"delta": " @tts [next]"}
+{"delta": " 奇數就"}
+{"delta": "乘以"}
+{"delta": " 3 再加"}
+{"delta": " 1，n"}
+{"delta": " 變成 {n} |"}
+{"delta": " @2 [next] "}
+{"delta": "乘以 3 加"}
+{"delta": " 1，n 變成"}
+{"delta": " {n} | @4"}
+{"delta": " [next] 乘以 "}
+{"delta": "3 加 1，"}
+{"delta": "n 變成 {n}"}
+{"delta": " | @6 [next]"}
+{"delta": " 乘以 3 加"}
+{"delta": " 1，n 變成"}
+{"delta": " {n} @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "        }\n        sequence.push_back"}
+{"delta": "(n);  //@ @"}
+{"delta": "guide {sequence} @tt"}
+{"delta": "s [next] 把"}
+{"delta": "剛"}
+{"delta": "算出來的 {n} "}
+{"delta": "接到"}
+{"delta": "數"}
+{"delta": "列尾"}
+{"delta": "端 | @2 [next"}
+{"delta": "] 再"}
+{"delta": "放"}
+{"delta": "進"}
+{"delta": " {n} | @4"}
+{"delta": " [next] 放"}
+{"delta": "進 {n} | @"}
+{"delta": "6 [next] 放"}
+{"delta": "進 {n} | @"}
+{"delta": "8 [next] 放"}
+{"delta": "進 {n} @"}
+{"delta": "layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "    }\n    return"}
+{"delta": " 0;  //@"}
+{"delta": " @guide 完整"}
+{"delta": "數列：{sequence}"}
+{"delta": " @tts [continue"}
+{"delta": "] n 終於"}
+{"delta": "變成 1，數"}
+{"delta": "列總"}
+{"delta": "共 {sequence} 這些"}
+{"delta": "數字，程式"}
+{"delta": "結束 @"}
+{"delta": "layout sidebar:60"}
+{"delta": " open:container\n"}
+{"delta": "}"}
+{"status": "檢查發現 1 個問題，自動修正一輪…"}
+{"reset": true}
+{"delta": "#include"}
+{"delta": " <iostream>\n#include <vector"}
+{"delta": ">\nusing namespace std;\n\n"}
+{"delta": "int main() {\n    int"}
+{"delta": " n = 6; "}
+{"delta": " //@ @tt"}
+{"delta": "s [next"}
+{"delta": "] 我們"}
+{"delta": "從"}
+{"delta": " n "}
+{"delta": "等於 6 開始"}
+{"delta": "，接下來要玩"}
+{"delta": "一個很有"}
+{"delta": "名的數列"}
+{"delta": "遊戲 @"}
+{"delta": "layout sidebar"}
+{"delta": ":50 open:container"}
+{"delta": " close:locals\n    vector"}
+{"delta": "<int> sequence;  //"}
+{"delta": "@ @guide {n}"}
+{"delta": " @tts"}
+{"delta": " [next] 先準備"}
+{"delta": "一個空的向量"}
+{"delta": " sequence，用來記錄走"}
+{"delta": "過的每一個數字 @"}
+{"delta": "layout sidebar:55"}
+{"delta": " open:container\n    sequence"}
+{"delta": ".push_back(n);  //"}
+{"delta": "@ @guide {sequence}"}
+{"delta": " @tts [next]"}
+{"delta": " 把起始值"}
+{"delta": " {n} 放"}
+{"delta": "進數"}
+{"delta": "列的第一格 @"}
+{"delta": "layout sidebar:55 open:"}
+{"delta": "container\n    while (n"}
+{"delta": " != 1) { "}
+{"delta": " //@ @guide 目前"}
+{"delta": "數列：{sequence}"}
+{"delta": " @tts [next]"}
+{"delta": " 只要 n 還"}
+{"delta": "不是 1，就繼續"}
+{"delta": "往下算 |"}
+{"delta": " @2 ["}
+{"delta": "next] 這一輪做"}
+{"delta": "完了，再看 n 是不是"}
+{"delta": "已經變成 1 | @"}
+{"delta": "4 [next] 繼續"}
+{"delta": "檢查 n 是否"}
+{"delta": "等於 1 | @"}
+{"delta": "6 [next] 再"}
+{"delta": "檢查一次 | @8 ["}
+{"delta": "next] 再看一次 |"}
+{"delta": " @10 [next] "}
+{"delta": "最後確認一次 @"}
+{"delta": "layout sidebar:55 open:"}
+{"delta": "container\n        if (n"}
+{"delta": " % 2 == 0"}
+{"delta": ") {  //@ @"}
+{"delta": "guide {n} @tt"}
+{"delta": "s [next] 判斷"}
+{"delta": " n 是奇"}
+{"delta": "數還是偶數，現在"}
+{"delta": " n 是 {n}"}
+{"delta": " | @2 [next]"}
+{"delta": " 再判斷一次，n"}
+{"delta": " 是 {n} |"}
+{"delta": " @4 [next] n"}
+{"delta": " 是 {n} |"}
+{"delta": " @6 [next] n"}
+{"delta": " 是 {n} |"}
+{"delta": " @8 [next] n"}
+{"delta": " 是 {n} @"}
+{"delta": "layout sidebar:55 open:"}
+{"delta": "container\n            n = n"}
+{"delta": " / 2;  //"}
+{"delta": "@ @guide {n}"}
+{"delta": " @tts [next]"}
+{"delta": " n 是偶數，"}
+{"delta": "把它除以 2 |"}
+{"delta": " @2 [next] "}
+{"delta": "又是偶數，再除以"}
+{"delta": " 2 | @4 ["}
+{"delta": "next] 除以 2"}
+{"delta": " | @6 [next]"}
+{"delta": " 除以 2 @layout"}
+{"delta": " sidebar:55 open:container"}
+{"delta": "\n        } else {"}
+{"delta": "  //@ @"}
+{"delta": "guide {n} @tt"}
+{"delta": "s [next] n "}
+{"delta": "是奇數，要走"}
+{"delta": "另一條路 | @2"}
+{"delta": " [next] 這次"}
+{"delta": "也是奇數 | @4"}
+{"delta": " [next] 又是奇"}
+{"delta": "數 | @6 [next"}
+{"delta": "] 奇數 @layout"}
+{"delta": " sidebar:55 open:container"}
+{"delta": "\n           "}
+{"delta": " n = 3 * n"}
+{"delta": " + 1;  //"}
+{"delta": "@ @guide {n}"}
+{"delta": " @tts [next]"}
+{"delta": " 奇數就乘以 "}
+{"delta": "3 再加"}
+{"delta": " 1，n"}
+{"delta": " 變成 {n} |"}
+{"delta": " @2 [next] "}
+{"delta": "乘以 3 加"}
+{"delta": " 1，n 變成"}
+{"delta": " {n} | @4"}
+{"delta": " [next] 乘以 "}
+{"delta": "3 加 1，"}
+{"delta": "n 變成 {n}"}
+{"delta": " | @6 [next]"}
+{"delta": " 乘以 3 加"}
+{"delta": " 1，n 變成"}
+{"delta": " {n} @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "        }\n        sequence"}
+{"delta": ".push_back(n);  //"}
+{"delta": "@ @guide {sequence}"}
+{"delta": " @tts [next]"}
+{"delta": " 把剛算"}
+{"delta": "出來的 {n} 接到"}
+{"delta": "數"}
+{"delta": "列尾端 |"}
+{"delta": " @2 [next] "}
+{"delta": "再放進 {n}"}
+{"delta": " | @4 [next]"}
+{"delta": " 放進 {n}"}
+{"delta": " | @6 [next]"}
+{"delta": " 放進 {n}"}
+{"delta": " | @8 [next]"}
+{"delta": " 放進 {n}"}
+{"delta": " @layout sidebar:55 open"}
+{"delta": ":container\n    }\n   "}
+{"delta": " return 0;  //"}
+{"delta": "@ @guide "}
+{"delta": "完整數"}
+{"delta": "列：{sequence} @"}
+{"delta": "tts [continue] n"}
+{"delta": " 終於變成"}
+{"delta": " 1，數"}
+{"delta": "列總共 {sequence}"}
+{"delta": " 這些數字，程式結束"}
+{"delta": " @layout sidebar"}
+{"delta": ":60 open:container\n"}
+{"delta": "}"}
+{"done": true, "code": "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    int n = 6;  //@ @tts [next] 我們從 n 等於 6 開始，接下來要玩一個很有名的數列遊戲 @layout sidebar:50 open:container close:locals\n    vector<int> sequence;  //@ @guide {n} @tts [next] 先準備一個空的向量 sequence，用來記錄走過的每一個數字 @layout sidebar:55 open:container\n    sequence.push_back(n);  //@ @guide {sequence} @tts [next] 把起始值 {n} 放進數列的第一格 @layout sidebar:55 open:container\n    while (n != 1) {  //@ @guide 目前數列：{sequence} @tts [next] 只要 n 還不是 1，就繼續往下算 | @2 [next] 這一輪做完了，再看 n 是不是已經變成 1 | @4 [next] 繼續檢查 n 是否等於 1 | @6 [next] 再檢查一次 | @8 [next] 再看一次 | @10 [next] 最後確認一次 @layout sidebar:55 open:container\n        if (n % 2 == 0) {  //@ @guide {n} @tts [next] 判斷 n 是奇數還是偶數，現在 n 是 {n} | @2 [next] 再判斷一次，n 是 {n} | @4 [next] n 是 {n} | @6 [next] n 是 {n} | @8 [next] n 是 {n} @layout sidebar:55 open:container\n            n = n / 2;  //@ @guide {n} @tts [next] n 是偶數，把它除以 2 | @2 [next] 又是偶數，再除以 2 | @4 [next] 除以 2 | @6 [next] 除以 2 @layout sidebar:55 open:container\n        } else {  //@ @guide {n} @tts [next] n 是奇數，要走另一條路 | @2 [next] 這次也是奇數 | @4 [next] 又是奇數 | @6 [next] 奇數 @layout sidebar:55 open:container\n            n = 3 * n + 1;  //@ @guide {n} @tts [next] 奇數就乘以 3 再加 1，n 變成 {n} | @2 [next] 乘以 3 加 1，n 變成 {n} | @4 [next] 乘以 3 加 1，n 變成 {n} | @6 [next] 乘以 3 加 1，n 變成 {n} @layout sidebar:55 open:container\n        }\n        sequence.push_back(n);  //@ @guide {sequence} @tts [next] 把剛算出來的 {n} 接到數列尾端 | @2 [next] 再放進 {n} | @4 [next] 放進 {n} | @6 [next] 放進 {n} | @8 [next] 放進 {n} @layout sidebar:55 open:container\n    }\n    return 0;  //@ @guide 完整數列：{sequence} @tts [continue] n 終於變成 1，數列總共 {sequence} 這些數字，程式結束 @layout sidebar:60 open:container\n}", "warnings": [], "repaired": true, "prose_guides_dropped": 0, "comments_restored": 0}

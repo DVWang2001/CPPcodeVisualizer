@@ -1,0 +1,221 @@
+{"delta": "#include"}
+{"delta": " <iostream>\n#include <vector"}
+{"delta": ">\nusing namespace std;\n\n"}
+{"delta": "int main() {\n    int"}
+{"delta": " n = 6; "}
+{"delta": " //@ @"}
+{"delta": "guide {"}
+{"delta": "n} @tt"}
+{"delta": "s ["}
+{"delta": "next] 我們"}
+{"delta": "從"}
+{"delta": " n"}
+{"delta": " "}
+{"delta": "等於 {n"}
+{"delta": "} 開始，接下來"}
+{"delta": "要"}
+{"delta": "玩"}
+{"delta": "一個很有"}
+{"delta": "名的數列"}
+{"delta": "遊戲 @"}
+{"delta": "layout sidebar"}
+{"delta": ":50"}
+{"delta": " open:container"}
+{"delta": " close"}
+{"delta": ":locals\n    vector<int"}
+{"delta": "> sequence;  //@"}
+{"delta": " @guide {"}
+{"delta": "sequence} @tts ["}
+{"delta": "next] 先準備"}
+{"delta": "一個空的向量 sequence"}
+{"delta": "，用來記錄走"}
+{"delta": "過的每一個數字 @layout sidebar"}
+{"delta": ":55"}
+{"delta": " open:container\n    sequence"}
+{"delta": ".push_back(n);  //"}
+{"delta": "@ @guide {"}
+{"delta": "sequence} @tts ["}
+{"delta": "next] 把起始"}
+{"delta": "值"}
+{"delta": " {n} 放進"}
+{"delta": "數"}
+{"delta": "列的第一"}
+{"delta": "格 @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "    while (n !="}
+{"delta": " 1) {  //"}
+{"delta": "@ @guide 目前"}
+{"delta": "數"}
+{"delta": "列：{sequence"}
+{"delta": "} @tts [next"}
+{"delta": "] 只要"}
+{"delta": " n"}
+{"delta": " 還"}
+{"delta": "不等"}
+{"delta": "於 1，就繼續"}
+{"delta": "往下"}
+{"delta": "算 | @2"}
+{"delta": " ["}
+{"delta": "next] 這一"}
+{"delta": "輪做"}
+{"delta": "完了，看看"}
+{"delta": " n 是不是"}
+{"delta": "已經"}
+{"delta": "變成 1 @"}
+{"delta": "layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "        if (n %"}
+{"delta": " 2 == 0)"}
+{"delta": " {  //@ @guide"}
+{"delta": " {"}
+{"delta": "n} @tts ["}
+{"delta": "next] 檢查"}
+{"delta": "目前的 n"}
+{"delta": " 等"}
+{"delta": "於 {n}，它是"}
+{"delta": "偶數嗎\n"}
+{"delta": "            n = n"}
+{"delta": " / 2;  //"}
+{"delta": "@ @guide {n}"}
+{"delta": " @tts [next]"}
+{"delta": " 是"}
+{"delta": "偶數，就把 n "}
+{"delta": "除以 2\n"}
+{"delta": "        } else {  //"}
+{"delta": "@ @tt"}
+{"delta": "s [next]"}
+{"delta": " 不是偶"}
+{"delta": "數的話"}
+{"delta": "，走另一"}
+{"delta": "條路\n"}
+{"delta": "            n = "}
+{"delta": "3 * n + 1"}
+{"delta": ";  //@ @guide"}
+{"delta": " {n} @tts"}
+{"delta": " [next] 是奇"}
+{"delta": "數，就把"}
+{"delta": " n 乘 3 "}
+{"delta": "再加 1\n        }\n"}
+{"delta": "        sequence.push_back(n);"}
+{"delta": "  //@ @guide {"}
+{"delta": "sequence} @tts ["}
+{"delta": "next] 把"}
+{"delta": "剛"}
+{"delta": "算出來的 {n} "}
+{"delta": "接到"}
+{"delta": "數"}
+{"delta": "列尾"}
+{"delta": "端 @"}
+{"delta": "layout sidebar"}
+{"delta": ":55 open"}
+{"delta": ":container\n    }\n   "}
+{"delta": " return 0;  //"}
+{"delta": "@ @guide {sequence}"}
+{"delta": " @tts [continue"}
+{"delta": "] n"}
+{"delta": " 已經變成"}
+{"delta": " 1，"}
+{"delta": "數"}
+{"delta": "列總"}
+{"delta": "共 {sequence}，"}
+{"delta": "程式"}
+{"delta": "結束\n"}
+{"delta": "}"}
+{"status": "檢查發現 1 個問題，自動修正一輪…"}
+{"reset": true}
+{"delta": "#include"}
+{"delta": " <iostream>\n#include <vector"}
+{"delta": ">\nusing namespace std;\n\n"}
+{"delta": "int main() {\n    int"}
+{"delta": " n = 6; "}
+{"delta": " //@ @tt"}
+{"delta": "s [next"}
+{"delta": "] 我們"}
+{"delta": "從 n"}
+{"delta": " 等於 6 "}
+{"delta": "開始，接下來要"}
+{"delta": "玩一個很有"}
+{"delta": "名的數列"}
+{"delta": "遊戲 @layout"}
+{"delta": " sidebar"}
+{"delta": ":50 open"}
+{"delta": ":container close:locals\n"}
+{"delta": "    vector<int> sequence"}
+{"delta": ";  //@ @guide"}
+{"delta": " {n} @"}
+{"delta": "tts [next] "}
+{"delta": "起始"}
+{"delta": "值 {"}
+{"delta": "n} 已經就"}
+{"delta": "位，先準備一個"}
+{"delta": "空的向量 sequence"}
+{"delta": "，用來記錄走"}
+{"delta": "過的每一個數字 @layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "    sequence.push_back(n"}
+{"delta": ");  //@ @guide"}
+{"delta": " {sequence} @tts"}
+{"delta": " [next] 把起始"}
+{"delta": "值 {n} 放"}
+{"delta": "進數"}
+{"delta": "列的第一格 @"}
+{"delta": "layout sidebar:55 open:"}
+{"delta": "container\n    while (n"}
+{"delta": " != 1) { "}
+{"delta": " //@ @guide "}
+{"delta": "目前數列：{sequence"}
+{"delta": "} @tts [next"}
+{"delta": "] 只要 n"}
+{"delta": " 還不等於 1"}
+{"delta": "，就繼續往下算"}
+{"delta": " | @"}
+{"delta": "2 [next]"}
+{"delta": " 這一輪做完了，"}
+{"delta": "看看 n 是不是已經變成"}
+{"delta": " 1 @"}
+{"delta": "layout sidebar:55 open:"}
+{"delta": "container\n        if (n"}
+{"delta": " % 2 == 0"}
+{"delta": ") {  //@"}
+{"delta": " @guide {n} @"}
+{"delta": "tts [next] "}
+{"delta": "檢查目前的 n 等"}
+{"delta": "於 {n}，它是"}
+{"delta": "偶數嗎\n           "}
+{"delta": " n = n / 2"}
+{"delta": ";  //@ @guide"}
+{"delta": " {n} @tts"}
+{"delta": " [next] 是"}
+{"delta": "偶數，就把"}
+{"delta": " n 除以 2\n"}
+{"delta": "        } else {"}
+{"delta": "  //@"}
+{"delta": " @tts [next]"}
+{"delta": " 不是偶數的話，"}
+{"delta": "走另一條路\n           "}
+{"delta": " n = 3 * n"}
+{"delta": " + 1;  //"}
+{"delta": "@ @guide {n}"}
+{"delta": " @tts [next]"}
+{"delta": " 是奇數，就把"}
+{"delta": " n 乘 3 "}
+{"delta": "再加 1\n        }\n"}
+{"delta": "        sequence.push_back(n);"}
+{"delta": "  //@ @guide {"}
+{"delta": "sequence} @tts ["}
+{"delta": "next] 把剛"}
+{"delta": "算出來的 {n} "}
+{"delta": "接到數"}
+{"delta": "列尾端 @"}
+{"delta": "layout sidebar:"}
+{"delta": "55 open"}
+{"delta": ":container\n    }\n   "}
+{"delta": " return 0;  //"}
+{"delta": "@ @guide {sequence}"}
+{"delta": " @tts [continue"}
+{"delta": "] n"}
+{"delta": " 已經變成 1，"}
+{"delta": "數列總共"}
+{"delta": " {sequence}，程式結束"}
+{"delta": "\n}"}
+{"done": true, "code": "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    int n = 6;  //@ @tts [next] 我們從 n 等於 6 開始，接下來要玩一個很有名的數列遊戲 @layout sidebar:50 open:container close:locals\n    vector<int> sequence;  //@ @guide {n} @tts [next] 起始值 {n} 已經就位，先準備一個空的向量 sequence，用來記錄走過的每一個數字 @layout sidebar:55 open:container\n    sequence.push_back(n);  //@ @guide {sequence} @tts [next] 把起始值 {n} 放進數列的第一格 @layout sidebar:55 open:container\n    while (n != 1) {  //@ @guide 目前數列：{sequence} @tts [next] 只要 n 還不等於 1，就繼續往下算 | @2 [next] 這一輪做完了，看看 n 是不是已經變成 1 @layout sidebar:55 open:container\n        if (n % 2 == 0) {  //@ @guide {n} @tts [next] 檢查目前的 n 等於 {n}，它是偶數嗎\n            n = n / 2;  //@ @guide {n} @tts [next] 是偶數，就把 n 除以 2\n        } else {  //@ @tts [next] 不是偶數的話，走另一條路\n            n = 3 * n + 1;  //@ @guide {n} @tts [next] 是奇數，就把 n 乘 3 再加 1\n        }\n        sequence.push_back(n);  //@ @guide {sequence} @tts [next] 把剛算出來的 {n} 接到數列尾端 @layout sidebar:55 open:container\n    }\n    return 0;  //@ @guide {sequence} @tts [continue] n 已經變成 1，數列總共 {sequence}，程式結束\n}", "warnings": [], "repaired": true, "prose_guides_dropped": 0, "comments_restored": 0}

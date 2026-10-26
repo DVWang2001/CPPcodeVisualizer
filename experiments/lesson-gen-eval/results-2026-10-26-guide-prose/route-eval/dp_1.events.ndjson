@@ -1,0 +1,218 @@
+{"delta": "#include"}
+{"delta": " <iostream>\n#include <vector"}
+{"delta": ">\n\nint"}
+{"delta": " main() {\n    std::"}
+{"delta": "vector<std::vector<int>>"}
+{"delta": " table(4, std::"}
+{"delta": "vector<int>(7, "}
+{"delta": "0));  //@"}
+{"delta": " @"}
+{"delta": "guide {"}
+{"delta": "table} @"}
+{"delta": "tt"}
+{"delta": "s [next"}
+{"delta": "] 這次"}
+{"delta": "要"}
+{"delta": "填的不是"}
+{"delta": "一列"}
+{"delta": "，而"}
+{"delta": "是一整"}
+{"delta": "張表，四"}
+{"delta": "列七行"}
+{"delta": "，先"}
+{"delta": "全部設"}
+{"delta": "成零"}
+{"delta": " @layout sidebar"}
+{"delta": ":55"}
+{"delta": " open:container close"}
+{"delta": ":locals\n    for ("}
+{"delta": "int i = 1;"}
+{"delta": " i <= 3; ++"}
+{"delta": "i) {  //@"}
+{"delta": " @guide "}
+{"delta": "外層迴"}
+{"delta": "圈：一列一列"}
+{"delta": "往下填 @tts ["}
+{"delta": "next] 開始一"}
+{"delta": "列一列往下填 |"}
+{"delta": " @2"}
+{"delta": " ["}
+{"delta": "next] 這一列填"}
+{"delta": "完了，看"}
+{"delta": "還有沒有"}
+{"delta": "下一列\n       "}
+{"delta": " for (int w"}
+{"delta": " = 0; w <="}
+{"delta": " 6; ++w)"}
+{"delta": " {  //@ @guide"}
+{"delta": " 內"}
+{"delta": "層迴圈：第 {"}
+{"delta": "i} 列，一行"}
+{"delta": "一行往"}
+{"delta": "右填 @tts ["}
+{"delta": "next] 第"}
+{"delta": " {i} 列，"}
+{"delta": "從"}
+{"delta": "最"}
+{"delta": "左邊開始"}
+{"delta": "一行一行往"}
+{"delta": "右 |"}
+{"delta": " @2 [next] "}
+{"delta": "這"}
+{"delta": "一行填"}
+{"delta": "完了，看"}
+{"delta": "還有沒有下一行\n           "}
+{"delta": " int value = i"}
+{"delta": " * 10 + w;"}
+{"delta": "  //@"}
+{"delta": " @guide {"}
+{"delta": "i"}
+{"delta": "} {w} @"}
+{"delta": "tts [next] "}
+{"delta": "第 {i} 列"}
+{"delta": "第 {w} 行"}
+{"delta": "，先"}
+{"delta": "算出要"}
+{"delta": "填的值\n            table"}
+{"delta": "[i][w] = value"}
+{"delta": ";  //@ @guide"}
+{"delta": " {table[i][w]:"}
+{"delta": "lightblue} @tts"}
+{"delta": " [next] 把 {"}
+{"delta": "value} 寫進第"}
+{"delta": " {i} 列第"}
+{"delta": " {w} 行 @"}
+{"delta": "layout pop:"}
+{"delta": "table\n        }\n    }\n"}
+{"delta": "    int corner = table"}
+{"delta": "[3][6]; "}
+{"delta": " //@ @guide {table"}
+{"delta": "[3][6]:orange"}
+{"delta": "} @tts [next"}
+{"delta": "] 整"}
+{"delta": "張表填完了"}
+{"delta": "，把"}
+{"delta": "最"}
+{"delta": "右下角那一格讀"}
+{"delta": "出來 @"}
+{"delta": "layout pop:table:orange"}
+{"delta": "\n    std"}
+{"delta": "::cout << corner << \"\\"}
+{"delta": "n\";  //@ @"}
+{"delta": "guide"}
+{"delta": " {"}
+{"delta": "corner} @tt"}
+{"delta": "s [next] 印"}
+{"delta": "出"}
+{"delta": " {corner}\n"}
+{"delta": "    return 0; "}
+{"delta": " //@ @tt"}
+{"delta": "s [continue"}
+{"delta": "] 程式結束\n"}
+{"delta": "}"}
+{"status": "檢查發現 1 個問題，自動修正一輪…"}
+{"reset": true}
+{"delta": "//"}
+{"delta": " 教案"}
+{"delta": "：DP 課"}
+{"delta": " ②——兩"}
+{"delta": "層迴圈把一張表"}
+{"delta": "填滿\n// 跟"}
+{"delta": "第 ① 課比"}
+{"delta": "只多一件事：格子"}
+{"delta": "從一列變"}
+{"delta": "成一張表，所以編"}
+{"delta": "號要兩個（列"}
+{"delta": " i、行 w）。\n//"}
+{"delta": " 這張表的大小（"}
+{"delta": "4 列 7 "}
+{"delta": "行）和第 ③"}
+{"delta": " 課的背包表一模"}
+{"delta": "一樣，中間"}
+{"delta": "的公式故意寫"}
+{"delta": "得很笨。\n#include <iostream"}
+{"delta": ">\n#include <vector>\n\nint"}
+{"delta": " main() {\n    std::"}
+{"delta": "vector<std::vector<int>>"}
+{"delta": " table(4"}
+{"delta": ", std::vector<int>("}
+{"delta": "7, 0)); "}
+{"delta": " //@ @tt"}
+{"delta": "s [next"}
+{"delta": "] 這次要填"}
+{"delta": "的不是一列，而是一"}
+{"delta": "整張表，四列"}
+{"delta": "七行，先"}
+{"delta": "全部設成零"}
+{"delta": " @layout sidebar"}
+{"delta": ":55 open:container"}
+{"delta": " close:locals\n    for"}
+{"delta": " (int i = 1"}
+{"delta": "; i <= 3;"}
+{"delta": " ++i) {  //"}
+{"delta": "@ @guide {table}"}
+{"delta": " "}
+{"delta": "外層迴"}
+{"delta": "圈：一列一"}
+{"delta": "列往下填 @tts"}
+{"delta": " [next] 開始"}
+{"delta": "一列一列往下"}
+{"delta": "填 | @2"}
+{"delta": " [next] 這一"}
+{"delta": "列填完了，看"}
+{"delta": "還有沒有下一列\n       "}
+{"delta": " for (int w"}
+{"delta": " = 0; w <="}
+{"delta": " 6; ++w)"}
+{"delta": " {  //@"}
+{"delta": " @guide 內層"}
+{"delta": "迴圈：第 {"}
+{"delta": "i} 列，一行"}
+{"delta": "一行往右填"}
+{"delta": " @tts [next]"}
+{"delta": " 第 {i} "}
+{"delta": "列，從最左邊"}
+{"delta": "開始一行一行往"}
+{"delta": "右 | @2 [next"}
+{"delta": "] 這一行填完了"}
+{"delta": "，看還有沒有"}
+{"delta": "下一行\n           "}
+{"delta": " int value = i"}
+{"delta": " * 10 + w;"}
+{"delta": "  //@ @guide {"}
+{"delta": "i} {w} @"}
+{"delta": "tts [next] "}
+{"delta": "第 {i} 列"}
+{"delta": "第 {w} 行"}
+{"delta": "，先算出要"}
+{"delta": "填的值\n            table[i"}
+{"delta": "][w] = value;"}
+{"delta": "  //@ @guide {"}
+{"delta": "table[i][w]:light"}
+{"delta": "blue} @tts ["}
+{"delta": "next] 把 {value"}
+{"delta": "} 寫進第 {"}
+{"delta": "i} 列第 {"}
+{"delta": "w} 行 @layout"}
+{"delta": " pop:"}
+{"delta": "table\n        }\n    }\n"}
+{"delta": "    int corner ="}
+{"delta": " table[3][6];"}
+{"delta": "  //@ @guide {"}
+{"delta": "table[3][6]:"}
+{"delta": "orange} @tts ["}
+{"delta": "next] 整張"}
+{"delta": "表填完了，把"}
+{"delta": "最右下角那一格"}
+{"delta": "讀出來 @layout pop:"}
+{"delta": "table:orange\n    std"}
+{"delta": "::cout << corner << \"\\"}
+{"delta": "n\";  //@"}
+{"delta": " @guide {corner}"}
+{"delta": " @tts [next]"}
+{"delta": " 印出 {corner"}
+{"delta": "}\n    return 0;"}
+{"delta": "  //@ @tts"}
+{"delta": " [continue] 程式"}
+{"delta": "結束\n}"}
+{"done": true, "code": "// 教案：DP 課 ②——兩層迴圈把一張表填滿\n// 跟第 ① 課比只多一件事：格子從一列變成一張表，所以編號要兩個（列 i、行 w）。\n// 這張表的大小（4 列 7 行）和第 ③ 課的背包表一模一樣，中間的公式故意寫得很笨。\n#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<std::vector<int>> table(4, std::vector<int>(7, 0));  //@ @tts [next] 這次要填的不是一列，而是一整張表，四列七行，先全部設成零 @layout sidebar:55 open:container close:locals\n    for (int i = 1; i <= 3; ++i) {  //@ @guide {table} 外層迴圈：一列一列往下填 @tts [next] 開始一列一列往下填 | @2 [next] 這一列填完了，看還有沒有下一列\n        for (int w = 0; w <= 6; ++w) {  //@ @guide 內層迴圈：第 {i} 列，一行一行往右填 @tts [next] 第 {i} 列，從最左邊開始一行一行往右 | @2 [next] 這一行填完了，看還有沒有下一行\n            int value = i * 10 + w;  //@ @guide {i} {w} @tts [next] 第 {i} 列第 {w} 行，先算出要填的值\n            table[i][w] = value;  //@ @guide {table[i][w]:lightblue} @tts [next] 把 {value} 寫進第 {i} 列第 {w} 行 @layout pop:table\n        }\n    }\n    int corner = table[3][6];  //@ @guide {table[3][6]:orange} @tts [next] 整張表填完了，把最右下角那一格讀出來 @layout pop:table:orange\n    std::cout << corner << \"\\n\";  //@ @guide {corner} @tts [next] 印出 {corner}\n    return 0;  //@ @tts [continue] 程式結束\n}", "warnings": [], "repaired": true, "prose_guides_dropped": 0, "comments_restored": 0}

@@ -1,0 +1,391 @@
+{"delta": "//"}
+{"delta": " 教案"}
+{"delta": "：費"}
+{"delta": "氏數"}
+{"delta": "列 top-down（"}
+{"delta": "遞迴 + 記憶化"}
+{"delta": "）——fib"}
+{"delta": "(6) 只會"}
+{"delta": "呼叫 11 次\n"}
+{"delta": "// 沒有記憶"}
+{"delta": "時 fib(6) "}
+{"delta": "要呼叫 25 次"}
+{"delta": "；有 memo"}
+{"delta": " 之後每個 n"}
+{"delta": " 只真正展開"}
+{"delta": "一次，其餘直接"}
+{"delta": "查表。\n// 公式"}
+{"delta": "：呼叫次數 = "}
+{"delta": "2n - 1（"}
+{"delta": "n = 6 → "}
+{"delta": "11 次）。看"}
+{"delta": "呼叫樹：左"}
+{"delta": "邊一路往下算，右"}
+{"delta": "邊全是查表葉"}
+{"delta": "節點。\n#include <iostream"}
+{"delta": ">\n#include <vector>\n\nstd"}
+{"delta": "::vector<int> memo("}
+{"delta": "7, -1);  "}
+{"delta": " // memo[n"}
+{"delta": "] ＝ fib"}
+{"delta": "(n)，-1 ＝"}
+{"delta": " 還沒算過\n\nint"}
+{"delta": " fib(int n) {\n"}
+{"delta": "    int"}
+{"delta": " result;\n"}
+{"delta": "    if (n <="}
+{"delta": " 1) {\n"}
+{"delta": "        result = n"}
+{"delta": ";\n        return result"}
+{"delta": ";  //@"}
+{"delta": " @guide"}
+{"delta": " [base"}
+{"delta": "#"}
+{"delta": "green"}
+{"delta": "] 回傳 {"}
+{"delta": "result} ← base case"}
+{"delta": " (n≤"}
+{"delta": "1)"}
+{"delta": " @tts"}
+{"delta": " ["}
+{"delta": "step"}
+{"delta": "-out] n"}
+{"delta": " 等"}
+{"delta": "於 {"}
+{"delta": "n}，這是"}
+{"delta": " base case，直接"}
+{"delta": "回傳 {result} @"}
+{"delta": "layout sidebar"}
+{"delta": ":50 open:call"}
+{"delta": "graph,container\n    }\n"}
+{"delta": "    if (m"}
+{"delta": "emo[n] >= 0"}
+{"delta": ") {\n"}
+{"delta": "        result = memo[n"}
+{"delta": "];\n        return result; "}
+{"delta": " //@ @guide [查"}
+{"delta": "表#orange"}
+{"delta": "] 回傳 {result"}
+{"delta": "} ← 直接"}
+{"delta": "查記憶表 @tt"}
+{"delta": "s [step-out"}
+{"delta": "] memo 裡"}
+{"delta": "已經有答案"}
+{"delta": " {"}
+{"delta": "result}，直接查"}
+{"delta": "表回傳，"}
+{"delta": "不用再展開"}
+{"delta": " @layout sidebar:50 open"}
+{"delta": ":callgraph,container\n"}
+{"delta": "    }\n    int a"}
+{"delta": " = fib(n - 1"}
+{"delta": ");  //@ @guide"}
+{"delta": " [左"}
+{"delta": "子問題"}
+{"delta": "#blue] n"}
+{"delta": "={n} @"}
+{"delta": "tts ["}
+{"delta": "step-in] 先算"}
+{"delta": "左邊"}
+{"delta": "的子問題，fib"}
+{"delta": "({"}
+{"delta": "n}"}
+{"delta": " -"}
+{"delta": " 1) @layout sidebar"}
+{"delta": ":50 open:callgraph"}
+{"delta": ",container\n    int b"}
+{"delta": " = fib(n - 2"}
+{"delta": ");  //@ @guide"}
+{"delta": " [右子問題#blue"}
+{"delta": "] n"}
+{"delta": "={n} @tts"}
+{"delta": " [step-in] 再"}
+{"delta": "算右邊的子問題，"}
+{"delta": "fib({n} - "}
+{"delta": "2) @layout sidebar:"}
+{"delta": "50 open:callgraph,"}
+{"delta": "container\n    result = a"}
+{"delta": " + b;  //@"}
+{"delta": " @guide [合"}
+{"delta": "併#yellow"}
+{"delta": "] {a} +"}
+{"delta": " {b} @tts"}
+{"delta": " [next]"}
+{"delta": " 左邊 {"}
+{"delta": "a} 加右邊"}
+{"delta": " {b}，"}
+{"delta": "就是"}
+{"delta": " fib"}
+{"delta": "({n}) 的答案"}
+{"delta": " @layout sidebar:50 open"}
+{"delta": ":callgraph,container\n"}
+{"delta": "    memo[n]"}
+{"delta": " = result;  //@"}
+{"delta": " @guide [記憶"}
+{"delta": "#"}
+{"delta": "p"}
+{"delta": "ink] memo"}
+{"delta": "[{n}]={"}
+{"delta": "result} @tts ["}
+{"delta": "next] 把答案"}
+{"delta": " {result} 記"}
+{"delta": "進 memo[{"}
+{"delta": "n}]，下次就不用"}
+{"delta": "重"}
+{"delta": "算 @layout sidebar:50"}
+{"delta": " open:callgraph,container"}
+{"delta": "\n    return result; "}
+{"delta": " //@ @guide [回"}
+{"delta": "傳#green] 回"}
+{"delta": "傳 {result} ←"}
+{"delta": " {a} + {b"}
+{"delta": "} @tts [step"}
+{"delta": "-out] 回傳 {"}
+{"delta": "result} @layout sidebar"}
+{"delta": ":50 open:callgraph"}
+{"delta": ",container\n}\n"}
+{"delta": "int main()"}
+{"delta": " {\n    int total"}
+{"delta": " = fib(6); "}
+{"delta": " //@ @guide [main"}
+{"delta": "#"}
+{"delta": "red"}
+{"delta": "] 呼叫"}
+{"delta": " fib(6) @tt"}
+{"delta": "s [step"}
+{"delta": "-in] 從 main"}
+{"delta": " 出發"}
+{"delta": "，呼叫 fib(6)"}
+{"delta": " | @2"}
+{"delta": " [next]"}
+{"delta": " 遞迴全部結束"}
+{"delta": "，回到 main，"}
+{"delta": "答案是"}
+{"delta": " {total} @layout sidebar"}
+{"delta": ":50 open:callgraph"}
+{"delta": ",container\n    std::"}
+{"delta": "cout << total << std"}
+{"delta": "::endl;  //@"}
+{"delta": " @tt"}
+{"delta": "s [next] 把"}
+{"delta": "答案"}
+{"delta": " {total} 印出來"}
+{"delta": " @layout sidebar:50 open"}
+{"delta": ":callgraph,container\n"}
+{"delta": "    return 0; "}
+{"delta": " //@ @tts ["}
+{"delta": "continue] 程式結束 @"}
+{"delta": "layout sidebar:50 open:"}
+{"delta": "callgraph,"}
+{"delta": "container\n}"}
+{"status": "檢查發現 5 個問題，自動修正一輪…"}
+{"reset": true}
+{"delta": "//"}
+{"delta": " 教案"}
+{"delta": "：費"}
+{"delta": "氏數列"}
+{"delta": " top-down（遞迴"}
+{"delta": " + 記憶化）——"}
+{"delta": "fib(6) 只"}
+{"delta": "會呼叫 11 次"}
+{"delta": "\n// 沒有記憶時"}
+{"delta": " fib(6) 要"}
+{"delta": "呼叫 25 次；"}
+{"delta": "有 memo 之後每個 n"}
+{"delta": " 只真正展開"}
+{"delta": "一次，其餘直接"}
+{"delta": "查表。\n// 公式"}
+{"delta": "：呼叫次數 = "}
+{"delta": "2n - 1（"}
+{"delta": "n = 6 → "}
+{"delta": "11 次）。看呼叫"}
+{"delta": "樹：左邊一路"}
+{"delta": "往下算，右邊全是"}
+{"delta": "查表葉節點。\n"}
+{"delta": "#include <iostream>\n#include <"}
+{"delta": "vector>\n\nstd::vector<int"}
+{"delta": "> memo(7, -"}
+{"delta": "1);   // memo"}
+{"delta": "[n] ＝ fib"}
+{"delta": "(n)，-1 ＝"}
+{"delta": " 還沒算過\n\nint"}
+{"delta": " fib(int n) {\n   "}
+{"delta": " int result;\n"}
+{"delta": "    if (n <="}
+{"delta": " 1) {  //"}
+{"delta": "@ @"}
+{"delta": "guide"}
+{"delta": " [判斷"}
+{"delta": "#"}
+{"delta": "blue"}
+{"delta": "] n"}
+{"delta": "={n} @tts"}
+{"delta": " [next"}
+{"delta": "] 檢查 n 是不是"}
+{"delta": "小"}
+{"delta": "於等"}
+{"delta": "於 1，目前"}
+{"delta": " n 是 {n}"}
+{"delta": " | @2"}
+{"delta": " [next] 再"}
+{"delta": "檢查"}
+{"delta": "一次 base"}
+{"delta": " case"}
+{"delta": " @layout"}
+{"delta": " sidebar"}
+{"delta": ":50 open"}
+{"delta": ":callgraph,"}
+{"delta": "container\n        result = n"}
+{"delta": ";"}
+{"delta": "  //@ @guide ["}
+{"delta": "base#green"}
+{"delta": "] n={n} @"}
+{"delta": "tts [next] n"}
+{"delta": " 是 {n}"}
+{"delta": "，base"}
+{"delta": " case 的答案"}
+{"delta": "就是 {"}
+{"delta": "n} @layout sidebar:"}
+{"delta": "50 open:callgraph,"}
+{"delta": "container\n        return result"}
+{"delta": ";  //@"}
+{"delta": " @guide [base#"}
+{"delta": "green] 回傳 {"}
+{"delta": "result} ← base"}
+{"delta": " case (n≤"}
+{"delta": "1) @tts ["}
+{"delta": "step-out] n"}
+{"delta": " 等"}
+{"delta": "於 {n}，這是"}
+{"delta": " base case，直接回傳"}
+{"delta": " {result} @layout sidebar"}
+{"delta": ":50 open:callgraph"}
+{"delta": ",container\n    }\n   "}
+{"delta": " if (m"}
+{"delta": "emo[n] >= 0"}
+{"delta": ") {  //@"}
+{"delta": " @guide [查"}
+{"delta": "表#orange"}
+{"delta": "] memo[{"}
+{"delta": "n}]={memo[n"}
+{"delta": "]} @tts ["}
+{"delta": "next] 看看"}
+{"delta": " memo[{n}] 是不是"}
+{"delta": "已經算過了，目前"}
+{"delta": "是 {memo[n]}"}
+{"delta": " | @2"}
+{"delta": " [next] 再"}
+{"delta": "確認"}
+{"delta": "一次記憶"}
+{"delta": "表 @layout sidebar:50"}
+{"delta": " open:callgraph,container"}
+{"delta": "\n        result"}
+{"delta": " = memo[n];  //"}
+{"delta": "@ @guide [查表"}
+{"delta": "#orange] memo[{n"}
+{"delta": "}]={memo[n]}"}
+{"delta": " @tts [next]"}
+{"delta": " 記憶"}
+{"delta": "表裡已經"}
+{"delta": "有答案"}
+{"delta": " {"}
+{"delta": "memo[n]}，直接"}
+{"delta": "拿"}
+{"delta": "來用"}
+{"delta": " @layout sidebar:50 open"}
+{"delta": ":callgraph,container\n"}
+{"delta": "        return result; "}
+{"delta": " //@ @guide [查"}
+{"delta": "表#orange] 回"}
+{"delta": "傳 {result} ←"}
+{"delta": " 直接查記憶表 @"}
+{"delta": "tts [step-out"}
+{"delta": "] memo"}
+{"delta": " 裡已經有答案"}
+{"delta": " {result}，直接查"}
+{"delta": "表回傳，不用再"}
+{"delta": "展開 @layout sidebar:50"}
+{"delta": " open:callgraph,container"}
+{"delta": "\n    }\n    int a"}
+{"delta": " = fib(n - 1"}
+{"delta": ");  //@"}
+{"delta": " @guide [左"}
+{"delta": "子問題#blue] n"}
+{"delta": "={n} @tts"}
+{"delta": " [step-in"}
+{"delta": "] 先算"}
+{"delta": "左邊的子問題，"}
+{"delta": "fib({n"}
+{"delta": "} - 1) @"}
+{"delta": "layout sidebar:50 open:"}
+{"delta": "callgraph,container\n   "}
+{"delta": " int b = fib(n -"}
+{"delta": " 2);  //@"}
+{"delta": " @guide [右子問題"}
+{"delta": "#blue] n={n"}
+{"delta": "} @tts [step"}
+{"delta": "-in] 再算右"}
+{"delta": "邊的子問題，fib({"}
+{"delta": "n} - 2)"}
+{"delta": " @layout sidebar:50 open"}
+{"delta": ":callgraph,container\n"}
+{"delta": "    result = a + b"}
+{"delta": ";  //@ @"}
+{"delta": "guide [合"}
+{"delta": "併#yellow] {"}
+{"delta": "a} + {b}"}
+{"delta": " @tts ["}
+{"delta": "next] 左邊"}
+{"delta": " {a} 加右"}
+{"delta": "邊 {b}，就是"}
+{"delta": " fib({n})"}
+{"delta": " 的答案 @layout sidebar"}
+{"delta": ":50 open:callgraph"}
+{"delta": ",container\n    memo[n"}
+{"delta": "] = result;  //"}
+{"delta": "@ @guide [記憶#"}
+{"delta": "pink] memo[{"}
+{"delta": "n}]={result} @"}
+{"delta": "tts [next] "}
+{"delta": "把答案 {result} "}
+{"delta": "記進 memo[{n}]"}
+{"delta": "，下次就不用重"}
+{"delta": "算 @layout sidebar:50"}
+{"delta": " open:callgraph,container"}
+{"delta": "\n    return result; "}
+{"delta": " //@ @guide [回"}
+{"delta": "傳#green] 回"}
+{"delta": "傳 {result} ←"}
+{"delta": " {a} + {b"}
+{"delta": "} @tts ["}
+{"delta": "step-out] 回傳"}
+{"delta": " {result} @layout sidebar"}
+{"delta": ":50 open:callgraph"}
+{"delta": ",container\n}\nint main"}
+{"delta": "() {\n    int total ="}
+{"delta": " fib(6);  //"}
+{"delta": "@ @guide [main#"}
+{"delta": "red] 呼叫 fib"}
+{"delta": "(6) @tts"}
+{"delta": " [step-in"}
+{"delta": "] 從 main "}
+{"delta": "出發，呼叫 fib(6"}
+{"delta": ") | @2"}
+{"delta": " [next]"}
+{"delta": " 遞迴全部"}
+{"delta": "結束，回到 main @"}
+{"delta": "layout sidebar:50 open:"}
+{"delta": "callgraph,container\n   "}
+{"delta": " std::cout << total <<"}
+{"delta": " std::endl;  //"}
+{"delta": "@ @tts [next"}
+{"delta": "] 把答案 {"}
+{"delta": "total} 印出來 @"}
+{"delta": "layout sidebar:50 open:"}
+{"delta": "callgraph,container\n   "}
+{"delta": " return 0;  //"}
+{"delta": "@ @tts [continue"}
+{"delta": "] 程式結束 @layout"}
+{"delta": " sidebar:50 open:call"}
+{"delta": "graph,container\n}"}
+{"done": true, "code": "// 教案：費氏數列 top-down（遞迴 + 記憶化）——fib(6) 只會呼叫 11 次\n// 沒有記憶時 fib(6) 要呼叫 25 次；有 memo 之後每個 n 只真正展開一次，其餘直接查表。\n// 公式：呼叫次數 = 2n - 1（n = 6 → 11 次）。看呼叫樹：左邊一路往下算，右邊全是查表葉節點。\n#include <iostream>\n#include <vector>\n\nstd::vector<int> memo(7, -1);   // memo[n] ＝ fib(n)，-1 ＝ 還沒算過\n\nint fib(int n) {\n    int result;\n    if (n <= 1) {  //@ @guide [判斷#blue] n={n} @tts [next] 檢查 n 是不是小於等於 1，目前 n 是 {n} | @2 [next] 再檢查一次 base case @layout sidebar:50 open:callgraph,container\n        result = n;  //@ @guide [base#green] n={n} @tts [next] n 是 {n}，base case 的答案就是 {n} @layout sidebar:50 open:callgraph,container\n        return result;  //@ @guide [base#green] 回傳 {result} ← base case (n≤1) @tts [step-out] n 等於 {n}，這是 base case，直接回傳 {result} @layout sidebar:50 open:callgraph,container\n    }\n    if (memo[n] >= 0) {  //@ @guide [查表#orange] memo[{n}]={memo[n]} @tts [next] 看看 memo[{n}] 是不是已經算過了，目前是 {memo[n]} | @2 [next] 再確認一次記憶表 @layout sidebar:50 open:callgraph,container\n        result = memo[n];  //@ @guide [查表#orange] memo[{n}]={memo[n]} @tts [next] 記憶表裡已經有答案 {memo[n]}，直接拿來用 @layout sidebar:50 open:callgraph,container\n        return result;  //@ @guide [查表#orange] 回傳 {result} ← 直接查記憶表 @tts [step-out] memo 裡已經有答案 {result}，直接查表回傳，不用再展開 @layout sidebar:50 open:callgraph,container\n    }\n    int a = fib(n - 1);  //@ @guide [左子問題#blue] n={n} @tts [step-in] 先算左邊的子問題，fib({n} - 1) @layout sidebar:50 open:callgraph,container\n    int b = fib(n - 2);  //@ @guide [右子問題#blue] n={n} @tts [step-in] 再算右邊的子問題，fib({n} - 2) @layout sidebar:50 open:callgraph,container\n    result = a + b;  //@ @guide [合併#yellow] {a} + {b} @tts [next] 左邊 {a} 加右邊 {b}，就是 fib({n}) 的答案 @layout sidebar:50 open:callgraph,container\n    memo[n] = result;  //@ @guide [記憶#pink] memo[{n}]={result} @tts [next] 把答案 {result} 記進 memo[{n}]，下次就不用重算 @layout sidebar:50 open:callgraph,container\n    return result;  //@ @guide [回傳#green] 回傳 {result} ← {a} + {b} @tts [step-out] 回傳 {result} @layout sidebar:50 open:callgraph,container\n}\nint main() {\n    int total = fib(6);  //@ @guide [main#red] 呼叫 fib(6) @tts [step-in] 從 main 出發，呼叫 fib(6) | @2 [next] 遞迴全部結束，回到 main @layout sidebar:50 open:callgraph,container\n    std::cout << total << std::endl;  //@ @tts [next] 把答案 {total} 印出來 @layout sidebar:50 open:callgraph,container\n    return 0;  //@ @tts [continue] 程式結束 @layout sidebar:50 open:callgraph,container\n}", "warnings": [], "repaired": true, "prose_guides_dropped": 0, "comments_restored": 0}

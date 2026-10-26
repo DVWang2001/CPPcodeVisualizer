@@ -1,0 +1,207 @@
+{"delta": "#include"}
+{"delta": " <iostream>\n#include <vector"}
+{"delta": ">\nusing namespace std;\n\nint"}
+{"delta": " main() {\n    int n"}
+{"delta": " = 12;  //"}
+{"delta": "@ @guide"}
+{"delta": " n"}
+{"delta": "={n}"}
+{"delta": " @tts"}
+{"delta": " ["}
+{"delta": "next] 我們"}
+{"delta": "要找"}
+{"delta": " {"}
+{"delta": "n} 的所有"}
+{"delta": "因數，先"}
+{"delta": "宣告"}
+{"delta": " n"}
+{"delta": " 等"}
+{"delta": "於 {n} @layout"}
+{"delta": " sidebar:"}
+{"delta": "50"}
+{"delta": " open:container close"}
+{"delta": ":locals\n    int sum"}
+{"delta": " = 0;  //"}
+{"delta": "@ @guide sum"}
+{"delta": "={sum} @tts"}
+{"delta": " [next] 再"}
+{"delta": "宣告 sum"}
+{"delta": " 等"}
+{"delta": "於 {"}
+{"delta": "sum}，等一下"}
+{"delta": "用來"}
+{"delta": "累"}
+{"delta": "加所有因數 @"}
+{"delta": "layout sidebar:50 open:"}
+{"delta": "container\n    vector<int>"}
+{"delta": " factors;  //@"}
+{"delta": " @guide {"}
+{"delta": "factors} @tts ["}
+{"delta": "next] 準備一個空的"}
+{"delta": "向量 factors"}
+{"delta": "，把"}
+{"delta": "找到的因"}
+{"delta": "數一個個"}
+{"delta": "放進來"}
+{"delta": " @layout sidebar:55"}
+{"delta": " open:container\n    for"}
+{"delta": " (int i = 1"}
+{"delta": "; i <= n; i"}
+{"delta": "++) {  //@"}
+{"delta": " @guide "}
+{"delta": "從"}
+{"delta": " 1 開始一個"}
+{"delta": "一個檢查"}
+{"delta": "是不是"}
+{"delta": "因"}
+{"delta": "數 @tt"}
+{"delta": "s [next] 開始"}
+{"delta": "從"}
+{"delta": " 1 數"}
+{"delta": "到 {n}，一個"}
+{"delta": "一個檢查 | @"}
+{"delta": "2 [next] 換"}
+{"delta": "下"}
+{"delta": "一個數字試"}
+{"delta": "試"}
+{"delta": "看"}
+{"delta": " @"}
+{"delta": "layout sidebar"}
+{"delta": ":55 open:container\n"}
+{"delta": "        if"}
+{"delta": " (n % i == "}
+{"delta": "0) {  //@"}
+{"delta": " @guide "}
+{"delta": "檢查 {n"}
+{"delta": "} 能不能"}
+{"delta": "被 {i} 整除"}
+{"delta": " @tts [next]"}
+{"delta": " 檢查 {n"}
+{"delta": "} 除以 {i}"}
+{"delta": " 的餘數是不是 "}
+{"delta": "0\n           "}
+{"delta": " sum += i"}
+{"delta": ";  //@ @guide"}
+{"delta": " sum={sum"}
+{"delta": "} @tts [next"}
+{"delta": "] "}
+{"delta": "是的話"}
+{"delta": "，把 {i} "}
+{"delta": "加"}
+{"delta": "進 sum"}
+{"delta": "，目前 sum"}
+{"delta": " 變成"}
+{"delta": " {sum}\n            factors.push"}
+{"delta": "_back(i);  //@"}
+{"delta": " @guide {factors} @"}
+{"delta": "tts [next] "}
+{"delta": "同時把 {i} "}
+{"delta": "放進 factors"}
+{"delta": " 向量\n"}
+{"delta": "        }\n    }\n    return"}
+{"delta": " 0;  //@"}
+{"delta": " @guide "}
+{"delta": "因數共"}
+{"delta": " {factors"}
+{"delta": "}，"}
+{"delta": "總"}
+{"delta": "和 {sum} @tt"}
+{"delta": "s [continue"}
+{"delta": "] "}
+{"delta": "迴"}
+{"delta": "圈結束，{n}"}
+{"delta": " 的因數是 {"}
+{"delta": "factors}，全部"}
+{"delta": "加"}
+{"delta": "起來是 {sum}，"}
+{"delta": "程式結束 @layout"}
+{"delta": " sidebar:"}
+{"delta": "60 open:container"}
+{"delta": "\n}"}
+{"status": "檢查發現 2 個問題，自動修正一輪…"}
+{"reset": true}
+{"delta": "#include"}
+{"delta": " <iostream>\n#include <vector"}
+{"delta": ">\nusing namespace std;\n\n"}
+{"delta": "int main() {\n    int"}
+{"delta": " n = 12; "}
+{"delta": " //@ @tt"}
+{"delta": "s ["}
+{"delta": "next] 我們"}
+{"delta": "要找 12 的所有"}
+{"delta": "因數，先宣告 n"}
+{"delta": " 等"}
+{"delta": "於 12 @layout"}
+{"delta": " sidebar:"}
+{"delta": "50 open:container"}
+{"delta": " close:locals\n    int"}
+{"delta": " sum = 0; "}
+{"delta": " //@ @guide n={"}
+{"delta": "n} @tts"}
+{"delta": " [next] 再"}
+{"delta": "宣告 sum "}
+{"delta": "等於 0，等一下"}
+{"delta": "用來累加所有"}
+{"delta": "因數 @layout sidebar:"}
+{"delta": "50 open:container\n   "}
+{"delta": " vector<int> factors;"}
+{"delta": "  //@ @guide n"}
+{"delta": "={n} sum={sum"}
+{"delta": "} @tts [next"}
+{"delta": "] 準備一個空的向量"}
+{"delta": " factors，把"}
+{"delta": "找到的因數一個個"}
+{"delta": "放進來 @layout sidebar:"}
+{"delta": "55 open:container\n   "}
+{"delta": " for (int i = "}
+{"delta": "1; i <= n;"}
+{"delta": " i++) {  //@"}
+{"delta": " @guide {factors} @"}
+{"delta": "tts [next] "}
+{"delta": "開始從 1 數"}
+{"delta": "到 {n}，一個"}
+{"delta": "一個檢查 |"}
+{"delta": " @2"}
+{"delta": " [next] 換"}
+{"delta": "下一個數字試"}
+{"delta": "試看 @layout sidebar:"}
+{"delta": "55 open:container\n       "}
+{"delta": " if (n % i =="}
+{"delta": " 0) {  //"}
+{"delta": "@ @guide 檢查"}
+{"delta": " {n"}
+{"delta": "} 能不能被 {i"}
+{"delta": "} 整除 @tts"}
+{"delta": " [next] 檢查 {"}
+{"delta": "n} 除以 {i"}
+{"delta": "} 的餘數是不是"}
+{"delta": " 0\n           "}
+{"delta": " sum += i"}
+{"delta": ";  //@ @guide"}
+{"delta": " sum"}
+{"delta": "={sum}"}
+{"delta": " @tts [next]"}
+{"delta": " 是的話，把 {"}
+{"delta": "i} 加進 sum"}
+{"delta": "，目前"}
+{"delta": " sum 變成 {sum}\n"}
+{"delta": "            factors.push_back(i);"}
+{"delta": "  //@ @guide {"}
+{"delta": "factors} @tts ["}
+{"delta": "next] 同時"}
+{"delta": "把 {i} 放"}
+{"delta": "進 factors 向量\n       "}
+{"delta": " }\n    }\n    return "}
+{"delta": "0;  //@ @"}
+{"delta": "guide 因數"}
+{"delta": "共 {factors}，總"}
+{"delta": "和 {sum} @tt"}
+{"delta": "s [continue] 迴"}
+{"delta": "圈結束，{n}"}
+{"delta": " 的因數是 {"}
+{"delta": "factors}，全部加起來"}
+{"delta": "是 {sum}，程式"}
+{"delta": "結束 @layout sidebar"}
+{"delta": ":60 open:container\n"}
+{"delta": "}"}
+{"done": true, "code": "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    int n = 12;  //@ @tts [next] 我們要找 12 的所有因數，先宣告 n 等於 12 @layout sidebar:50 open:container close:locals\n    int sum = 0;  //@ @guide n={n} @tts [next] 再宣告 sum 等於 0，等一下用來累加所有因數 @layout sidebar:50 open:container\n    vector<int> factors;  //@ @guide n={n} sum={sum} @tts [next] 準備一個空的向量 factors，把找到的因數一個個放進來 @layout sidebar:55 open:container\n    for (int i = 1; i <= n; i++) {  //@ @guide {factors} @tts [next] 開始從 1 數到 {n}，一個一個檢查 | @2 [next] 換下一個數字試試看 @layout sidebar:55 open:container\n        if (n % i == 0) {  //@ @guide 檢查 {n} 能不能被 {i} 整除 @tts [next] 檢查 {n} 除以 {i} 的餘數是不是 0\n            sum += i;  //@ @guide sum={sum} @tts [next] 是的話，把 {i} 加進 sum，目前 sum 變成 {sum}\n            factors.push_back(i);  //@ @guide {factors} @tts [next] 同時把 {i} 放進 factors 向量\n        }\n    }\n    return 0;  //@ @guide 因數共 {factors}，總和 {sum} @tts [continue] 迴圈結束，{n} 的因數是 {factors}，全部加起來是 {sum}，程式結束 @layout sidebar:60 open:container\n}", "warnings": [], "repaired": true, "prose_guides_dropped": 0, "comments_restored": 0}

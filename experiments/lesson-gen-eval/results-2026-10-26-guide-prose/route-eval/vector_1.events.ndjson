@@ -1,0 +1,33 @@
+{"delta": "#include"}
+{"delta": " <iostream>\n#include <vector"}
+{"delta": ">\n#include <algorithm>\nusing"}
+{"delta": " namespace std;\n\nvoid"}
+{"delta": " bubbleSort(vector<int>& arr"}
+{"delta": ") {\n"}
+{"delta": "    int n = arr"}
+{"delta": ".size();\n"}
+{"delta": "    for (int i"}
+{"delta": " = 0; i <"}
+{"delta": " n; i++) {\n"}
+{"delta": "        for (int j ="}
+{"delta": " 0; j < n"}
+{"delta": " - i - 1;"}
+{"delta": " j++) {\n            if ("}
+{"delta": "arr[j] > arr[j"}
+{"delta": " + 1]) {\n"}
+{"delta": "                swap(arr[j], arr"}
+{"delta": "[j + 1]);\n           "}
+{"delta": " }\n        }\n    }\n}\n\n"}
+{"delta": "int main() {\n    vector"}
+{"delta": "<int> arr = {3"}
+{"delta": ", 1, 2"}
+{"delta": "};\n"}
+{"delta": "    bubbleSort(arr"}
+{"delta": ");\n    cout"}
+{"delta": " << \"排序"}
+{"delta": "後：\";\n    for ("}
+{"delta": "int x : arr) cout"}
+{"delta": " << x << \" \";\n   "}
+{"delta": " cout << endl;\n    return"}
+{"delta": " 0;\n}"}
+{"done": true, "code": "// 教案：泡沫排序（Bubble Sort）—— 相鄰兩個比一比，比錯順序就交換\n//\n// 核心動作只有一個：從左走到右，每次看相鄰兩格，前面比後面大就交換。\n// 走完一輪，最大的數字一定會被「推」到最右邊；走 n 輪整個陣列就排好了。\n// 陣列故意用 3 個數字，走一輪半就能看完一次交換、一次不交換、排序完成。\n#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\n\nvoid bubbleSort(vector<int>& arr) {\n    int n = arr.size();\n    for (int i = 0; i < n; i++) {\n        for (int j = 0; j < n - i - 1; j++) {\n            if (arr[j] > arr[j + 1]) {\n                swap(arr[j], arr[j + 1]);\n            }\n        }\n    }\n}\n\nint main() {\n    vector<int> arr = {3, 1, 2};\n    bubbleSort(arr);\n    cout << \"排序後：\";\n    for (int x : arr) cout << x << \" \";\n    cout << endl;\n    return 0;\n}", "warnings": ["模型刪掉了 5 行 // 註解或空行，已放回原位"], "repaired": false, "prose_guides_dropped": 0, "comments_restored": 5}

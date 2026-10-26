@@ -1,0 +1,345 @@
+{"delta": "#include"}
+{"delta": " <iostream>\n#include <string"}
+{"delta": ">\n#include <algorithm>\nusing"}
+{"delta": " namespace std;\n\nbool"}
+{"delta": " isPalindrome(string s)"}
+{"delta": " {\n    int left"}
+{"delta": " = 0; "}
+{"delta": " //@ @"}
+{"delta": "guide [初始化"}
+{"delta": "#"}
+{"delta": "blue"}
+{"delta": "] left"}
+{"delta": "={left} @"}
+{"delta": "tts ["}
+{"delta": "next]"}
+{"delta": " 進入判斷"}
+{"delta": "函式"}
+{"delta": "，先把"}
+{"delta": "左指標"}
+{"delta": " left 設"}
+{"delta": "為 0 @"}
+{"delta": "layout sidebar"}
+{"delta": ":50 open:callgraph"}
+{"delta": ",container close"}
+{"delta": ":locals\n    int right"}
+{"delta": " = s.length() -"}
+{"delta": " 1;  //@"}
+{"delta": " @guide [初始化#blue"}
+{"delta": "] right={right} @"}
+{"delta": "tts [next] "}
+{"delta": "右指標 right 指向"}
+{"delta": "字"}
+{"delta": "串最後"}
+{"delta": "一格"}
+{"delta": "，位置"}
+{"delta": "是 {right} @layout"}
+{"delta": " sidebar:55"}
+{"delta": " open:container"}
+{"delta": "\n"}
+{"delta": "    //"}
+{"delta": "@ @"}
+{"delta": "guide [檢查"}
+{"delta": "迴圈#"}
+{"delta": "yellow] {s"}
+{"delta": "}"}
+{"delta": " @tt"}
+{"delta": "s [next] 只要"}
+{"delta": "左指標"}
+{"delta": "還在右指標左"}
+{"delta": "邊，就繼續往"}
+{"delta": "中間比對 |"}
+{"delta": " @"}
+{"delta": "2 [next] 這一"}
+{"delta": "輪比"}
+{"delta": "完了，看"}
+{"delta": "左右"}
+{"delta": "有沒有"}
+{"delta": "相遇\n"}
+{"delta": "    while (left <"}
+{"delta": " right) {\n"}
+{"delta": "        if ("}
+{"delta": "s[left] != s[right"}
+{"delta": "]) {  //@"}
+{"delta": " @guide [比"}
+{"delta": "對#"}
+{"delta": "orange"}
+{"delta": "] {s[left]:"}
+{"delta": "light"}
+{"delta": "blue} {s[right]:"}
+{"delta": "light"}
+{"delta": "blue} @tts ["}
+{"delta": "next] 比一比"}
+{"delta": "左邊第"}
+{"delta": " {left} 格"}
+{"delta": "和"}
+{"delta": "右邊第"}
+{"delta": " {right} 格，"}
+{"delta": "一樣"}
+{"delta": "嗎"}
+{"delta": " @"}
+{"delta": "layout pop"}
+{"delta": ":s"}
+{"delta": "\n            return false"}
+{"delta": ";  //@ @guide"}
+{"delta": " [回傳#"}
+{"delta": "red"}
+{"delta": "] 回傳 false"}
+{"delta": " ← 第"}
+{"delta": " {left} 格和第"}
+{"delta": " {right} 格不同"}
+{"delta": " @tt"}
+{"delta": "s [next] 不一樣"}
+{"delta": "，所以不是"}
+{"delta": "回文，回傳 false"}
+{"delta": "\n        }\n        left"}
+{"delta": "++;  //@ @guide"}
+{"delta": " [往"}
+{"delta": "中間"}
+{"delta": "靠"}
+{"delta": "#green"}
+{"delta": "] left"}
+{"delta": "={left}"}
+{"delta": " @tts [next]"}
+{"delta": " 左指標"}
+{"delta": "往"}
+{"delta": "右移"}
+{"delta": "一格\n        right"}
+{"delta": "--;  //"}
+{"delta": "@ @guide [往中間"}
+{"delta": "靠#green] right={"}
+{"delta": "right} @tts ["}
+{"delta": "next] 右指標往"}
+{"delta": "左移一格\n    }\n"}
+{"delta": "    return true; "}
+{"delta": " //@ @guide [回"}
+{"delta": "傳#red"}
+{"delta": "] 回傳 true ←"}
+{"delta": " 左右都相遇"}
+{"delta": "了"}
+{"delta": "，全部"}
+{"delta": "對"}
+{"delta": "稱"}
+{"delta": " @tts [next]"}
+{"delta": " 左右相遇"}
+{"delta": "，每一"}
+{"delta": "對"}
+{"delta": "都一樣"}
+{"delta": "，是"}
+{"delta": "回文，回傳 true"}
+{"delta": "\n}\n\nint main() {\n"}
+{"delta": "    string s; "}
+{"delta": " //@ @guide ["}
+{"delta": "初始化#blue] @"}
+{"delta": "tts [continue"}
+{"delta": "] 準備"}
+{"delta": "一個字串來"}
+{"delta": "接"}
+{"delta": "輸入"}
+{"delta": "，直接"}
+{"delta": "跳到讀完"}
+{"delta": "資料的地方"}
+{"delta": " @layout sidebar"}
+{"delta": ":50"}
+{"delta": " open:container close"}
+{"delta": ":locals"}
+{"delta": "\n    while (cin"}
+{"delta": " >> s) {  //"}
+{"delta": "@ @guide [讀取"}
+{"delta": "#"}
+{"delta": "blue] {s} @"}
+{"delta": "tts [next] "}
+{"delta": "讀到"}
+{"delta": "字"}
+{"delta": "串 {s}，開始"}
+{"delta": "判斷它是不是"}
+{"delta": "回文 @layout sidebar"}
+{"delta": ":55 open:container"}
+{"delta": "\n        if (is"}
+{"delta": "Palindrome(s)) cout << \""}
+{"delta": "Yes\" << endl; "}
+{"delta": " //@ @guide [呼叫"}
+{"delta": "#pur"}
+{"delta": "ple] {s} @"}
+{"delta": "tts [step"}
+{"delta": "-in] 呼叫判斷"}
+{"delta": "函式"}
+{"delta": "，看看"}
+{"delta": " {s} "}
+{"delta": "是不是回文 | @2"}
+{"delta": " [next] 判斷"}
+{"delta": "回來了"}
+{"delta": "，結果"}
+{"delta": "是回"}
+{"delta": "文，印"}
+{"delta": "出 Yes @"}
+{"delta": "layout sidebar:50 open:"}
+{"delta": "callgraph,container\n       "}
+{"delta": " else cout << \"No\""}
+{"delta": " << endl;  //@"}
+{"delta": " @guide [呼叫#"}
+{"delta": "purple] {s}"}
+{"delta": " @tts [step"}
+{"delta": "-in] 呼叫判斷函"}
+{"delta": "式，看看 {s}"}
+{"delta": " 是不是回文 | @"}
+{"delta": "2 [next] 判斷"}
+{"delta": "回來了，不是"}
+{"delta": "回文，印出 No"}
+{"delta": " @layout sidebar:50 open"}
+{"delta": ":callgraph,container\n"}
+{"delta": "    }\n    return 0"}
+{"delta": ";  //@ @guide"}
+{"delta": " [結束"}
+{"delta": "#gray"}
+{"delta": "] @tts ["}
+{"delta": "continue] 所有"}
+{"delta": "字串都判斷"}
+{"delta": "完了，程式結束\n"}
+{"delta": "}"}
+{"status": "檢查發現 3 個問題，自動修正一輪…"}
+{"reset": true}
+{"delta": "#include"}
+{"delta": " <iostream>\n#include <string"}
+{"delta": ">\n#include <algorithm>\nusing"}
+{"delta": " namespace std;\n\nbool"}
+{"delta": " isPalindrome(string s) {\n"}
+{"delta": "    int left"}
+{"delta": " = 0;  //"}
+{"delta": "@ @"}
+{"delta": "guide [初始化#"}
+{"delta": "blue] @tt"}
+{"delta": "s ["}
+{"delta": "next] 進入"}
+{"delta": "判斷函式"}
+{"delta": "，先把左指標"}
+{"delta": " left 設為 0"}
+{"delta": " @layout sidebar"}
+{"delta": ":50 open"}
+{"delta": ":callgraph,container close"}
+{"delta": ":locals\n    int right"}
+{"delta": " = s.length() -"}
+{"delta": " 1;  //@"}
+{"delta": " @guide [初始化#blue"}
+{"delta": "] left={left} @"}
+{"delta": "tts [next] "}
+{"delta": "右指標 right 指向"}
+{"delta": "字串最後"}
+{"delta": "一格 @"}
+{"delta": "layout sidebar:55"}
+{"delta": " open:container"}
+{"delta": "\n    while (left"}
+{"delta": " < right) {  //"}
+{"delta": "@ @guide [檢查"}
+{"delta": "迴圈#"}
+{"delta": "yellow] {s} @"}
+{"delta": "tts [next]"}
+{"delta": " 只要左指標還在"}
+{"delta": "右指標左"}
+{"delta": "邊，就繼續往"}
+{"delta": "中間比對 | @"}
+{"delta": "2 [next] "}
+{"delta": "這一輪比完了，看"}
+{"delta": "左右有沒有相遇\n        if"}
+{"delta": " (s[left] != s"}
+{"delta": "[right]) {  //@"}
+{"delta": " @guide [比對#"}
+{"delta": "orange] {s[left]:"}
+{"delta": "lightblue} {s[right"}
+{"delta": "]:lightblue} @"}
+{"delta": "tts [next"}
+{"delta": "] 比一比左"}
+{"delta": "邊第 {left} "}
+{"delta": "格和右邊第 {"}
+{"delta": "right} 格，一樣"}
+{"delta": "嗎 @layout pop"}
+{"delta": ":s"}
+{"delta": "\n            return false;"}
+{"delta": "  //@ @guide ["}
+{"delta": "回傳#red] "}
+{"delta": "回傳 false ← 第"}
+{"delta": " {left} 格和第"}
+{"delta": " {right} 格不同"}
+{"delta": " @tt"}
+{"delta": "s [next] 不一樣"}
+{"delta": "，所以不是"}
+{"delta": "回文，回傳 false"}
+{"delta": "\n        }\n        left++;"}
+{"delta": "  //@ @guide ["}
+{"delta": "往中間"}
+{"delta": "靠#green] left"}
+{"delta": "={left} @tts"}
+{"delta": " [next] 左指標"}
+{"delta": "往右移一格\n       "}
+{"delta": " right--;  //@"}
+{"delta": " @guide [往中間靠"}
+{"delta": "#green] right={right"}
+{"delta": "} @tts [next"}
+{"delta": "] 右指標往左"}
+{"delta": "移一格\n    }\n   "}
+{"delta": " return true;  //@"}
+{"delta": " @guide [回傳#"}
+{"delta": "red] 回傳 true"}
+{"delta": " ← 左右都"}
+{"delta": "相遇了，全部對"}
+{"delta": "稱 @tts [next"}
+{"delta": "] 左右"}
+{"delta": "相遇，每一"}
+{"delta": "對都一樣，是"}
+{"delta": "回文，回傳 true"}
+{"delta": "\n}\n\nint main() {\n"}
+{"delta": "    string s;  //"}
+{"delta": "@ @guide [初始化#"}
+{"delta": "blue] @tts ["}
+{"delta": "continue] 準備"}
+{"delta": "一個字串來接"}
+{"delta": "輸入，直接跳到讀"}
+{"delta": "完資料的地方 @layout sidebar"}
+{"delta": ":50 open:container"}
+{"delta": " close:locals"}
+{"delta": "\n    while (cin"}
+{"delta": " >> s) {  //"}
+{"delta": "@ @guide [讀取"}
+{"delta": "#blue] {s"}
+{"delta": "} @tts [next"}
+{"delta": "] 讀到"}
+{"delta": "字串 {s}，"}
+{"delta": "開始判斷它是不是回文"}
+{"delta": " @layout sidebar:55"}
+{"delta": " open:container\n       "}
+{"delta": " if (is"}
+{"delta": "Palindrome(s)) cout << \""}
+{"delta": "Yes\" << endl; "}
+{"delta": " //@ @guide [呼叫"}
+{"delta": "#purple] {s"}
+{"delta": "} @tts [step"}
+{"delta": "-in] 呼叫判斷"}
+{"delta": "函式，看看 {s"}
+{"delta": "} 是不是回文 |"}
+{"delta": " @2 ["}
+{"delta": "next] 判斷"}
+{"delta": "回來了，結果"}
+{"delta": "是回文，印出"}
+{"delta": " Yes @layout sidebar:50"}
+{"delta": " open:callgraph"}
+{"delta": ",container\n        else"}
+{"delta": " cout << \"No\" <<"}
+{"delta": " endl;  //@ @"}
+{"delta": "guide [呼叫#purple"}
+{"delta": "] {s} @tt"}
+{"delta": "s [step-in] "}
+{"delta": "呼叫判斷函式，看看"}
+{"delta": " {s} 是不是回"}
+{"delta": "文 | @2 [next"}
+{"delta": "] 判斷回來了，不是"}
+{"delta": "回文，印出 No"}
+{"delta": " @layout sidebar:50 open"}
+{"delta": ":callgraph,container\n"}
+{"delta": "    }\n    return "}
+{"delta": "0;  //@ @"}
+{"delta": "guide [結束#"}
+{"delta": "gray] @tts ["}
+{"delta": "continue] 所有字"}
+{"delta": "串都判斷完了，程式"}
+{"delta": "結束\n}"}
+{"done": true, "code": "#include <iostream>\n#include <string>\n#include <algorithm>\nusing namespace std;\n\nbool isPalindrome(string s) {\n    int left = 0;  //@ @guide [初始化#blue] @tts [next] 進入判斷函式，先把左指標 left 設為 0 @layout sidebar:50 open:callgraph,container close:locals\n    int right = s.length() - 1;  //@ @guide [初始化#blue] left={left} @tts [next] 右指標 right 指向字串最後一格 @layout sidebar:55 open:container\n    \n    while (left < right) {  //@ @guide [檢查迴圈#yellow] {s} @tts [next] 只要左指標還在右指標左邊，就繼續往中間比對 | @2 [next] 這一輪比完了，看左右有沒有相遇\n        if (s[left] != s[right]) {  //@ @guide [比對#orange] {s[left]:lightblue} {s[right]:lightblue} @tts [next] 比一比左邊第 {left} 格和右邊第 {right} 格，一樣嗎 @layout pop:s\n            return false;  //@ @guide [回傳#red] 回傳 false ← 第 {left} 格和第 {right} 格不同 @tts [next] 不一樣，所以不是回文，回傳 false\n        }\n        left++;  //@ @guide [往中間靠#green] left={left} @tts [next] 左指標往右移一格\n        right--;  //@ @guide [往中間靠#green] right={right} @tts [next] 右指標往左移一格\n    }\n    return true;  //@ @guide [回傳#red] 回傳 true ← 左右都相遇了，全部對稱 @tts [next] 左右相遇，每一對都一樣，是回文，回傳 true\n}\n\nint main() {\n    string s;  //@ @guide [初始化#blue] @tts [continue] 準備一個字串來接輸入，直接跳到讀完資料的地方 @layout sidebar:50 open:container close:locals\n    while (cin >> s) {  //@ @guide [讀取#blue] {s} @tts [next] 讀到字串 {s}，開始判斷它是不是回文 @layout sidebar:55 open:container\n        if (isPalindrome(s)) cout << \"Yes\" << endl;  //@ @guide [呼叫#purple] {s} @tts [step-in] 呼叫判斷函式，看看 {s} 是不是回文 | @2 [next] 判斷回來了，結果是回文，印出 Yes @layout sidebar:50 open:callgraph,container\n        else cout << \"No\" << endl;  //@ @guide [呼叫#purple] {s} @tts [step-in] 呼叫判斷函式，看看 {s} 是不是回文 | @2 [next] 判斷回來了，不是回文，印出 No @layout sidebar:50 open:callgraph,container\n    }\n    return 0;  //@ @guide [結束#gray] @tts [continue] 所有字串都判斷完了，程式結束\n}", "warnings": ["模型刪掉了 1 行 // 註解或空行，已放回原位"], "repaired": true, "prose_guides_dropped": 0, "comments_restored": 1}
