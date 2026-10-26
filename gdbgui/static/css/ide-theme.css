@@ -159,3 +159,43 @@ body:not(.tutorial) #top .toolbar-toggle {
 body.cardui #top {
   z-index: 1100;
 }
+
+/* 右側欄：每個收合面板是一張小圓角卡片，標題列淡靛藍、主要面板（資料結構視覺化等）左邊一條靛藍色條 */
+body:not(.tutorial) .sidebar-collapsers {
+  padding: 10px 12px 12px;
+}
+body:not(.tutorial) .collapser {
+  margin: 0 0 6px;
+  border: 1px solid #e6e9fb !important;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(58, 70, 216, 0.06);
+}
+body:not(.tutorial) .collapser .titlebar {
+  height: auto !important; /* 行內樣式把高度綁成編輯器行高，太窄 */
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  border-bottom: 0;
+  background: #f4f5ff !important;
+  color: #3a46d8;
+}
+body:not(.tutorial) .collapser .titlebar:hover {
+  background: #eceeff !important;
+}
+body:not(.tutorial) .collapser .titlebar .glyphicon {
+  color: #8e97ff;
+  font-size: 10px;
+}
+body:not(.tutorial) .collapser .titlebar .lighttext {
+  font-weight: 700;
+  color: #3a46d8 !important;
+}
+body:not(.tutorial) .collapser .titlebar--primary {
+  background: #e9ecff !important;
+  border-left: 0;
+  box-shadow: inset 4px 0 0 #3a46d8;
+}
