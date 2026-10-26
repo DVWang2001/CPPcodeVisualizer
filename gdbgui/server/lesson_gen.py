@@ -127,6 +127,15 @@ def code_unchanged(source, output):
     return None
 
 
+def strip_annotations(source):
+    """去掉輸入程式碼裡既有的 //@ 註解（行數不變）。
+
+    編輯器裡可能已經有舊教案的註解。讓模型看到它們，它會被舊內容牽著走（沿用、改寫、
+    或照抄舊的 @N 門檻）；使用者要的是「重新生成」，舊註解等他按下「套用」才被覆蓋。
+    """
+    return "\n".join(_ANNOT_RE.sub("", ln) for ln in source.split("\n"))
+
+
 def restore_dropped_comments(source, code):
     """模型被刪掉的若全是 `//` 說明註解或空行，就放回原位。回傳 (新程式碼, 補回幾行)。
 

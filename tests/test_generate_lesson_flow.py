@@ -157,3 +157,13 @@ def test_done_event_carries_the_breakpoints_autoplay_needs(flask_app, upstream):
     scripted.append(GOOD.replace("@tts [next] 宣告 n", "@tts [continue] 宣告 n"))
     done = _last(_generate(flask_app))
     assert done["breakpoints"] == [{"line": 4, "why": "[continue] 之後的落腳行"}]
+
+
+def test_existing_annotations_are_hidden_from_the_model_and_do_not_leak_into_the_result(flask_app, upstream):
+    scripted, payloads = upstream
+    scripted.append(GOOD)
+    old = SRC.replace("int n = 5;", "int n = 5;  //@ @guide 舊的 {n} @tts [next] 舊旁白")
+    done = _last(_generate(flask_app, source=old))
+    sent = payloads[0]["messages"][-1]["content"]
+    assert "舊旁白" not in sent and "舊的" not in sent and "int n = 5;" in sent
+    assert done["done"] and "舊旁白" not in done["code"]

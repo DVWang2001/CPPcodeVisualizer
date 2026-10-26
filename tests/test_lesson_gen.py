@@ -234,3 +234,9 @@ def test_derive_breakpoints_recursion_entry_and_fast_target():
 def test_derive_breakpoints_none_needed():
     code = "int main() {\n   int a = 1;  //@ @tts [next] 好\n}  //@ @tts [continue] 完\n"
     assert lesson_gen.derive_breakpoints(code) == []
+
+
+def test_strip_annotations_removes_old_lesson_comments_but_keeps_plain_ones_and_line_count():
+    src = "int a;  //@ @tts [next] 舊\n// 說明\nint b;\n"
+    out = lesson_gen.strip_annotations(src)
+    assert out == "int a;\n// 說明\nint b;\n" and out.count("\n") == src.count("\n")

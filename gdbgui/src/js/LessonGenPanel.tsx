@@ -23,7 +23,9 @@ type State = {
 
 const box: React.CSSProperties = {
   width: "100%", boxSizing: "border-box", fontFamily: "monospace",
-  fontSize: 13, border: "1px solid #ccc", borderRadius: 4, padding: "6px",
+  fontSize: 13, border: "1px solid var(--struct-border,#cbd2da)", borderRadius: 4, padding: "6px",
+  // 底色與字色要成對指定：不指定時 textarea 吃瀏覽器預設，跟面板配色對不起來。
+  background: "var(--surface,#fff)", color: "var(--ink,#1b1f24)",
 };
 
 export default class LessonGenPanel extends React.Component<Props, State> {
@@ -120,14 +122,16 @@ export default class LessonGenPanel extends React.Component<Props, State> {
         data-testid="lesson-gen-panel"
         style={{
           position: "absolute", top: 34, right: 8, zIndex: 60, width: 440,
-          maxHeight: "75%", overflowY: "auto", border: "1px solid #8b5cf6",
-          borderRadius: 6, background: "var(--paper,#1e1e1e)", color: "#cbd0d8",
+          maxHeight: "75%", overflowY: "auto", border: "1px solid var(--accent,#4f46e5)",
+          // --paper 在這個專案是淺色（#f7f8fa）；以前字色寫死成給深色用的淺灰 #cbd0d8，
+          // 淺灰字配淺底，整個面板看不清楚。底色字色都走設計代幣。
+          borderRadius: 6, background: "var(--surface,#fff)", color: "var(--ink,#1b1f24)",
           padding: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
         }}
         onKeyDown={(e) => { if (e.key === "Escape") this.props.onClose(); }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <strong style={{ fontSize: 13, color: "#8b5cf6" }}>🤖 AI 生成教案</strong>
+          <strong style={{ fontSize: 13, color: "var(--accent,#4f46e5)" }}>🤖 AI 生成教案</strong>
           <button onClick={this.props.onClose}>✕</button>
         </div>
 
@@ -162,14 +166,14 @@ export default class LessonGenPanel extends React.Component<Props, State> {
         </button>
 
         {error && (
-          <div data-testid="lesson-error" style={{ marginTop: 6, color: "#ff6b6b", fontSize: 12, whiteSpace: "pre-wrap" }}>
+          <div data-testid="lesson-error" style={{ marginTop: 6, color: "#b91c1c", fontSize: 12, whiteSpace: "pre-wrap" }}>
             {error}
           </div>
         )}
 
         {loading && (
           <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: "#8b5cf6", marginBottom: 4 }}>
+            <div style={{ fontSize: 12, color: "var(--accent,#4f46e5)", marginBottom: 4 }}>
               生成中（約兩到六分鐘；檢查沒過時會自動修正一輪；請勿關閉此面板）
             </div>
             {this.state.streamed ? (
@@ -177,20 +181,20 @@ export default class LessonGenPanel extends React.Component<Props, State> {
                 style={{ ...box, whiteSpace: "pre" }} data-testid="lesson-stream" />
             ) : (
               <textarea readOnly value={this.state.thinking} rows={8} data-testid="lesson-thinking"
-                style={{ ...box, whiteSpace: "pre-wrap", opacity: 0.65, fontStyle: "italic" }} />
+                style={{ ...box, whiteSpace: "pre-wrap", color: "var(--ink-soft,#5a6472)", fontStyle: "italic" }} />
             )}
           </div>
         )}
 
         {preview !== null && (
           <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: "#8b5cf6", marginBottom: 4 }}>預覽（尚未套用）{this.state.repaired ? "　已自動修正一輪" : ""}</div>
+            <div style={{ fontSize: 12, color: "var(--accent,#4f46e5)", marginBottom: 4 }}>預覽（尚未套用）{this.state.repaired ? "　已自動修正一輪" : ""}</div>
             {this.state.warnings.length > 0 && (
-              <ul data-testid="lesson-warnings" style={{ margin: "0 0 6px", paddingLeft: 18, fontSize: 12, color: "#d97706" }}>
+              <ul data-testid="lesson-warnings" style={{ margin: "0 0 6px", paddingLeft: 18, fontSize: 12, color: "#b45309" }}>
                 {this.state.warnings.map((w, i) => <li key={i}>{w}</li>)}
               </ul>
             )}
-            <div data-testid="lesson-breakpoints" style={{ fontSize: 12, marginBottom: 6, color: "#8b5cf6" }}>
+            <div data-testid="lesson-breakpoints" style={{ fontSize: 12, marginBottom: 6, color: "var(--accent,#4f46e5)" }}>
               {this.state.breakpoints.length > 0
                 ? `將設定斷點（取代目前的斷點）：${this.state.breakpoints.map((b) => `第 ${b.line} 行（${b.why}）`).join("、")}`
                 : "不需要額外斷點（沒有 [continue] 跳行，也沒有遞迴）；目前的斷點維持不動"}

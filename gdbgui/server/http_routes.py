@@ -313,6 +313,8 @@ def generate_lesson():
         return jsonify({"message": "source 不可為空"}), 400
     if len(source.encode("utf-8")) > lesson_gen.MAX_SOURCE_BYTES:
         return jsonify({"message": "原始碼超過 100 KB 上限"}), 400
+    # 舊的 //@ 不給模型看；使用者按「套用」時才會被新的覆蓋（見 lesson_gen.strip_annotations）。
+    source = lesson_gen.strip_annotations(source)
 
     base_url = lesson_gen.validate_base_url(_as_str(body.get("base_url", "")))
     if base_url is None:
