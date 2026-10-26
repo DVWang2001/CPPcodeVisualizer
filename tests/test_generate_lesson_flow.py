@@ -125,3 +125,20 @@ def test_custom_base_url_does_not_get_the_nvidia_only_parameter(flask_app, upstr
     )
     assert "chat_template_kwargs" not in payloads[0]
     assert lesson_gen.DEFAULT_BASE_URL != "https://api.mistral.ai/v1"
+
+
+def test_dropped_header_comment_is_restored_without_a_repair_round(flask_app, upstream):
+    scripted, payloads = upstream
+    scripted.append(GOOD)  # 模型輸出沒有開頭的說明註解
+    done = _last(_generate(flask_app, source="// 說明\n" + SRC))
+    assert done["done"] and done["code"].startswith("// 說明\n") and not done["repaired"]
+    assert any("已放回原位" in w for w in done["warnings"]) and len(payloads) == 1
+
+
+def test_rate_limit_gets_a_readable_message(flask_app, monkeypatch):
+    class _Limited(_FakeUpstream):
+        status_code = 429
+
+    monkeypatch.setattr(http_routes._requests, "post", lambda *a, **k: _Limited(""))
+    last = _last(_generate(flask_app))
+    assert "429" in last["error"] and "再試" in last["error"]

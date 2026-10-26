@@ -1,4 +1,5 @@
 """AI 教案生成的純函式（不依賴 Flask，方便單元測試）。"""
+import difflib
 import importlib.util
 import json
 import re
@@ -120,6 +121,29 @@ def code_unchanged(source, output):
         if x != y:
             return f"模型修改了第 {i} 行的程式碼，已拒絕：\n原：{x}\n改：{y}"
     return None
+
+
+def restore_dropped_comments(source, code):
+    """模型被刪掉的若全是 `//` 說明註解或空行，就放回原位。回傳 (新程式碼, 補回幾行)。
+
+    實測：題目開頭常有幾行 `// 教案：…` 的說明，模型會把它們刪掉（18 行變 15 行），
+    修一輪也不見得補得回來。這些行不影響程式，補回比整份拒絕合理；刪到真正的程式碼
+    就不補，留給 code_unchanged 擋。
+    """
+    def norm(text):
+        return [_ANNOT_RE.sub("", ln).rstrip() for ln in text.strip("\n").splitlines()]
+
+    original = source.strip("\n").splitlines()
+    produced = code.strip("\n").splitlines()
+    a, b = norm(source), norm(code)
+    result, restored = [], 0
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if tag == "delete" and all(not x.strip() or x.lstrip().startswith("//") for x in a[i1:i2]):
+            result += original[i1:i2]
+            restored += i2 - i1
+        elif tag != "delete":
+            result += produced[j1:j2]
+    return "\n".join(result), restored
 
 
 def load_checker(root):

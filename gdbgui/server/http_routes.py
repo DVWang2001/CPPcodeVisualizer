@@ -396,6 +396,8 @@ def generate_lesson():
                     # 143.9 秒（排隊 + prefill），所以不能設得太小。
                     timeout=LESSON_GEN_TIMEOUT_SECONDS,
                 ) as upstream:
+                    if upstream.status_code == 429:
+                        return "", False, "模型服務目前請求太頻繁（429），請等一兩分鐘再試"
                     if upstream.status_code != 200:
                         return "", False, f"模型 API 回傳 {upstream.status_code}：{upstream.text[:300]}"
                     for line in upstream.iter_lines():
@@ -431,6 +433,7 @@ def generate_lesson():
             )
             yield json.dumps({"error": reason}, ensure_ascii=False) + "\n"
             return
+        code, restored = lesson_gen.restore_dropped_comments(source, code)
         changed = lesson_gen.code_unchanged(source, code)
         problems = [] if changed else lesson_gen.find_problems(check, code)
         repaired = False
@@ -445,14 +448,18 @@ def generate_lesson():
             ]
             code2, _, error2 = yield from run_pass(messages)
             # 修正回合壞了（上游錯誤、空輸出、又改了程式）就退回第一份，不讓它比沒修還糟。
+            if not error2 and code2.strip():
+                code2, restored2 = lesson_gen.restore_dropped_comments(source, code2)
             if not error2 and code2.strip() and not lesson_gen.code_unchanged(source, code2):
-                code, repaired = code2, True
+                code, repaired, restored = code2, True, restored2
                 changed = None
                 problems = lesson_gen.find_problems(check, code)
         if changed:
             yield event({"error": changed})
             return
         warnings = []
+        if restored:
+            warnings.append(f"模型刪掉了 {restored} 行 // 註解或空行，已放回原位")
         if problems:
             code, fixed = lesson_gen.drop_unset_refs(code, problems)
             warnings += [f"已自動移除第 {n} 行註解裡的 {{{name}}}（該行還沒賦值，會顯示垃圾值）"

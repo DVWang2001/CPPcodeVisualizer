@@ -157,3 +157,17 @@ def test_find_problems_without_checker_is_empty():
 def test_repair_message_quotes_the_checker_output():
     msg = lesson_gen.repair_message([(3, "不能這樣"), (0, "整份有問題")])
     assert "第 3 行：不能這樣" in msg and "- 整份有問題" in msg
+
+
+def test_restore_dropped_comments_puts_header_comments_and_blank_lines_back():
+    src = "// 說明\n\n#include <iostream>\nint main() {\n}\n"
+    out = "#include <iostream>\nint main() {  //@ @tts [next] 好\n}  //@ @tts [continue] 完"
+    fixed, restored = lesson_gen.restore_dropped_comments(src, out)
+    assert restored == 2 and fixed.split("\n")[:3] == ["// 說明", "", "#include <iostream>"]
+    assert lesson_gen.code_unchanged(src, fixed) is None
+
+
+def test_restore_dropped_comments_never_restores_real_code():
+    src = "int a = 1;\nint b = 2;\n"
+    fixed, restored = lesson_gen.restore_dropped_comments(src, "int a = 1;\n")
+    assert restored == 0 and lesson_gen.code_unchanged(src, fixed) is not None
