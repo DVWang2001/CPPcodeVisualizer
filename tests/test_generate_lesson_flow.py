@@ -150,3 +150,10 @@ def test_prose_only_guide_is_stripped_for_main_only_programs(flask_app, upstream
     done = _last(_generate(flask_app))
     assert done["done"] and "初始化" not in done["code"] and "@guide {n}" in done["code"]
     assert done["prose_guides_dropped"] == 1 and any("純敘述" in w for w in done["warnings"])
+
+
+def test_done_event_carries_the_breakpoints_autoplay_needs(flask_app, upstream):
+    scripted, _ = upstream
+    scripted.append(GOOD.replace("@tts [next] 宣告 n", "@tts [continue] 宣告 n"))
+    done = _last(_generate(flask_app))
+    assert done["breakpoints"] == [{"line": 4, "why": "[continue] 之後的落腳行"}]

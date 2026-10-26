@@ -196,3 +196,41 @@ def test_drop_prose_guides_leaves_programs_with_functions_alone():
     assert lesson_gen.defines_other_functions(code)
     assert lesson_gen.drop_prose_guides(code) == (code, 0)
     assert not lesson_gen.defines_other_functions(_MAIN_ONLY)
+
+
+_CONTINUE_SKIP = (
+    "int main() {\n"
+    "   int n;  //@ @tts [continue] @layout open:container\n"
+    "   cin >> n;\n"
+    "   int t[3];\n"
+    "   t[0] = n;  //@ @tts [next] 開表\n"
+    "}  //@ @tts [continue] 結束\n"
+)
+_RECURSION = (
+    "int fib(int n) {\n"
+    "   int result;\n"
+    "   if (n <= 1) {  //@ @tts [next] 底 | @3 [fast @4] 快轉\n"
+    "      return n;  //@ @tts [next] 回\n"
+    "   }\n"
+    "   result = fib(n - 1);  //@ @tts [step-in] 左\n"
+    "   return result;  //@ @tts [next] 回\n"
+    "}\n"
+    "int main() {\n"
+    "   int x = fib(3);  //@ @tts [step-in] 呼叫 | @2 [continue] 完\n"
+    "}  //@ @tts [continue] 結束\n"
+)
+
+
+def test_derive_breakpoints_continue_landing_line():
+    assert lesson_gen.derive_breakpoints(_CONTINUE_SKIP) == [(5, "[continue] 之後的落腳行")]
+
+
+def test_derive_breakpoints_recursion_entry_and_fast_target():
+    found = dict(lesson_gen.derive_breakpoints(_RECURSION))
+    assert found[3] == "遞迴函式 fib 的入口"  # setdefault：入口原因優先，fast 同一行不重複
+    assert list(found) == [3]
+
+
+def test_derive_breakpoints_none_needed():
+    code = "int main() {\n   int a = 1;  //@ @tts [next] 好\n}  //@ @tts [continue] 完\n"
+    assert lesson_gen.derive_breakpoints(code) == []

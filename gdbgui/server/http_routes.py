@@ -470,7 +470,11 @@ def generate_lesson():
             problems = lesson_gen.find_problems(check, code)
         warnings += [f"第 {n} 行：{m}" if n else m for n, m in problems]
         yield event({"done": True, "code": code, "warnings": warnings, "repaired": repaired,
-                     "prose_guides_dropped": prose, "comments_restored": restored})
+                     "prose_guides_dropped": prose, "comments_restored": restored,
+                     # 自動播放一定要有的斷點（見 lesson_gen.derive_breakpoints）；
+                     # 行號以最終 code 為準，上面的後處理都不增刪行。
+                     "breakpoints": [{"line": n, "why": why}
+                                     for n, why in lesson_gen.derive_breakpoints(code)]})
 
     return current_app.response_class(
         relay(),

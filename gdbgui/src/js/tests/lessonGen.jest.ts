@@ -1,4 +1,4 @@
-import { PRESETS, defaultCfg, applyPreset, buildRequestBody, takeCompleteLines } from "../lessonGen";
+import { PRESETS, defaultCfg, applyPreset, buildRequestBody, takeCompleteLines, toFrontendBreakpoints } from "../lessonGen";
 
 describe("applyPreset", () => {
   test("switching to google fills the Gemini OpenAI-compatible endpoint", () => {
@@ -87,5 +87,21 @@ describe("takeCompleteLines — 串流切塊不會剛好落在換行上", () => 
 
   test("空行照樣略過", () => {
     expect(takeCompleteLines('\n\n{"delta":"甲"}\n').events).toEqual([{ delta: "甲" }]);
+  });
+});
+
+describe("toFrontendBreakpoints", () => {
+  test("builds the same shape the Import JSON path produces (fullname empty so the gutter finds them)", () => {
+    const bps = toFrontendBreakpoints([7, 12]);
+    expect(bps.map((b) => b.line)).toEqual(["7", "12"]);
+    expect(bps[0]).toMatchObject({
+      fullname: "", fullname_to_display: "", enabled: "y",
+      is_normal_breakpoint: true, is_child_breakpoint: false, number: "frontend_1",
+    });
+    expect(bps[1].number).toBe("frontend_2");
+  });
+
+  test("no lines → empty list", () => {
+    expect(toFrontendBreakpoints([])).toEqual([]);
   });
 });

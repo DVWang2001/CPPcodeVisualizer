@@ -46,11 +46,32 @@ export function buildRequestBody(cfg: LessonCfg, source: string, instruction: st
   return body;
 }
 
+/** 後端推導出的「自動播放一定要有」的斷點（見 lesson_gen.derive_breakpoints）。 */
+export type LessonBreakpoint = { line: number; why: string };
+
+/**
+ * 把行號變成編輯器 store 裡的斷點物件。形狀跟 Import JSON 套用斷點時一致
+ * （SourceCode.applyProjectBundle 的 normalizeBkpts）：fullname 留空字串，
+ * Monaco gutter 才找得到；Run 之後會自動換成 GDB 確認的路徑。
+ */
+export function toFrontendBreakpoints(lines: number[]): any[] {
+  return lines.map((line, idx) => ({
+    line: String(line),
+    fullname: "",
+    fullname_to_display: "",
+    enabled: "y",
+    number: `frontend_${idx + 1}`,
+    is_parent_breakpoint: false,
+    is_child_breakpoint: false,
+    is_normal_breakpoint: true,
+  }));
+}
+
 /** 串流事件：後端每行一個 JSON 物件（見 http_routes.generate_lesson 的 relay）。 */
 export type StreamEvent =
   | { delta: string }
   | { thinking: string }
-  | { done: true; code: string; warnings?: string[]; repaired?: boolean }
+  | { done: true; code: string; warnings?: string[]; repaired?: boolean; breakpoints?: LessonBreakpoint[] }
   | { status: string }
   | { reset: true }
   | { error: string };

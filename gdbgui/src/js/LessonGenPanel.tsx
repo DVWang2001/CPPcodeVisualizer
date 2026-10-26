@@ -1,7 +1,7 @@
 import React from "react";
-import { LessonCfg, applyPreset, loadCfg, saveCfg, buildRequestBody, takeCompleteLines } from "./lessonGen";
+import { LessonBreakpoint, LessonCfg, applyPreset, loadCfg, saveCfg, buildRequestBody, takeCompleteLines } from "./lessonGen";
 
-type Props = { getSource: () => string; onApply: (code: string) => void; onClose: () => void };
+type Props = { getSource: () => string; onApply: (code: string, breakpoints: number[]) => void; onClose: () => void };
 type State = {
   cfg: LessonCfg;
   instruction: string;
@@ -17,6 +17,8 @@ type State = {
   /** 套用前要提醒的事：自動修掉的、以及檢查器仍然報的。 */
   warnings: string[];
   repaired: boolean;
+  /** 套用時一起設定的斷點（自動播放一定要有的那幾個）。 */
+  breakpoints: LessonBreakpoint[];
 };
 
 const box: React.CSSProperties = {
@@ -25,7 +27,7 @@ const box: React.CSSProperties = {
 };
 
 export default class LessonGenPanel extends React.Component<Props, State> {
-  state: State = { cfg: loadCfg(), instruction: "", loading: false, error: "", preview: null, streamed: "", thinking: "", status: "", warnings: [], repaired: false };
+  state: State = { cfg: loadCfg(), instruction: "", loading: false, error: "", preview: null, streamed: "", thinking: "", status: "", warnings: [], repaired: false, breakpoints: [] };
   _mounted = false;
 
   componentDidMount() {
@@ -54,7 +56,7 @@ export default class LessonGenPanel extends React.Component<Props, State> {
       this.setState({ error: "編輯器沒有程式碼" });
       return;
     }
-    this.setState({ loading: true, error: "", preview: null, streamed: "", thinking: "", status: "", warnings: [], repaired: false });
+    this.setState({ loading: true, error: "", preview: null, streamed: "", thinking: "", status: "", warnings: [], repaired: false, breakpoints: [] });
     try {
       const resp = await fetch("/api/generate_lesson", {
         method: "POST",
@@ -96,7 +98,7 @@ export default class LessonGenPanel extends React.Component<Props, State> {
             this.setState((prev) => ({ streamed: prev.streamed + ev.delta }));
           } else if ("done" in ev) {
             done = true;
-            this.setState({ preview: ev.code, warnings: ev.warnings || [], repaired: !!ev.repaired, status: "" });
+            this.setState({ preview: ev.code, warnings: ev.warnings || [], repaired: !!ev.repaired, breakpoints: ev.breakpoints || [], status: "" });
           }
         }
       }
@@ -188,13 +190,18 @@ export default class LessonGenPanel extends React.Component<Props, State> {
                 {this.state.warnings.map((w, i) => <li key={i}>{w}</li>)}
               </ul>
             )}
+            <div data-testid="lesson-breakpoints" style={{ fontSize: 12, marginBottom: 6, color: "#8b5cf6" }}>
+              {this.state.breakpoints.length > 0
+                ? `將設定斷點（取代目前的斷點）：${this.state.breakpoints.map((b) => `第 ${b.line} 行（${b.why}）`).join("、")}`
+                : "不需要額外斷點（沒有 [continue] 跳行，也沒有遞迴）；目前的斷點維持不動"}
+            </div>
             <textarea readOnly value={preview} rows={14} style={{ ...box, whiteSpace: "pre" }} data-testid="lesson-preview" />
             <div style={{ marginTop: 6, textAlign: "right" }}>
               <button className="btn btn-default btn-sm" style={{ marginRight: 6 }} onClick={() => this.setState({ preview: null })}>
                 取消
               </button>
               <button className="btn btn-primary btn-sm" data-testid="lesson-apply"
-                onClick={() => this.props.onApply(this.state.preview as string)}>
+                onClick={() => this.props.onApply(this.state.preview as string, this.state.breakpoints.map((b) => b.line))}>
                 套用到編輯器
               </button>
             </div>

@@ -219,6 +219,66 @@ def drop_prose_guides(code):
     return "\n".join(lines), dropped
 
 
+def _annotations(lines):
+    """[(行號, 第一個 @tts 段落去掉 @N 前綴後的文字)]，只含有 //@ 的行。"""
+    out = []
+    for number, line in enumerate(lines, 1):
+        if "//@" not in line:
+            continue
+        parts = _FIELD_RE.split(line.split("//@", 1)[1])
+        tts = ""
+        for kw, val in zip(parts[1::2], parts[2::2]):
+            if kw == "@tts":
+                tts = val
+        out.append((number, re.sub(r"^\s*@\d+\s*", "", tts.split("|")[0].strip())))
+    return out
+
+
+def _function_ranges(lines):
+    """{函式名: (起行, 迄行)}：第 0 欄的簽名行到下一個第 0 欄的單獨 `}`（1-based）。"""
+    ranges, name, start = {}, None, 0
+    for number, line in enumerate(lines, 1):
+        code = line.split("//@", 1)[0].rstrip()
+        m = _FUNC_DEF_RE.match(code)
+        if m and name is None and not code.startswith(("if", "for", "while", "switch", "return")):
+            name, start = m.group(1), number
+        elif name and code == "}":
+            ranges[name] = (start, number)
+            name = None
+    return ranges
+
+
+def derive_breakpoints(code):
+    """自動播放教案「一定要有」的斷點：[(行號, 原因)]。AUTHORING_GUIDE §8.1、§1.4、§3.4。
+
+    * `[continue]` 之後的下一個有 //@ 的行：不放的話 continue 一路跑到程式結束，整份
+      教案被衝掉（無聲、沒有任何錯誤訊息）。
+    * 遞迴函式的入口（函式內第一個有 //@ 的行）：自動播放的「下降」靠它攔住每一層。
+    * 遞迴函式裡用 `[fast @N]` 的行：快轉的每一步是 next，會跨過呼叫，沒斷點計數不到。
+
+    不推導「教學起點」「測驗觸發行」這類斷點：那是老師的判斷，不是結構決定的。
+    實測對 67 份人工教案：推導出的斷點全部都在老師放的斷點裡（遞迴入口老師放在簽名行，
+    GDB 會落在 prologue 之後的第一個敘述，兩者等價）。
+    """
+    lines = code.split("\n")
+    ann = _annotations(lines)
+    found = {}
+    for index, (number, tts) in enumerate(ann[:-1]):
+        if tts.startswith("[continue]"):
+            found.setdefault(ann[index + 1][0], "[continue] 之後的落腳行")
+    for name, (start, end) in _function_ranges(lines).items():
+        body = lines[start:end - 1]
+        if not any(re.search(r"\b" + re.escape(name) + r"\s*\(", b.split("//@", 1)[0]) for b in body):
+            continue
+        inside = [(n, t) for n, t in ann if start < n < end]
+        if inside:
+            found.setdefault(inside[0][0], f"遞迴函式 {name} 的入口")
+        for n, t in inside:
+            if "[fast @" in lines[n - 1]:
+                found.setdefault(n, "遞迴裡的 [fast @N]")
+    return sorted(found.items())
+
+
 _UNSET_RE = re.compile(r"建構的 \{(\w+)\}")
 
 

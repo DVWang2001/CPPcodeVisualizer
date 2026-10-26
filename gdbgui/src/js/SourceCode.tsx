@@ -19,6 +19,7 @@ import { nearestRunnableLine, isRunnableLine, decideEnter, Visit } from "./runTo
 import { lineVisitCount } from "./localEngine";
 import { skeletonOf, isCommentOnlyEdit, selectionTouchesCode, snapColumn } from "./tutorialGuard";
 import { normalizeBundle } from "./bundleAdapter";
+import { toFrontendBreakpoints } from "./lessonGen";
 import ReactDOM from "react-dom";
 import LineAnnotationPanel, { LinePanelDraft } from "./LineAnnotationPanel";
 import { lineIdentifiers } from "./lineIdentifiers";
@@ -1397,7 +1398,7 @@ class SourceCode extends React.Component<{}, State> {
     }
   };
 
-  applyGeneratedCode = (code: string) => {
+  applyGeneratedCode = (code: string, breakpointLines: number[] = []) => {
     const model = this.editorInstance?.getModel?.();
     if (!model || !this.editorInstance) return;
     this.editorInstance.pushUndoStop();
@@ -1405,6 +1406,14 @@ class SourceCode extends React.Component<{}, State> {
     // editor is readOnly) so apply works in play mode too, like saveLinePanel.
     model.pushEditOperations([], [{ range: model.getFullModelRange(), text: code }], () => null);
     this.editorInstance.pushUndoStop();
+    // 教案的斷點就是教案應該有的斷點（跟 Import JSON 一樣整組取代）：舊斷點的行號是
+    // 對著舊程式碼放的，程式換掉之後留著只會停在不相干的行。
+    // 沒推導出斷點（沒有 [continue] 跳行、沒有遞迴）就不動使用者自己放的斷點。
+    if (breakpointLines.length > 0) {
+      const bps = toFrontendBreakpoints(breakpointLines);
+      store.set("breakpoints", bps);
+      localStorage.setItem("breakpoints", JSON.stringify(bps));
+    }
   };
 
   /**
@@ -2240,8 +2249,8 @@ class SourceCode extends React.Component<{}, State> {
           {(this.state as any).showLessonGen && (
             <LessonGenPanel
               getSource={() => this.editorInstance?.getValue?.() || ""}
-              onApply={(code) => {
-                this.applyGeneratedCode(code);
+              onApply={(code, breakpoints) => {
+                this.applyGeneratedCode(code, breakpoints);
                 this.setState({ showLessonGen: false } as any);
               }}
               onClose={() => this.setState({ showLessonGen: false } as any)}

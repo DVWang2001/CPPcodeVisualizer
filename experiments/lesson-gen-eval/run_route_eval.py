@@ -67,7 +67,8 @@ def one(i, task, rep, model):
     if last.get("done"):
         rec["repaired"] = last.get("repaired")
         rec["warnings"] = last.get("warnings", [])
-        rec["score"] = sl.score(last["code"], program_input, original=src)
+        rec["breakpoints"] = last.get("breakpoints", [])
+        rec["score"] = sl.score(last["code"], program_input, {b["line"] for b in rec["breakpoints"]}, original=src)
         (OUT / f"{task}_{rep}.cpp").write_text(last["code"], encoding="utf-8")
     else:
         rec["error"] = last.get("error") or last.get("message") or repr(last)[:300]
