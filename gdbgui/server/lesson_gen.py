@@ -41,6 +41,9 @@ _SYSTEM_TEMPLATE = (
     "9. 一行最多一個遞迴呼叫，且其回傳值先存進自己的具名變數再參與後續運算；"
     "不要寫 take = val[i] + knap(...) 這種把子問題回傳值和額外運算混在一行的寫法，"
     "要拆成 int sub = knap(...); take = val[i] + sub;，讓子問題的回傳值在節點上看得見。\n"
+    "10. 只在 GDB 真的會停駐的行加 //@：不要標 #include、using namespace、函式簽名行、"
+    "全域宣告，也不要標迴圈或 if 的單獨 }}（只有函式右大括號與 main 收尾會停）。\n"
+    "11. @N 門檻只用來區分「第一次」與「之後」，除非有具體理由，不要自創 @5、@11 這類數字。\n"
 )
 
 
@@ -93,6 +96,27 @@ def resolve_api_key(request_key, environ):
     ):
         if candidate and candidate.strip():
             return candidate.strip()
+    return None
+
+
+_ANNOT_RE = re.compile(r"\s*//@.*$")
+
+
+def code_unchanged(source, output):
+    """去掉 //@ 註解後，輸出必須與輸入逐行相同（行數、內容都不能變）。
+
+    prompt 只是請求；模型改了程式（甚至刪行）時，//@ 的行號就全部錯位，
+    而且畫面上看不出來。回傳 None 表示通過，否則回傳給使用者看的原因。
+    """
+    def norm(text):
+        return [_ANNOT_RE.sub("", ln).rstrip() for ln in text.strip("\n").splitlines()]
+
+    a, b = norm(source), norm(output)
+    if len(a) != len(b):
+        return f"模型改變了行數（原 {len(a)} 行、輸出 {len(b)} 行），已拒絕"
+    for i, (x, y) in enumerate(zip(a, b), 1):
+        if x != y:
+            return f"模型修改了第 {i} 行的程式碼，已拒絕：\n原：{x}\n改：{y}"
     return None
 
 

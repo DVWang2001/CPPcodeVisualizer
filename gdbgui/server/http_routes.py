@@ -418,6 +418,10 @@ def generate_lesson():
             )
             yield json.dumps({"error": reason}, ensure_ascii=False) + "\n"
             return
+        changed = lesson_gen.code_unchanged(source, code)
+        if changed:
+            yield json.dumps({"error": changed}, ensure_ascii=False) + "\n"
+            return
         yield json.dumps({"done": True, "code": code}, ensure_ascii=False) + "\n"
 
     return current_app.response_class(

@@ -109,3 +109,15 @@ def test_sse_delta_ignores_everything_that_is_not_content():
         'event: ping',
     ):
         assert lesson_gen.sse_delta(noise) is None, noise
+
+
+def test_code_unchanged_ignores_annotations_only():
+    src = "int main() {\n  int x = 1;\n}\n"
+    out = "int main() {\n  int x = 1;  //@ @tts [next] 好\n}  //@ @tts [continue] 結束"
+    assert lesson_gen.code_unchanged(src, out) is None
+
+
+def test_code_unchanged_rejects_edit_and_line_count():
+    src = "int a = 1;\nint b = 2;\n"
+    assert "行數" in lesson_gen.code_unchanged(src, "int a = 1;\n")
+    assert "第 2 行" in lesson_gen.code_unchanged(src, "int a = 1;\nint b = 3;\n")
