@@ -1,6 +1,8 @@
 """AI 教案生成的純函式（不依賴 Flask，方便單元測試）。"""
+import importlib.util
 import json
 import re
+from pathlib import Path
 
 # 挑這一組的理由都是在正式機上量出來的，不是看規格挑的：
 #
@@ -118,6 +120,63 @@ def code_unchanged(source, output):
         if x != y:
             return f"模型修改了第 {i} 行的程式碼，已拒絕：\n原：{x}\n改：{y}"
     return None
+
+
+def load_checker(root):
+    """載入 scripts/check_lesson.py 的 check()；找不到回 None（驗證就只剩 code_unchanged）。
+
+    和 AUTHORING_GUIDE.md 一樣從 repo 根目錄找，不把 scripts/ 當套件匯入。
+    """
+    path = Path(root) / "scripts" / "check_lesson.py"
+    if not path.exists():
+        return None
+    spec = importlib.util.spec_from_file_location("check_lesson", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.check
+
+
+def find_problems(check, code):
+    """check_lesson 的 problems：[(行號, 訊息)]。沒有檢查器就當沒問題。"""
+    return list(check(code)[0]) if check else []
+
+
+def repair_message(problems):
+    """把檢查器的原始輸出貼回給模型（AUTHORING_GUIDE §9.4：不要轉述）。"""
+    lines = "\n".join(f"- 第 {n} 行：{m}" if n else f"- {m}" for n, m in problems)
+    return (
+        "你的輸出沒通過檢查器：\n" + lines + "\n"
+        "請修正這些問題後，重新輸出完整的 C++ 原始碼（只輸出程式碼，其餘規則不變，"
+        "原始碼每一行都要保留）。"
+    )
+
+
+_UNSET_RE = re.compile(r"建構的 \{(\w+)\}")
+
+
+def drop_unset_refs(code, problems):
+    """把「引用該行才宣告的變數」的 {變數} 從那一行的註解移除。回傳 (新程式碼, [(行號, 變數)])。
+
+    模型最頑固的毛病（實測 12 份有 10 份犯）：在 `int n = ...;` 這行的註解寫 {n}，
+    停在那一行時 n 還沒值，學生看到垃圾。檢查器已經指出行號與變數，直接刪掉比再問
+    一次模型可靠；`n={n}` 這種寫法連前面的 `n=` 一起拿掉，免得留下半句話。
+    """
+    lines = code.split("\n")
+    fixed = []
+    for number, message in problems:
+        found = _UNSET_RE.search(message)
+        if not found or not (1 <= number <= len(lines)) or "//@" not in lines[number - 1]:
+            continue
+        name = re.escape(found.group(1))
+        head, tail = lines[number - 1].split("//@", 1)
+        ref = r"\{" + name + r"(?:\[[^}]*)?\}"
+        new = re.sub(r"[^\s{}，。、：:]*\s*[=＝]\s*" + ref, "", tail)
+        new = re.sub(ref, "", new)
+        new = re.sub(r"[ \t]{2,}", " ", new)
+        if new != tail:
+            lines[number - 1] = head + "//@" + new
+            fixed.append((number, found.group(1)))
+    return "\n".join(lines), fixed
 
 
 _FENCE_RE = re.compile(r"^```[^\n]*\n(.*?)\n?```\s*$", re.S)

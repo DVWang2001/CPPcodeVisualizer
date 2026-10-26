@@ -12,6 +12,11 @@ type State = {
   streamed: string;
   /** 模型的思考過程。推理階段長達數分鐘，沒有它畫面會整整幾分鐘空白。 */
   thinking: string;
+  /** 後端目前在做什麼（例如「自動修正一輪」），空字串＝沒有特別狀態。 */
+  status: string;
+  /** 套用前要提醒的事：自動修掉的、以及檢查器仍然報的。 */
+  warnings: string[];
+  repaired: boolean;
 };
 
 const box: React.CSSProperties = {
@@ -20,7 +25,7 @@ const box: React.CSSProperties = {
 };
 
 export default class LessonGenPanel extends React.Component<Props, State> {
-  state: State = { cfg: loadCfg(), instruction: "", loading: false, error: "", preview: null, streamed: "", thinking: "" };
+  state: State = { cfg: loadCfg(), instruction: "", loading: false, error: "", preview: null, streamed: "", thinking: "", status: "", warnings: [], repaired: false };
   _mounted = false;
 
   componentDidMount() {
@@ -49,7 +54,7 @@ export default class LessonGenPanel extends React.Component<Props, State> {
       this.setState({ error: "編輯器沒有程式碼" });
       return;
     }
-    this.setState({ loading: true, error: "", preview: null, streamed: "", thinking: "" });
+    this.setState({ loading: true, error: "", preview: null, streamed: "", thinking: "", status: "", warnings: [], repaired: false });
     try {
       const resp = await fetch("/api/generate_lesson", {
         method: "POST",
@@ -81,13 +86,17 @@ export default class LessonGenPanel extends React.Component<Props, State> {
         for (const ev of events) {
           if (!this._mounted) return;
           if ("error" in ev) throw new Error(ev.error);
-          if ("thinking" in ev) {
+          if ("reset" in ev) {
+            this.setState({ streamed: "", thinking: "" });
+          } else if ("status" in ev) {
+            this.setState({ status: ev.status });
+          } else if ("thinking" in ev) {
             this.setState((prev) => ({ thinking: prev.thinking + ev.thinking }));
           } else if ("delta" in ev) {
             this.setState((prev) => ({ streamed: prev.streamed + ev.delta }));
           } else if ("done" in ev) {
             done = true;
-            this.setState({ preview: ev.code });
+            this.setState({ preview: ev.code, warnings: ev.warnings || [], repaired: !!ev.repaired, status: "" });
           }
         }
       }
@@ -145,7 +154,7 @@ export default class LessonGenPanel extends React.Component<Props, State> {
         <button className="btn btn-primary btn-sm" disabled={loading} onClick={this.generate} data-testid="lesson-generate">
           {loading
             ? this.state.streamed
-              ? `生成中…已寫 ${this.state.streamed.length} 字`
+              ? `${this.state.status || "生成中"}…已寫 ${this.state.streamed.length} 字`
               : `思考中…${this.state.thinking.length} 字`
             : "生成教案"}
         </button>
@@ -159,7 +168,7 @@ export default class LessonGenPanel extends React.Component<Props, State> {
         {loading && (
           <div style={{ marginTop: 8 }}>
             <div style={{ fontSize: 12, color: "#8b5cf6", marginBottom: 4 }}>
-              生成中（模型會先思考再動筆，整份約十分鐘起跳；請勿關閉此面板）
+              生成中（約兩到六分鐘；檢查沒過時會自動修正一輪；請勿關閉此面板）
             </div>
             {this.state.streamed ? (
               <textarea readOnly value={this.state.streamed} rows={14}
@@ -173,7 +182,12 @@ export default class LessonGenPanel extends React.Component<Props, State> {
 
         {preview !== null && (
           <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: "#8b5cf6", marginBottom: 4 }}>預覽（尚未套用）</div>
+            <div style={{ fontSize: 12, color: "#8b5cf6", marginBottom: 4 }}>預覽（尚未套用）{this.state.repaired ? "　已自動修正一輪" : ""}</div>
+            {this.state.warnings.length > 0 && (
+              <ul data-testid="lesson-warnings" style={{ margin: "0 0 6px", paddingLeft: 18, fontSize: 12, color: "#d97706" }}>
+                {this.state.warnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            )}
             <textarea readOnly value={preview} rows={14} style={{ ...box, whiteSpace: "pre" }} data-testid="lesson-preview" />
             <div style={{ marginTop: 6, textAlign: "right" }}>
               <button className="btn btn-default btn-sm" style={{ marginRight: 6 }} onClick={() => this.setState({ preview: null })}>

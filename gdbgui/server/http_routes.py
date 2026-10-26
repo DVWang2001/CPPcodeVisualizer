@@ -339,20 +339,30 @@ def generate_lesson():
         return jsonify({"message": "伺服器找不到 AUTHORING_GUIDE.md"}), 500
     guide_md = guide_path.read_text(encoding="utf-8")
 
-    payload = {
-        "model": model,
-        "messages": lesson_gen.build_messages(
-            guide_md, source, _as_str(body.get("instruction", ""))
-        ),
-        # 一份教案的輸出量：dp3_knapsack.cpp 這種長度粗估就要 4800 tokens，
-        # 舊的 4096 會在中間把程式碼截斷（而且截斷後看起來像一份完整教案）。
-        "max_tokens": LESSON_MAX_OUTPUT_TOKENS,
-        "temperature": 0.3,
-        # 非串流不是效能選擇，是能不能完成的問題。實測 NVIDIA 的閘道在
-        # 302 秒整砍掉請求（縮小 prompt 也一樣，所以瓶頸是總時間不是輸入量），
-        # 而一份教案要 704 秒。串流讓連線上持續有資料，閘道就不會判逾時。
-        "stream": True,
-    }
+    base_messages = lesson_gen.build_messages(
+        guide_md, source, _as_str(body.get("instruction", ""))
+    )
+    check = lesson_gen.load_checker(guide_path.parent)
+    # 關掉思考：deepseek-v4.1-flash 對 20 行以上的程式會把 16384 tokens 全花在思考、
+    # 一個字的答案都沒寫（實測 12 份有 7 份 finish_reason=length、content 為空）。
+    # 這個參數是 NVIDIA 端點的寫法；其他供應商可能不認得而回 400，所以只加在預設端點。
+    extra = {"chat_template_kwargs": {"thinking": False}} if base_url == lesson_gen.DEFAULT_BASE_URL else {}
+
+    def payload_for(messages):
+        return {
+            "model": model,
+            "messages": messages,
+            # 一份教案的輸出量：dp3_knapsack.cpp 這種長度粗估就要 4800 tokens，
+            # 舊的 4096 會在中間把程式碼截斷（而且截斷後看起來像一份完整教案）。
+            "max_tokens": LESSON_MAX_OUTPUT_TOKENS,
+            "temperature": 0.3,
+            # 非串流不是效能選擇，是能不能完成的問題。實測 NVIDIA 的閘道在
+            # 302 秒整砍掉請求（縮小 prompt 也一樣，所以瓶頸是總時間不是輸入量），
+            # 而一份教案要 704 秒。串流讓連線上持續有資料，閘道就不會判逾時。
+            "stream": True,
+            **extra,
+        }
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -369,44 +379,47 @@ def generate_lesson():
         串流一旦開始就送不出 HTTP 狀態碼了，所以錯誤只能以 {"error": ...} 這一行
         傳達——前端必須把它當成失敗，不能當成內容。
         """
-        pieces = []
-        saw_reasoning = False
-        try:
-            with _requests.post(
-                f"{base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-                stream=True,
-                # 串流時這是「兩塊資料之間」的上限，不是整體上限。實測首塊要
-                # 143.9 秒（排隊 + prefill），所以不能設得太小。
-                timeout=LESSON_GEN_TIMEOUT_SECONDS,
-            ) as upstream:
-                if upstream.status_code != 200:
-                    detail = upstream.text[:300]
-                    yield json.dumps(
-                        {"error": f"模型 API 回傳 {upstream.status_code}：{detail}"},
-                        ensure_ascii=False,
-                    ) + "\n"
-                    return
-                for line in upstream.iter_lines():
-                    parsed = lesson_gen.sse_delta(line)
-                    if not parsed:
-                        continue
-                    kind, text = parsed
-                    if kind == "content":
-                        # 只有 content 是要留下來的教案；推理過程不能寫進去。
-                        pieces.append(text)
-                        yield json.dumps({"delta": text}, ensure_ascii=False) + "\n"
-                    else:
-                        # 思考過程純粹當進度用。推理階段長達數分鐘，沒有它畫面
-                        # 會整整幾分鐘空白，使用者只會以為當掉。
-                        saw_reasoning = True
-                        yield json.dumps({"thinking": text}, ensure_ascii=False) + "\n"
-        except Exception as e:
-            yield json.dumps({"error": f"呼叫模型 API 失敗：{e}"}, ensure_ascii=False) + "\n"
-            return
+        def event(obj):
+            return json.dumps(obj, ensure_ascii=False) + "\n"
 
-        code = lesson_gen.strip_code_fences("".join(pieces))
+        def run_pass(messages):
+            """呼叫一次模型並把串流轉出去。回傳 (去圍欄的程式碼, 有沒有思考過程, 錯誤訊息)。"""
+            pieces = []
+            saw_reasoning = False
+            try:
+                with _requests.post(
+                    f"{base_url}/chat/completions",
+                    headers=headers,
+                    json=payload_for(messages),
+                    stream=True,
+                    # 串流時這是「兩塊資料之間」的上限，不是整體上限。實測首塊要
+                    # 143.9 秒（排隊 + prefill），所以不能設得太小。
+                    timeout=LESSON_GEN_TIMEOUT_SECONDS,
+                ) as upstream:
+                    if upstream.status_code != 200:
+                        return "", False, f"模型 API 回傳 {upstream.status_code}：{upstream.text[:300]}"
+                    for line in upstream.iter_lines():
+                        parsed = lesson_gen.sse_delta(line)
+                        if not parsed:
+                            continue
+                        kind, text = parsed
+                        if kind == "content":
+                            # 只有 content 是要留下來的教案；推理過程不能寫進去。
+                            pieces.append(text)
+                            yield event({"delta": text})
+                        else:
+                            # 思考過程純粹當進度用。推理階段長達數分鐘，沒有它畫面
+                            # 會整整幾分鐘空白，使用者只會以為當掉。
+                            saw_reasoning = True
+                            yield event({"thinking": text})
+            except Exception as e:
+                return "", saw_reasoning, f"呼叫模型 API 失敗：{e}"
+            return lesson_gen.strip_code_fences("".join(pieces)), saw_reasoning, None
+
+        code, saw_reasoning, upstream_error = yield from run_pass(base_messages)
+        if upstream_error:
+            yield event({"error": upstream_error})
+            return
         if not code.strip():
             # 推理型模型會把輸出額度花在思考上（實測 12 行的程式：思考 1622 塊、
             # 教案 65 塊）。程式一長，推理量跟著漲，可能在動筆前就把額度用光——
@@ -419,10 +432,34 @@ def generate_lesson():
             yield json.dumps({"error": reason}, ensure_ascii=False) + "\n"
             return
         changed = lesson_gen.code_unchanged(source, code)
+        problems = [] if changed else lesson_gen.find_problems(check, code)
+        repaired = False
+        if changed or problems:
+            # 實測（6 題 × 2 次，關閉思考）：第一次就過 4/12，把檢查器的原始輸出貼回去修一輪後
+            # 過 10/12。模型犯的錯檢查器講得很清楚，貼回去比叫它「更小心」有效得多。
+            yield event({"status": f"檢查發現 {len(problems) or 1} 個問題，自動修正一輪…"})
+            yield event({"reset": True})
+            messages = base_messages + [
+                {"role": "assistant", "content": code},
+                {"role": "user", "content": lesson_gen.repair_message(problems or [(0, changed)])},
+            ]
+            code2, _, error2 = yield from run_pass(messages)
+            # 修正回合壞了（上游錯誤、空輸出、又改了程式）就退回第一份，不讓它比沒修還糟。
+            if not error2 and code2.strip() and not lesson_gen.code_unchanged(source, code2):
+                code, repaired = code2, True
+                changed = None
+                problems = lesson_gen.find_problems(check, code)
         if changed:
-            yield json.dumps({"error": changed}, ensure_ascii=False) + "\n"
+            yield event({"error": changed})
             return
-        yield json.dumps({"done": True, "code": code}, ensure_ascii=False) + "\n"
+        warnings = []
+        if problems:
+            code, fixed = lesson_gen.drop_unset_refs(code, problems)
+            warnings += [f"已自動移除第 {n} 行註解裡的 {{{name}}}（該行還沒賦值，會顯示垃圾值）"
+                         for n, name in fixed]
+            problems = lesson_gen.find_problems(check, code)
+        warnings += [f"第 {n} 行：{m}" if n else m for n, m in problems]
+        yield event({"done": True, "code": code, "warnings": warnings, "repaired": repaired})
 
     return current_app.response_class(
         relay(),

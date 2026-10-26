@@ -121,3 +121,39 @@ def test_code_unchanged_rejects_edit_and_line_count():
     src = "int a = 1;\nint b = 2;\n"
     assert "行數" in lesson_gen.code_unchanged(src, "int a = 1;\n")
     assert "第 2 行" in lesson_gen.code_unchanged(src, "int a = 1;\nint b = 3;\n")
+
+
+_ROOT = __import__("pathlib").Path(__file__).resolve().parent.parent
+_DECL_BUG = (
+    "#include <iostream>\n"
+    "int main() {\n"
+    "   int n = 5;  //@ @guide n={n} @tts [next] 宣告 n\n"
+    "   int s = 0;  //@ @guide {n} @tts [next] 開始\n"
+    "}  //@ @tts [continue] 結束\n"
+)
+
+
+def test_find_problems_flags_ref_to_variable_declared_on_the_same_line():
+    check = lesson_gen.load_checker(_ROOT)
+    problems = lesson_gen.find_problems(check, _DECL_BUG)
+    assert [n for n, _ in problems] == [3]
+
+
+def test_drop_unset_refs_removes_only_the_offending_token_and_its_label():
+    check = lesson_gen.load_checker(_ROOT)
+    problems = lesson_gen.find_problems(check, _DECL_BUG)
+    fixed_code, fixed = lesson_gen.drop_unset_refs(_DECL_BUG, problems)
+    assert fixed == [(3, "n")]
+    assert "n={n}" not in fixed_code.split("\n")[2]
+    assert "{n}" in fixed_code.split("\n")[3]  # 下一行的 {n} 是合法的，不能動
+    assert lesson_gen.find_problems(check, fixed_code) == []
+
+
+def test_find_problems_without_checker_is_empty():
+    assert lesson_gen.find_problems(None, _DECL_BUG) == []
+    assert lesson_gen.load_checker("/no/such/root") is None
+
+
+def test_repair_message_quotes_the_checker_output():
+    msg = lesson_gen.repair_message([(3, "不能這樣"), (0, "整份有問題")])
+    assert "第 3 行：不能這樣" in msg and "- 整份有問題" in msg

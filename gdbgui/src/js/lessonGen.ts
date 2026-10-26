@@ -50,7 +50,9 @@ export function buildRequestBody(cfg: LessonCfg, source: string, instruction: st
 export type StreamEvent =
   | { delta: string }
   | { thinking: string }
-  | { done: true; code: string }
+  | { done: true; code: string; warnings?: string[]; repaired?: boolean }
+  | { status: string }
+  | { reset: true }
   | { error: string };
 
 /**
