@@ -142,3 +142,11 @@ def test_rate_limit_gets_a_readable_message(flask_app, monkeypatch):
     monkeypatch.setattr(http_routes._requests, "post", lambda *a, **k: _Limited(""))
     last = _last(_generate(flask_app))
     assert "429" in last["error"] and "再試" in last["error"]
+
+
+def test_prose_only_guide_is_stripped_for_main_only_programs(flask_app, upstream):
+    scripted, _ = upstream
+    scripted.append(GOOD.replace("@tts [next] 宣告 n", "@guide [初始化#blue] 宣告 n @tts [next] 宣告 n"))
+    done = _last(_generate(flask_app))
+    assert done["done"] and "初始化" not in done["code"] and "@guide {n}" in done["code"]
+    assert done["prose_guides_dropped"] == 1 and any("純敘述" in w for w in done["warnings"])
