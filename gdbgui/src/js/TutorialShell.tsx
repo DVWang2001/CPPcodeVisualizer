@@ -9,6 +9,7 @@
 import React from "react";
 import { stepState, nextStep, prevStep } from "./tutorialSteps";
 import "../../static/css/tutorial.css";
+import "../../static/css/ide-theme.css";
 
 type Project = { id: string; title: string; goal: string; file: string; steps?: string[]; tip?: string };
 type Feature = { id: string; title: string; projects: Project[] };
