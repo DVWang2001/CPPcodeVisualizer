@@ -5,7 +5,8 @@
   "line_data": {
     "12": {
       "guide": "[主程式] 準備呼叫 SWAP 函式\nx = {x}, y = {y}",
-      "tts": "x 和 y 已經初始化。現在準備進入 SWAP 函式進行數值交換。"
+      "tts": "x 和 y 已經初始化。現在準備進入 SWAP 函式進行數值交換。",
+      "layout": "open:visualizer,memory_watch"
     },
     "4": {
       "guide": "[函式內] 準備執行 int t = *a\n暫存指標 a 所指向的值",
