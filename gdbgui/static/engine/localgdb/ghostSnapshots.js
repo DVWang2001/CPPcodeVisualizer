@@ -49,7 +49,7 @@ export function buildPrerunSnapshots(model) {
     seenFrame.add(fid);
     const chain = model.chain(i); // innermost first
     snaps.push(chain.map((f, idx) => ({
-      func: f.fn,
+      func: model.dn(f.fn),
       addr: "0x" + (idx > 0 ? model.retAddr(f.stepIdx, chain[idx - 1].frameId) : 0).toString(16),
       line: String(f.line),
       args: model.visibleVars(f.stepIdx).filter((e) => e.isArg).map((e) => ({ name: e.name, value: printEntry(model, e) })),

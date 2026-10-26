@@ -14,17 +14,31 @@ const own = (/** @type {object} */ o, /** @type {string} */ k) => Object.prototy
  * @typedef {{ level: number, stepIdx: number, frameId: number, fn: string, line: number, depth: number }} FrameRec
  */
 
+/** "frame:name" -> [frame, name] (vg.h's pointer / reference target), or null. @param {any} x @returns {[number, string] | null} */
+function parseTarget(x) {
+  if (typeof x !== "string") return null;
+  const i = x.indexOf(":");
+  const f = i > 0 ? Number(x.slice(0, i)) : NaN;
+  return Number.isSafeInteger(f) ? [f, x.slice(i + 1)] : null;
+}
+
 export class TraceModel {
   /**
    * @param {{ steps: any[], functions: any, decls: any, globals: any, source: string, exit?: any, classes?: any }} run  engine result (runProgram) + source text
    */
   constructor(run) {
-    this.steps = run.steps;
+    this.steps = run.steps.slice(); // elements are replaced (never edited) below: a run may back several models
     this.functions = run.functions || {};
     this.decls = run.decls || {};
     this.globals = run.globals || {};
     /** Field/access shape of every phase-1-supported class, by name (instrument.js's registerClass). */
     this.classes = run.classes || {};
+    /** Class template instantiations are registered as written (`Box<int>`); look them up by GDB's spelling of the type. @type {Map<string, string>} */
+    this.classByType = new Map();
+    for (const k of Object.keys(this.classes)) {
+      if (!k.includes("<")) continue;
+      try { this.classByType.set(gdbType(parseType(k)), k); } catch { this.classByType.set(k, k); }
+    }
     this.exit = run.exit || { reason: "exit", code: 0 };
     this.source = run.source || "";
     this.fnNames = Object.keys(this.functions);
@@ -58,6 +72,37 @@ export class TraceModel {
       }
       lastOf.set(s.frame, i);
     });
+    // Reference aliases (`a.ref()` = "frame:name" of the variable a reference binds to) and pointer values
+    // (`{__vgp:"frame:name", __vgv: pointee}`, see vg.h): turned into pseudo addresses, so that `&(a)` of a reference
+    // is its referent's address and a pointer prints as the address of the variable it points to.
+    /** @type {Map<string, [number, string]>} key `frame:name` of a reference variable -> its referent */
+    this.aliases = new Map();
+    for (const s of this.steps) {
+      for (const k of Object.keys(s.vars)) {
+        if (!k.endsWith(".ref()")) continue;
+        const t = parseTarget(s.vars[k]);
+        if (t) this.aliases.set(`${s.frame}:${k.slice(0, -".ref()".length)}`, t);
+      }
+    }
+    /** Values a variable took while only ANOTHER frame ran (a callee writing through a pointer / reference): `frame:name` -> [[stepIdx, raw], ...] ascending. @type {Map<string, Array<[number, any]>>} */
+    this.writes = new Map();
+    for (let i = 0; i < this.steps.length; i++) {
+      let s = this.steps[i];
+      for (const k of Object.keys(s.vars)) {
+        const v = s.vars[k];
+        if (!v || typeof v !== "object" || Array.isArray(v) || typeof v.__vgp !== "string") continue;
+        const t = parseTarget(v.__vgp);
+        if (s === run.steps[i]) { s = { ...s, vars: Object.assign(Object.create(null), s.vars) }; this.steps[i] = s; }
+        s.vars[k] = t ? { addr: this.varAddr(t[0], t[1]), pv: v.__vgv, tf: t[0], tn: t[1] } : "<ptr>";
+        if (t && v.__vgv !== undefined) this._noteWrite(t, i, v.__vgv);
+      }
+      // a reference's value IS its referent's current value
+      for (const k of Object.keys(s.vars)) {
+        if (!k.endsWith(".ref()")) continue;
+        const base = k.slice(0, -".ref()".length), t = this.aliases.get(`${s.frame}:${base}`);
+        if (t && own(s.vars, base)) this._noteWrite(t, i, s.vars[base]);
+      }
+    }
     /** @type {Map<number, number>} */ this.addrCache = new Map();
     this.typeCache = new Map();
     /** @type {Map<string, any>} per-class-name cache; see _classCls's comment (self/mutually-referencing pointer fields) */
@@ -118,7 +163,13 @@ export class TraceModel {
    * @param {any} cls @returns {any}
    */
   _upgradeClass(cls) {
-    if (cls.kind === "other" && cls.node.k === "n" && own(this.classes, cls.node.name)) return this._classCls(cls.node.name, cls.node);
+    if (cls.kind === "other" && cls.node.k === "n") {
+      if (own(this.classes, cls.node.name)) return this._classCls(cls.node.name, cls.node);
+      if (cls.node.args.length) {
+        const key = this.classByType.get(gdbType(cls.node));
+        if (key !== undefined) return this._classCls(key, cls.node);
+      }
+    }
     if (cls.kind === "ref" || cls.kind === "ptr") return { ...cls, to: this._upgradeClass(cls.to) };
     return cls;
   }
@@ -139,8 +190,10 @@ export class TraceModel {
   _classCls(name, node) {
     let c = this._classCache.get(name);
     if (c) return c;
-    c = { kind: "class", node, className: name, fields: /** @type {any[]} */ ([]) };
+    c = { kind: "class", node, className: name, fields: /** @type {any[]} */ ([]), bases: /** @type {any[]} */ ([]) };
     this._classCache.set(name, c);
+    // base-class subobjects (instrument.js emits them as `"<Base>": {...}` ahead of the fields)
+    c.bases = (this.classes[name].bases || []).map((/** @type {any} */ b) => ({ name: b.name, cls: this._classCls(b.name, { k: "n", name: b.name, args: [], c: false }) }));
     c.fields = this.classes[name].fields.map((/** @type {any} */ f) => {
       const fti = this.typeInfo(f.qualType);
       return { name: f.name, access: f.access, cls: fti.cls, gdbType: fti.gdbType };
@@ -148,12 +201,61 @@ export class TraceModel {
     return c;
   }
 
+  /** @param {[number, string]} t @param {number} i @param {any} raw */
+  _noteWrite(t, i, raw) {
+    const key = `${t[0]}:${t[1]}`;
+    const a = this.writes.get(key);
+    if (a) a.push([i, raw]); else this.writes.set(key, [[i, raw]]);
+  }
+
+  /**
+   * The value variable `name` of frame `frameId` has at execution position `cur`, when a callee changed it after the frame's own
+   * latest step `stepIdx` (`*a = *b` in SWAP changes main's x while only SWAP is traced); undefined = no newer value.
+   * @param {number} frameId @param {string} name @param {number} stepIdx @param {number} cur
+   */
+  overlay(frameId, name, stepIdx, cur) {
+    const a = this.writes.get(`${frameId}:${name}`);
+    if (!a || cur <= stepIdx) return undefined;
+    let lo = 0, hi = a.length - 1, r = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (a[m][0] <= cur) { r = m; lo = m + 1; } else hi = m - 1; }
+    return r >= 0 && a[r][0] > stepIdx ? a[r][1] : undefined;
+  }
+
+  /** Latest value of variable `name` of frame `frameId` at execution position `cur` (its own latest step, or a later write by a callee). @param {number} frameId @param {string} name @param {number} cur */
+  currentValue(frameId, name, cur) {
+    const si = this.frameStepAtOrBefore(frameId, cur);
+    if (si < 0 || !own(this.steps[si].vars, name)) return undefined;
+    const ov = this.overlay(frameId, name, si, cur);
+    return ov !== undefined ? ov : this.steps[si].vars[name];
+  }
+
+  /**
+   * The raw value of variable `name` in the frame whose latest step is `stepIdx`, at execution position `cur`. Only the innermost frame
+   * is traced right now; for a caller the trace value can be stale: (1) a callee wrote the variable through a pointer / reference,
+   * (2) the variable IS a pointer or reference to something a callee wrote.
+   * @param {number} frameId @param {string} name @param {number} stepIdx @param {any} raw @param {number} cur
+   */
+  effective(frameId, name, stepIdx, raw, cur) {
+    if (cur <= stepIdx) return raw;
+    const ov = this.overlay(frameId, name, stepIdx, cur);
+    if (ov !== undefined) return ov;
+    if (raw && typeof raw === "object" && typeof raw.tf === "number") {
+      const pv = this.currentValue(raw.tf, raw.tn, cur);
+      return pv === undefined ? raw : { ...raw, pv };
+    }
+    const t = this.aliases.get(`${frameId}:${name}`);
+    if (t) { const v = this.currentValue(t[0], t[1], cur); if (v !== undefined) return v; }
+    return raw;
+  }
+
   /**
    * Variables of the frame whose innermost step is `stepIdx`, in GDB order (innermost block first,
    * declaration order inside a block), including variables declared later in a visible block.
-   * @param {number} stepIdx @returns {VarEntry[]}
+   * `cur` (default: `stepIdx`) is the execution position: a variable a callee wrote through a pointer/reference since this frame's
+   * step shows the new value (see `overlay`).
+   * @param {number} stepIdx @param {number} [cur] @returns {VarEntry[]}
    */
-  visibleVars(stepIdx) {
+  visibleVars(stepIdx, cur = stepIdx) {
     const step = this.steps[stepIdx];
     const sc = this.scopes.get(step.fn);
     if (!sc) return [];
@@ -172,7 +274,8 @@ export class TraceModel {
       const qual = this.qualOf(step.fn, name, e.v.nth);
       const ti = this.typeInfo(qual);
       const present = owner.get(name) === i && own(step.vars, name);
-      const raw = present ? step.vars[name] : zeroFor(ti.cls);
+      let raw = present ? step.vars[name] : zeroFor(ti.cls);
+      if (present) raw = this.effective(step.frame, name, stepIdx, raw, cur);
       const capKey = name + ".capacity()";
       /** @type {VarEntry} */
       const entry = {
@@ -193,15 +296,18 @@ export class TraceModel {
     return c.length ? c[0] : null;
   }
 
+  /** Display name of an internal function key: same-name overloads carry a `@(paramTypes)` suffix (see instrument.js). @param {string} fn */
+  dn(fn) { const i = fn.indexOf("@("); return i < 0 ? fn : fn.slice(0, i); }
+
   /** Signature as GDB prints a C++ function name in `bkpt.func`: `fact(int)`, `main()`. @param {string} fn */
   signature(fn) {
     const meta = this.functions[fn];
-    if (!meta) return fn + "()";
+    if (!meta) return this.dn(fn) + "()";
     const ps = meta.params.map((p) => {
       const ti = this.typeInfo(this.qualOf(fn, p, 0));
       try { return signatureType(ti.node); } catch { return ti.gdbType; }
     });
-    return `${fn}(${ps.join(", ")})`;
+    return `${this.dn(fn)}(${ps.join(", ")})`;
   }
 
   // ---- pseudo addresses ------------------------------------------------------------------------------
@@ -269,6 +375,12 @@ export class TraceModel {
 
   /** Pseudo stack address of a variable in a frame. @param {number} frameId @param {string} name */
   varAddr(frameId, name) {
+    // a reference has its referent's address (what `&(ref)` gives in GDB)
+    for (let d = 0; d < 8; d++) {
+      const a = this.aliases.get(`${frameId}:${name}`);
+      if (!a) break;
+      frameId = a[0]; name = a[1];
+    }
     let h = 0;
     for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
     return 0x7ffe00000000 + ((frameId & 0xffff) << 12) + ((h & 0xff) << 4);

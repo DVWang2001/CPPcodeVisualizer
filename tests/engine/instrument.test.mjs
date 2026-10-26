@@ -11,23 +11,16 @@ after(() => eng && eng.dispose());
 
 const H = "#include <iostream>\n#include <vector>\nusing namespace std;\n";
 const UNSUPPORTED = [
-  ["switch", `int main() {\n    int x = 1;\n    switch (x) { case 1: x = 2; break; default: break; }\n    return x;\n}\n`, 6],
-  ["do-while", `int main() {\n    int x = 0;\n    do { x++; } while (x < 3);\n    return x;\n}\n`, 6],
   ["goto", `int main() {\n    int x = 0;\n    again:\n    x++;\n    if (x < 3) goto again;\n    return 0;\n}\n`, 6],
   ["try", `int main() {\n    try { int x = 1; } catch (...) {}\n    return 0;\n}\n`, 5],
-  ["lambda", `int main() {\n    auto f = [](int a) { return a + 1; };\n    return f(1);\n}\n`, 5],
-  ["template", `template <class T> T twice(T x) { return x * 2; }\nint main() {\n    return twice(2);\n}\n`, 4],
-  ["class inheritance", `struct Base { int x; };\nstruct P : Base { int get() { return x; } };\nint main() {\n    P p;\n    return p.get();\n}\n`, 5],
-  ["virtual function", `struct P {\n    virtual int get() { return 1; }\n};\nint main() {\n    P p;\n    return p.get();\n}\n`, 5],
-  ["operator overload", `struct P {\n    int x;\n    int operator+(const P& o) const { return x + o.x; }\n};\nint main() {\n    P a{1}, b{2};\n    return a + b;\n}\n`, 6],
+  ["template", `template <class T> struct S { T v; };\ntemplate <class T> struct S<T*> { int w; };\nint main() {\n    S<int> s;\n    return 0;\n}\n`, 5],
+  ["virtual inheritance", `struct Base { int x; };\nstruct P : virtual Base { int get() { return x; } };\nint main() {\n    P p;\n    return p.get();\n}\n`, 5],
   ["static class member", `struct P {\n    static int f() { return 1; }\n};\nint main() {\n    return P::f();\n}\n`, 5],
   ["nested class", `struct Outer {\n    struct Inner { int x; };\n};\nint main() {\n    Outer::Inner i{1};\n    return i.x;\n}\n`, 5],
   ["union", `union U { int a; float b; };\nint main() {\n    U u;\n    u.a = 1;\n    return u.a;\n}\n`, 4],
-  ["friend declaration", `struct P {\n    int x;\n    friend int get(const P&);\n};\nint get(const P& p) { return p.x; }\nint main() {\n    P p{1};\n    return get(p);\n}\n`, 6],
   ["default member initializer", `struct P {\n    int x = 5;\n    int f() { return x; }\n};\nint main() {\n    P p;\n    return p.f();\n}\n`, 5],
   ["member function without a body", `struct P {\n    int x;\n    int f();\n};\nint P::f() { return x; }\nint main() {\n    P p{1};\n    return p.f();\n}\n`, 6],
   ["namespace", `namespace util { int f() { return 1; } }\nint main() {\n    return util::f();\n}\n`, 4],
-  ["overloaded function f", `int f(int a) { return a; }\nint f(double a) { return 2; }\nint main() {\n    return f(1);\n}\n`, 5],
   ["if with initializer", `int main() {\n    if (int y = 3; y > 2) return 1;\n    return 0;\n}\n`, 5],
   ["static local variable", `int count() {\n    static int n = 0;\n    return ++n;\n}\nint main() {\n    return count();\n}\n`, 5],
   ["function-like macro in while condition", `#define LT(a, b) ((a) < (b))\nint main() {\n    int i = 0;\n    while (LT(i, 3)) i++;\n    return i;\n}\n`, 7],
@@ -177,15 +170,13 @@ int main() {
   assert.deepEqual(ctorSteps.map((s) => s.depth), [2, 2, 2, 2, 2]);
 });
 
-test("class support: still unsupported — inheritance, virtual, operator overload, static members, nested class, union, friend, default member initializer, out-of-line definition (explicit errors, never silently mis-instrumented)", async () => {
+test("class support: still unsupported — virtual inheritance, library base classes, static members, nested class, union, default member initializer, out-of-line definition (explicit errors, never silently mis-instrumented)", async () => {
   const cases = [
-    ["class inheritance", `struct Base { int x; };\nstruct P : Base { int get() { return x; } };\nint main() { P p; return p.get(); }\n`],
-    ["virtual function", `struct P { virtual int get() { return 1; } };\nint main() { P p; return p.get(); }\n`],
-    ["operator overload", `struct P { int x; int operator+(const P& o) const { return x + o.x; } };\nint main() { P a{1}, b{2}; return a + b; }\n`],
+    ["inheriting from a library class", `#include <vector>\nstruct P : std::vector<int> { int get() { return 1; } };\nint main() { P p; return p.get(); }\n`],
+    ["virtual inheritance", `struct Base { int x; };\nstruct P : virtual Base { int get() { return x; } };\nint main() { P p; return p.get(); }\n`],
     ["static class member", `struct P { static int f() { return 1; } };\nint main() { return P::f(); }\n`],
     ["nested class", `struct Outer { struct Inner { int x; }; };\nint main() { Outer::Inner i{1}; return i.x; }\n`],
     ["union", `union U { int a; float b; };\nint main() { U u; u.a = 1; return u.a; }\n`],
-    ["friend declaration", `struct P { int x; friend int get(const P&); };\nint get(const P& p) { return p.x; }\nint main() { P p{1}; return get(p); }\n`],
     ["default member initializer", `struct P { int x = 5; int f() { return x; } };\nint main() { P p; return p.f(); }\n`],
     ["member function without a body", `struct P { int x; int f(); };\nint P::f() { return x; }\nint main() { P p{1}; return p.f(); }\n`],
   ];

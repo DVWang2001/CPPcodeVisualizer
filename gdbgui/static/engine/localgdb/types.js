@@ -259,6 +259,13 @@ export function classify(t) {
 /** Container kinds with vector-like flat `.[i]` children (one elem type, N children) but no `.capacity()` pseudo-var. */
 export const FLAT_CONTAINER_KINDS = new Set(["deque", "list", "stack", "queue", "pqueue", "set"]);
 
+/** A pointer to an int/bool/float variable (not char: GDB prints a char pointer as a string): the pointers the trace follows (vg.h). @param {Cls} c */
+export function isScalarPtr(c) {
+  if (c.kind !== "ptr") return false;
+  const t = /** @type {Cls} */ (c.to);
+  return t.kind === "int" || t.kind === "bool" || t.kind === "float";
+}
+
 /** Types shown with a value by `-stack-list-variables --simple-values` (not aggregates/classes). @param {Cls} c */
 export function isSimple(c) {
   if (c.kind === "ref") return isSimple(/** @type {Cls} */ (c.to));
@@ -283,7 +290,7 @@ export function isSupported(c) {
     // A user class (TraceModel.typeInfo upgrades "other" to this when the name matches a registered
     // class; classify() itself never produces it, since a class's field/access shape is per-program
     // data, not a fact derivable from a type string alone). Supported iff every field's own type is.
-    case "class": return /** @type {any} */ (c).fields.every((/** @type {any} */ f) => isSupported(f.cls));
+    case "class": return /** @type {any} */ (c).fields.every((/** @type {any} */ f) => isSupported(f.cls)) && ((/** @type {any} */ (c).bases) || []).every((/** @type {any} */ b) => isSupported(b.cls));
     // A pointer stays unsupported here even for pointer-to-class (this's own type): isSupported()
     // is purely type-based, but only the SPECIFIC name `this` has real dereferenced data to show —
     // vg.h traces every OTHER pointer as the opaque "<ptr>" placeholder, never the pointee's actual
@@ -368,7 +375,7 @@ export function formatScalar(c, raw) {
       return formatG(v, 17);
     }
     case "string": return printChars(typeof raw === "string" ? [...raw].map((ch) => ch.codePointAt(0) || 0) : [], false);
-    case "ptr": return raw === 0 || raw === undefined ? "0x0" : "0x7ffe00000000";
+    case "ptr": return raw === 0 || raw === undefined ? "0x0" : raw && typeof raw === "object" && typeof raw.addr === "number" ? "0x" + raw.addr.toString(16) : "0x7ffe00000000";
     case "ref": return formatScalar(/** @type {Cls} */ (c.to), raw);
     default: return "{...}";
   }
@@ -478,7 +485,10 @@ export function printValue(cls, raw, capacity) {
     // Flat "field = value" pairs, no access-level grouping (that's a -var-list-children-only
     // concept — see varobj.js's access pseudo-nodes). Confirmed against a real GDB session.
     const o = raw && typeof raw === "object" ? raw : {};
-    const parts = cls.fields.map((/** @type {any} */ f) => `${f.name} = ${printValue(f.cls, o[f.name])}`);
+    const parts = [
+      ...(cls.bases || []).map((/** @type {any} */ b) => `<${b.name}> = ${printValue(b.cls, o[`<${b.name}>`])}`),
+      ...cls.fields.map((/** @type {any} */ f) => `${f.name} = ${printValue(f.cls, o[f.name])}`),
+    ];
     return `{${parts.join(", ")}}`;
   }
   if (cls.kind === "pair") {

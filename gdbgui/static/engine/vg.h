@@ -25,6 +25,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <list>
+#include <memory>
 #include <map>
 #include <queue>
 #include <set>
@@ -47,6 +48,15 @@ struct Var {
   const char* name;
   std::string json;
   long long cap = -1;  // std::vector capacity(); -1 = none. The container view draws spare slots from it.
+  // Scalar pointers and references (README "Pointers and references"): `addr` is the variable's own address (for a
+  // reference: the referent's), `tgt` the pointee of a pointer. step() maps both back to a traced variable of a live frame.
+  const void* addr = nullptr;
+  const void* tgt = nullptr;
+  int kind = 0;  // 0 plain, 1 object pointer
+  bool ref = false;   // declared as a reference (vd): the trace says which traced variable it aliases
+  bool reg = false;   // an arithmetic variable: the only kind a pointer / reference can be matched to (an array or struct shares its first element's / member's address)
+  bool glob = false;  // a global: registered under frame 0, not under whichever frame happened to run the probe
+  std::string (*rd)(const void*) = nullptr;  // pointer to an arithmetic type: serialises the pointee found at `tgt` (only called for a registered, live target)
 };
 
 template <class T, class = void> struct has_capacity : std::false_type {};
@@ -70,6 +80,13 @@ template <class T> struct is_queue : std::false_type {};
 template <class T, class C> struct is_queue<std::queue<T, C>> : std::true_type {};
 template <class T> struct is_priority_queue : std::false_type {};
 template <class T, class C, class Cmp> struct is_priority_queue<std::priority_queue<T, C, Cmp>> : std::true_type {};
+
+// User class templates (instrument.js, registerClassTemplate): the instrumenter appends one partial specialisation of
+// UserJ per class template, valid for every T; j() uses it when it exists. (A class WITHOUT template parameters gets a
+// full specialisation of j itself.)
+template <class T> struct UserJ;
+template <class T, class = void> struct has_userj : std::false_type {};
+template <class T> struct has_userj<T, std::void_t<decltype(sizeof(UserJ<T>))>> : std::true_type {};
 
 template <class T> std::string j(const T& x);
 
@@ -104,6 +121,8 @@ template <class T> std::string j(const T& x) {
     return std::to_string(static_cast<long long>(x));
   } else if constexpr (std::is_enum_v<T>) {
     return std::to_string(static_cast<long long>(x));
+  } else if constexpr (has_userj<T>::value) {
+    return UserJ<T>::emit(x);
   } else if constexpr (std::is_same_v<T, std::string>) {
     return quote(x);
   } else if constexpr (is_pair<T>::value) {
@@ -154,7 +173,30 @@ template <class T> std::string j(const T& x) {
 template <class T> Var v(const char* name, const T& x) {
   long long cap = -1;
   if constexpr (has_capacity<T>::value && !std::is_same_v<T, std::string>) cap = static_cast<long long>(x.capacity());
-  return Var{name, j(x), cap};
+  Var r{name, j(x), cap};
+  r.addr = (const void*)std::addressof(x);  // C-style: also accepts a volatile variable
+  // arithmetic variables and object pointers (a reference to a pointer, `int*& r`, writes the caller's pointer)
+  r.reg = std::is_arithmetic_v<std::remove_cv_t<T>> || (std::is_pointer_v<T> && std::is_object_v<std::remove_pointer_t<T>>);
+  if constexpr (std::is_pointer_v<T> && std::is_object_v<std::remove_pointer_t<T>>) {
+    r.kind = 1;
+    r.tgt = (const void*)x;  // C-style: also drops a `volatile` pointee
+    using P = std::remove_cv_t<std::remove_pointer_t<T>>;
+    if constexpr (std::is_arithmetic_v<P>) r.rd = [](const void* p) -> std::string { return j(*static_cast<const P*>(p)); };
+  }
+  return r;
+}
+// Same, for a name whose DECLARED type is `D` (decltype(name)): a reference is traced like a normal variable (its value
+// is the referent's) plus the pseudo variable `name.ref()` that says which traced variable it aliases.
+template <class D, class T> Var vd(const char* name, const T& x) {
+  Var r = v(name, x);
+  if constexpr (std::is_reference_v<D>) r.ref = true;
+  return r;
+}
+// A global (instrument.js knows which names are globals and not shadowed).
+template <class D, class T> Var vdg(const char* name, const T& x) {
+  Var r = vd<D>(name, x);
+  r.glob = true;
+  return r;
 }
 
 // Call depth and activation serial. The instrumenter puts `__vg::Frame __vg_fr;` first in every
@@ -170,8 +212,23 @@ template <class T> Var v(const char* name, const T& x) {
 struct FrameState { long long depth = 0, next = 0; std::vector<long long> stk; };
 inline FrameState& frames() { static FrameState f; return f; }
 inline long long curFrame() { auto& s = frames().stk; return s.empty() ? 0 : s.back(); }
+// Address registry of the traced variables of the live frames: address -> (frame serial, name). A pointer variable's
+// target and a reference's referent are looked up here, so the trace can say "p points to x of frame 1" instead of an
+// opaque placeholder. Entries die with their frame (the address may be reused by the next call).
+struct Registry {
+  std::map<const void*, std::pair<long long, std::string>> by;
+  std::map<long long, std::vector<const void*>> mine;
+};
+inline Registry& registry() { static Registry r; return r; }
 inline void pushFrame() { FrameState& f = frames(); f.stk.push_back(++f.next); ++f.depth; }
-inline void popFrame() { FrameState& f = frames(); f.stk.pop_back(); --f.depth; }
+inline void popFrame() {
+  FrameState& f = frames();
+  Registry& r = registry();
+  auto it = r.mine.find(f.stk.back());
+  if (it != r.mine.end()) { for (const void* a : it->second) { auto b = r.by.find(a); if (b != r.by.end() && b->second.first == f.stk.back()) r.by.erase(b); } r.mine.erase(it); }
+  f.stk.pop_back();
+  --f.depth;
+}
 struct Frame {
   Frame() { pushFrame(); }
   ~Frame() { popFrame(); }
@@ -185,6 +242,31 @@ struct FrameGuard {
   FrameGuard& operator=(const FrameGuard&) = delete;
   FrameGuard() = default;
   ~FrameGuard() { popFrame(); }
+};
+
+// Derived classes with a user constructor or destructor get one unique empty first base, `Pre<N>` (instrument.js,
+// registerClass). Bases are constructed first and destroyed last, so:
+//  * its mem-initialiser, put first in the constructor's initialiser list, is the earliest code of the construction and
+//    pushes the constructor's frame before any base constructor (itself traced) runs;
+//  * its destructor is the latest code of the destruction: the destructor's frame (DtorFrame, opened in the destructor
+//    body) is closed there, after every member and base destructor ran inside it.
+// Names of template instantiations (instrument.js, registerFunctionTemplate): the instrumenter appends one explicit
+// specialisation `TplName<ID, args...>` per instantiation it saw; a template body, shared by all of them, asks for its own.
+template <int ID, class... Ts> struct TplName;
+
+inline std::vector<const void*>& pendingDtors() { static std::vector<const void*> v; return v; }
+template <int N> struct Pre {
+  Pre() {}
+  explicit Pre(int) {}
+  ~Pre() {
+    auto& st = pendingDtors();
+    if (!st.empty() && st.back() == this) { st.pop_back(); popFrame(); }
+  }
+};
+struct DtorFrame {
+  template <int N> explicit DtorFrame(Pre<N>* p) { pushFrame(); pendingDtors().push_back(p); }
+  DtorFrame(const DtorFrame&) = delete;
+  DtorFrame& operator=(const DtorFrame&) = delete;
 };
 
 // The trace channel: one fd_write per record, straight to fd 3 (no stdio buffering, so a record
@@ -219,9 +301,34 @@ inline void step(int probe, int line, const char* fn, std::initializer_list<Var>
       diff += qn + ":" + json;
     }
   };
+  // Register this stop's variables first (a pointer may point at a variable declared later in the same list).
+  {
+    Registry& rg = registry();
+    const long long cf = curFrame();
+    for (const auto& x : vars) {
+      if (!x.addr || x.ref || !x.reg) continue;  // a reference shares its referent's address (the referent owns it); non-arithmetic variables are never targets
+      const long long fr = x.glob ? 0 : cf;
+      auto ins = rg.by.emplace(x.addr, std::make_pair(fr, std::string(x.name)));
+      if (ins.second) rg.mine[fr].push_back(x.addr);
+      else if (ins.first->second.first == fr) ins.first->second.second = x.name;  // same frame, new block variable at that address
+    }
+  }
   for (const auto& x : vars) {
-    add(x.name, x.json);
+    if (x.kind == 1 && x.tgt) {
+      auto f = registry().by.find(x.tgt);
+      if (f != registry().by.end()) {
+        // {"__vgp":"frame:name"[,"__vgv":pointee value]}: `__vgv` is the pointee as it is NOW (it may change while only the pointer's
+        // frame is running, e.g. `*a = *b` inside SWAP), so it is re-read at every stop of the pointer's frame.
+        add(x.name, "{\"__vgp\":" + quote(std::to_string(f->second.first) + ":" + f->second.second) + (x.rd ? ",\"__vgv\":" + x.rd(x.tgt) : std::string()) + "}");
+      } else add(x.name, x.json);
+    } else {
+      add(x.name, x.json);
+    }
     if (x.cap >= 0) add(std::string(x.name) + ".capacity()", std::to_string(x.cap));  // pseudo variable
+    if (x.ref && x.addr) {
+      auto f = registry().by.find(x.addr);
+      if (f != registry().by.end()) add(std::string(x.name) + ".ref()", quote(std::to_string(f->second.first) + ":" + f->second.second));
+    }
   }
   std::string o = "{\"p\":" + std::to_string(probe) + ",\"line\":" + std::to_string(line) + ",\"fn\":" + qfn +
                   ",\"depth\":" + std::to_string(frames().depth) + ",\"frame\":" + std::to_string(curFrame()) +

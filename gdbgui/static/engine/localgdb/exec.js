@@ -44,7 +44,10 @@ export class BreakpointTable {
 
   /** First stop line of a function (where `break fn` lands). @param {string} fn @returns {{ line: number, fn: string } | null} */
   resolveFunction(fn) {
-    if (!Object.prototype.hasOwnProperty.call(this.model.functions, fn)) return null;
+    if (!Object.prototype.hasOwnProperty.call(this.model.functions, fn)) {
+      const k = Object.keys(this.model.functions).find((x) => this.model.dn(x) === fn); // `break operator>>` on an overload set: first definition
+      return k === undefined ? null : this.resolveFunction(k);
+    }
     const step = this.model.steps.find((s) => s.fn === fn);
     if (step) return { line: step.line, fn };
     return { line: this.model.functions[fn].line + 1, fn };
@@ -165,8 +168,12 @@ export class ExecState {
   _sameLineVisit(origin, i) {
     const S = this.model.steps, o = S[origin], c = S[i];
     if (c.frame === o.frame && c.line === o.line) return true;
-    const f = this.model.frames.get(o.frame);
-    if (f && f.callerStep >= 0) { const cs = S[f.callerStep]; if (c.frame === cs.frame && c.line === cs.line) return true; }
+    // the rest of an ancestor's call line, however many returns it takes to get back to it (a constructor chain
+    // Base -> Mid -> Leaf returns through every level before the next line)
+    for (let f = this.model.frames.get(o.frame); f && f.callerStep >= 0; f = this.model.frames.get(S[f.callerStep].frame)) {
+      const cs = S[f.callerStep];
+      if (c.frame === cs.frame && c.line === cs.line) return true;
+    }
     return false;
   }
 

@@ -15,6 +15,7 @@
 
 const REC_KEYS = new Set(["p", "line", "fn", "depth", "frame", "n", "d"]);
 const CAP = ".capacity()";
+const REF = ".ref()"; // reference alias pseudo variable (vg.h vd()): value "frame:name" of the aliased variable
 const MAX_RECORDS = 200100; // vg.h stops at 200000 steps; a little slack for the limit record
 
 /** @param {unknown} v @returns {v is number} */
@@ -30,7 +31,7 @@ export function zeroLike(v) {
 }
 
 /**
- * @typedef {{ line: number, fn: string, names: string[], u: Array<[string, number]>, w: number[] }} ProbeSite
+ * @typedef {{ line: number, fn: string, names: string[], u: Array<[string, number]>, w: number[], tplFns?: string[] }} ProbeSite
  * @typedef {{ lineCount: number, probes: ProbeSite[] }} TraceMeta
  * @typedef {{ line: number, fn: string, depth: number, frame: number, vars: Record<string, any>, uninit?: string[] }} Step
  */
@@ -81,7 +82,8 @@ export function decodeTrace(bytes, meta, opts = {}) {
       const site = meta.probes[p];
       if (!(Number.isInteger(rec.line) && rec.line >= 1 && rec.line <= meta.lineCount)) throw new Error("line out of range");
       if (rec.line !== site.line) throw new Error("line does not match probe site");
-      if (typeof rec.fn !== "string" || rec.fn !== site.fn) throw new Error("function does not match probe site");
+      // a template body is shared by all its instantiations: the site lists the (host-computed) names it may run as
+      if (typeof rec.fn !== "string" || !(rec.fn === site.fn || (Array.isArray(site.tplFns) && site.tplFns.includes(rec.fn)))) throw new Error("function does not match probe site");
       if (!posInt(rec.depth) || rec.depth > 10000000) throw new Error("bad depth");
       if (!posInt(rec.frame)) throw new Error("bad frame");
       if (!Array.isArray(rec.n)) throw new Error("n is not an array");
@@ -92,7 +94,7 @@ export function decodeTrace(bytes, meta, opts = {}) {
       const seen = new Set();
       for (const nm of rec.n) {
         if (typeof nm !== "string") throw new Error("variable name is not a string");
-        const base = nm.endsWith(CAP) ? nm.slice(0, -CAP.length) : null;
+        const base = nm.endsWith(CAP) ? nm.slice(0, -CAP.length) : nm.endsWith(REF) ? nm.slice(0, -REF.length) : null;
         if (!known.has(nm) && !(base !== null && known.has(base))) throw new Error("unknown variable " + JSON.stringify(nm));
         if (seen.has(nm)) throw new Error("duplicate variable " + JSON.stringify(nm));
         seen.add(nm);

@@ -344,8 +344,7 @@ test("-var-create: unsupported types and expressions get an explicit MI error; G
   // now creates a proper varobj for a plain data struct; see class_support.test.mjs. "m" (a bare
   // std::pair<int,int>, not inside a container) used to be unsupported too — see the "supported
   // types" test above for its var-create now that pair-as-an-element-type is supported.
-  for (const [e, ty] of [["p", "int \\*"]]) assert.match(await err(e), new RegExp(`^type '${ty}.*' is not supported by the browser engine$`), e);
-  assert.match(await err("*p"), /^expression '\*p' is not supported|^operator '\*' in expression '\*p' is not supported by the browser engine$/);
+  // `p` (int*) and `*p` used to be unsupported here; scalar pointers are followed now (pointers.test.mjs).
   assert.match(await err("g[0]"), /^expression 'g\[0\]' \(its value is a container\) is not supported by the browser engine$/);
   assert.equal(await err("x +"), "A syntax error in expression, near `'.");
   assert.equal(await err("x / 0"), "Division by zero");
@@ -353,7 +352,7 @@ test("-var-create: unsupported types and expressions get an explicit MI error; G
   assert.equal(await err("v.capacity()"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("v.size()"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("nosuch"), 'No symbol "nosuch" in current context.');
-  assert.equal(payloadOf(await send(g, "-var-create - * \"x\"")).name, "var10", "9 failed creates each consumed a varN (like GDB)");
+  assert.equal(payloadOf(await send(g, "-var-create - * \"x\"")).name, "var8", "7 failed creates each consumed a varN (like GDB)");
   // unsupported names for the other varobj commands
   assert.equal(payloadOf(await send(g, "-var-list-children --all-values \"var1\"")).msg, "Variable object not found");
   assert.equal(payloadOf(await send(g, "-var-delete var1")).msg, "Variable object not found");
@@ -614,7 +613,7 @@ test("-var-create of arithmetic expressions: C++ types and GDB's value spelling 
   assert.equal(await err("v.size() + 1"), "Cannot evaluate function -- may be inlined");
   assert.equal(await err("x +"), "A syntax error in expression, near `'.");
   assert.match(await err("x )"), /^A syntax error in expression, near `\)'\.$/);
-  assert.match(await err("*p"), /is not supported by the browser engine$/);
+  assert.match(await err("&x + 1"), /is not supported by the browser engine$/);
   assert.match(await err("f(x)"), /is not supported by the browser engine$/);
   assert.match(await err("x -> y"), /is not supported by the browser engine$/);
   assert.match(await err("g[0]"), /container\) is not supported by the browser engine$/);

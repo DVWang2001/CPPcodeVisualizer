@@ -14,7 +14,7 @@
 // again when it is re-entered.
 // Plain ES module, no DOM / Node APIs.
 
-import { classify, gdbType, isSupported, isDynamic, isSimple, FLAT_CONTAINER_KINDS } from "./types.js";
+import { classify, gdbType, isSupported, isDynamic, isSimple, isScalarPtr, FLAT_CONTAINER_KINDS } from "./types.js";
 import { valueOf } from "./model.js";
 import { printValue } from "./types.js";
 import { resultItem, errorItem, unsupportedMsg } from "./mi.js";
@@ -67,8 +67,8 @@ const isThisPtr = (e, cls) => e === "this" && cls.kind === "ptr" && cls.to && cl
 /**
  * @typedef {{ name: string, exp: string, parent: VarObj | null, index: number, ti: any, children: VarObj[] | null,
  *   root: VarObj, varName: string, frameId: number | null, fn: string, blockId: number, global: boolean,
- *   lastValue: string | null, lastInScope: boolean, addrName: string, kind?: "var" | "expr" | "ptr" | "ptrchild" | "basechild" | "elem" | "access" | "classfield",
- *   ast?: any, pointee?: any, fieldName?: string }} VarObj
+ *   lastValue: string | null, lastInScope: boolean, addrName: string, kind?: "var" | "expr" | "ptr" | "ptrchild" | "basechild" | "elem" | "access" | "classfield" | "baseclass",
+ *   ast?: any, pointee?: any, fieldName?: string, ptrVar?: boolean, derefOf?: boolean }} VarObj
  */
 
 export class VarObjs {
@@ -81,6 +81,7 @@ export class VarObjs {
     this.roots = [];
     this.counter = 0;
     this._ck = "";
+    this._cur = 0;
     /** @type {import("./model.js").FrameRec[]} */ this._cc = [];
     /** @type {Map<number, import("./model.js").FrameRec>} */ this._cm = new Map();
   }
@@ -95,6 +96,7 @@ export class VarObjs {
     if (this._ck !== key) {
       const idx = ex.landed ? ex.disp : ex.pos;
       this._cc = ex.running && idx >= 0 && idx < this._model.steps.length ? this._model.chain(idx) : [];
+      this._cur = idx;
       this._cm = new Map(this._cc.map((f) => [f.frameId, f]));
       this._ck = key;
     }
@@ -122,10 +124,13 @@ export class VarObjs {
     if (/^[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*\s*\(.*\)$/.test(e)) return errorItem("Cannot evaluate function -- may be inlined", token);
     const am = /^&\s*\(?\s*([A-Za-z_]\w*)\s*\)?$/.exec(e);
     if (am) return this._createPtr(name, e, am[1], token);
+    const dm = /^&\s*\(?\s*\*\s*([A-Za-z_]\w*)\s*\)?$/.exec(e);
+    if (dm) return this._createPtrVar(name, e, dm[1], true, token);
     if (!/^[A-Za-z_]\w*$/.test(e) || e === "true" || e === "false") return this._createExpr(name, e, token);
     const r = this._resolve(e);
     if ("error" in r) return errorItem(r.error, token);
     const cls = r.cls;
+    if (isScalarPtr(cls)) return this._createPtrVar(name, e, e, false, token);
     if (!isSupported(cls) && !isThisPtr(e, cls)) return errorItem(unsupportedMsg(`type '${r.gdbType}'`), token);
     /** @type {VarObj} */
     const vo = {
@@ -144,7 +149,7 @@ export class VarObjs {
   _lookup(frameId) {
     const model = this._model;
     const si = frameId === null ? -1 : this._frameStep(frameId);
-    const ents = si >= 0 ? model.visibleVars(si) : [];
+    const ents = si >= 0 ? model.visibleVars(si, this._cur) : [];
     const cur = this.host.exec;
     const gi = Math.min(Math.max(cur.landed ? cur.disp : cur.pos, 0), model.steps.length - 1);
     return (/** @type {string} */ n) => {
@@ -202,7 +207,7 @@ export class VarObjs {
     const r = this._resolve(target);
     if ("error" in r) return errorItem(r.error, token);
     const pc = r.cls.kind === "ref" ? r.cls.to : r.cls;
-    const scalar = pc.kind === "int" || pc.kind === "bool" || pc.kind === "char" || pc.kind === "float";
+    const scalar = pc.kind === "int" || pc.kind === "bool" || pc.kind === "char" || pc.kind === "float" || isScalarPtr(pc);
     if (!(scalar || ((pc.kind === "vector" || pc.kind === "array") && isSupported(pc)))) return errorItem(unsupportedMsg(`type '${gdbType(pointerTo(r.node))}'`), token);
     const pnode = r.cls.kind === "ref" ? r.node.to : r.node;
     /** @type {VarObj} */
@@ -216,6 +221,36 @@ export class VarObjs {
     this.roots.push(vo);
     vo.lastValue = this._value(vo);
     return resultItem(this._describe(vo, true), token);
+  }
+
+  /**
+   * `-var-create` of a scalar pointer variable (`a`, numchild "1", value = the address of the variable it points to, one
+   * child `*a`) or, with `addrOfDeref`, of `&(*a)` (the same address, typed `int *`). The pointer's raw trace value is
+   * `{addr, pv}` (model.js): the pseudo address of the pointee variable and its value as of this stop.
+   * @param {string} name @param {string} e @param {string} ptrName @param {boolean} addrOfDeref @param {number | null} token
+   */
+  _createPtrVar(name, e, ptrName, addrOfDeref, token) {
+    const r = this._resolve(ptrName);
+    if ("error" in r) return errorItem(r.error, token);
+    if (!isScalarPtr(r.cls)) return errorItem(addrOfDeref && r.cls.kind !== "ptr" ? "Attempt to take contents of a non-pointer value." : unsupportedMsg(`type '${r.gdbType}'`), token);
+    const pnode = r.node.to;
+    /** @type {VarObj} */
+    const vo = {
+      name, exp: e, parent: null, index: -1, kind: "ptr", ptrVar: !addrOfDeref, derefOf: addrOfDeref,
+      ti: { cls: r.cls, node: r.node, gdbType: r.gdbType },
+      pointee: { cls: r.cls.to, node: pnode, gdbType: gdbType(pnode) }, children: null, root: /** @type {any} */ (null),
+      varName: ptrName, frameId: r.frameId, fn: r.fn, blockId: r.blockId, global: r.global, lastValue: null, lastInScope: true, addrName: ptrName,
+    };
+    vo.root = vo;
+    this.byName.set(name, vo);
+    this.roots.push(vo);
+    vo.lastValue = this._value(vo);
+    return resultItem(this._describe(vo, true), token);
+  }
+
+  /** `0x...` text of a pointer's raw trace value. @param {any} raw */
+  _ptrText(raw) {
+    return raw && typeof raw === "object" && typeof raw.addr === "number" ? "0x" + raw.addr.toString(16) : raw === 0 || raw === undefined ? "0x0" : "0x7ffe00000000";
   }
 
   /** Children of a pointer varobj: the pointee (scalar) or the vector's `_Vector_base` (golden). @param {VarObj} vo */
@@ -269,7 +304,10 @@ export class VarObjs {
     const si = this._frameStep(vo.frameId);
     if (si < 0) return undefined;
     const s = model.steps[si];
-    if (own(s.vars, vo.varName)) return s.vars[vo.varName];
+    if (own(s.vars, vo.varName)) {
+      this._frames();
+      return model.effective(s.frame, vo.varName, si, s.vars[vo.varName], this._cur);
+    }
     const k = vo.ti.cls.kind;
     return k === "vector" || k === "map" || k === "stdarray" || FLAT_CONTAINER_KINDS.has(k) ? [] : k === "string" ? "" : k === "class" ? {} : 0;
   }
@@ -279,13 +317,17 @@ export class VarObjs {
     if (vo.kind === "expr") {
       try { return rawOf(evalAst(vo.ast, this._lookup(vo.frameId))); } catch (x) { return undefined; }
     }
-    if (vo.kind === "ptrchild") return this._rawRoot(/** @type {VarObj} */ (vo.parent));
+    if (vo.kind === "ptrchild") {
+      const par = /** @type {VarObj} */ (vo.parent);
+      if (par.ptrVar || par.derefOf) { const pr = this._rawRoot(par); return pr && typeof pr === "object" ? pr.pv : undefined; } // the pointee as traced at this stop
+      return this._rawRoot(par);
+    }
     // An access pseudo-node (public/private/protected) has no data of its own — it is a synthetic
     // grouping GDB's C++ varobj support inserts, one layer above the real fields (see the class
     // README note). Pass its parent's raw object straight through so a field one level below can
     // index it by name.
     if (vo.kind === "access") return this._raw(/** @type {VarObj} */ (vo.parent));
-    if (vo.kind === "classfield") {
+    if (vo.kind === "classfield" || vo.kind === "baseclass") {
       const pr = this._raw(/** @type {VarObj} */ (vo.parent));
       if (Array.isArray(pr) && vo.fieldName === "_M_elems") return pr; // std::array: the flat trace list IS _M_elems
       return pr && typeof pr === "object" ? pr[/** @type {string} */ (vo.fieldName)] : undefined;
@@ -318,7 +360,10 @@ export class VarObjs {
 
   /** @param {VarObj} vo @returns {string} */
   _value(vo) {
-    if (vo.kind === "ptr") return "0x" + this._model.varAddr(vo.frameId ?? 0, vo.varName).toString(16);
+    if (vo.kind === "ptr") {
+      if (vo.ptrVar || vo.derefOf) return this._ptrText(this._rawRoot(vo));
+      return "0x" + this._model.varAddr(vo.frameId ?? 0, vo.varName).toString(16);
+    }
     if (vo.kind === "basechild") return "{...}";
     if (vo.kind === "access") return ""; // GDB's own access pseudo-nodes always report an empty value
     if (vo.kind === "expr") {
@@ -371,7 +416,7 @@ export class VarObjs {
     const nc = vo.kind === "ptr" || vo.kind === "basechild" ? "1"
       : ecls.kind === "array" ? String(ecls.n)
       : ecls.kind === "stdarray" ? "1"
-      : ecls.kind === "class" ? String(new Set(ecls.fields.map((/** @type {any} */ f) => f.access)).size)
+      : ecls.kind === "class" ? String(new Set(ecls.fields.map((/** @type {any} */ f) => f.access)).size + (ecls.bases || []).length)
       : String(vo.children ? vo.children.length : 0);
     const p = { name: vo.name, numchild: nc, value: this._value(vo), type: vo.ti.gdbType };
     if (!vo.root.global) /** @type {any} */ (p)["thread-id"] = "1";
@@ -457,8 +502,10 @@ export class VarObjs {
       const kids = this._ensureAccessChildren(vo);
       const children = kids.map((c) => {
         const d = this._describe(c, false);
-        // No `type` key on an access pseudo-node (ground truth: GDB never sends one for it).
-        return { name: d.name, exp: c.exp, numchild: d.numchild, value: d.value, "thread-id": "1" };
+        // No `type` key on an access pseudo-node (ground truth: GDB never sends one for it); a base-class child has one.
+        return c.kind === "baseclass"
+          ? { name: d.name, exp: c.exp, numchild: d.numchild, value: d.value, type: d.type, "thread-id": "1" }
+          : { name: d.name, exp: c.exp, numchild: d.numchild, value: d.value, "thread-id": "1" };
       });
       return resultItem({ numchild: String(kids.length), children, has_more: "0" }, token);
     }
@@ -571,12 +618,22 @@ export class VarObjs {
     const cls = childKind(vo.ti.cls);
     const present = new Set(/** @type {any} */ (cls).fields.map((/** @type {any} */ f) => f.access));
     const order = ["public", "private", "protected"].filter((a) => present.has(a));
-    vo.children = order.map((access, i) => /** @type {VarObj} */ ({
+    // Base-class subobjects come first (`v1.Animal`, exp "Animal", the base's own type), then the access nodes
+    // (ground truth: real `gdb -i mi2`, class Dog : public Animal).
+    const bases = ((/** @type {any} */ (cls).bases) || []).map((/** @type {any} */ b, /** @type {number} */ i) => /** @type {VarObj} */ ({
+      name: `${vo.name}.${b.name}`, exp: b.name, parent: vo, index: i, kind: "baseclass", fieldName: `<${b.name}>`,
+      ti: { cls: b.cls, node: b.cls.node, gdbType: b.name },
+      children: null, root: vo.root, varName: vo.varName, frameId: vo.frameId, fn: vo.fn, blockId: vo.blockId, global: vo.global,
+      lastValue: null, lastInScope: true, addrName: vo.addrName,
+    }));
+    for (const b of bases) b.lastValue = this._value(b);
+    const access = order.map((access, i) => /** @type {VarObj} */ ({
       name: `${vo.name}.${access}`, exp: access, parent: vo, index: i, kind: "access",
       ti: { cls: { fields: /** @type {any} */ (cls).fields.filter((/** @type {any} */ f) => f.access === access) }, node: null, gdbType: "" },
       children: null, root: vo.root, varName: vo.varName, frameId: vo.frameId, fn: vo.fn, blockId: vo.blockId, global: vo.global,
       lastValue: "", lastInScope: true, addrName: vo.addrName,
     }));
+    vo.children = [...bases, ...access];
     for (const c of vo.children) this.byName.set(c.name, c);
     return vo.children;
   }
@@ -708,7 +765,14 @@ export class VarObjs {
     if (am) {
       const t = this._resolve(am[1]);
       if ("error" in t) return errorItem(t.error, token);
-      return resultItem({ value: `(${gdbType(pointerTo(t.node))}) 0x${this._model.varAddr(t.frameId ?? 0, am[1]).toString(16)}` }, token);
+      return resultItem({ value: `(${gdbType(pointerTo(t.cls.kind === "ref" ? t.node.to : t.node))}) 0x${this._model.varAddr(t.frameId ?? 0, am[1]).toString(16)}` }, token);
+    }
+    const dm = /^&\s*\(?\s*\*\s*([A-Za-z_]\w*)\s*\)?$/.exec(e);
+    if (dm) {
+      const t = this._resolve(dm[1]);
+      if ("error" in t) return errorItem(t.error, token);
+      if (!isScalarPtr(t.cls)) return errorItem(t.cls.kind === "ptr" ? unsupportedMsg(`type '${t.gdbType}'`) : "Attempt to take contents of a non-pointer value.", token);
+      return resultItem({ value: `(${t.gdbType}) ${this._ptrText(this._rawRoot(/** @type {any} */ ({ varName: dm[1], frameId: t.frameId, global: t.global, ti: { cls: t.cls } })))}` }, token);
     }
     if (!/^[A-Za-z_]\w*$/.test(e) || e === "true" || e === "false") {
       let val;
@@ -722,6 +786,7 @@ export class VarObjs {
     }
     const r = this._resolve(e);
     if ("error" in r) return errorItem(r.error, token);
+    if (isScalarPtr(r.cls.kind === "ref" ? r.cls.to : r.cls)) return resultItem({ value: `(${r.cls.kind === "ref" ? gdbType(r.node.to) : r.gdbType}) ${this._ptrText(this._rawRoot(/** @type {any} */ ({ varName: e, frameId: r.frameId, global: r.global, ti: { cls: r.cls } })))}` }, token);
     const thisPtr = isThisPtr(e, r.cls);
     if (!isSupported(r.cls) && !thisPtr) return errorItem(unsupportedMsg(`type '${r.gdbType}'`), token);
     // `this` evaluates to its own pseudo-address, same as var-create's value for it — ground truth:

@@ -19,7 +19,7 @@ const read = (p) => fs.readFileSync(p, "utf8");
 const inputOf = (jsonPath) => { try { return JSON.parse(read(jsonPath)).program_input || ""; } catch { return ""; } };
 
 for (const id of ["CC-2602B", "CC-2603B", "CC-2604B", "CC-2605B", "CC-2606B", "CC-2608B"]) {
-  test(`${id} (std::__gcd${id === "CC-2602B" ? ", __int64" : ""}) compiles and runs uninstrumented; instrumenter refuses the class`, async () => {
+  test(`${id} (std::__gcd${id === "CC-2602B" ? ", __int64" : ""}) compiles and runs uninstrumented and instrumented with equal stdout`, async () => {
     const src = read(path.join(OOP, id + ".cpp"));
     const stdin = inputOf(path.join(OOP, id + ".gdbgui.json"));
     const r = await eng.runProgram(src, stdin, { instrument: false });
@@ -32,16 +32,11 @@ for (const id of ["CC-2602B", "CC-2603B", "CC-2604B", "CC-2605B", "CC-2606B", "C
       assert.ok(g.ok, g.log);
       assert.equal(r.stdout, g.stdout);
     } else assert.ok(r.stdout.length > 0);
+    // Operator overloads / friend / same-name overloads are instrumented now: the instrumented run must print the same stdout.
     const ri = await eng.runProgram(src, stdin);
-    assert.equal(ri.ok, false);
-    assert.equal(ri.errors[0].kind, "unsupported");
-    // These lessons are all operator-overload-heavy (Point/Fraction/Complex/Matrix-style CF OOP
-    // corpus, see [[project_uml_object_diagram]]); phase-1 class support (commit adding
-    // gdbgui/static/engine/instrument.js's registerClass) accepts plain member functions but still
-    // explicitly rejects operator overloads, inheritance and virtual functions — the instrumenter
-    // still refuses these classes, just with a more specific reason than the old blanket rejection.
-    assert.match(ri.errors[0].message, /^unsupported construct: (operator overload|class inheritance|virtual function) \(line \d+\)$/);
-  });
+    assert.equal(ri.ok, true, JSON.stringify(ri.errors).slice(0, 800));
+    assert.equal(ri.stdout, r.stdout);
+    assert.ok(ri.steps.length > 0);  });
 }
 
 test("std::__gcd works for signed/unsigned/__int64 alongside libc++'s <numeric> template", async () => {

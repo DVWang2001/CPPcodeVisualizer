@@ -249,7 +249,7 @@ export class LocalGdbSession {
     const o = {};
     if (withLevel) o.level = String(level);
     o.addr = hex16(addr);
-    o.func = f.fn;
+    o.func = this.model.dn(f.fn);
     if (argMode !== "none") o.args = this.frameArgs(f.stepIdx, argMode);
     o.file = this.gdbFilePath;
     o.fullname = this.sourcePath;
@@ -297,7 +297,7 @@ export class LocalGdbSession {
     const a = splitArgs(c.rest).map((x) => x.value);
     const mode = a.includes("--all-values") ? "all" : a.includes("--simple-values") ? "simple" : "none";
     const f = this.frames()[Math.min(this.exec.selectedLevel, this.frames().length - 1)];
-    const variables = this.model.visibleVars(f.stepIdx).map((e) => {
+    const variables = this.model.visibleVars(f.stepIdx, this.topStep()).map((e) => {
       /** @type {any} */
       const o = { name: e.name };
       if (e.isArg) o.arg = "1";
@@ -380,7 +380,7 @@ export class LocalGdbSession {
     if (loc === null) return [errorItem("-break-insert: Usage: [-t] [-h] [-f] [-d] [-a] [-c CONDITION] [-i IGNORE-COUNT] [-p THREAD-ID] [LOCATION]", c.token)];
     if (loc.startsWith("*")) return [errorItem(unsupportedMsg("breakpoints at raw addresses"), c.token)];
     const m = /^(?:(.*):)?(\d+)$/.exec(loc);
-    const fm = /^(?:(.*):)?([A-Za-z_]\w*)$/.exec(loc);
+    const fm = /^(?:([^:\s]+\.\w+):)?((?:[A-Za-z_]\w*::)*(?:~?[A-Za-z_]\w*|operator\s*[^\s(]+))$/.exec(loc);
     /** @type {{ line: number, fn: string } | null} */
     let at = null;
     let err = null;
@@ -451,7 +451,7 @@ export class LocalGdbSession {
   runTillExit(reverse) {
     const ch = this.frames();
     const f = ch[Math.min(this.exec.selectedLevel, ch.length - 1)];
-    return `${reverse ? "Run back to call of" : "Run till exit from"} #${f ? f.level : 0}  ${f ? `${f.fn} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}` : ""}\n`;
+    return `${reverse ? "Run back to call of" : "Run till exit from"} #${f ? f.level : 0}  ${f ? `${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}` : ""}\n`;
   }
 
   /** @param {number} stepIdx */
@@ -487,7 +487,7 @@ export class LocalGdbSession {
         const f = this.model.chain(this.topStep())[0];
         const temp = first.disp === "del";
         items.push(consoleItem("\n"));
-        items.push(consoleItem(`${temp ? "Temporary breakpoint" : "Breakpoint"} ${first.number}, ${f.fn} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}\n`));
+        items.push(consoleItem(`${temp ? "Temporary breakpoint" : "Breakpoint"} ${first.number}, ${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}\n`));
         items.push(consoleItem(`${f.line}\tin ${this.gdbFilePath}\n`));
         items.push(notifyItem("stopped", { reason: "breakpoint-hit", disp: first.disp, bkptno: String(first.number), frame: frame(), ...tail }));
         for (const b of info.hits) if (b.disp === "del") { this.bps.remove(b.number); items.push(notifyItem("breakpoint-deleted", { id: String(b.number) })); }
@@ -496,7 +496,7 @@ export class LocalGdbSession {
       case "step":
         if (o.cli) {
           const f = this.model.chain(this.topStep())[0];
-          if (info.frameChanged) items.push(consoleItem(`${f.fn} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}\n`));
+          if (info.frameChanged) items.push(consoleItem(`${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}\n`));
           items.push(consoleItem(`${f.line}\tin ${this.gdbFilePath}\n`));
         }
         items.push(notifyItem("stopped", { reason: "end-stepping-range", frame: frame(), ...tail }));
@@ -512,7 +512,7 @@ export class LocalGdbSession {
         const [name, meaning] = this.signalOf();
         const f = this.model.chain(this.topStep())[0];
         items.push(consoleItem(`\nProgram received signal ${name}, ${meaning}.\n`));
-        items.push(consoleItem(`${f.fn} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}\n${f.line}\tin ${this.gdbFilePath}\n`));
+        items.push(consoleItem(`${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}\n${f.line}\tin ${this.gdbFilePath}\n`));
         items.push(notifyItem("stopped", { reason: "signal-received", "signal-name": name, "signal-meaning": meaning, frame: frame(), ...tail }));
         break;
       }
@@ -646,7 +646,7 @@ export class LocalGdbSession {
     const inner = sc ? chainAt(sc, f.line)[0] : null;
     const args = !inner || inner.kind === "function" ? this.model.visibleVars(f.stepIdx).filter((e) => e.isArg) : [];
     const py = new Map(/** @type {Array<[string, any]>} */ ([
-      ["func", f.fn], ["addr", "0x" + this.frameAddr(f.level).toString(16)], ["line", f.line], ["fullname", this.sourcePath],
+      ["func", this.model.dn(f.fn)], ["addr", "0x" + this.frameAddr(f.level).toString(16)], ["line", f.line], ["fullname", this.sourcePath],
       ["args", args.map((e) => new Map(/** @type {Array<[string, any]>} */ ([["name", e.name], ["value", this.entryValue(e)]])))],
     ]));
     return { line: f.line, py };

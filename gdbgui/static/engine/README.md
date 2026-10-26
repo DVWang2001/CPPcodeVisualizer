@@ -94,11 +94,18 @@ array decay). The rule is conservative: it may stop flagging early, never late.
 
 Supported: procedural code, recursion, reference parameters, range-for (incl. structured
 bindings and braced lists), global variables, `long long`, structs without member functions
-(value `"<?>"`), object-like macros anywhere, function-like macros as whole statements.
+(value `"<?>"`), in-class member functions, operator overloads (member and free `operator>>`/`<<`, conversion operators), `friend`, and same-name overloaded functions (internal key `name@(paramTypes)`; displayed as the bare name like GDB), object-like macros anywhere, function-like macros as whole statements. Known deviations from GDB `step`: compiler-generated ctors/dtors get no stop, and user functions called from inside the standard library (e.g. `vector<Point>(n)`, `accumulate` with a user `operator+`) are reported; see `tests/engine/operators.test.mjs`.
 
-Refused with `unsupported construct: X (line N)`: `switch`, `do-while`, `goto`/labels, `try`/`throw`,
-lambdas, templates, class member functions (use `instrument: false`), user namespaces, overloaded
-functions, `if`/`while` with initialiser or condition variable, `if constexpr`, static locals,
+`switch` (one stop at the `switch (cond)` line per execution, labels have no code, nested/stacked labels and fall-through included) and `do`-`while` (no stop at `do`, one per condition evaluation) match GDB stop for stop (`tests/engine/switch_dowhile.test.mjs`). Lambdas: a closure kept in an `auto` variable that user code calls directly is a frame named `operator()` whose variables are its locals, parameters and captured variables (`__closure` is not shown); `auto f = [caps]{...};` stops once at the lambda's closing `}` line, and not at all without captures. Lambdas handed to the standard library (`sort`, `for_each`, `std::function`, ...) keep an untouched body, because GDB never steps into them (`tests/engine/lambda.test.mjs`). Known deviations: g++ constant-folds some `constexpr` lambda calls with constant arguments (`sq(3)`) so GDB does not enter them while the engine does; a closure in an `auto` variable that is called directly AND passed to `sort` also reports the calls made from inside the library.
+
+Inheritance (non-virtual, bases declared earlier in the same program) and `virtual` / `override` / pure virtual functions: a derived constructor stops once on entry (on the line of its last initialiser clause, or of its `{`), the base constructors run inside that frame, then the member clauses, then the body; objects show `{<Base> = {...}, field = ...}` and the variable tree has the base as its first child (`var1.Animal`). A virtual call through a base reference/pointer is a frame of the function that really runs (`Dog::sound`). The implicit default constructor of a class with virtual functions (or deriving from a class whose constructor runs user code) and the implicit destructor of a class whose base has a destructor are written into the class so they get GDB's single stop on the class's declaration line; derived destructors keep their frame open until every member and base destructor ran inside them (`tests/engine/inheritance.test.mjs`). Known deviations: no other compiler-generated constructors/destructors/copies get a stop; `delete` through a virtual destructor stops once where GDB's deleting-destructor wrapper stops twice; after a local object's destructors ran at the end of a function other than `main`, GDB repeats the `return` and `}` lines; `_vptr` is not shown.
+
+Templates: function templates and class templates with plain type parameters, instantiated implicitly. All instantiations share one instrumented body; every instantiation has its own frame name (`maxOf<int>`, `conv<int, double>`, `Box<int>::get`), its own variable types and, for a class, its own `classes` entry (the name is looked up at run time in a table the instrumenter appends to the program). Not supported: non-type / template template / variadic parameters, explicit and partial specialisations, member templates, bases of a class template, friends in class templates, template arguments of local types (`tests/engine/templates.test.mjs`).
+
+Refused with `unsupported construct: X (line N)`: `goto`/labels, `try`/`throw`,
+generic / init-capturing / `this`-capturing lambdas, lambdas in positions other than an `auto` or `std::function` variable initialiser or a call argument (immediately-invoked, returned), `switch` with initialiser / condition variable / no labels, virtual inheritance, inheriting from a library class, delegating constructors, templates outside the shapes above,
+out-of-line member definitions, `static` members, user namespaces,
+`if`/`while` with initialiser or condition variable, `if constexpr`, static locals,
 GNU statement expressions, `asm`, attributed statements, coroutines, function-like macros inside
 conditions / increments / return values (e.g. `#define rep(i,n) for(...)`), code or `#if` blocks
 before the first declaration after the includes.
@@ -284,8 +291,35 @@ small `self`/`postMessage` shim); `node tests/engine/node_driver.mjs prog.cpp [i
   vendored emscripten glue.
 - The PCH cache stores ~14–21 MB per include set in IndexedDB; a shared browser profile is out of
   scope (plan §6 L1).
-- Values: stack/queue/priority_queue and structs are `"<?>"`; pointers are `"<ptr>"`; type-string
+- Values: stack/queue/priority_queue and structs are `"<?>"`; a pointer that does not point at a traced variable is `"<ptr>"` (null: `0`); type-string
   generation from `decls` is S4.
+
+### Pointers and references (scalar)
+
+`vg.h` keeps a registry of the traced variables of the live frames (address -> frame serial + name; entries die with
+their frame). At every stop it looks each pointer's target and each reference's referent up in it:
+
+- a pointer to an `int`/`bool`/floating variable that is registered is traced as `{"__vgp":"frame:name","__vgv":pointee}`;
+  `__vgv` is the pointee read at THIS stop, so `*a = *b` inside `SWAP` shows up although only `SWAP`'s frame is traced.
+  The model turns it into `{addr, pv}`: `addr` is the pointee's pseudo address (`varAddr(frame, name)`), so a pointer prints as
+  the same `0x7ffe...` that `&(x)` gives in the caller. Null is `0`; any other pointer stays `"<ptr>"` (`0x7ffe00000000`).
+- a reference (declared type `T&`, detected with `decltype(name)`) gets the pseudo variable `name.ref()` = `"frame:name"` of
+  the variable it binds to; `varAddr` follows it, so `&(ref)` / `@0x...: value` carry the referent's address like GDB.
+- varobj: `-var-create - * a` (type `int *`, one child `*a`), `*a` (unary `*` in expr.js), `&(a)` (`int **`), `&(*a)`;
+  `-data-evaluate-expression a` / `*a`; `-stack-list-variables` print the address.
+
+Only arithmetic variables (`int`, `bool`, `double`, ...) are ever registered as targets, so a pointer or reference to the first
+element of an array or the first member of a struct is NOT matched (its value stays `"<ptr>"`; the caller's array/struct keeps its
+last traced value until the callee returns, it is never replaced by the scalar). A global is registered under frame 0, so
+`&G` and a pointer to `G` agree.
+
+A caller's variable, and a pointer or reference in a caller's frame, show what a callee wrote through a pointer/reference
+(`TraceModel.overlay` / `effective`: callee stops record the pointee's value under `frame:name`).
+
+Not supported (still an explicit error / `"<ptr>"`): `char*`, pointers to classes other than `this`, pointer arithmetic,
+pointers into arrays or members, the heap (`new`), `&` in an arithmetic expression, `->`. Two variables with the same name in
+nested blocks of one function share one pseudo address (addresses come from frame + name); a reference to a pointer
+(`int*& r`) is shown as the pointer's value with a placeholder reference address.
 
 ## LocalGdb (M1 layer A)
 

@@ -13,10 +13,17 @@
 //   * range-for behaves exactly like the classic for above
 //
 // Supported: procedural code, recursion, reference parameters, range-for (incl. structured bindings),
-// global variables, `long long`, structs WITHOUT member functions (shown as "<?>").
+// global variables, `long long`, classes (in-class member functions, operators, friends), switch, do-while,
+// lambdas, inheritance with virtual functions, and function / class templates (notes at each feature below).
+//   * switch: one stop at the `switch (cond)` line; case/default labels have no code
+//   * do-while: no stop at `do`; the body stops as usual; one stop per condition evaluation
+//   * derived constructor: one stop on entry (line of its last initialiser clause), base constructors run inside it,
+//     then the member clauses, then the body; implicit constructors/destructors GDB stops in are written into the class
+//   * templates: one shared instrumented body, one frame name / set of variable types per instantiation
 // Everything else fails loudly with `unsupported construct: X (line N)` instead of being
-// mis-instrumented: switch, do-while, goto/labels, try, lambdas, templates, class member functions,
-// user namespaces, overloaded functions, if/while with initialiser or condition variable,
+// mis-instrumented: goto/labels, try, generic lambdas, other template shapes (non-type parameters, specialisations,
+// member templates), out-of-line member definitions, virtual inheritance, library base classes, static members,
+// user namespaces, if/while with initialiser or condition variable,
 // `if constexpr`, static locals, GNU statement expressions, asm, attributed statements,
 // coroutines, and function-like macros at positions where text must be inserted.
 import { userDecls, Unsupported } from "./userast.js";
@@ -25,9 +32,8 @@ export { Unsupported };
 
 /** Statement/expression kinds that are rejected wherever they appear inside a function or initialiser. */
 const FORBIDDEN = new Map([
-  ["SwitchStmt", "switch"], ["CaseStmt", "switch"], ["DefaultStmt", "switch"], ["DoStmt", "do-while"],
   ["GotoStmt", "goto"], ["IndirectGotoStmt", "goto"], ["LabelStmt", "goto label"], ["CXXTryStmt", "try"],
-  ["CXXThrowExpr", "throw"], ["LambdaExpr", "lambda"], ["StmtExpr", "GNU statement expression"],
+  ["CXXThrowExpr", "throw"], ["StmtExpr", "GNU statement expression"],
   ["GCCAsmStmt", "asm"], ["MSAsmStmt", "asm"], ["AttributedStmt", "attributed statement"],
   ["CoroutineBodyStmt", "coroutine"], ["CoreturnStmt", "coroutine"], ["CoawaitExpr", "coroutine"],
   ["CoyieldExpr", "coroutine"], ["BlockExpr", "block"], ["SEHTryStmt", "try"],
@@ -86,7 +92,10 @@ export function instrumentAst(source, top) {
 
   /** @type {Array<{ at: number, text: string, del: number, seq: number }>} */
   const edits = [];
-  const ins = (/** @type {number} */ at, /** @type {string} */ t, del = 0) => edits.push({ at, text: t, del, seq: edits.length });
+  // `dry`: walking an extra instantiation of a template only to learn its variable types (see registerFunctionTemplate);
+  // such a walk must not add edits, probe sites or uninitialised-variable records.
+  let dry = false;
+  const ins = (/** @type {number} */ at, /** @type {string} */ t, del = 0) => { if (!dry) edits.push({ at, text: t, del, seq: edits.length }); };
 
   // ---- source locations (macro aware) --------------------------------------------------------
   /** @param {any} loc @returns {{ offset: number, tokLen: number, macro: boolean } | null} */
@@ -153,7 +162,7 @@ export function instrumentAst(source, top) {
       const l = locOf(n.range && n.range.begin);
       if (bad) throw new Unsupported(bad, l ? lineAt(l.offset) : undefined);
       if (TEMPLATE_DECLS.has(n.kind)) throw new Unsupported("template", l ? lineAt(l.offset) : undefined);
-      if (n.kind === "CXXRecordDecl" && (n.inner || []).some((/** @type {any} */ c) => (METHOD_DECLS.has(c.kind) && !c.isImplicit) || c.kind === "FriendDecl")) {
+      if (n.kind === "CXXRecordDecl" && !n.isImplicit && (n.inner || []).some((/** @type {any} */ c) => (METHOD_DECLS.has(c.kind) && !c.isImplicit) || c.kind === "FriendDecl")) {
         throw new Unsupported("class member function", l ? lineAt(l.offset) : undefined);
       }
     }
@@ -226,10 +235,19 @@ export function instrumentAst(source, top) {
   /** @type {Array<{ name: string, offset: number, type: string, id: string }>} */
   const globals = [];
   /** @type {any[]} */
+  const globalNodes = [];
+  /** @type {any[]} */
   const functions = [];
   /** Static field/method shape of every supported class, by name (Slice B/C consume this). */
-  /** @type {Record<string, { tagUsed: string, fields: Array<{ name: string, qualType: string, access: string }> }>} */
+  /** @type {Record<string, { tagUsed: string, fields: Array<{ name: string, qualType: string, access: string }>, bases: Array<{ name: string, access: string }> }>} */
   const classes = Object.create(null);
+  let preCount = 0;
+  /** Internal per-class facts used while registering derived classes. */
+  /** @type {Map<string, { polymorphic: boolean, defaultCtorOk: boolean, tracedCtor: boolean, tracedDtor: boolean }>} */
+  const classInfo = new Map();
+  /** Compiler-generated constructors/destructors GDB stops in, written into the class as real ones (see the notes at the end of registerClass). */
+  /** @type {Array<{ at: number, className: string, tag: string, line: number, offset: number, preN: number, ctor: boolean, dtor: boolean }>} */
+  const synths = [];
 
   /**
    * Phase-1 class/struct support: data fields + non-virtual, non-static, non-operator, in-class-defined
@@ -246,9 +264,21 @@ export function instrumentAst(source, top) {
     const line = l ? lineAt(l.offset) : undefined;
     if (!d.completeDefinition) return; // forward declaration only: nothing to instrument
     if (d.tagUsed === "union") throw new Unsupported("union", line);
-    if (d.bases && d.bases.length) throw new Unsupported("class inheritance", line);
     const className = /** @type {string} */ (d.name);
     if (!className || !IDENT.test(className)) throw new Unsupported("anonymous or unnamed class", line);
+    // Non-virtual inheritance from classes of this program (declared earlier, hence already registered).
+    /** @type {Array<{ name: string, access: string }>} */
+    const bases = [];
+    for (const b of d.bases || []) {
+      if (b.isVirtual) throw new Unsupported("virtual inheritance", line);
+      const bn = String((b.type && b.type.qualType) || "").replace(/^(?:struct |class )/, "").replace(/^__vg_user::/, "");
+      if (!Object.prototype.hasOwnProperty.call(classes, bn)) throw new Unsupported("inheriting from a library class", line);
+      if (!classInfo.has(bn)) throw new Unsupported("inheriting from a class template instantiation", line);
+      bases.push({ name: bn, access: b.access || b.writtenAccess || "public" });
+    }
+    // See the constructor notes below: a derived class gets one unique empty first base, `__vg::Pre<N>`.
+    const preN = bases.length ? ++preCount : 0;
+    let sawCtor = false, declaresVirtual = false, userCtors = 0, userDtor = false, hasDefaultCtor = false, blocksDefaultCtor = false;
     /** @type {Array<{ name: string, qualType: string, access: string }>} */
     const fields = [];
     let access = d.tagUsed === "struct" ? "public" : "private";
@@ -263,16 +293,37 @@ export function instrumentAst(source, top) {
         // same defensive check probe() applies to traced variable names.
         if (!IDENT.test(c.name)) throw new Unsupported(`field name ${JSON.stringify(c.name)}`, cline);
         fields.push({ name: c.name, qualType: (c.type && c.type.qualType) || "?", access });
+        if (/&&?$/.test((c.type && c.type.qualType) || "") || /^const\s/.test((c.type && c.type.qualType) || "")) blocksDefaultCtor = true; // reference / const member: no implicit default constructor to mimic
+        // a member of a class of this program that cannot be default-constructed leaves the class without a default constructor too
+        const memberClass = String((c.type && c.type.qualType) || "").replace(/^(?:const|volatile)\s+/, "").replace(/\s*\[.*\]\s*$/, "").trim();
+        if (Object.prototype.hasOwnProperty.call(classes, memberClass) && !(classInfo.get(memberClass) || { defaultCtorOk: false }).defaultCtorOk) blocksDefaultCtor = true;
         continue;
       }
       if (c.kind === "VarDecl") throw new Unsupported("static class member", cline); // static data member
-      if (c.kind === "FriendDecl") throw new Unsupported("friend declaration", cline);
+      if (c.kind === "FriendDecl") {
+        // `friend X f(...);` is only a declaration (the definition is a top-level FunctionDecl, instrumented there);
+        // `friend X f(...) { ... }` defined in-class carries the FunctionDecl inside: instrument it like a free function.
+        for (const fd of c.inner || []) {
+          if (fd.kind === "FunctionDecl" && (fd.inner || []).some((/** @type {any} */ x) => x.kind === "CompoundStmt")) {
+            if (/^__vg/.test(fd.name || "")) throw new Unsupported("identifier starting with __vg", cline);
+            functions.push(fd);
+          }
+        }
+        continue;
+      }
       if (c.kind === "CXXRecordDecl") throw new Unsupported("nested class", cline);
       if (TEMPLATE_DECLS.has(c.kind)) throw new Unsupported("template", cline);
       if (METHOD_DECLS.has(c.kind)) {
-        if (c.kind === "CXXConversionDecl" || /^operator\b/.test(c.name || "")) throw new Unsupported("operator overload", cline);
         if (c.storageClass === "static") throw new Unsupported("static class member", cline);
-        if (c.virtual) throw new Unsupported("virtual function", cline);
+        if (c.virtual) declaresVirtual = true;
+        if (c.kind === "CXXConstructorDecl") {
+          userCtors++;
+          if ((c.inner || []).filter((/** @type {any} */ x) => x.kind === "ParmVarDecl").every((/** @type {any} */ x) => x.init)) hasDefaultCtor = true;
+        }
+        if (c.kind === "CXXDestructorDecl") userDtor = true;
+        // virtual / override need nothing special: the frame is named after the function that actually runs
+        // (`Dog::sound` for a call through an `Animal&`), exactly what GDB shows. A pure virtual (`= 0`) has no code.
+        if (c.pure && !(c.inner || []).some((/** @type {any} */ x) => x.kind === "CompoundStmt")) continue;
         if (!(c.inner || []).some((/** @type {any} */ x) => x.kind === "CompoundStmt")) throw new Unsupported("member function without a body", cline);
         if (/^__vg/.test(c.name || "")) throw new Unsupported("identifier starting with __vg", cline);
         const isCtor = c.kind === "CXXConstructorDecl", isDtor = c.kind === "CXXDestructorDecl";
@@ -280,17 +331,50 @@ export function instrumentAst(source, top) {
         const isConst = typeof c.type?.qualType === "string" && / const$/.test(c.type.qualType);
         c.__vgFn = vgFn;
         c.__vgThisType = `${isConst ? "const " : ""}${className} *`;
+        if (isCtor && preN) { c.__vgPre = preN; sawCtor = true; }
+        if (isDtor && preN) c.__vgPre = preN;
         functions.push(c);
       }
       // anything else (TypedefDecl, UsingDecl, StaticAssertDecl, ...) inside the class body: not code, ignore
     }
-    classes[className] = { tagUsed: d.tagUsed, fields };
+    classes[className] = { tagUsed: d.tagUsed, fields, bases };
+
+    // Constructors / destructors the compiler writes for the class, which GDB nevertheless stops in (measured, GDB 14,
+    // tests/engine/inheritance.test.mjs): the implicit default constructor of a class that has virtual functions (it
+    // sets the vptr) or derives from a class whose constructor runs user code, and the implicit destructor of a class
+    // whose base has a user destructor. They are written into the class (`Name() {}` / `~Name() {}`) so that they get
+    // a frame and a single stop on the class's declaration line, like any other instrumented function.
+    const bi = bases.map((b) => /** @type {any} */ (classInfo.get(b.name)));
+    const polymorphic = declaresVirtual || bi.some((x) => x.polymorphic);
+    const basesDefaultOk = bi.every((x) => x.defaultCtorOk);
+    const synthCtor = userCtors === 0 && basesDefaultOk && !blocksDefaultCtor && (polymorphic || bi.some((x) => x.tracedCtor));
+    const synthDtor = !userDtor && bi.some((x) => x.tracedDtor);
+    classInfo.set(className, {
+      polymorphic,
+      defaultCtorOk: userCtors === 0 ? basesDefaultOk && !blocksDefaultCtor : hasDefaultCtor,
+      tracedCtor: userCtors > 0 || synthCtor,
+      tracedDtor: userDtor || synthDtor,
+    });
+    if (synthCtor || synthDtor) {
+      let k = P(d.range.begin, "class");
+      while (k < buf.length && buf[k] !== 123) k++;
+      if (buf[k] !== 123) throw new Unsupported("class head layout", line);
+      synths.push({ at: k + 1, className, tag: d.tagUsed, line: /** @type {number} */ (line), offset: /** @type {number} */ (l && l.offset), preN, ctor: synthCtor, dtor: synthDtor });
+    }
+
+    if (preN && (sawCtor || userDtor || synthCtor || synthDtor)) {
+      // `class D : public B {`  ->  `class D : __vg::Pre<N>, public B {`
+      let k = P(d.range.begin, "class");
+      while (k < buf.length && buf[k] !== 123 && !(buf[k] === 58 && buf[k - 1] !== 58 && buf[k + 1] !== 58)) k++;
+      if (buf[k] !== 58) throw new Unsupported("class head layout", line);
+      ins(k + 1, ` __vg::Pre<${preN}>,`);
+    }
 
     // A generated j<ClassName> specialization (below) needs access to private/protected fields —
     // befriend the WHOLE j template (not just this one instantiation: getting the exact
     // friend-a-specific-specialization syntax right, with the primary template already visible at
     // this point, is unnecessary complexity when befriending the template covers every instantiation).
-    if (fields.length) ins(P(d.range.end, "class"), " template <class __vg_T> friend std::string __vg::j(const __vg_T&); ");
+    if (fields.length || bases.length) ins(P(d.range.end, "class"), " template <class __vg_T> friend std::string __vg::j(const __vg_T&); ");
 
     // C++ has no reflection: vg.h's generic __vg::j(T) can serialise anything with begin()/end() or
     // a std::stack/queue, but not an arbitrary user struct's named fields. The AST already gave us
@@ -304,17 +388,204 @@ export function instrumentAst(source, top) {
     let body = 'std::string o = "{";';
     // `fieldKey` is a C++ string literal for the JSON key syntax `"name":` (`,"name":` after the
     // first field) — field names are IDENT-validated above, so no JSON/C++ escaping is needed.
+    // Base-class subobjects come first, as `"<Base>":{...}` (GDB: `{<Base> = {...}, field = ...}`).
+    bases.forEach((b, i) => {
+      body += ` o += ${`"${i ? "," : ""}\\"<${b.name}>\\":"`} + __vg::j(static_cast<const ${b.name}&>(x));`;
+    });
     fields.forEach((f, i) => {
-      const fieldKey = `"${i ? "," : ""}\\"${f.name}\\":"`;
+      const fieldKey = `"${i || bases.length ? "," : ""}\\"${f.name}\\":"`;
       body += ` o += ${fieldKey} + __vg::j(x.${f.name});`;
     });
     body += ' return o + "}";';
     ins(endStmt(d, "class"), ` namespace __vg { template <> inline std::string j<${className}>(const ${className}& x) { ${body} } }`);
   };
 
+  // ---- function templates ----------------------------------------------------------------------
+  // clang gives a template as its pattern (dependent types) followed by one fully resolved FunctionDecl per
+  // instantiation, all spelled by the SAME source text. The first instantiation is instrumented (its AST has the
+  // ordinary, resolved shape; the edits land in the shared text); every other one is only walked "dry" to learn its
+  // variable types. Frames are named like GDB's: `maxOf<int>`, `conv<int, double>`.
+  let tplCount = 0;
+  // `maxOf<string>` (spelled so under `using namespace std;`) is shown the way GDB's frame names read: `std::string`
+  const STD_NAMES = /(^|[^\w:])(string|vector|deque|list|forward_list|set|multiset|map|multimap|unordered_map|unordered_set|unordered_multimap|unordered_multiset|stack|queue|priority_queue|pair|array)\b/g;
+  const stdSpelling = (/** @type {string} */ t) => t.replace(STD_NAMES, "$1std::$2");
+  /** @type {Array<{ id: number, insts: Array<{ names: string[], cpp: string[] }> }>} */
+  const tplRegistry = [];
+  // Integral non-type parameters are shown the way GDB prints them in frame names: `Arr<int, 3>`, `f<int, 4ul>`, `g<int, (char)65>`.
+  const NT_SUFFIX = new Map([["int", ""], ["unsigned int", "u"], ["unsigned", "u"], ["long", "l"], ["long int", "l"], ["unsigned long", "ul"], ["unsigned long int", "ul"], ["size_t", "ul"], ["std::size_t", "ul"], ["long long", "ll"], ["unsigned long long", "ull"]]);
+  const NT_CAST = new Set(["short", "unsigned short", "char", "signed char", "unsigned char"]);
+  /**
+   * The template parameters of a template: `expr` = how a shared body names the parameter to the TplName registry
+   * (a non-type one as `std::integral_constant<decltype(N), N>`), `header` = its declaration in a template header.
+   * @param {any[]} tparams @param {number | undefined} line
+   * @returns {Array<{ name: string, type: string | null, expr: string, header: string }>}
+   */
+  const templateParams = (tparams, line) => tparams.map((p) => {
+    if (p.isParameterPack || !p.name || !IDENT.test(p.name)) throw new Unsupported("template parameter other than a plain named type", line);
+    if (p.kind === "TemplateTypeParmDecl") return { name: p.name, type: null, expr: p.name, header: `class ${p.name}` };
+    if (p.kind === "NonTypeTemplateParmDecl") {
+      const t = String((p.type && p.type.qualType) || "").trim();
+      if (!NT_SUFFIX.has(t) && !NT_CAST.has(t) && t !== "bool") throw new Unsupported(`non-type template parameter of type ${t || "?"}`, line);
+      return { name: p.name, type: t, expr: `std::integral_constant<decltype(${p.name}), ${p.name}>`, header: `${t} ${p.name}` };
+    }
+    throw new Unsupported("template parameter other than a plain named type", line);
+  });
+  /** One template argument: its shown text and the C++ spelling used in the generated specialisation. @param {any} tp @param {any} a @param {number | undefined} line */
+  const templateArg = (tp, a, line) => {
+    if (tp.type === null) {
+      if (!a.type || !a.type.qualType) throw new Unsupported("template argument other than a type", line);
+      const cpp = String(a.type.desugaredQualType || a.type.qualType).replace(/__vg_user::/g, "");
+      if (/lambda|anonymous|unnamed/.test(cpp)) throw new Unsupported("template argument of a local or unnamed type", line);
+      return { show: stdSpelling(a.type.qualType), cpp };
+    }
+    const v = a.value;
+    if (typeof v !== "number" && typeof v !== "boolean" && typeof v !== "string") throw new Unsupported("non-type template argument", line);
+    const t = /** @type {string} */ (tp.type);
+    const isTrue = v === true || v === 1 || v === "1" || v === "true";
+    const show = t === "bool" ? (isTrue ? "true" : "false") : NT_CAST.has(t) ? `(${t})${v}` : `${v}${NT_SUFFIX.get(t)}`;
+    return { show, cpp: `std::integral_constant<${t}, ${t === "bool" ? show : String(v)}>` };
+  };
+  const registerFunctionTemplate = (/** @type {any} */ d, /** @type {number | undefined} */ line) => {
+    const tps = templateParams((d.inner || []).filter((/** @type {any} */ c) => /^(TemplateTypeParmDecl|NonTypeTemplateParmDecl|TemplateTemplateParmDecl)$/.test(c.kind)), line);
+    const fds = (d.inner || []).filter((/** @type {any} */ c) => c.kind === "FunctionDecl");
+    const hasBody = (/** @type {any} */ f) => (f.inner || []).some((/** @type {any} */ c) => c.kind === "CompoundStmt");
+    const insts = fds.slice(1).filter((/** @type {any} */ f) => hasBody(f) && (f.inner || []).some((/** @type {any} */ c) => c.kind === "TemplateArgument"));
+    if (!fds.length || !insts.length) return; // never instantiated: nothing runs, nothing to instrument
+    if (/^__vg/.test(d.name || "")) throw new Unsupported("identifier starting with __vg", line);
+    // an explicit specialisation (`template <> int f<int>(int) {...}`) has text of its own: not the shared body
+    const patternAt = locOf(fds[0].range && fds[0].range.begin);
+    for (const f of insts) {
+      const at = locOf(f.range && f.range.begin);
+      if (!patternAt || !at || at.offset !== patternAt.offset) throw new Unsupported("explicit template specialization", line);
+    }
+    const id = ++tplCount;
+    /** @type {Array<{ key: string, cpp: string[] }>} */
+    const reg = [];
+    for (const f of insts) {
+      const args = (f.inner || []).filter((/** @type {any} */ c) => c.kind === "TemplateArgument");
+      if (args.length !== tps.length) throw new Unsupported("template argument list", line);
+      // the C++ spelling used in the generated specialisation: fully resolved, without the analysis namespace
+      const infos = tps.map((tp, i) => templateArg(tp, args[i], line));
+      reg.push({ key: `${d.name}<${infos.map((x) => x.show).join(", ")}>`, cpp: infos.map((x) => x.cpp) });
+    }
+    const keys = reg.map((r) => r.key);
+    if (new Set(keys).size !== keys.length) throw new Unsupported(`overloaded function ${d.name}`, line);
+    tplRegistry.push({ id, insts: reg.map((r) => ({ names: [r.key], cpp: r.cpp })) });
+    const pnames = tps.map((tp) => tp.expr).join(", ");
+    insts.forEach((/** @type {any} */ f, /** @type {number} */ i) => {
+      f.__vgFn = keys[i];
+      if (i === 0) { f.__vgFnExpr = `__vg::TplName<${id}, ${pnames}>::m[0]`; f.__vgTplKeys = keys; } else f.__vgDry = true;
+      functions.push(f);
+    });
+  };
+
+  // ---- class templates ------------------------------------------------------------------------
+  // Same idea: the pattern class and one ClassTemplateSpecializationDecl per instantiation, all spelled by the same text.
+  // Per instantiation `Box<int>`: a `classes` entry (its fields' resolved types), and its member functions named
+  // `Box<int>::get`. A member function is instrumented once (from the first instantiation that has its body) and
+  // walked dry for the others. The serialiser for the object is one partial specialisation of `__vg::UserJ` valid for
+  // every T (a full `j<Box<int>>` per instantiation would have to follow the declarations of its argument types).
+  const registerClassTemplate = (/** @type {any} */ d, /** @type {number | undefined} */ line) => {
+    const tps = templateParams((d.inner || []).filter((/** @type {any} */ c) => /^(TemplateTypeParmDecl|NonTypeTemplateParmDecl|TemplateTemplateParmDecl)$/.test(c.kind)), line);
+    const pattern = (d.inner || []).find((/** @type {any} */ c) => c.kind === "CXXRecordDecl" && !c.isImplicit);
+    const specs = (d.inner || []).filter((/** @type {any} */ c) => c.kind === "ClassTemplateSpecializationDecl" && c.completeDefinition);
+    if (!pattern || !pattern.completeDefinition || !specs.length) return; // never instantiated
+    if (pattern.tagUsed === "union") throw new Unsupported("union", line);
+    if (pattern.bases && pattern.bases.length) throw new Unsupported("class template with base classes", line);
+    if (!d.name || !IDENT.test(d.name) || /^__vg/.test(d.name)) throw new Unsupported("class template name", line);
+    const id = ++tplCount;
+    const pnames = tps.map((tp) => tp.expr);
+    // instantiation keys / C++ spellings
+    const insts = specs.map((/** @type {any} */ sp) => {
+      const args = (sp.inner || []).filter((/** @type {any} */ c) => c.kind === "TemplateArgument");
+      if (args.length !== tps.length) throw new Unsupported("template argument list", line);
+      const infos = tps.map((tp, i) => templateArg(tp, args[i], line));
+      return { sp, key: `${d.name}<${infos.map((x) => x.show).join(", ")}>`, cpp: infos.map((x) => x.cpp) };
+    });
+    if (new Set(insts.map((i) => i.key)).size !== insts.length) throw new Unsupported(`class template ${d.name}`, line);
+    // the pattern's members in source order: fields (with their access level) and member functions with a body
+    let access = pattern.tagUsed === "struct" ? "public" : "private";
+    /** @type {Array<{ name: string, access: string }>} */
+    const fieldDefs = [];
+    /** @type {Array<{ node: any, offset: number, kind: string, name: string }>} */
+    const methods = [];
+    for (const c of pattern.inner || []) {
+      const cl = locOf(c.range && c.range.begin);
+      const cline = cl ? lineAt(cl.offset) : line;
+      if (c.isImplicit) continue;
+      if (c.kind === "AccessSpecDecl") { access = c.access; continue; }
+      if (c.kind === "FieldDecl") {
+        if (Array.isArray(c.inner) && c.inner.length) throw new Unsupported("default member initializer", cline);
+        if (!IDENT.test(c.name)) throw new Unsupported(`field name ${JSON.stringify(c.name)}`, cline);
+        fieldDefs.push({ name: c.name, access });
+        continue;
+      }
+      if (c.kind === "VarDecl") throw new Unsupported("static class member", cline);
+      if (c.kind === "FriendDecl") throw new Unsupported("friend declaration in a class template", cline);
+      if (c.kind === "CXXRecordDecl") throw new Unsupported("nested class", cline);
+      if (TEMPLATE_DECLS.has(c.kind)) throw new Unsupported("member template", cline);
+      if (METHOD_DECLS.has(c.kind)) {
+        if (c.storageClass === "static") throw new Unsupported("static class member", cline);
+        const hasB = (c.inner || []).some((/** @type {any} */ x) => x.kind === "CompoundStmt");
+        if (!hasB) {
+          if (c.pure) continue;
+          throw new Unsupported("member function without a body", cline);
+        }
+        if (/^__vg/.test(c.name || "")) throw new Unsupported("identifier starting with __vg", cline);
+        methods.push({ node: c, offset: /** @type {number} */ (cl && cl.offset), kind: c.kind, name: c.name });
+      }
+    }
+    // per-instantiation class entry + functions
+    const names = methods.map(() => /** @type {string[]} */ ([]));
+    /** @type {Array<Array<any>>} */
+    const nodesOf = methods.map(() => []);
+    insts.forEach((inst) => {
+      const sp = inst.sp;
+      /** @type {Array<{ name: string, qualType: string, access: string }>} */
+      const fields = fieldDefs.map((fd) => {
+        const f = (sp.inner || []).find((/** @type {any} */ c) => c.kind === "FieldDecl" && c.name === fd.name);
+        return { name: fd.name, qualType: (f && f.type && f.type.qualType) || "?", access: fd.access };
+      });
+      classes[inst.key] = { tagUsed: pattern.tagUsed, fields, bases: [] };
+      methods.forEach((m, mi) => {
+        const node = (sp.inner || []).find((/** @type {any} */ c) => {
+          const cl = locOf(c.range && c.range.begin);
+          return !c.isImplicit && c.kind === m.kind && cl && cl.offset === m.offset && (c.inner || []).some((/** @type {any} */ x) => x.kind === "CompoundStmt");
+        });
+        if (!node) { names[mi].push(""); return; }
+        const isCtor = m.kind === "CXXConstructorDecl", isDtor = m.kind === "CXXDestructorDecl";
+        const fnName = isCtor ? `${inst.key}::${d.name}` : isDtor ? `${inst.key}::~${d.name}` : `${inst.key}::${m.name}`;
+        names[mi].push(fnName);
+        const isConst = typeof node.type?.qualType === "string" && / const$/.test(node.type.qualType);
+        node.__vgFn = fnName;
+        node.__vgThisType = `${isConst ? "const " : ""}${inst.key} *`;
+        nodesOf[mi].push(node);
+      });
+    });
+    // per-instantiation name tables: m[i] = the name of method i in that instantiation
+    tplRegistry.push({ id, insts: insts.map((inst, k) => ({ names: methods.map((_m, mi) => names[mi][k]), cpp: inst.cpp })) });
+    methods.forEach((_m, mi) => {
+      const keys = nodesOf[mi].map((/** @type {any} */ n) => n.__vgFn);
+      nodesOf[mi].forEach((/** @type {any} */ node, /** @type {number} */ j) => {
+        if (j === 0) { node.__vgFnExpr = `__vg::TplName<${id}, ${pnames.join(", ")}>::m[${mi}]`; node.__vgTplKeys = keys; } else node.__vgDry = true;
+        functions.push(node);
+      });
+    });
+    // object serialiser (valid for every T) + access for it
+    const tpar = tps.map((tp) => tp.header).join(", ");
+    const self = `${d.name}<${tps.map((tp) => tp.name).join(", ")}>`;
+    let body = 'std::string o = "{";';
+    fieldDefs.forEach((f, i) => { body += ` o += ${`"${i ? "," : ""}\\"${f.name}\\":"`} + __vg::j(x.${f.name});`; });
+    body += ' return o + "}";';
+    ins(P(pattern.range.end, "class template"), " template <class __vg_U> friend struct __vg::UserJ; ");
+    ins(endStmt(d, "class template"), ` namespace __vg { template <${tpar}> struct UserJ<${self}> { static std::string emit(const ${self}& x) { ${body} } }; }`);
+  };
+
   for (const d of top) {
     const l = locOf(d.range && d.range.begin);
     const line = l ? lineAt(l.offset) : undefined;
+    if (d.kind === "ClassTemplateDecl") { registerClassTemplate(d, line); continue; }
+    if (d.kind === "FunctionTemplateDecl") { registerFunctionTemplate(d, line); continue; }
     if (TEMPLATE_DECLS.has(d.kind)) throw new Unsupported("template", line);
     if (d.kind === "NamespaceDecl") throw new Unsupported("namespace", line);
     if (d.kind === "LinkageSpecDecl") {
@@ -327,12 +598,138 @@ export function instrumentAst(source, top) {
     if (d.kind === "CXXRecordDecl") { registerClass(d); continue; }
     if (d.kind === "VarDecl") {
       scanForbidden(d.inner);
+      globalNodes.push(d);
       if (d.storageClass !== "extern" && d.name && l) globals.push({ name: d.name, offset: l.offset, type: d.type && d.type.qualType, id: d.id });
       continue;
     }
     if (d.kind === "FunctionDecl" && !d.isImplicit && (d.inner || []).some((/** @type {any} */ c) => c.kind === "CompoundStmt")) {
       if (/^__vg/.test(d.name || "")) throw new Unsupported("identifier starting with __vg", line);
       functions.push(d);
+    }
+  }
+  // ---- lambdas --------------------------------------------------------------------------------
+  // GDB facts (measured on g++ 14 -O0, see tests/engine/lambda.test.mjs):
+  //   * a lambda that user code calls is an ordinary frame named `operator()`; its variables are its own locals,
+  //     its parameters and the captured variables (by their plain names). We do not show `__closure`.
+  //   * `auto f = [caps](..){..};` stops once, at the lambda's closing `}` line, and not at all when nothing is
+  //     captured (an empty closure has no code); `function<..> f = [..]{..};` stops at the statement's first line
+  //     and, when the lambda ends on another line, at that line too.
+  //   * a lambda reached through the standard library (std::function, sort, for_each, ...) is never stepped into.
+  // So only a closure held in an `auto` variable that user code calls directly gets an instrumented body;
+  // every other accepted position keeps its body untouched ("silent"); the rest is refused.
+  /** @type {Map<any, { key: string, ctx: "auto" | "stdfn" | "arg", varId: string | null, captures: Array<{ name: string, type: any }>, method: any, end: number }>} */
+  const lambdas = new Map();
+  const WRAP = new Set(["ExprWithCleanups", "CXXConstructExpr", "MaterializeTemporaryExpr", "ImplicitCastExpr", "CXXBindTemporaryExpr", "ParenExpr", "CXXFunctionalCastExpr"]);
+  const CALLS = new Set(["CallExpr", "CXXMemberCallExpr", "CXXOperatorCallExpr"]);
+  /** The DeclRefExpr under any number of implicit casts / parens, or null. @param {any} e */
+  const declRef = (e) => {
+    while (e && (e.kind === "ImplicitCastExpr" || e.kind === "ParenExpr") && e.inner && e.inner.length === 1) e = e.inner[0];
+    return e && e.kind === "DeclRefExpr" && e.referencedDecl ? e : null;
+  };
+  /** @param {any} lam @param {any[]} anc ancestors, nearest last */
+  const visitLambda = (lam, anc) => {
+    const l = locOf(lam.range && lam.range.begin);
+    const line = l ? lineAt(l.offset) : undefined;
+    const rec = (lam.inner || [])[0];
+    const method = rec && rec.kind === "CXXRecordDecl" ? (rec.inner || []).find((/** @type {any} */ c) => c.kind === "CXXMethodDecl" && c.name === "operator()") : null;
+    if (!method || !(method.inner || []).some((/** @type {any} */ c) => c.kind === "CompoundStmt")) throw new Unsupported("generic lambda", line);
+    let i = anc.length - 1, child = lam;
+    while (i >= 0 && WRAP.has(anc[i].kind)) { child = anc[i]; i--; }
+    const parent = anc[i];
+    /** @type {"auto" | "stdfn" | "arg" | null} */
+    let ctx = null, varId = null;
+    if (parent && parent.kind === "VarDecl") {
+      const t = parent.type || {};
+      if (t.qualType === (lam.type && lam.type.qualType)) { ctx = "auto"; varId = parent.id; }
+      else if (/^(?:const\s+)?std::function</.test(t.desugaredQualType || t.qualType || "")) ctx = "stdfn";
+    } else if (parent && CALLS.has(parent.kind)) {
+      const idx = (parent.inner || []).indexOf(child);
+      const callOp = parent.kind === "CXXOperatorCallExpr" && idx === 1 && (declRef(parent.inner[0]) || {}).referencedDecl?.name === "operator()";
+      if (idx > 0 && !callOp) ctx = "arg"; // an argument; the callee object (`[]{...}()`) is refused
+    }
+    if (!ctx) throw new Unsupported("lambda in this position", line);
+    // capture list `[ ... ]`: names only (no this, init-captures, packs)
+    const open = P(lam.range.begin, "lambda");
+    if (buf[open] !== 91) throw new Unsupported("lambda layout", line);
+    let depth = 0, k = open;
+    for (; k < buf.length; k++) {
+      const c = buf[k];
+      if (c === 91 || c === 40 || c === 123) depth++;
+      else if (c === 93 || c === 41 || c === 125) { if (--depth === 0) break; }
+    }
+    for (const part of text(open + 1, k).split(",")) {
+      const e = part.trim();
+      if (e !== "" && e !== "=" && e !== "&" && !/^&?\s*[A-Za-z_]\w*$/.test(e)) throw new Unsupported(`lambda capture ${JSON.stringify(e)}`, line);
+    }
+    const bodyIdx = lam.inner.findIndex((/** @type {any} */ c, /** @type {number} */ j) => j > 0 && c.kind === "CompoundStmt");
+    const capExprs = lam.inner.slice(1, bodyIdx);
+    // Inside `operator() const` a by-copy capture is const (GDB: `const int k`): take the type of the
+    // reference to it in the body, which clang already resolved, over the outer variable's declared type.
+    const bodyN = method.inner.find((/** @type {any} */ c) => c.kind === "CompoundStmt");
+    const typeInBody = (/** @type {string} */ id) => {
+      /** @type {any} */
+      let t = null;
+      const walk = (/** @type {any} */ n) => {
+        if (t || !n || typeof n !== "object") return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        if (n.kind === "DeclRefExpr" && n.referencedDecl && n.referencedDecl.id === id) { t = n.type; return; }
+        walk(n.inner);
+      };
+      walk(bodyN);
+      return t;
+    };
+    const captures = capExprs.map((/** @type {any} */ e) => {
+      const d = declRef(e);
+      if (!d) throw new Unsupported("lambda capture", line);
+      return { name: /** @type {string} */ (d.referencedDecl.name), type: typeInBody(d.referencedDecl.id) || d.referencedDecl.type };
+    });
+    lambdas.set(lam, { key: `operator()@(lambda#${lambdas.size + 1})`, ctx, varId, captures, method, end: E(lam, "lambda") });
+    const nested = [...anc, lam];
+    collectLambdas(capExprs, nested);
+    collectLambdas((method.inner || []).filter((/** @type {any} */ c) => c.kind === "CompoundStmt"), nested);
+  };
+  /** @param {any} n @param {any[]} anc */
+  const collectLambdas = (n, anc) => {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n)) { for (const c of n) collectLambdas(c, anc); return; }
+    if (n.kind === "LambdaExpr") { visitLambda(n, anc); return; }
+    if (n.inner) { anc.push(n); collectLambdas(n.inner, anc); anc.pop(); }
+  };
+  for (const f of functions) if (!f.__vgDry) collectLambdas(f.inner, [f]);
+  for (const g of globalNodes) collectLambdas(g.inner, [g]);
+  if (lambdas.size) {
+    // variables user code calls directly: `f(args)` is a CXXOperatorCallExpr whose object (inner[1]) names the variable
+    const called = new Set();
+    const scanCalls = (/** @type {any} */ n) => {
+      if (!n || typeof n !== "object") return;
+      if (Array.isArray(n)) { for (const c of n) scanCalls(c); return; }
+      if (n.kind === "CXXOperatorCallExpr" && (declRef(n.inner[0]) || {}).referencedDecl?.name === "operator()") {
+        const o = declRef(n.inner[1]);
+        if (o) called.add(o.referencedDecl.id);
+      }
+      scanCalls(n.inner);
+    };
+    for (const f of functions) scanCalls(f.inner);
+    for (const g of globalNodes) scanCalls(g.inner);
+    for (const r of [...lambdas.values()]) {
+      if (r.ctx === "auto" && called.has(r.varId)) {
+        r.method.__vgFn = r.key;
+        r.method.__vgCaps = r.captures;
+        functions.push(r.method);
+      }
+    }
+  }
+  // Same-name overloads (`operator>>(istream&, Point&)` / `operator>>(istream&, Rectangle&)`, `f(int)` / `f(double)`)
+  // need distinct keys: `name@(paramTypes)`. Names with a single definition keep the bare name (GDB's own
+  // `frame.func` is the bare name too), so everything downstream strips the `@(...)` suffix for display.
+  const nameCount = new Map();
+  for (const f of functions) { const k = f.__vgFn || f.name; nameCount.set(k, (nameCount.get(k) || 0) + 1); }
+  for (const f of functions) {
+    const k = f.__vgFn || f.name;
+    if (nameCount.get(k) > 1) {
+      const ps = (f.inner || []).filter((/** @type {any} */ c) => c.kind === "ParmVarDecl").map((/** @type {any} */ c) => (c.type && c.type.qualType) || "?");
+      const cv = typeof f.type?.qualType === "string" && / const$/.test(f.type.qualType) ? " const" : ""; // `operator[](int)` / `operator[](int) const`
+      f.__vgFn = `${k}@(${ps.join(", ")})${cv}`;
     }
   }
   const byName = new Map();
@@ -355,7 +752,37 @@ export function instrumentAst(source, top) {
   const globalTypes = Object.create(null);
   for (const g of globals) globalTypes[g.name] = g.type;
 
+  // Write the compiler-generated constructors / destructors recorded by registerClass (see there) into their classes.
+  for (const sy of synths) {
+    /** @param {string} fn @param {boolean} withThis */
+    const synthProbe = (fn, withThis) => {
+      const vis = globals.filter((g) => g.offset < sy.offset).map((g) => g.name);
+      const names = withThis ? [...vis, "this"] : vis;
+      for (const n of vis) if (!IDENT.test(n)) throw new Unsupported(`variable name ${JSON.stringify(n)}`, sy.line);
+      const id = probes.length;
+      probes.push({ line: sy.line, fn, names, u: [], w: [] });
+      const vars = names.map((n) => `__vg::v(${cStr(n)}, ${n === "this" ? "*this" : n})`).join(", ");
+      const dt = Object.create(null);
+      for (const g of globals) if (g.offset < sy.offset) dt[g.name] = g.type;
+      if (withThis) dt.this = `${sy.className} *`;
+      decls[fn] = dt;
+      fnMeta[fn] = { line: sy.line, closeLine: sy.line, params: [], vars: names };
+      return `__vg::step(${id}, ${sy.line}, ${cStr(fn)}, {${vars}})`;
+    };
+    let t = sy.tag === "class" ? " public:" : "";
+    if (sy.ctor) {
+      const fn = `${sy.className}::${sy.className}`;
+      t += sy.preN
+        ? ` ${sy.className}() : __vg::Pre<${sy.preN}>((__vg::pushFrame(), ${synthProbe(fn, false)}, 0)) { __vg::FrameGuard __vg_fg; }`
+        : ` ${sy.className}() { __vg::Frame __vg_fr; ${synthProbe(fn, true)}; }`;
+    }
+    if (sy.dtor) t += ` ~${sy.className}() { __vg::DtorFrame __vg_fr(static_cast<__vg::Pre<${sy.preN}>*>(this)); ${synthProbe(`${sy.className}::~${sy.className}`, true)}; }`;
+    if (sy.tag === "class") t += " private:";
+    ins(sy.at, t);
+  }
+
   for (const decl of functions) {
+    dry = !!decl.__vgDry;
     const fn = /** @type {string} */ (decl.__vgFn || decl.name);
     const bodyN = decl.inner.find((/** @type {any} */ c) => c.kind === "CompoundStmt");
     scanForbidden(bodyN);
@@ -372,6 +799,11 @@ export function instrumentAst(source, top) {
     const visibleGlobals = globals.filter((g) => g.offset < B(decl));
     for (const g of visibleGlobals) addDecl(g.name, { qualType: g.type });
     const knownVars = new Set();
+
+    // a visible global that no local of the enclosing scopes shadows (its pseudo address is the global's, frame 0)
+    const globalNames = new Set(visibleGlobals.map((g) => g.name));
+    /** @param {string} n @param {Array<Array<[string, number]>>} scopes */
+    const isGlobalName = (n, scopes) => globalNames.has(n) && !scopes.some((sc) => sc.some(([nn]) => nn === n));
 
     /** A scope entry: [name, uninitOrdinal | -1] */
     /** @typedef {Array<[string, number]>} Scope */
@@ -396,16 +828,19 @@ export function instrumentAst(source, top) {
       /** @type {Array<[string, number]>} */
       const u = [];
       for (const [n, k] of vis) if (k >= 0) u.push([n, k]);
+      if (dry) return "";
       const id = probes.length;
-      probes.push({ line, fn, names, u, w: writesOf(writeNodes, uninitIds) });
+      probes.push({ line, fn, names, u, w: writesOf(writeNodes, uninitIds), ...(decl.__vgTplKeys ? { tplFns: decl.__vgTplKeys } : {}) });
       // `this` is traced dereferenced (*this, the object itself — reusing the class's own j()
       // specialization) rather than as the opaque pointer vg.h's generic j() would otherwise give
       // it: LocalGdb's varobj.js shows `this` as a pseudo-address computed from (frame, name), never
       // from the raw trace value, but its CHILDREN (the object's fields, reached by expanding it)
       // need real field data to index into, not vg.h's `"<ptr>"` placeholder. `this` is a C++
       // keyword, so no user variable can ever collide with this name.
-      const vars = names.map((n) => `__vg::v(${cStr(n)}, ${n === "this" ? "*this" : n})`).join(", ");
-      return `__vg::step(${id}, ${line}, ${cStr(fn)}, {${vars}})`;
+      // decltype(name) is the DECLARED type (T& for a reference): vd() marks references so the trace can say what they alias.
+      const vars = names.map((n) => (n === "this" ? `__vg::v(${cStr(n)}, *this)` : `__vg::${isGlobalName(n, scopes) ? "vdg" : "vd"}<decltype(${n})>(${cStr(n)}, ${n})`)).join(", ");
+      // a template body is shared by all its instantiations: the function name is picked at run time (TplName registry)
+      return `__vg::step(${id}, ${line}, ${decl.__vgFnExpr || cStr(fn)}, {${vars}})`;
     };
 
     const closeLine = lineAt(P(bodyN.range.end, "function body"));
@@ -440,13 +875,25 @@ export function instrumentAst(source, top) {
             else if (d.kind === "VarDecl" && (d.storageClass === "static" || d.tls)) throw new Unsupported("static local variable", L);
           }
           const ds = inner.filter((/** @type {any} */ d) => d.kind === "VarDecl");
-          if (ds.some(declHasInit)) ins(B(st), probe(L, scopes, [st]) + "; ");
+          const lamRec = (/** @type {any} */ d) => {
+            let e = (d.inner || []).find((/** @type {any} */ c) => isExpr(c));
+            while (e && e.kind !== "LambdaExpr" && WRAP.has(e.kind) && e.inner && e.inner.length === 1) e = e.inner[0];
+            return e && e.kind === "LambdaExpr" ? lambdas.get(e) : undefined;
+          };
+          const lamR = ds.map(lamRec).find(Boolean);
+          if (lamR) {
+            // stop lines of a lambda declaration differ from an ordinary initialiser (see the lambda notes above)
+            if (ds.length !== 1) throw new Unsupported("lambda declaration with several declarators", L);
+            const endL = lineAt(lamR.end);
+            if (lamR.ctx === "auto") { if (lamR.captures.length) ins(B(st), probe(endL, scopes, [st]) + "; "); }
+            else ins(B(st), probe(L, scopes, [st]) + "; " + (endL !== L ? probe(endL, scopes, [st]) + "; " : ""));
+          } else if (ds.some(declHasInit)) ins(B(st), probe(L, scopes, [st]) + "; ");
           for (const d of ds) {
             addDecl(d.name, d.type);
             if (declHasInit(d)) cur.push([d.name, -1]);
             else {
-              const k = uninitDecls.length;
-              uninitDecls.push({ fn, name: d.name, line: L, id: k });
+              const k = dry ? 0 : uninitDecls.length;
+              if (!dry) uninitDecls.push({ fn, name: d.name, line: L, id: k });
               uninitIds.set(d.id, k);
               cur.push([d.name, k]);
             }
@@ -504,7 +951,7 @@ export function instrumentAst(source, top) {
               if (d.storageClass === "static") throw new Unsupported("static local variable", L);
               addDecl(d.name, d.type);
               if (declHasInit(d)) forScope.push([d.name, -1]);
-              else { const k = uninitDecls.length; uninitDecls.push({ fn, name: d.name, line: L, id: k }); uninitIds.set(d.id, k); forScope.push([d.name, k]); }
+              else { const k = dry ? 0 : uninitDecls.length; if (!dry) uninitDecls.push({ fn, name: d.name, line: L, id: k }); uninitIds.set(d.id, k); forScope.push([d.name, k]); }
             }
           }
           if (inc && inc.kind) { ins(Bs(inc, "for increment"), "(" + probe(L, scopes, [inc, cond]) + ", "); ins(E(inc, "for increment"), ")"); }
@@ -519,6 +966,32 @@ export function instrumentAst(source, top) {
           body(bodyN2, scopes);
           return;
         }
+        case "DoStmt": {
+          // `do BODY while (cond);` -- measured against GDB: no stop at `do`, the body stops as usual, then
+          // one stop per condition evaluation (`continue` jumps to it).
+          const [bodyN2, cond] = st.inner;
+          body(bodyN2, scopes);
+          ins(Bs(cond, "do-while condition"), "(" + probe(lineAt(Bs(cond, "do-while condition")), scopes, [cond]) + ", ");
+          ins(E(cond, "do-while condition"), ")");
+          return;
+        }
+        case "SwitchStmt": {
+          // GDB: one stop at the `switch (cond)` line per execution; `case`/`default` labels have no code.
+          if (st.hasInit) throw new Unsupported("switch with initializer", L);
+          if (st.hasVar) throw new Unsupported("switch with condition variable", L);
+          const cond = st.inner[0], bodyN2 = st.inner[1];
+          // A switch without any label has dead code only; g++ drops it and GDB never stops there.
+          const hasLabel = (/** @type {any} */ n) => !!n && typeof n === "object" && (Array.isArray(n)
+            ? n.some(hasLabel)
+            : n.kind === "CaseStmt" || n.kind === "DefaultStmt" || (n.kind !== "SwitchStmt" && hasLabel(n.inner)));
+          if (!hasLabel(bodyN2.inner)) throw new Unsupported("switch without case labels", L);
+          ins(Bs(cond, "switch condition"), "(" + probe(L, scopes, [cond]) + ", "); ins(E(cond, "switch condition"), ")");
+          body(bodyN2, scopes);
+          return;
+        }
+        case "CaseStmt": case "DefaultStmt":
+          // the label itself is not code: instrument only what follows it (`case 1: case 2: x;` nests)
+          return stmt(st.inner[st.inner.length - 1], scopes);
         case "IfStmt": {
           if (st.hasInit) throw new Unsupported("if with initializer", L);
           if (st.hasVar) throw new Unsupported("if with condition variable", L);
@@ -558,8 +1031,11 @@ export function instrumentAst(source, top) {
     const realParams = (decl.inner || []).filter((/** @type {any} */ c) => c.kind === "ParmVarDecl" && c.name);
     const params = decl.__vgThisType ? [{ name: "this", type: { qualType: decl.__vgThisType } }, ...realParams] : realParams;
     for (const p of params) addDecl(p.name, p.type);
+    /** @type {Array<{ name: string, type: any }>} captured variables of a lambda: visible by their plain names, like GDB */
+    const caps = decl.__vgCaps || [];
+    for (const c of caps) addDecl(c.name, c.type);
     /** @type {Scope[]} */
-    const scopes = [params.map((/** @type {any} */ p) => /** @type {[string, number]} */ ([p.name, -1])), []];
+    const scopes = [[...params.map((/** @type {any} */ p) => /** @type {[string, number]} */ ([p.name, -1])), ...caps.map((c) => /** @type {[string, number]} */ ([c.name, -1]))], []];
 
     // Constructor member-initializer-list: `: x(a), y(b)` runs BEFORE the body's `{`, but GDB already
     // shows a stop inside "Class::Class" (this activation) for each clause on its own line (measured
@@ -674,15 +1150,56 @@ export function instrumentAst(source, top) {
     const ctorInits = decl.kind === "CXXConstructorDecl" ? (decl.inner || []).filter((/** @type {any} */ c) => c.kind === "CXXCtorInitializer") : [];
     /** @type {Array<{ e: any }>} */
     const realInits = [];
+    // Derived classes: C++ constructs the BASES first, before any member-initialiser can run, and GDB already
+    // shows the derived constructor's frame while the base constructors run inside it. Measured with GDB 14
+    // (`step`, tests/engine/inheritance.test.mjs): the constructor stops ONCE on entry, on the line of its LAST
+    // initialiser clause (the `{` line when there is none), then the base constructors run inside that stop
+    // (no stops on the base clauses' own lines), then each member clause stops on its own line, then the body.
+    // The class's first base is the empty `__vg::Pre<N>` (see registerClass); its clause, put first in this
+    // constructor's initialiser list, is the earliest code that runs: it pushes the frame and records the entry stop.
+    // `writtenLines` = lines of the clauses actually written.
+    /** @type {number[]} */
+    const writtenLines = [];
     for (const ci of ctorInits) {
+      if (ci.delegatingInit) throw new Unsupported("delegating constructor", lineAt(B(decl)));
+      if (ci.baseInit) {
+        let ce = ci.inner && ci.inner[0];
+        while (ce && ce.kind === "ExprWithCleanups" && ce.inner && ce.inner.length === 1) ce = ce.inner[0]; // `Base(some_string)` carries a temporary
+        if (!decl.__vgPre || !ce || ce.kind !== "CXXConstructExpr") throw new Unsupported("constructor initializer", lineAt(B(decl)));
+        const b0 = locOf(ce.range && ce.range.begin), b1 = locOf(ce.range && ce.range.end);
+        if (b0 && b1 && b0.offset === b1.offset) continue; // implicit base initialisation: nothing written
+        writtenLines.push(lineAt(Bs(ce, "constructor initializer"))); // only counts for the entry stop's line
+        continue;
+      }
       if (!ci.anyInit || ci.anyInit.kind !== "FieldDecl") throw new Unsupported("constructor initializer", lineAt(B(decl)));
       const e = ctorInitExpr(ci);
       if (e === null) throw new Unsupported("constructor initializer", lineAt(B(decl)));
-      if (e !== SKIP) realInits.push({ e });
+      if (e !== SKIP) { realInits.push({ e }); writtenLines.push(lineAt(Bs(e, "constructor initializer"))); }
     }
     const open = P(bodyN.range.begin, "function body");
     if (buf[open] !== 123) throw new Unsupported("function body layout", lineAt(open));
-    if (realInits.length > 0) {
+    if (decl.__vgPre && decl.kind === "CXXConstructorDecl") {
+      const preLine = writtenLines.length ? Math.max(...writtenLines) : lineAt(open);
+      // nothing of the object exists yet: leave `this` out of this first stop
+      const preScopes = [scopes[0].filter(([n]) => n !== "this"), []];
+      const preText = `__vg::Pre<${decl.__vgPre}>((__vg::pushFrame(), ${probe(preLine, preScopes, [])}, 0))`;
+      let k = P(decl.range.begin, "constructor");
+      while (k < open && buf[k] !== 40) k++; // '(' of the parameter list
+      for (let depth = 0; k < open; k++) { if (buf[k] === 40) depth++; else if (buf[k] === 41 && --depth === 0) break; }
+      let colon = -1;
+      for (let q = k + 1; q < open; q++) {
+        if (buf[q] === 47 && buf[q + 1] === 47) { while (q < open && buf[q] !== 10) q++; continue; }
+        if (buf[q] === 47 && buf[q + 1] === 42) { q += 2; while (q < open && !(buf[q] === 42 && buf[q + 1] === 47)) q++; q++; continue; }
+        if (buf[q] === 58) { colon = q; break; }
+      }
+      if (colon >= 0) ins(colon + 1, " " + preText + ",");
+      else ins(open, ": " + preText + " ");
+      realInits.forEach(({ e: initExpr }) => {
+        ins(Bs(initExpr, "constructor initializer"), "(" + probe(lineAt(Bs(initExpr, "constructor initializer")), scopes, [initExpr]) + ", ");
+        ins(E(initExpr, "constructor initializer"), ")");
+      });
+      ins(open + 1, " __vg::FrameGuard __vg_fg; ");
+    } else if (realInits.length > 0) {
       realInits.forEach(({ e: initExpr }, /** @type {number} */ i) => {
         const L2 = lineAt(Bs(initExpr, "constructor initializer"));
         const pre = i === 0 ? "__vg::pushFrame(), " : "";
@@ -691,11 +1208,25 @@ export function instrumentAst(source, top) {
       });
       ins(open + 1, " __vg::FrameGuard __vg_fg; ");
     } else {
-      ins(open + 1, " __vg::Frame __vg_fr; ");
+      // a derived class's destructor frame stays open until the class's `Pre` base is destroyed, i.e. until every member and
+      // base destructor has run inside it, as in GDB's backtrace
+      ins(open + 1, decl.kind === "CXXDestructorDecl" && decl.__vgPre ? ` __vg::DtorFrame __vg_fr(static_cast<__vg::Pre<${decl.__vgPre}>*>(this)); ` : " __vg::Frame __vg_fr; ");
     }
     for (const st of bodyN.inner || []) stmt(st, scopes);
     ins(P(bodyN.range.end, "function body"), probe(closeLine, [scopes[0], scopes[1]], []) + "; ");
     fnMeta[fn] = { line: lineAt(B(decl)), closeLine, params: params.map((/** @type {any} */ p) => p.name), vars: [...knownVars] };
+  }
+  dry = false;
+
+  // Names of the template instantiations, looked up at run time by the shared template body: one explicit
+  // specialisation of `__vg::TplName<ID, args...>` per instantiation, appended after the program (function template
+  // bodies are instantiated at the end of the translation unit, so the specialisations are in place by then).
+  if (tplRegistry.length) {
+    let t = "";
+    for (const r of tplRegistry) {
+      for (const inst of r.insts) t += ` namespace __vg { template <> struct TplName<${r.id}${inst.cpp.map((c) => ", " + c).join("")}> { static constexpr const char* m[] = {${inst.names.map(cStr).join(", ")}}; }; }`;
+    }
+    ins(buf.length, t);
   }
 
   edits.sort((a, b) => a.at - b.at || a.seq - b.seq);

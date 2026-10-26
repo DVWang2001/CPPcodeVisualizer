@@ -10,7 +10,7 @@
 // arithmetic conversions, truncating `/` and `%`, "Division by zero" (GDB's text). Any member call (`v.size()`,
 // `v.empty()`, `v.capacity()`) is `Cannot evaluate function -- may be inlined`, which is what real GDB answers for
 // the libstdc++ members (golden: cost.capacity()). Out-of-range subscripts are an error (GDB would read garbage).
-// Not supported (explicit error): unary `*`, `->`, `::`, casts, function calls, bitwise/shift operators, assignment.
+// Unary `*` dereferences a pointer to a scalar variable (the value vg.h traced for it). Not supported (explicit error): `&`, `->`, `::`, casts, function calls, bitwise/shift operators, assignment.
 // Plain ES module, no DOM / Node APIs.
 
 import { classify, parseType } from "./types.js";
@@ -75,7 +75,8 @@ export function parseExpr(src) {
   }
   function unary() {
     if (isOp("-") || isOp("+") || isOp("!")) { const op = toks[p++].v; enter(); const a = unary(); depth--; return { k: "un", op, a }; }
-    if (isOp("*") || isOp("&") || isOp("~")) throw new ExprError(unsupportedMsg(`operator '${toks[p].v}' in expression '${src.trim()}'`), "unsupported");
+    if (isOp("*")) { p++; enter(); const a = unary(); depth--; return { k: "un", op: "*", a }; }
+    if (isOp("&") || isOp("~")) throw new ExprError(unsupportedMsg(`operator '${toks[p].v}' in expression '${src.trim()}'`), "unsupported");
     return postfix();
   }
   function postfix() {
@@ -133,7 +134,7 @@ export function collectNames(a, out = new Set()) {
 
 /**
  * @typedef {{ t: "int", bits: number, uns: boolean, name: string, v: bigint } | { t: "bool", v: bigint } | { t: "char", uns: boolean, name: string, v: bigint }
- *   | { t: "float", single: boolean, v: number } | { t: "vec", cls: any, v: any[] } | { t: "str", v: string }} Val
+ *   | { t: "float", single: boolean, v: number } | { t: "vec", cls: any, v: any[] } | { t: "str", v: string } | { t: "ptr", cls: any, raw: any }} Val
  */
 
 const INT_INFO = new Map([
@@ -153,6 +154,7 @@ export function fromRaw(cls, raw) {
     case "vector": return { t: "vec", cls, v: Array.isArray(raw) ? raw : [] };
     case "array": return { t: "vec", cls, v: Array.isArray(raw) ? raw : [], arr: true };
     case "string": return { t: "str", v: typeof raw === "string" ? raw : "" };
+    case "ptr": return { t: "ptr", cls, raw };
     default: throw new ExprError(unsupportedMsg(`type '${cls.node && cls.node.k === "n" ? cls.node.name : cls.kind}'`), "unsupported");
   }
 }
@@ -251,6 +253,13 @@ function evalNode(a, lookup) {
     }
     case "un": {
       const x = evalNode(a.a, lookup);
+      if (a.op === "*") {
+        if (x.t !== "ptr") throw new ExprError("Attempt to take contents of a non-pointer value.", "error");
+        const r = x.raw;
+        if (r === 0 || r === undefined) throw new ExprError("Cannot access memory at address 0x0", "error");
+        if (!r || typeof r !== "object" || r.pv === undefined) throw new ExprError(unsupportedMsg("dereferencing this pointer (it does not point to a traced scalar variable)"), "unsupported");
+        return fromRaw(x.cls.to, r.pv);
+      }
       if (!isNum(x)) throw new ExprError(unsupportedMsg("operator on non-scalar value"), "unsupported");
       if (a.op === "!") return bool(!truthy(x));
       if (x.t === "float") return { ...x, v: a.op === "-" ? -x.v : x.v };
