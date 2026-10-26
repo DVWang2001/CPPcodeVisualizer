@@ -73,7 +73,7 @@ def test_good_first_pass_is_one_call_with_thinking_disabled(flask_app, upstream)
     scripted, payloads = upstream
     scripted.append(GOOD)
     done = _last(_generate(flask_app))
-    assert done["done"] and done["code"] == GOOD and not done["repaired"] and done["warnings"] == []
+    assert done["done"] and done["code"] == GOOD.strip() and not done["repaired"] and done["warnings"] == []
     assert len(payloads) == 1
     assert payloads[0]["chat_template_kwargs"] == {"thinking": False}
 
@@ -84,10 +84,10 @@ def test_checker_failure_triggers_one_repair_round_with_the_checker_output(flask
     events = _generate(flask_app)
     assert {"reset": True} in events
     done = _last(events)
-    assert done["code"] == GOOD and done["repaired"] is True and done["warnings"] == []
+    assert done["code"] == GOOD.strip() and done["repaired"] is True and done["warnings"] == []
     assert len(payloads) == 2
     followup = payloads[1]["messages"]
-    assert followup[-2] == {"role": "assistant", "content": G5}
+    assert followup[-2] == {"role": "assistant", "content": G5.strip()}
     assert "沒通過檢查器" in followup[-1]["content"] and "第 3 行" in followup[-1]["content"]
 
 
