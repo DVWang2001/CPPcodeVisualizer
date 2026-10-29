@@ -82,18 +82,24 @@ async function installSubtitleRecorder(page: any) {
     });
 }
 
-async function state(page: any) {
-    return await page.evaluate(() => {
-        const w = window as any;
-        const f = w.store?.get('paused_on_frame');
-        const g = w.gdbgui_global_variable;
-        return {
-            line: f ? String(f.line) : null,
-            visits: (line: number) => g?.__line_visit_count?.[line] || 0,
-            visitsByLine: g?.__line_visit_count || {},
-            userBreakpointCount: (w.store?.get('breakpoints') || []).length,
-        };
-    });
+/** 在指定行第一次停下來的那一刻擷取快照（自動播放在使用者斷點之後還會繼續走）。 */
+async function waitForSnapshotAt(page: any, line: number) {
+    await page.waitForFunction(
+        (target: string) => {
+            const w = window as any;
+            const f = w.store?.get('paused_on_frame');
+            if (!f || String(f.line) !== target) return false;
+            w.__snap = {
+                line: String(f.line),
+                visitsByLine: w.gdbgui_global_variable?.__line_visit_count || {},
+                userBreakpointCount: (w.store?.get('breakpoints') || []).length,
+            };
+            return true;
+        },
+        String(line),
+        { timeout: 90_000 }
+    );
+    return await page.evaluate(() => (window as any).__snap);
 }
 
 test('[continue] draws passed guidance lines silently and keeps only the user breakpoint', async ({ page }) => {
@@ -101,19 +107,8 @@ test('[continue] draws passed guidance lines silently and keeps only the user br
     await boot(page, String(END_LINE));
     await installSubtitleRecorder(page);
 
-    // main 的 [continue] 會跨過迴圈，最後停在使用者斷點 END_LINE。
-    await page.waitForFunction(
-        (line: string) => {
-            const w = window as any;
-            const f = w.store?.get('paused_on_frame');
-            return f && String(f.line) === line && !w.store?.get('autoplay_pending_command');
-        },
-        String(END_LINE),
-        { timeout: 60_000 }
-    );
-    await page.waitForTimeout(1000);
-
-    const s = await state(page);
+    // main 的 [continue] 會跨過迴圈，第一次停在使用者斷點 END_LINE 時擷取快照。
+    const s = await waitForSnapshotAt(page, END_LINE);
     console.log('\n=== [continue] LANDED ===\n' + JSON.stringify(s.visitsByLine));
     const subs = await page.evaluate(() => (window as any).__subs);
     console.log('=== SUBTITLES ===\n' + JSON.stringify(subs, null, 1));
@@ -122,8 +117,8 @@ test('[continue] draws passed guidance lines silently and keeps only the user br
     expect(s.line).toBe(String(END_LINE));
 
     // 2. 經過的指導行有畫出（計入造訪次數）：square 呼叫三次，每次都經過第 4 行。
-    expect(s.visits(GUIDE_LINE), '指導行必須靜默畫出').toBe(3);
-    expect(s.visits(SPEAK_LINE), '迴圈內的指導行必須靜默畫出').toBe(3);
+    expect(s.visitsByLine[String(GUIDE_LINE)] || 0, '指導行必須靜默畫出').toBe(3);
+    expect(s.visitsByLine[String(SPEAK_LINE)] || 0, '迴圈內的指導行必須靜默畫出').toBe(3);
 
     // 3. 靜默經過的行不播 TTS：「累加」不應出現在字幕中。
     const spoke = subs.filter((r: any) => r.sub && String(r.sub).includes('累加'));
@@ -139,19 +134,12 @@ test('[next] over a call draws the callee guidance line silently', async ({ page
     await boot(page, String(SPEAK_LINE));
     await installSubtitleRecorder(page);
 
-    // 迴圈跑完、停在 END_LINE。
-    await page.waitForFunction(
-        (line: string) => (window as any).store?.get('paused_on_frame')?.line === line,
-        String(END_LINE),
-        { timeout: 90_000 }
-    );
-    await page.waitForTimeout(1000);
-
-    const s = await state(page);
+    // 迴圈跑完、第一次停在 END_LINE 時擷取快照。
+    const s = await waitForSnapshotAt(page, END_LINE);
     console.log('\n=== [next] LANDED ===\n' + JSON.stringify(s.visitsByLine));
 
     // 1. 三次 square 呼叫內的指導行都被畫過。
-    expect(s.visits(GUIDE_LINE), 'callee 內的指導行必須靜默畫出').toBe(3);
+    expect(s.visitsByLine[String(GUIDE_LINE)] || 0, 'callee 內的指導行必須靜默畫出').toBe(3);
 
     // 2. 字幕中沒有 square 內指導行的旁白（它只有 @guide，沒有 TTS）。
     const subs = await page.evaluate(() => (window as any).__subs);
