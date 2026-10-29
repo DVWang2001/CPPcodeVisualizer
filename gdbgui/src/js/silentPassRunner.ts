@@ -74,13 +74,22 @@ export function startSilentPass(
   return insertGuideBreakpointCmds(fullname, guideLines, userLines);
 }
 
+/** 本次執行中所有插過的臨時斷點編號。不跟著 state 清空：-break-list 的回應可能在通過結束之後才回來。 */
+const insertedEver = new Set<string>();
+
 export function recordInsertedNumber(n: string): void {
   if (state) state.insertedNumbers.push(n);
+  insertedEver.add(n);
 }
 
 /** 這個編號是靜默通過的臨時斷點：斷點清單不得顯示、去重、或刪除它。 */
 export function isSilentPassNumber(n: string): boolean {
-  return state !== null && state.insertedNumbers.includes(n);
+  return insertedEver.has(n);
+}
+
+/** 程式結束時呼叫：下一次執行的編號會從頭開始，舊的記錄必須清掉，否則會誤傷使用者斷點。 */
+export function forgetSilentPassNumbers(): void {
+  insertedEver.clear();
 }
 
 export function isSilentPassActive(): boolean {

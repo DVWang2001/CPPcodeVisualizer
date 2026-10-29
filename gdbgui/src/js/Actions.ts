@@ -13,7 +13,7 @@ import { decideFastState, getFastForward, disarmFastForward } from "./fastForwar
 import { lessonQuizRuntime } from "./lessonQuizRuntime";
 import { clearStepWatchdog } from "./stepWatchdog";
 import { classifyStop } from "./silentPass";
-import { isSilentPassActive, takeStopBkptno, finishSilentPass } from "./silentPassRunner";
+import { isSilentPassActive, takeStopBkptno, finishSilentPass, forgetSilentPassNumbers } from "./silentPassRunner";
 import { recordSilentStop, endSilentPassAndCleanup, endSilentPassOnManualResume } from "./silentPassWire";
 import localEngine from "./localEngine";
 void React; // using jsx implicity uses React
@@ -247,6 +247,7 @@ const Actions = {
     (window as any).gdbgui_rerunning_for_quiz = false;
     // 程式結束時臨時斷點已隨程式消失，只重設狀態、不送刪除命令
     finishSilentPass();
+    forgetSilentPassNumbers();
     clearStepWatchdog();
     lessonQuizRuntime.clearGate();
     Actions.stop_tts();

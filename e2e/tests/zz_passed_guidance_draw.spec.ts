@@ -31,19 +31,20 @@ int main() {
 
 const GUIDE_LINE = 4;
 const SPEAK_LINE = 10;
+const START_LINE = 8;
 const END_LINE = 12;
 
-function bundle(breakLine: string) {
+function bundle(breakLines: string[]) {
     return {
         version: '2.0',
         fullname_to_render: '',
         source_code: SOURCE,
-        breakpoints: [{ line: breakLine, is_normal_breakpoint: true }],
+        breakpoints: breakLines.map((line) => ({ line, is_normal_breakpoint: true })),
         program_input: '',
     };
 }
 
-async function boot(page: any, breakLine: string) {
+async function boot(page: any, breakLines: string[]) {
     await ensureLoggedIn(page);
     await page.goto('/edit');
     await page.waitForFunction(() => (window as any).store !== undefined, null, { timeout: 20_000 });
@@ -53,7 +54,7 @@ async function boot(page: any, breakLine: string) {
     await page.locator('input[type="file"][accept=".json"]').setInputFiles({
         name: 'passed-guidance.gdbgui.json',
         mimeType: 'application/json',
-        buffer: Buffer.from(JSON.stringify(bundle(breakLine))),
+        buffer: Buffer.from(JSON.stringify(bundle(breakLines))),
     });
     await page.waitForTimeout(2000);
 
@@ -104,7 +105,8 @@ async function waitForSnapshotAt(page: any, line: number) {
 
 test('[continue] draws passed guidance lines silently and keeps only the user breakpoint', async ({ page }) => {
     page.on('pageerror', (e: any) => console.log(`[PAGE ERROR] ${e.message}`));
-    await boot(page, String(END_LINE));
+    // 起點（第 8 行）與使用者斷點（第 12 行）都要設，否則程式會直接跑到 12，根本不會經過 [continue]。
+    await boot(page, [String(START_LINE), String(END_LINE)]);
     await installSubtitleRecorder(page);
 
     // main 的 [continue] 會跨過迴圈，第一次停在使用者斷點 END_LINE 時擷取快照。
@@ -125,13 +127,13 @@ test('[continue] draws passed guidance lines silently and keeps only the user br
     expect(spoke, '靜默經過的行不能出聲').toEqual([]);
 
     // 4. 臨時斷點清除，只剩使用者的斷點。
-    expect(s.userBreakpointCount, '臨時斷點必須全部清除').toBe(1);
+    expect(s.userBreakpointCount, '臨時斷點必須全部清除（只剩兩個使用者斷點）').toBe(2);
 });
 
 test('[next] over a call draws the callee guidance line silently', async ({ page }) => {
     page.on('pageerror', (e: any) => console.log(`[PAGE ERROR] ${e.message}`));
     // 使用者斷點在 SPEAK_LINE；自動播放的 [next] 會跨過 square 的內部。
-    await boot(page, String(SPEAK_LINE));
+    await boot(page, [String(SPEAK_LINE)]);
     await installSubtitleRecorder(page);
 
     // 迴圈跑完、第一次停在 END_LINE 時擷取快照。
