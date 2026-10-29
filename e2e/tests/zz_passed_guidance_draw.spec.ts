@@ -93,7 +93,8 @@ async function waitForSnapshotAt(page: any, line: number) {
             w.__snap = {
                 line: String(f.line),
                 visitsByLine: w.gdbgui_global_variable?.__line_visit_count || {},
-                userBreakpointCount: (w.store?.get('breakpoints') || []).length,
+                // 只算 GDB 編號的斷點；frontend_* 是編輯器的持久標記，不是 GDB 斷點
+                userBreakpointCount: (w.store?.get('breakpoints') || []).filter((b: any) => !String(b.number).startsWith('frontend_')).length,
             };
             return true;
         },
