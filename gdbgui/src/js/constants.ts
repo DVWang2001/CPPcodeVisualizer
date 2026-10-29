@@ -13,6 +13,8 @@ let constants = {
   DISASSEMBLY_FOR_MISSING_FILE_STR: "2",
   CREATE_VAR_STR: "3",
   INLINE_DISASSEMBLY_STR: "4",
+  // 靜默通過的臨時斷點：回應只給靜默通過模組，不進使用者斷點清單（見 silentPassWire.ts）
+  SILENT_PASS_TOKEN_STR: "5",
 
   console_entry_type: {
     SENT_COMMAND: "SENT_COMMAND",

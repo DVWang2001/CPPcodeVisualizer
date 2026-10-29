@@ -20,6 +20,7 @@ import Actions from "./Actions";
 import { processFeatures } from "./processFeatures";
 import { extractJumpBlob, applyJumpBlob } from "./fastForwardJump";
 import { disarmFastForward } from "./fastForward";
+import { recordInsertedNumber, noteStopBkptno } from "./silentPassRunner";
 
 const process_gdb_response = function (response_array: any) {
   /**
@@ -46,6 +47,14 @@ const process_gdb_response = function (response_array: any) {
   for (let r of response_array) {
     // gdb mi output
     GdbMiOutput.add_mi_output(r);
+
+    // 靜默通過的臨時斷點：只記下編號，不進使用者斷點清單、不切換檢視（見 silentPassWire.ts）
+    if (r.token === parseInt(constants.SILENT_PASS_TOKEN_STR)) {
+      if (r.type === "result" && r.message === "done" && r.payload && r.payload.bkpt) {
+        recordInsertedNumber(String(r.payload.bkpt.number));
+      }
+      continue;
+    }
 
     if (isError(r)) {
       if (isCreatingVar(r)) {
@@ -336,6 +345,7 @@ const process_gdb_response = function (response_array: any) {
     }
 
     if (r.message && r.message === "stopped") {
+      noteStopBkptno(r.payload && r.payload.bkptno ? String(r.payload.bkptno) : null);
       if (r.payload && r.payload.reason) {
         if (r.payload.reason.includes("exited")) {
           Actions.inferior_program_exited();

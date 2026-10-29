@@ -12,6 +12,9 @@ import { parseForHeader, decideForSegment } from "./forHeader";
 import { decideFastState, getFastForward, disarmFastForward } from "./fastForward";
 import { lessonQuizRuntime } from "./lessonQuizRuntime";
 import { clearStepWatchdog } from "./stepWatchdog";
+import { classifyStop } from "./silentPass";
+import { isSilentPassActive, takeStopBkptno, finishSilentPass } from "./silentPassRunner";
+import { recordSilentStop, endSilentPassAndCleanup, endSilentPassOnManualResume } from "./silentPassWire";
 import localEngine from "./localEngine";
 void React; // using jsx implicity uses React
 
@@ -132,6 +135,7 @@ const Actions = {
     Actions.clear_program_state();
   },
   inferior_program_resuming: function () {
+    endSilentPassOnManualResume();
     Actions.stop_tts();
     store.set("inferior_program", constants.inferior_states.running);
   },
@@ -190,6 +194,26 @@ const Actions = {
     // @ts-expect-error
     VisualizerHelper.detect_swap_call(frame.line, frame.func);
     
+    // 靜默通過：途中經過的指導行只畫面更新、不播 TTS，等 refresh 回來再決定續行（見 silentPassWire.ts）
+    let silentStop = false;
+    if (isSilentPassActive()) {
+      const userNums = new Set<string>((store.get("breakpoints") as any[]).map((b: any) => String(b.number)));
+      const stopped = !quizMatched && (window as any).gdbgui_rerunning_for_quiz !== true
+        && classifyStop({
+          bkptno: takeStopBkptno(),
+          line: parseInt((frame as any).line),
+          userBreakpointNumbers: userNums,
+          guideBreakpointNumbers: new Set(),
+          quizMatched: false,
+        }) === "silent";
+      if (stopped) {
+        silentStop = true;
+        recordSilentStop(parseInt((frame as any).line));
+      } else {
+        endSilentPassAndCleanup();
+      }
+    }
+
     // 出題自動重跑模式：中途停駐點不播 TTS，稍等 150ms (確保 PTY 測資寫入) 後一瞬間衝到題目行
     const isRerunningForQuiz = (window as any).gdbgui_rerunning_for_quiz === true;
     if (isRerunningForQuiz && !quizMatched) {
@@ -207,7 +231,7 @@ const Actions = {
         GdbApi.click_continue_button();
       };
       setTimeout(() => continueWhenInputReady(0), 150);
-    } else if (!quizMatched) {
+    } else if (!quizMatched && !silentStop) {
       // 播放 TTS 語音
       // @ts-expect-error
       VisualizerHelper.play_tts(frame.line, frame.func);
@@ -221,6 +245,8 @@ const Actions = {
   },
   inferior_program_exited: function () {
     (window as any).gdbgui_rerunning_for_quiz = false;
+    // 程式結束時臨時斷點已隨程式消失，只重設狀態、不送刪除命令
+    finishSilentPass();
     clearStepWatchdog();
     lessonQuizRuntime.clearGate();
     Actions.stop_tts();

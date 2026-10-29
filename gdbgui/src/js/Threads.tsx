@@ -6,6 +6,7 @@ import Memory from "./Memory";
 import { FileLink } from "./Links";
 import MemoryLink from "./MemoryLink";
 import { createCallTree, ingestStack } from "./callTree";
+import { silentPassOnStack } from "./silentPassWire";
 
 class FrameArguments extends React.Component {
   render_frame_arg(frame_arg: any) {
@@ -231,6 +232,8 @@ class Threads extends React.Component<{}, ThreadsState> {
   }
   static update_stack(stack: any) {
     store.set("stack", stack);
+    // 靜默通過：堆疊深度回來了，決定靜默續行或結束（見 silentPassWire.ts）
+    silentPassOnStack(stack.length);
     store.set("paused_on_frame", stack[store.get("selected_frame_num") || 0]);
     store.set(
       "fullname_to_render",

@@ -18,6 +18,7 @@ import { isFastForwarding } from "./fastForward";
 import { isQuizPlaybackBlocked, lessonQuizRuntime } from "./lessonQuizRuntime";
 import { armStepWatchdog } from "./stepWatchdog";
 import localEngine from "./localEngine";
+import { runAutoplayWithSilentPass } from "./silentPassWire";
 
 /**
  * 步進命令送出後掛上看門狗。逾時仍在 running 就是 GDB 卡死了（見 stepWatchdog.ts），
@@ -1140,13 +1141,16 @@ GdbApi.socket = socket;
 (window as any).gdbgui_run_autoplay_command = (command: string) => {
   // 教學頁按 Enter「停在這一行」時，旁白的 [next]/[continue] 不能把它往下推走。
   if ((window as any).gdbgui_tutorial_hold) return;
-  switch (command) {
-    // autoplay: true —— for 虛步不會產生 GDB pause，被虛步消耗掉的這一次
-    // 必須由 click_next_button 自行排接續，否則播放會卡在條件段
-    case "next":     GdbApi.click_next_button(false, { autoplay: true }); break;
-    case "step-in":  GdbApi.click_step_button();     break;
-    case "step-out": GdbApi.click_return_button();   break;
-    case "continue": GdbApi.click_continue_button(); break;
-  }
+  // 途中經過的指導行靜默畫出（見 silentPassWire.ts）；不適用的指令原樣續行
+  runAutoplayWithSilentPass(command, () => {
+    switch (command) {
+      // autoplay: true —— for 虛步不會產生 GDB pause，被虛步消耗掉的這一次
+      // 必須由 click_next_button 自行排接續，否則播放會卡在條件段
+      case "next":     GdbApi.click_next_button(false, { autoplay: true }); break;
+      case "step-in":  GdbApi.click_step_button();     break;
+      case "step-out": GdbApi.click_return_button();   break;
+      case "continue": GdbApi.click_continue_button(); break;
+    }
+  });
 };
 export default GdbApi;
