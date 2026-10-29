@@ -6,6 +6,7 @@ import Util from "./Util";
 import FileOps from "./FileOps";
 import { FileLink } from "./Links";
 import constants from "./constants";
+import { isSilentPassNumber } from "./silentPassRunner";
 
 const BreakpointSourceLineCache = {
   _cache: {},
@@ -445,6 +446,8 @@ class Breakpoints extends React.Component {
 
       for (let breakpoint of payload.BreakpointTable.body) {
         const num = String(breakpoint.number || "");
+        // 靜默通過的臨時斷點：不顯示、不參與去重、不刪除（見 silentPassWire.ts）
+        if (isSilentPassNumber(num)) continue;
         const isFrontend = num.startsWith('frontend_');
         const isChild = !isFrontend && parseFloat(num) !== parseInt(num);
         const isParent = breakpoint.addr === "(MULTIPLE)";

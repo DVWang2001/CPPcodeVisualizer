@@ -56,9 +56,11 @@ export function runAutoplayWithSilentPass(command: string, resume: () => void): 
   });
   if (!paused.fullname || lines.length === 0) return asOwnResume(resume);
 
+  // 使用者斷點所在行一律不插臨時斷點。不依 fullname 過濾：斷點的路徑格式與停駐的路徑格式不一定相同，
+  // 過濾掉會讓使用者斷點所在行也被插入臨時斷點，同行命中時會被誤判成靜默（見 e2e zz_passed_guidance_draw）。
   const userLines = new Set<number>(
     (store.get("breakpoints") as any[])
-      .filter((b: any) => b.fullname === paused.fullname && b.line !== undefined)
+      .filter((b: any) => b.line !== undefined)
       .map((b: any) => Number(b.line))
   );
   const depth = (store.get("stack") as any[] | undefined || []).length;

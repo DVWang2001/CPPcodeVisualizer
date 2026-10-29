@@ -78,6 +78,11 @@ export function recordInsertedNumber(n: string): void {
   if (state) state.insertedNumbers.push(n);
 }
 
+/** 這個編號是靜默通過的臨時斷點：斷點清單不得顯示、去重、或刪除它。 */
+export function isSilentPassNumber(n: string): boolean {
+  return state !== null && state.insertedNumbers.includes(n);
+}
+
 export function isSilentPassActive(): boolean {
   return state !== null;
 }
