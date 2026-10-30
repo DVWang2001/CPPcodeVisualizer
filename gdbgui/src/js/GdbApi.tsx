@@ -443,6 +443,7 @@ const GdbApi = {
           success: function (response: any) {
             // Clear any previous compile errors on successful compile
             store.set("compile_errors", []);
+            store.set("compile_stderr", "");
             const registry = (window as any).gdbgui_collapser_registry || {};
             if (registry["compile_errors"]) registry["compile_errors"].close();
 
@@ -662,6 +663,7 @@ const GdbApi = {
             // Parse structured errors and store them; auto-open the error panel
             const errors = _parseCompileErrors(stderr);
             store.set("compile_errors", errors);
+            store.set("compile_stderr", stderr);
             if (errors.length > 0) {
               const registry = (window as any).gdbgui_collapser_registry || {};
               if (registry["compile_errors"]) registry["compile_errors"].open();

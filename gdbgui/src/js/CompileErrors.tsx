@@ -1,5 +1,8 @@
 import React from "react";
 import { store } from "statorgfc";
+import { parseCompileDiagnostics } from "./compileDiag";
+import { toViewItems } from "./compileFamily";
+import { CompileDiagView } from "./CompileDiagView";
 
 export interface CompileError {
   file: string;
@@ -46,7 +49,7 @@ class CompileErrors extends React.Component<{}, CompileErrorsState> {
       ai_error: "",
     };
     // @ts-expect-error ts-migrate(2339)
-    store.connectComponentState(this, ["compile_errors"]);
+    store.connectComponentState(this, ["compile_errors", "compile_stderr"]);
   }
 
   async fetchExplanation() {
@@ -79,6 +82,15 @@ class CompileErrors extends React.Component<{}, CompileErrorsState> {
     const errorCount = errors.filter(e => e.severity === "error").length;
     const warnCount  = errors.filter(e => e.severity === "warning").length;
 
+    // 視覺化（第一期家族 1–3）：只對 error 畫圖，warning 不在第一期範圍
+    const stderr: string = (this.state as any).compile_stderr || "";
+    const source: string = (window as any).gdbgui_get_editor_value?.() || "";
+    // 標頭內的模板錯誤以使用者檔案的錨點呈現；標頭內的連鎖錯誤併入錨點（見 toViewItems）
+    const items = toViewItems(parseCompileDiagnostics(stderr), source);
+    const diagViews = items.map((it, i) => (
+      <CompileDiagView key={i} diag={it.diag} family={it.family} kind={it.kind} source={source} />
+    ));
+
     const summaryParts: string[] = [];
     if (errorCount > 0) summaryParts.push(`${errorCount} error${errorCount > 1 ? "s" : ""}`);
     if (warnCount  > 0) summaryParts.push(`${warnCount} warning${warnCount  > 1 ? "s" : ""}`);
@@ -109,6 +121,9 @@ class CompileErrors extends React.Component<{}, CompileErrorsState> {
         }}>
           {summaryParts.join(", ")} — 點擊跳至錯誤行
         </div>
+
+        {/* 視覺化區塊：每個 error 一個畫面，原文列表保留在下方 */}
+        {diagViews}
 
         {/* Error rows */}
         {errors.map((err, i) => (

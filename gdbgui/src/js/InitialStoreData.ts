@@ -132,6 +132,8 @@ const initial_store_data = {
   condition_overlay: null as any,
   program_input: "",
   compile_errors: [] as any[],
+  // 編譯器原始 stderr（含 note），供編譯錯誤視覺化解析（見 compileDiag.ts）
+  compile_stderr: "" as string,
   // Canonical path of the user's last successfully compiled source file.
   // Unlike fullname_to_render (which GDB can change to library headers), this
   // never changes except when the user compiles a new file.
