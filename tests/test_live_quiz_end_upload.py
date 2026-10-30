@@ -631,13 +631,53 @@ def test_upload_rejects_opened_after_closed(ctx):
     assert_rejected(ctx, upload)
 
 
-def test_upload_rejects_timestamps_before_session_creation(ctx):
+def ts(moment):
+    """任意時刻，TS `toISOString()` 格式（毫秒、Z）。"""
+    return moment.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def skewed_upload(ctx, side, seconds):
+    """老師時鐘快（ahead：收卷時間在伺服器現在之後）或慢（behind：開題時間在建立之前）。"""
     upload = realistic_upload(ctx)
-    item(upload, "q1")["opened_at"] = at(ctx, -5)
+    if side == "ahead":
+        moment = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+        item(upload, "t1")["closed_at"] = ts(moment)
+    else:
+        moment = ctx.created_at - timedelta(seconds=seconds)
+        item(upload, "q1")["opened_at"] = ts(moment)
+    return upload, moment.replace(microsecond=0).isoformat()
+
+
+def test_upload_accepts_timestamps_within_skew_ahead_and_behind(ctx):
+    """controller ruling 16：老師筆電時鐘常差幾秒到幾分鐘，±300 秒內要收。"""
+    upload = realistic_upload(ctx)
+    ahead, ahead_stored = skewed_upload(ctx, "ahead", 200)
+    behind, behind_stored = skewed_upload(ctx, "behind", 200)
+    item(upload, "t1")["closed_at"] = item(ahead, "t1")["closed_at"]
+    item(upload, "q1")["opened_at"] = item(behind, "q1")["opened_at"]
+    response = end(ctx.author, ctx.session_id, upload)
+    assert response.status_code == 200, response.get_json()
+    rows = question_rows(ctx)
+    assert rows["t1"]["closed_at"] == ahead_stored
+    assert rows["q1"]["opened_at"] == behind_stored
+
+
+@pytest.mark.parametrize("side", ["ahead", "behind"])
+def test_upload_rejects_timestamps_beyond_skew(ctx, side):
+    upload, _ = skewed_upload(ctx, side, 400)
     assert_rejected(ctx, upload)
+    # 對照：同一邊、在容忍範圍內就收——證明上面是被時鐘偏差的界線擋下，不是別的規則。
+    upload, stored_value = skewed_upload(ctx, side, 200)
+    response = end(ctx.author, ctx.session_id, upload)
+    assert response.status_code == 200, response.get_json()
+    rows = question_rows(ctx)
+    assert stored_value in (rows["t1"]["closed_at"], rows["q1"]["opened_at"])
 
 
-def test_upload_rejects_timestamps_in_the_future(ctx):
+def test_upload_rejects_timestamps_far_outside_the_session(ctx):
+    upload = realistic_upload(ctx)
+    item(upload, "q1")["opened_at"] = at(ctx, -30)
+    assert_rejected(ctx, upload)
     upload = realistic_upload(ctx)
     item(upload, "q1")["closed_at"] = at(ctx, 120)  # 建立於一小時前，這是一小時後
     assert_rejected(ctx, upload)

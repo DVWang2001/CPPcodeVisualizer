@@ -8,7 +8,7 @@ import re
 import secrets
 import unicodedata
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from io import BytesIO
 from time import monotonic
@@ -67,6 +67,9 @@ END_TABLE_ONLY_KEYS = frozenset(("cell_stats", "rows", "cols", "var_hint"))
 END_HEATMAP_KEYS = ("cell_stats", "rows", "cols")
 MAX_VAR_HINT_LENGTH = 128
 MAX_UPLOAD_TIMESTAMP_LENGTH = 64
+#: 上傳時間戳來自老師筆電的時鐘，常與伺服器差上幾秒到幾分鐘（快或慢都有）。
+#: 開題／收卷時間的合法範圍是 [created_at - 此值, now + 此值]（controller ruling 16）。
+UPLOAD_CLOCK_SKEW_SECONDS = 300
 CREDENTIAL_HASH_RE = re.compile(r"\A[0-9a-f]{64}\Z")
 GUEST_COOKIE = "gdbgui_quiz_guest"
 GUEST_MAX_AGE = 8 * 60 * 60
@@ -1025,6 +1028,9 @@ def _validated_end_upload(conn, session, upload, now):
             )
         except (TypeError, ValueError) as exc:
             raise QuizRejected("課堂建立時間無效。") from exc
+    # 時間戳來自老師筆電的時鐘：兩端都放寬 UPLOAD_CLOCK_SKEW_SECONDS（ruling 16）。
+    skew = timedelta(seconds=UPLOAD_CLOCK_SKEW_SECONDS)
+    earliest, latest = created_at - skew, now + skew
 
     seen = set()
     normalized = []
@@ -1062,10 +1068,10 @@ def _validated_end_upload(conn, session, upload, now):
             normalized.append(entry)
             continue
 
-        opened_at = _upload_time(item["opened_at"], f"{label}開題時間", created_at, now)
+        opened_at = _upload_time(item["opened_at"], f"{label}開題時間", earliest, latest)
         closed_at = None
         if item.get("closed_at") is not None:
-            closed_at = _upload_time(item["closed_at"], f"{label}收卷時間", created_at, now)
+            closed_at = _upload_time(item["closed_at"], f"{label}收卷時間", earliest, latest)
             if opened_at > closed_at:
                 raise QuizRejected(f"{label}的收卷時間早於開題時間。")
         if "answer_count" not in item or "correct_count" not in item:
