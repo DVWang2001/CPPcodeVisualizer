@@ -54,7 +54,8 @@ class Collapser extends React.Component<any, any> {
   _page_y_orig = 0;
   constructor(props: any) {
     super(props);
-    this.state = { collapsed: props.collapsed };
+    // 執行模式且已勾選：一開始就展開（見 open_on_play）。
+    this.state = { collapsed: props.open_on_play && !props.edit_locked ? false : props.collapsed };
     (store as any).connectComponentState(this, ["monaco_line_height"]);
     onmouseup_in_parent_callbacks.push(this.onmouseup_resizer.bind(this));
     onmousemove_in_parent_callbacks.push(this.onmousemove_resizer.bind(this));
@@ -69,7 +70,21 @@ class Collapser extends React.Component<any, any> {
         isOpen: () => !this.state.collapsed,
       };
     }
-    this.props.onOpenChange?.(this.props.panel_key, !this.state.collapsed);
+    this.props.onOpenChange?.(this.props.panel_key, this.isOpen());
+  }
+
+  componentDidUpdate(prev: any) {
+    const p = this.props;
+    // 編輯模式只能勾選、不能展開：進出編輯模式時，把「實際有沒有展開」回報給側欄排版。
+    if (prev.edit_locked !== p.edit_locked) this.props.onOpenChange?.(p.panel_key, this.isOpen());
+    // 執行時已勾選的面板預設展開（切到執行模式，或勾選設定晚一步載入時）。
+    if (p.open_on_play && !p.edit_locked && this.state.collapsed && (prev.edit_locked || !prev.open_on_play)) {
+      this.setCollapsed(false);
+    }
+  }
+
+  isOpen(): boolean {
+    return !this.state.collapsed && !this.props.edit_locked;
   }
 
   componentWillUnmount() {
@@ -80,10 +95,11 @@ class Collapser extends React.Component<any, any> {
   }
 
   setCollapsed(collapsed: boolean) {
-    this.setState({ collapsed }, () => this.props.onOpenChange?.(this.props.panel_key, !collapsed));
+    this.setState({ collapsed }, () => this.props.onOpenChange?.(this.props.panel_key, this.isOpen()));
   }
 
   toggle_visibility() {
+    if (this.props.edit_locked) return;
     this.setCollapsed(!this.state.collapsed);
   }
 
@@ -102,7 +118,7 @@ class Collapser extends React.Component<any, any> {
   }
 
   render() {
-    const collapsed: boolean = this.state.collapsed || !!this.props.forced_collapsed;
+    const collapsed: boolean = this.state.collapsed || !!this.props.forced_collapsed || !!this.props.edit_locked;
     const header_px: number = (this.state as any).monaco_line_height || DEFAULT_HEADER_PX;
     const sel: { checked: boolean; onChange: (v: boolean) => void } | undefined = this.props.selection;
 
@@ -131,7 +147,7 @@ class Collapser extends React.Component<any, any> {
         data-panel-key={this.props.panel_key}
       >
         <div
-          className={"pointer titlebar" + (this.props.primary ? " titlebar--primary" : "")}
+          className={(this.props.edit_locked ? "" : "pointer ") + "titlebar" + (this.props.primary ? " titlebar--primary" : "")}
           onClick={this.toggle_visibility.bind(this)}
           style={{ height: `${header_px}px`, opacity: sel && !sel.checked ? 0.5 : undefined }}
         >
@@ -344,6 +360,8 @@ class RightSidebar extends React.Component<any, any> {
                 play_mode={play_mode}
                 hidden={this.isHidden(d, play_mode)}
                 forced_collapsed={dropped}
+                edit_locked={!play_mode}
+                open_on_play={!legacy && this.isChecked(d.key) && !(window as any).initial_data?.tutorial}
                 height_px={height_px}
                 content={d.content}
                 selection={play_mode ? undefined : { checked: this.isChecked(d.key), onChange: (v: boolean) => this.setChecked(d.key, v, defs) }}

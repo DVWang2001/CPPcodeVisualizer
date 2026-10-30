@@ -96,6 +96,51 @@ describe("RightSidebar：勾選設定", () => {
   });
 });
 
+describe("RightSidebar：編輯模式只能勾選、執行時勾選的面板預設展開", () => {
+  const bodyHidden = (root: HTMLElement, key: string) =>
+    (panel(root, key).querySelector("[id], div:nth-child(2)") as HTMLElement | null) &&
+    (panel(root, key).children[1] as HTMLElement).classList.contains("hidden");
+  const title = (root: HTMLElement, key: string) => panel(root, key).querySelector(".titlebar") as HTMLElement;
+
+  test("編輯模式：點標題列不會展開（即使面板預設是展開的）", () => {
+    store.set("sidebar_selection", { visualizer: true, container: true });
+    const edit = mount(true);
+    expect(bodyHidden(edit, "visualizer")).toBe(true);
+    act(() => { title(edit, "container").click(); });
+    expect(bodyHidden(edit, "container")).toBe(true);
+  });
+
+  test("編輯模式：點 checkbox 仍可勾選", () => {
+    store.set("sidebar_selection", { visualizer: true });
+    const edit = mount(true);
+    const box = panel(edit, "container").querySelector("input[type=checkbox]") as HTMLInputElement;
+    act(() => { box.click(); });
+    expect(store.get("sidebar_selection").container).toBe(true);
+    expect(bodyHidden(edit, "container")).toBe(true);
+  });
+
+  test("執行模式：已勾選的面板預設展開，未勾選的隱藏", () => {
+    store.set("sidebar_selection", { container: true, locals: false });
+    const play = mount(false);
+    expect(bodyHidden(play, "container")).toBe(false);
+    expect(isVisible(play, "locals")).toBe(false);
+  });
+
+  test("從編輯模式切到執行模式：已勾選的面板自動展開", () => {
+    store.set("sidebar_selection", { container: true });
+    const root = mount(true);
+    expect(bodyHidden(root, "container")).toBe(true);
+    act(() => { store.set("edit_mode", false); });
+    expect(bodyHidden(root, "container")).toBe(false);
+  });
+
+  test("沒有勾選設定（舊教案）：保持舊行為，收合的面板在執行模式仍收合", () => {
+    const play = mount(false);
+    expect(isVisible(play, "visualizer")).toBe(false);
+    expect(isVisible(play, "container")).toBe(false);
+  });
+});
+
 test("自動存檔還原會保留右側欄勾選（normalizeBundle 不能丟掉 sidebar_panels）", () => {
   const v2 = normalizeBundle({ version: "2.0", source_code: "int main(){}", sidebar_panels: { visualizer: true } });
   expect(v2.sidebar_panels).toEqual({ visualizer: true });
