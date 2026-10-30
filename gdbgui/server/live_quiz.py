@@ -4,6 +4,7 @@ import itertools
 import json
 import ipaddress
 import logging
+import os
 import re
 import secrets
 import unicodedata
@@ -72,8 +73,18 @@ JOIN_TOKEN_MAX_AGE = 8 * 60 * 60
 TOKEN_SALT = "gdbgui-live-quiz-join-v1"
 
 # ── 薄中繼（/lesson_quiz）的上限 ──────────────────────────────────────────────
-#: 老師最後一個分頁斷線後保留的秒數；期間內重連，課堂照常。測試會 monkeypatch。
-TEACHER_GRACE_SECONDS = 30
+def _grace_seconds_from_env(raw, default=30):
+    """環境變數只接受正整數；其他一律回預設值（正式環境維持 30 秒）。"""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+#: 老師最後一個分頁斷線後保留的秒數；期間內重連，課堂照常。測試會 monkeypatch，
+#: e2e 用 GDBGUI_TEACHER_GRACE_SECONDS 縮短（docker-compose.test.yml）。
+TEACHER_GRACE_SECONDS = _grace_seconds_from_env(os.environ.get("GDBGUI_TEACHER_GRACE_SECONDS"))
 MAX_STUDENT_SOCKETS_PER_SESSION = 200
 #: 單一事件 payload 以 JSON（UTF-8）編碼後的位元組上限。填表題 200 格 × 32 字約 7 KB。
 MAX_STUDENT_EVENT_BYTES = 16384

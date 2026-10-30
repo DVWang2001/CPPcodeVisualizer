@@ -800,3 +800,20 @@ def test_relay_logs_no_token_or_answers(relay, caplog):
     logged = caplog.text
     for secret in (token, device_id, "device-secret-other", nickname, answer_text, "garbage-token-secret"):
         assert secret not in logged
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (None, 30),
+        ("", 30),
+        ("3", 3),
+        (" 7 ", 7),
+        ("0", 30),
+        ("-5", 30),
+        ("2.5", 30),
+        ("abc", 30),
+    ],
+)
+def test_grace_seconds_env_override_is_a_validated_positive_integer(raw, expected):
+    assert live_quiz._grace_seconds_from_env(raw) == expected

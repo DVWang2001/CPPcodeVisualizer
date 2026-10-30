@@ -15,6 +15,8 @@ services:
       start_period: 10s
     environment:
       - MOBILE_JOIN_BASE_URL=http://app:5000
+      # 老師分頁關閉後的寬限期：預設 30 秒，e2e 縮短到 4 秒才測得到「課堂已結束」。
+      - GDBGUI_TEACHER_GRACE_SECONDS=4
     security_opt:
       - no-new-privileges:true
     networks:
