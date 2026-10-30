@@ -190,6 +190,15 @@ describe("RightSidebar：教學頁預告 layout 會開的面板", () => {
     expect(isVisible(play, "locals")).toBe(false);
   });
 
+  test("layout 更新事件一來，標題列立刻出現（不必等 Enter／Restart）", () => {
+    (window as any).initial_data = { tutorial: true };
+    const play = mount(false);
+    expect(isVisible(play, "callgraph")).toBe(false);
+    (global_variable as any).__layout = { "4": "open:callgraph" };
+    act(() => { window.dispatchEvent(new CustomEvent("gdbgui-layout-updated")); });
+    expect(isVisible(play, "callgraph")).toBe(true);
+  });
+
   test("教學頁沒有 layout 點名：維持原本隱藏", () => {
     (window as any).initial_data = { tutorial: true };
     const play = mount(false);

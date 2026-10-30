@@ -310,6 +310,8 @@ class SourceCode extends React.Component<{}, State> {
     (global_variable as any).__line = guide;
     (global_variable as any).__tts = tts;
     (global_variable as any).__layout = layout;
+    // 右側欄（教學頁預告 layout 會開的面板）要立刻重畫，不必等到下一次 Enter／Restart。
+    window.dispatchEvent(new CustomEvent("gdbgui-layout-updated"));
   };
 
   componentDidMount() {

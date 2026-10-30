@@ -207,7 +207,19 @@ class RightSidebar extends React.Component<any, any> {
     this.measure = this.measure.bind(this);
   }
 
+  _layout_key = "";
+  onLayoutUpdated = () => {
+    // 只有「layout 會開哪些面板」真的變了才重畫，打字時不必每鍵重繪整個側欄。
+    const key = layoutOpenedPanels((global_variable as any).__layout).join(",");
+    if (key !== this._layout_key) {
+      this._layout_key = key;
+      this.forceUpdate();
+    }
+  };
+
   componentDidMount() {
+    window.addEventListener("gdbgui-layout-updated", this.onLayoutUpdated);
+    this.onLayoutUpdated();
     this.measure();
     if ((window as any).ResizeObserver && this._collapsers_node) {
       this._resize_observer = new (window as any).ResizeObserver(this.measure);
@@ -217,6 +229,7 @@ class RightSidebar extends React.Component<any, any> {
   }
 
   componentWillUnmount() {
+    window.removeEventListener("gdbgui-layout-updated", this.onLayoutUpdated);
     this._resize_observer?.disconnect();
     window.removeEventListener("resize", this.measure);
   }
