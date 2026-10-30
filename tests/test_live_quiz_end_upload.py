@@ -18,7 +18,7 @@ import pytest
 
 from gdbgui.server import db, live_quiz
 from .conftest import register_user
-from .test_live_quiz_db import credential_hash
+from .test_live_quiz_db import credential_hash, seed_legacy_participant
 from .test_live_quiz_relay import NS, relay, take  # noqa: F401  (relay 是 fixture)
 
 
@@ -332,8 +332,14 @@ def test_minimal_never_opened_items_are_accepted(ctx):
 
 def test_end_with_upload_still_deletes_participants_and_responses(ctx):
     """F8：升級前就在 lobby 的舊場次可能還留著暱稱，收場仍要刪光。"""
-    live_quiz.join_session(ctx.session_id, "應被刪除", credential_hash("f8"))
+    seed_legacy_participant(ctx.session_id, "應被刪除", credential_hash("f8"), "q1")
     assert snapshot(ctx)[4] == 1
+    with closing(db.connect()) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM live_quiz_responses r JOIN live_quiz_questions q "
+            "ON q.id=r.question_id WHERE q.session_id=?",
+            (ctx.session_id,),
+        ).fetchone()[0] == 1
     assert end(ctx.author, ctx.session_id, realistic_upload(ctx)).status_code == 200
     with closing(db.connect()) as conn:
         assert conn.execute(

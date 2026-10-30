@@ -7,6 +7,8 @@
 
 import json
 import logging
+import secrets
+from hashlib import sha256
 from urllib.parse import urlsplit
 
 import pytest
@@ -14,7 +16,7 @@ from itsdangerous import URLSafeSerializer
 
 from gdbgui.server import db, live_quiz
 from .conftest import register_user
-from .test_live_quiz_db import valid_bundle
+from .test_live_quiz_db import seed_legacy_participant, valid_bundle
 
 
 NS = "/lesson_quiz"
@@ -79,6 +81,21 @@ def take(client, name=None):
     if name is None:
         return [(packet["name"], packet["args"][0] if packet["args"] else None) for packet in mine]
     return [packet["args"][0] for packet in mine]
+
+
+#: 舊 HTTP 訪客 API 發的 cookie 名稱（伺服器端常數已隨 D5 刪除）。
+LEGACY_GUEST_COOKIE = "gdbgui_quiz_guest"
+
+
+def legacy_cookie_client(relay, session_id):
+    """一個帶著舊訪客 cookie、資料庫裡也有對應參與者列的 HTTP client。"""
+    credential = secrets.token_urlsafe(32)  # credential_hash 在整張表上唯一
+    seed_legacy_participant(
+        session_id, "cookie 學生", sha256(credential.encode("utf-8")).hexdigest()
+    )
+    client = relay.app.test_client()
+    client.set_cookie(LEGACY_GUEST_COOKIE, credential)
+    return client
 
 
 def nonce_of(session_id):
@@ -186,14 +203,8 @@ def test_unknown_role_and_failed_teacher_auth_are_rejected(relay):
     author, created = relay.new_session()
     session_id = created["id"]
     token = token_of(created)
-    # 一個合法的舊式 cookie 學生：舊實作對任何非 teacher 的角色都會落入 cookie 分支。
-    guest = relay.app.test_client()
-    joined = guest.post(
-        "/api/live-quiz/guest/join",
-        json={"token": token, "nickname": "cookie 學生"},
-        headers={"Origin": "http://localhost"},
-    )
-    assert joined.status_code == 200
+    # 一個在舊 HTTP 訪客 API 下合法的 cookie 學生：舊實作對任何非 teacher 的角色都會落入 cookie 分支。
+    guest = legacy_cookie_client(relay, session_id)
 
     for role in ("admin", "Teacher", "student ", "", 1, ["teacher"], {"role": "teacher"}):
         rejected = relay._connect(flask_test_client=guest, auth={"role": role, "token": token})
@@ -210,6 +221,69 @@ def test_unknown_role_and_failed_teacher_auth_are_rejected(relay):
     impostor = relay._connect(auth={"role": "teacher", "token": token})
     assert not impostor.is_connected(NS)
     assert live_quiz.SIDS == {}
+
+
+def test_connect_fails_closed_without_role_and_credential(relay):
+    """D5：舊 cookie 學生分支已刪除。連線必須帶 role 與它的憑證——老師是 session_id
+    加上登入身分，學生是 join token——缺任何一樣都拒絕，即使 client 持有一個在舊
+    HTTP 訪客 API 下有效、資料庫裡也還有對應參與者的 cookie。
+    """
+    author, created = relay.new_session()
+    session_id = created["id"]
+    token = token_of(created)
+    guest = legacy_cookie_client(relay, session_id)
+    cases = [
+        (guest, None),
+        (guest, {}),
+        (guest, {"token": token}),
+        (guest, {"role": None, "token": token}),
+        (guest, {"role": "student"}),
+        (guest, {"role": "student", "session_id": session_id}),
+        (guest, {"role": "student", "token": None}),
+        (guest, "not-a-dict"),
+        (guest, ["student", token]),
+        (author.http, None),
+        (author.http, {"session_id": session_id}),
+        (author.http, {"role": "teacher"}),
+        (author.http, {"role": "owner", "session_id": session_id}),
+    ]
+    for client, auth in cases:
+        kwargs = {"flask_test_client": client}
+        if auth is not None:
+            kwargs["auth"] = auth
+        rejected = relay._connect(**kwargs)
+        assert not rejected.is_connected(NS), auth
+        assert take(rejected) == [], auth
+    assert live_quiz.SIDS == {}
+
+    # 對照：同一個 client 帶上 role 與 token，就走中繼的學生路徑。
+    accepted = relay._connect(flask_test_client=guest, auth={"role": "student", "token": token})
+    assert accepted.is_connected(NS)
+    assert live_quiz.SIDS[relay.sid_of(accepted)]["role"] == "student"
+
+
+def test_teacher_connect_failure_leaves_no_teacher_identity(relay, monkeypatch):
+    """寫入 SIDS 是老師連線的最後一步：之前任何一步拋例外，這個 sid 都不得留下老師身分，
+    寬限期計時器也不得被撤銷（否則老師沒連上、課堂卻永遠不會自動收場）。"""
+    author, created = relay.new_session()
+    session_id = created["id"]
+    nonce = nonce_of(session_id)
+    relay.teacher(author, session_id).disconnect(namespace=NS)
+    assert nonce in live_quiz._GRACE_TIMERS
+
+    def broken_emit(*args, **kwargs):
+        raise RuntimeError("emit failed")
+
+    monkeypatch.setattr(live_quiz, "emit", broken_emit)
+    with pytest.raises(RuntimeError):
+        relay.teacher(author, session_id)
+    assert live_quiz._role_sids(nonce, "teacher") == []
+    assert nonce in live_quiz._GRACE_TIMERS
+
+    monkeypatch.undo()
+    assert relay.teacher(author, session_id).is_connected(NS)
+    assert len(live_quiz._role_sids(nonce, "teacher")) == 1
+    assert nonce not in live_quiz._GRACE_TIMERS
 
 
 def test_student_connection_cap_per_session(relay, monkeypatch):
@@ -655,7 +729,8 @@ def test_roster_never_goes_to_students(relay):
 
     teacher = relay.teacher(author, created["id"])
     assert len(take(teacher, "relay:roster")) == 1
-    take(teacher)  # 舊路徑的 quiz:teacher-state（Task 7 刪除）
+    # 舊路徑的 quiz:teacher-state／quiz:stats 推播已刪除（D5）：連線時只送名單。
+    assert take(teacher) == []
     for client in students:
         received = take(client)
         assert [name for name, _ in received] == ["relay:teacher-online"]

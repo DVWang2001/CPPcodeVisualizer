@@ -1,4 +1,4 @@
-"""Live quiz persistence: immutable lesson snapshots, state transitions and privacy."""
+"""Live quiz persistence: immutable lesson snapshots, quiz validation and privacy."""
 
 import json
 from contextlib import closing
@@ -65,6 +65,35 @@ def valid_bundle(prompt="i 是多少？", two_questions=False):
 
 def credential_hash(label):
     return sha256(label.encode("utf-8")).hexdigest()
+
+
+def seed_legacy_participant(session_id, nickname, guest_hash, answered_question_key=None):
+    """直接寫入舊 HTTP 訪客 API 會留下的參與者（與一筆單選作答）。
+
+    那組 API 已移除（D5），但部署當下仍在 lobby 的舊場次可能還留著這些列；
+    `end_session` 必須照樣刪光它們。回傳參與者 id。
+    """
+    now = db._now()
+    with closing(db.connect()) as conn:
+        participant_id = conn.execute(
+            "INSERT INTO live_quiz_participants "
+            "(session_id, nickname, credential_hash, created_at, last_seen_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (session_id, nickname, guest_hash, now, now),
+        ).lastrowid
+        if answered_question_key is not None:
+            question_id = conn.execute(
+                "SELECT id FROM live_quiz_questions WHERE session_id=? AND question_key=?",
+                (session_id, answered_question_key),
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO live_quiz_responses "
+                "(participant_id, question_id, answered_at, selected_option_id, is_correct) "
+                "VALUES (?, ?, ?, 'b', 1)",
+                (participant_id, question_id, now),
+            )
+        conn.commit()
+    return int(participant_id)
 
 
 @pytest.fixture
@@ -183,84 +212,28 @@ def test_non_owner_cannot_create_or_read_a_session(quiz_session, flask_app):
     assert live_quiz.session_owned_by(session["id"], owner.user_id) is not None
 
 
-def test_question_triggers_once_and_answer_can_be_changed_while_open(quiz_session):
-    owner, _, session = quiz_session
-    first = live_quiz.trigger_question(session["id"], owner.user_id, "q1", "main.cpp", 3)
-    second = live_quiz.trigger_question(session["id"], owner.user_id, "q1", "main.cpp", 3)
-    assert first["active_question"]["id"] == "q1"
-    assert second["active_question"]["opened_at"] == first["active_question"]["opened_at"]
-
-    guest_hash = credential_hash("one")
-    participant = live_quiz.join_session(session["id"], "小明", guest_hash)
-    assert participant["nickname"] == "小明"
-    one = live_quiz.answer_question(guest_hash, "q1", "b")
-    # 題目還開著：改答案要真的覆蓋掉，不是靜默回舊答案（公布前都可修改）。
-    retry = live_quiz.answer_question(guest_hash, "q1", "a")
-    assert one["inserted"] is True
-    assert retry["inserted"] is False
-    assert retry["selected_option_id"] == "a"
-    assert retry["is_correct"] is False
-    assert retry["stats"] == {
-        "answer_count": 1,
-        "correct_count": 0,
-        "option_counts": {"a": 1, "b": 0},
-    }
-
-    # 改回原本的答案，統計要跟著正確地換回來，不能因為改了兩次就累加壞掉。
-    back = live_quiz.answer_question(guest_hash, "q1", "b")
-    assert back["stats"] == {
-        "answer_count": 1,
-        "correct_count": 1,
-        "option_counts": {"a": 0, "b": 1},
-    }
-
-
-def test_answer_is_frozen_once_question_closes(quiz_session):
-    owner, _, session = quiz_session
-    live_quiz.trigger_question(session["id"], owner.user_id, "q1", "main.cpp", 3)
-    guest_hash = credential_hash("frozen")
-    live_quiz.join_session(session["id"], "小明", guest_hash)
-    live_quiz.answer_question(guest_hash, "q1", "a")
-
-    live_quiz.close_question(session["id"], owner.user_id, "q1")
-    after_close = live_quiz.answer_question(guest_hash, "q1", "b")
-    assert after_close["inserted"] is False
-    assert after_close["selected_option_id"] == "a"
-    assert after_close["stats"]["option_counts"] == {"a": 1, "b": 0}
-
-
-def test_only_one_question_can_be_open_and_closed_questions_reject_new_answers(quiz_owner):
-    lesson_id = db.create_lesson(
-        quiz_owner.user_id,
-        "兩題",
-        json.dumps(valid_bundle(two_questions=True), ensure_ascii=False),
-    )
-    session = live_quiz.create_session(quiz_owner.user_id, lesson_id)
-    live_quiz.trigger_question(session["id"], quiz_owner.user_id, "q1", "main.cpp", 3)
-    with pytest.raises(live_quiz.QuizConflict, match="尚未結束"):
-        live_quiz.trigger_question(session["id"], quiz_owner.user_id, "q2", "main.cpp", 4)
-
-    live_quiz.close_question(session["id"], quiz_owner.user_id, "q1")
-    guest_hash = credential_hash("late")
-    live_quiz.join_session(session["id"], "遲到", guest_hash)
-    with pytest.raises(live_quiz.QuizConflict, match="未開放"):
-        live_quiz.answer_question(guest_hash, "q1", "b")
-    opened = live_quiz.trigger_question(
-        session["id"], quiz_owner.user_id, "q2", "main.cpp", 4
-    )
-    assert opened["active_question"]["id"] == "q2"
-
-
 def test_end_keeps_aggregates_and_deletes_identity(quiz_session):
+    """部署前就在 lobby 的舊場次：題目開著、有聚合、也有暱稱與逐筆作答。
+
+    不帶上傳的收場（寬限期滿的路徑）保留聚合、把開著的題關掉，並刪光身分資料。
+    """
     owner, _, session = quiz_session
-    guest_hash = credential_hash("privacy")
-    live_quiz.join_session(session["id"], "應被刪除", guest_hash)
-    live_quiz.trigger_question(session["id"], owner.user_id, "q1", "main.cpp", 3)
-    live_quiz.answer_question(guest_hash, "q1", "b")
+    seed_legacy_participant(session["id"], "應被刪除", credential_hash("privacy"), "q1")
+    with closing(db.connect()) as conn:
+        conn.execute(
+            "UPDATE live_quiz_questions SET state='open', opened_at=?, answer_count=1, "
+            "correct_count=1, option_counts_json='{\"a\":0,\"b\":1}' "
+            "WHERE session_id=? AND question_key='q1'",
+            (db._now(), session["id"]),
+        )
+        conn.commit()
 
     ended = live_quiz.end_session(session["id"], owner.user_id)
     assert ended["state"] == "ended"
+    assert ended["questions"][0]["state"] == "closed"
     assert ended["questions"][0]["correct_count"] == 1
+    assert ended["questions"][0]["option_counts"] == {"a": 0, "b": 1}
+    assert ended["joined_count"] == 0
     with closing(db.connect()) as conn:
         assert conn.execute(
             "SELECT COUNT(*) FROM live_quiz_participants WHERE session_id=?", (session["id"],)

@@ -1,12 +1,15 @@
-"""填表題的 bundle 驗證與出題捕獲。"""
+"""填表題的 bundle 驗證與開課。
+
+出題時的表格捕獲與 var_hint 選擇現在在老師分頁（liveQuizEngine.ts）；var_hint
+寫回教案改由收場上傳完成（tests/test_live_quiz_end_upload.py）。
+"""
 
 import json
-from contextlib import closing
 
 import pytest
 
 from gdbgui.server import db, live_quiz
-from gdbgui.server.live_quiz import QuizRejected, validate_captured_table
+from gdbgui.server.live_quiz import QuizRejected
 from .conftest import register_user
 
 SOURCE = "int main() {\n    int dp[2][2];\n    return 0;\n}\n"
@@ -36,48 +39,6 @@ def _table_question(**overrides):
     }
     question.update(overrides)
     return question
-
-
-def _table(rows=2, cols=2, fill="1"):
-    return {
-        "rows": rows,
-        "cols": cols,
-        "row_labels": [str(i) for i in range(rows)],
-        "col_labels": [str(j) for j in range(cols)],
-        "values": [[fill] * cols for _ in range(rows)],
-    }
-
-
-def test_valid_table_is_normalized():
-    table = validate_captured_table(_table(), max_cells=200)
-    assert table["rows"] == 2 and table["cols"] == 2
-    assert table["values"] == [["1", "1"], ["1", "1"]]
-
-
-def test_ragged_table_is_rejected():
-    """各列長度不一必須拒絕。自動補齊等於偽造正解。"""
-    raw = _table()
-    raw["values"][1] = ["1"]
-    with pytest.raises(QuizRejected):
-        validate_captured_table(raw, max_cells=200)
-
-
-def test_table_over_max_cells_is_rejected():
-    with pytest.raises(QuizRejected):
-        validate_captured_table(_table(rows=20, cols=20), max_cells=200)
-
-
-def test_cell_longer_than_limit_is_rejected():
-    raw = _table(fill="x" * 33)
-    with pytest.raises(QuizRejected):
-        validate_captured_table(raw, max_cells=200)
-
-
-def test_non_string_cell_is_rejected():
-    raw = _table()
-    raw["values"][0][0] = 1
-    with pytest.raises(QuizRejected):
-        validate_captured_table(raw, max_cells=200)
 
 
 def test_table_question_is_accepted():
@@ -134,98 +95,3 @@ def test_create_session_accepts_a_table_question(flask_app):
     session = live_quiz.create_session(owner.user_id, lesson_id)
     assert session is not None
     assert session["questions"][0]["kind"] == "table"
-
-
-def test_trigger_route_captures_table_and_optional_hint(flask_app):
-    flask_app.config["MOBILE_JOIN_BASE_URL"] = "http://10.0.0.2:5000"
-    owner = register_user(flask_app, display_name="Table Owner")
-    bundle = {
-        "version": "2.0",
-        "fullname_to_render": "a.cpp",
-        "source_code": SOURCE,
-        "breakpoints": [],
-        "program_input": "",
-        "quiz": {"schema_version": 1, "questions": [_table_question()]},
-    }
-    lesson_id = db.create_lesson(
-        owner.user_id, "填表題教案", json.dumps(bundle, ensure_ascii=False)
-    )
-    session = live_quiz.create_session(owner.user_id, lesson_id)
-
-    captured = _table(fill="7")
-    response = owner.http.post(
-        f"/api/live-quiz/sessions/{session['id']}/questions/t1/trigger",
-        json={"source_file": "a.cpp", "line": 3, "table": captured, "var_hint": "memo"},
-        headers={"x-csrftoken": owner.csrf},
-    )
-
-    assert response.status_code == 200, response.get_json()
-    assert response.get_json()["questions"][0]["table_spec"]["var_hint"] == "memo"
-    with closing(db.connect()) as conn:
-        row = conn.execute(
-            "SELECT correct_table_json, cell_stats_json FROM live_quiz_questions "
-            "WHERE session_id=? AND question_key='t1'",
-            (session["id"],),
-        ).fetchone()
-    assert json.loads(row["correct_table_json"]) == captured
-    assert json.loads(row["cell_stats_json"]) == [0, 0, 0, 0]
-
-
-def test_selected_hint_persists_to_the_next_session_without_mutating_pinned_version(flask_app):
-    owner = register_user(flask_app, display_name="Persistent Hint Owner")
-    bundle = _bundle(_table_question())
-    lesson_id = db.create_lesson(
-        owner.user_id, "提示持久化", json.dumps(bundle, ensure_ascii=False)
-    )
-    first = live_quiz.create_session(owner.user_id, lesson_id)
-
-    live_quiz.trigger_question(
-        first["id"], owner.user_id, "t1", "a.cpp", 3, _table(), "memo"
-    )
-
-    second = live_quiz.create_session(owner.user_id, lesson_id)
-    assert second["questions"][0]["table_spec"]["var_hint"] == "memo"
-    pinned = db.lesson_version_owned_by(lesson_id, owner.user_id, 1)
-    assert json.loads(pinned["bundle_json"])["quiz"]["questions"][0]["table_spec"]["var_hint"] == "dp"
-
-
-def test_selected_hint_does_not_overwrite_a_concurrent_newer_lesson_version(flask_app):
-    owner = register_user(flask_app, display_name="Concurrent Hint Owner")
-    original = _bundle(_table_question())
-    lesson_id = db.create_lesson(
-        owner.user_id, "提示衝突", json.dumps(original, ensure_ascii=False)
-    )
-    first = live_quiz.create_session(owner.user_id, lesson_id)
-    newer = _bundle(_table_question(table_spec={"var_hint": "newer", "max_cells": 200}))
-    db.update_lesson_owned_by(
-        lesson_id, owner.user_id, "提示衝突", json.dumps(newer, ensure_ascii=False)
-    )
-
-    live_quiz.trigger_question(
-        first["id"], owner.user_id, "t1", "a.cpp", 3, _table(), "memo"
-    )
-
-    second = live_quiz.create_session(owner.user_id, lesson_id)
-    assert second["questions"][0]["table_spec"]["var_hint"] == "newer"
-    assert db.lesson_by_id(lesson_id)["current_version"] == 2
-
-
-def test_hint_persistence_rejection_does_not_fail_an_already_open_trigger(
-    flask_app, monkeypatch, caplog
-):
-    owner = register_user(flask_app, display_name="Rejected Hint Owner")
-    lesson_id = db.create_lesson(
-        owner.user_id, "提示寫入失敗", json.dumps(_bundle(_table_question()), ensure_ascii=False)
-    )
-    session = live_quiz.create_session(owner.user_id, lesson_id)
-
-    def reject_version(*args, **kwargs):
-        raise db.LessonRejected("lesson bundle is too large")
-
-    monkeypatch.setattr(db, "update_lesson_owned_by", reject_version)
-    opened = live_quiz.trigger_question(
-        session["id"], owner.user_id, "t1", "a.cpp", 3, _table(), "memo"
-    )
-
-    assert opened["active_question"]["state"] == "open"
-    assert "lesson bundle is too large" in caplog.text

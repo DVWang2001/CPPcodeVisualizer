@@ -24,20 +24,17 @@ PUBLIC_ENDPOINTS = frozenset(
         "auth.login",
         "auth.register",
         "auth.logout",
+        # 即時課堂的學生加入頁（GET，憑 join token）。學生之後只走 /lesson_quiz 的
+        # Socket.IO 中繼，沒有任何公開的課堂 HTTP API。
         "live_quiz.join_page",
-        "live_quiz.guest_join",
-        "live_quiz.guest_state_route",
-        "live_quiz.guest_answer",
         # Flask 內建的靜態檔案路由。登入頁自己要用到 CSS/favicon。
         "static",
     }
 )
 
-# Guest writes have no login session and therefore no session CSRF token. They remain
-# same-origin checked globally and authenticate with a signed token or HttpOnly cookie.
-CSRF_EXEMPT_ENDPOINTS = frozenset(
-    {"live_quiz.guest_join", "live_quiz.guest_answer"}
-)
+#: 免 CSRF token 的 endpoint。刻意是空集合：所有改變狀態的請求都要帶 token。
+#: 舊的訪客 HTTP API（guest_join／guest_answer）隨 D5 刪除後，已沒有任何例外。
+CSRF_EXEMPT_ENDPOINTS = frozenset()
 
 
 def add_csrf_token_to_session():
