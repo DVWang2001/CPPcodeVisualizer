@@ -6,6 +6,7 @@ import ipaddress
 import logging
 import re
 import secrets
+import unicodedata
 from contextlib import closing
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -46,6 +47,26 @@ TABLE_SPEC_KEYS = frozenset(("var_hint", "max_cells"))
 OPTION_KEYS = frozenset(("id", "text"))
 TRIGGER_KEYS = frozenset(("kind", "source_file", "line", "anchor"))
 ANCHOR_KEYS = frozenset(("line_text", "before_text", "after_text"))
+#: 收場上傳（`POST /end` 的 body，形狀即 TS 的 `EndUpload`）。
+END_UPLOAD_KEYS = frozenset(("questions",))
+END_ITEM_KEYS = frozenset(("question_key",))
+END_ITEM_OPTIONAL_KEYS = frozenset(
+    (
+        "opened_at",
+        "closed_at",
+        "answer_count",
+        "correct_count",
+        "option_counts",
+        "cell_stats",
+        "rows",
+        "cols",
+        "var_hint",
+    )
+)
+END_TABLE_ONLY_KEYS = frozenset(("cell_stats", "rows", "cols", "var_hint"))
+END_HEATMAP_KEYS = ("cell_stats", "rows", "cols")
+MAX_VAR_HINT_LENGTH = 128
+MAX_UPLOAD_TIMESTAMP_LENGTH = 64
 CREDENTIAL_HASH_RE = re.compile(r"\A[0-9a-f]{64}\Z")
 GUEST_COOKIE = "gdbgui_quiz_guest"
 GUEST_MAX_AGE = 8 * 60 * 60
@@ -908,9 +929,277 @@ def export_summary(owner_id: int) -> Optional[dict]:
     return {"exported_at": db._now(), "sessions": out}
 
 
-def end_session(session_id: int, owner_id: int) -> Optional[dict]:
+def _upload_count(value, label):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise QuizRejected(f"{label}必須是整數。")
+    if not 0 <= value <= db.SQLITE_MAX_INTEGER:
+        raise QuizRejected(f"{label}不可為負數或過大。")
+    return value
+
+
+def _utc_seconds(text):
+    """解析 ISO 8601 時間（接受結尾 Z），回傳截到秒的 UTC datetime；無效或沒有時區回傳 None。"""
+    if not isinstance(text, str) or not text or len(text) > MAX_UPLOAD_TIMESTAMP_LENGTH:
+        return None
+    if text[-1] in "Zz":
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            return None
+        return parsed.astimezone(timezone.utc).replace(microsecond=0)
+    except (ValueError, OverflowError):
+        return None
+
+
+def _upload_time(value, label, earliest, latest):
+    parsed = _utc_seconds(value)
+    if parsed is None:
+        raise QuizRejected(f"{label}不是有效的時間（需含時區）。")
+    if not earliest <= parsed <= latest:
+        raise QuizRejected(f"{label}不在課堂期間內。")
+    return parsed
+
+
+def _upload_var_hint(value, label):
+    if isinstance(value, str) and any(unicodedata.category(ch) == "Cc" for ch in value):
+        raise QuizRejected(f"{label}不可含控制字元。")
+    return _text(value, label, 0, MAX_VAR_HINT_LENGTH)
+
+
+def _upload_option_counts(value, question, answer_count, label):
+    option_ids = [option["id"] for option in json.loads(question["options_json"])]
+    if not isinstance(value, dict) or set(value) != set(option_ids):
+        raise QuizRejected(f"{label}的選項分布必須恰好對應題目的選項。")
+    counts = {
+        option_id: _upload_count(value[option_id], f"{label}選項計數")
+        for option_id in option_ids
+    }
+    if sum(counts.values()) != answer_count:
+        raise QuizRejected(f"{label}的選項分布總和與作答數不符。")
+    return counts
+
+
+def _upload_cell_stats(item, question, answer_count, label):
+    if any(key not in item for key in END_HEATMAP_KEYS):
+        raise QuizRejected(f"{label}缺少熱區圖或表格維度。")
+    rows, cols = item["rows"], item["cols"]
+    for value in (rows, cols):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise QuizRejected(f"{label}的表格維度必須是正整數。")
+    spec = json.loads(question["table_spec_json"])
+    limit = min(int(spec["max_cells"]), MAX_CELLS_CEILING)
+    if rows * cols > limit:
+        raise QuizRejected(f"{label}的表格超過 {limit} 格。")
+    stats = item["cell_stats"]
+    if not isinstance(stats, list) or len(stats) != rows * cols:
+        raise QuizRejected(f"{label}的熱區圖格數與表格維度不符。")
+    values = [_upload_count(value, f"{label}熱區圖") for value in stats]
+    if any(value > answer_count for value in values):
+        raise QuizRejected(f"{label}的熱區圖計數不可超過作答數。")
+    return values
+
+
+def _validated_end_upload(conn, session, upload, now):
+    """驗證收場上傳（安全審查 F2 的矩陣），回傳正規化後的各題資料。
+
+    只驗格式與範圍，不重新計算：伺服器不能證明數字是真的（設計說明的安全不變式 6）。
+    任何一條不符就整份拒絕；呼叫端在同一個交易裡，拒絕時什麼都不寫。
+    """
+    upload = _exact_dict(upload, END_UPLOAD_KEYS, "收場資料")
+    items = upload["questions"]
+    if not isinstance(items, list) or len(items) > MAX_QUESTIONS:
+        raise QuizRejected(f"收場資料的題目必須是不超過 {MAX_QUESTIONS} 題的清單。")
+    questions = {
+        row["question_key"]: row
+        for row in conn.execute(
+            "SELECT * FROM live_quiz_questions WHERE session_id=?", (session["id"],)
+        )
+    }
+    created_at = _utc_seconds(session["created_at"])
+    if created_at is None:
+        # 舊資料可能沒有時區；伺服器自己寫的一律是 UTC。
+        try:
+            created_at = datetime.fromisoformat(session["created_at"]).replace(
+                tzinfo=timezone.utc, microsecond=0
+            )
+        except (TypeError, ValueError) as exc:
+            raise QuizRejected("課堂建立時間無效。") from exc
+
+    seen = set()
+    normalized = []
+    for index, raw in enumerate(items):
+        label = f"收場資料第 {index + 1} 題"
+        item = _exact_dict(raw, END_ITEM_KEYS, label, END_ITEM_OPTIONAL_KEYS)
+        key = item["question_key"]
+        if not isinstance(key, str) or key not in questions:
+            raise QuizRejected(f"{label}不屬於這堂課。")
+        if key in seen:
+            raise QuizRejected("收場資料的題目不可重複。")
+        seen.add(key)
+        question = questions[key]
+        kind = question["kind"]
+        if kind != "choice" and "option_counts" in item:
+            raise QuizRejected(f"{label}不是單選題，不可有選項分布。")
+        if kind != "table" and any(field in item for field in END_TABLE_ONLY_KEYS):
+            raise QuizRejected(f"{label}不是填表題，不可有熱區圖或變數提示。")
+
+        entry = {"row": question, "kind": kind, "opened": False}
+        if "var_hint" in item:
+            entry["var_hint"] = _upload_var_hint(item["var_hint"], f"{label}變數提示")
+
+        if item.get("opened_at") is None:
+            # 沒開過的題：伺服器不寫任何聚合，所以上傳也不能帶任何作答痕跡。
+            if item.get("closed_at") is not None:
+                raise QuizRejected(f"{label}尚未開放，不可有收卷時間。")
+            if any(field in item for field in END_HEATMAP_KEYS):
+                raise QuizRejected(f"{label}尚未開放，不可有熱區圖。")
+            for field in ("answer_count", "correct_count"):
+                if field in item and _upload_count(item[field], f"{label}作答數") != 0:
+                    raise QuizRejected(f"{label}尚未開放，不可有作答。")
+            if "option_counts" in item:
+                _upload_option_counts(item["option_counts"], question, 0, label)
+            normalized.append(entry)
+            continue
+
+        opened_at = _upload_time(item["opened_at"], f"{label}開題時間", created_at, now)
+        closed_at = None
+        if item.get("closed_at") is not None:
+            closed_at = _upload_time(item["closed_at"], f"{label}收卷時間", created_at, now)
+            if opened_at > closed_at:
+                raise QuizRejected(f"{label}的收卷時間早於開題時間。")
+        if "answer_count" not in item or "correct_count" not in item:
+            raise QuizRejected(f"{label}缺少作答數。")
+        answer_count = _upload_count(item["answer_count"], f"{label}作答數")
+        correct_count = _upload_count(item["correct_count"], f"{label}答對數")
+        if correct_count > answer_count:
+            raise QuizRejected(f"{label}的答對數不可超過作答數。")
+        if kind == "choice":
+            if "option_counts" not in item:
+                raise QuizRejected(f"{label}缺少選項分布。")
+            entry["option_counts"] = _upload_option_counts(
+                item["option_counts"], question, answer_count, label
+            )
+        else:
+            entry["cell_stats"] = _upload_cell_stats(item, question, answer_count, label)
+        entry.update(
+            opened=True,
+            opened_at=opened_at.isoformat(timespec="seconds"),
+            closed_at=closed_at.isoformat(timespec="seconds") if closed_at else None,
+            answer_count=answer_count,
+            correct_count=correct_count,
+        )
+        normalized.append(entry)
+    return normalized
+
+
+def _write_end_upload(conn, entries, ended_at):
+    """把驗證過的上傳寫進 live_quiz_questions；回傳要寫回教案的 {題目 ID: var_hint}。
+
+    題目 `state` 由伺服器決定：有 opened_at 的題一律 closed，沒有的維持原狀。
+    """
+    hints = {}
+    for entry in entries:
+        row = entry["row"]
+        if "var_hint" in entry:
+            spec = json.loads(row["table_spec_json"])
+            hints[row["question_key"]] = entry["var_hint"]
+            if spec.get("var_hint") != entry["var_hint"]:
+                conn.execute(
+                    "UPDATE live_quiz_questions SET table_spec_json=? WHERE id=?",
+                    (
+                        json.dumps({**spec, "var_hint": entry["var_hint"]}, ensure_ascii=False),
+                        row["id"],
+                    ),
+                )
+        if not entry["opened"]:
+            continue
+        conn.execute(
+            "UPDATE live_quiz_questions SET state='closed', opened_at=?, closed_at=?, "
+            "answer_count=?, correct_count=? WHERE id=?",
+            (
+                entry["opened_at"],
+                entry["closed_at"] or ended_at,
+                entry["answer_count"],
+                entry["correct_count"],
+                row["id"],
+            ),
+        )
+        if entry["kind"] == "choice":
+            conn.execute(
+                "UPDATE live_quiz_questions SET option_counts_json=? WHERE id=?",
+                (
+                    json.dumps(entry["option_counts"], ensure_ascii=False, separators=(",", ":")),
+                    row["id"],
+                ),
+            )
+        else:
+            conn.execute(
+                "UPDATE live_quiz_questions SET cell_stats_json=? WHERE id=?",
+                (json.dumps(entry["cell_stats"]), row["id"]),
+            )
+    return hints
+
+
+def _persist_table_hints(session_id: int, owner_id: int, hints: dict) -> bool:
+    """收場後把所有填表題的 var_hint 用**一次**教案更新寫回；回傳是否已寫回（或無須寫回）。
+
+    必須在收場交易 commit 之後才呼叫：`db.update_lesson_owned_by` 會開第二條連線與
+    `BEGIN IMMEDIATE`，在交易內呼叫會等滿 busy_timeout（安全審查 F1）。
+    任何失敗都不得回滾已結束的場次：記錄（不含上傳內容）後回傳 False。
+    """
+    if not hints:
+        return True
+    try:
+        with closing(db.connect()) as conn:
+            snapshot = conn.execute(
+                "SELECT s.lesson_id, v.version, v.title, v.bundle_json "
+                "FROM live_quiz_sessions s JOIN lesson_versions v ON v.id=s.lesson_version_id "
+                "WHERE s.id=? AND s.owner_user_id=?",
+                (session_id, owner_id),
+            ).fetchone()
+        if snapshot is None:
+            return False
+        bundle = json.loads(snapshot["bundle_json"])
+        changed = False
+        for question in bundle.get("quiz", {}).get("questions", []):
+            hint = hints.get(question.get("id"))
+            if hint is None or question.get("kind") != "table":
+                continue
+            if question["table_spec"]["var_hint"] != hint:
+                question["table_spec"]["var_hint"] = hint
+                changed = True
+        if not changed:
+            return True
+        result = db.update_lesson_owned_by(
+            int(snapshot["lesson_id"]),
+            owner_id,
+            snapshot["title"],
+            json.dumps(bundle, ensure_ascii=False, separators=(",", ":")),
+            parent_version=int(snapshot["version"]),
+            expected_current_version=int(snapshot["version"]),
+        )
+        # 教案在課堂期間有了更新的版本時，update 不覆蓋、回傳 changed=False。
+        return result is not None and result.changed
+    except Exception as exc:
+        logger.warning(
+            "[live quiz] could not persist table hints for session %s (%s)",
+            session_id,
+            type(exc).__name__,
+        )
+        return False
+
+
+def end_session(session_id: int, owner_id: int, upload: Optional[dict] = None) -> Optional[dict]:
+    """結束課堂。`upload` 是老師端算好的匿名聚合（TS `EndUpload`）。
+
+    `upload is None`（寬限期滿、分頁遺失或空 body）只把場次標為 ended，不寫聚合。
+    驗證與寫入在同一個 `BEGIN IMMEDIATE` 交易內；驗證失敗丟 `QuizRejected`，什麼都不寫。
+    教案的 var_hint 在 commit **之後**才寫回，結果放在回傳值的 `hint_saved`。
+    """
     if not _valid_id(session_id) or not _valid_id(owner_id):
         return None
+    hints = {}
     with closing(db.connect()) as conn:
         conn.execute("BEGIN IMMEDIATE")
         try:
@@ -919,6 +1208,11 @@ def end_session(session_id: int, owner_id: int) -> Optional[dict]:
                 conn.commit()
                 return None
             now = db._now()
+            if upload is not None:
+                entries = _validated_end_upload(
+                    conn, session, upload, datetime.fromisoformat(now)
+                )
+                hints = _write_end_upload(conn, entries, now)
             conn.execute(
                 "UPDATE live_quiz_sessions SET state='ended', ended_at=? WHERE id=?",
                 (now, session_id),
@@ -938,7 +1232,12 @@ def end_session(session_id: int, owner_id: int) -> Optional[dict]:
         except BaseException:
             conn.rollback()
             raise
-    return session_owned_by(session_id, owner_id)
+    # 交易已 commit、連線已關：這之後的教案寫入失敗也不會讓場次回滾（F1）。
+    hint_saved = _persist_table_hints(session_id, owner_id, hints)
+    payload = session_owned_by(session_id, owner_id)
+    if payload is not None:
+        payload["hint_saved"] = hint_saved
+    return payload
 
 
 def join_session(session_id: int, nickname: str, credential_hash: str) -> dict:
@@ -1478,11 +1777,30 @@ def export_session_route(session_id):
     return response
 
 
+def _end_upload_body():
+    """`/end` 的 body：空 body 或 `{}` 代表沒有上傳；其餘交給 end_session 驗證。
+
+    有 body 卻不是 JSON 就拒絕，不當成「沒有上傳」默默收場。
+    """
+    if not request.get_data(cache=True).strip():
+        return None
+    body = request.get_json(silent=True)
+    if body is None:
+        raise QuizRejected("收場資料不是有效的 JSON。")
+    if body == {}:
+        return None
+    return body
+
+
 @blueprint.post("/api/live-quiz/sessions/<int:session_id>/end")
 def end_session_route(session_id):
-    row = _invitation_row(session_id, current_user_id())
-    participant_credentials = _participant_credentials(session_id)
-    ended = end_session(session_id, current_user_id())
+    try:
+        upload = _end_upload_body()
+        row = _invitation_row(session_id, current_user_id())
+        participant_credentials = _participant_credentials(session_id)
+        ended = end_session(session_id, current_user_id(), upload)
+    except QuizRejected as exc:
+        return _error(str(exc), 400)
     if ended is not None:
         emit_teacher_state(session_id)
         _emit_ended(participant_credentials)
@@ -1632,7 +1950,9 @@ def _socket_stats_payload(state, question):
         "correct_count": question["correct_count"],
     }
     key = "cell_stats" if question["kind"] == "table" else "option_counts"
-    payload[key] = question[key]
+    # 收場上傳寫入的填表題只有 cell_stats_json、沒有 correct_table_json，
+    # _question_payload 不會帶 cell_stats；這裡不能因此 KeyError 讓 /end 回 500。
+    payload[key] = question.get(key)
     return payload
 
 
