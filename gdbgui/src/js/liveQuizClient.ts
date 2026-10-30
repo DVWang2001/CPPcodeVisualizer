@@ -33,6 +33,8 @@ type Handlers = {
   onState: (session: LiveQuizSession) => void;
   onStats: (stats: LiveQuizStats) => void;
   onConnection: (connected: boolean) => void;
+  /** 伺服器拒絕了老師連線（場次已被伺服器結束、登入失效…）。一般斷線與傳輸層錯誤不會觸發。 */
+  onRefused?: () => void;
 };
 
 function csrfToken(): string {
@@ -234,6 +236,12 @@ function onRoster(msg: any) {
 
 export const createLiveSession = async (lessonId: number): Promise<LiveQuizSession> => {
   const created: LiveQuizSession = await request("POST", "/api/live-quiz/sessions", { lesson_id: lessonId });
+  // 先切斷上一堂的 socket：否則它的事件在換上新引擎後仍會被套到新的一堂。
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+    handlers = null;
+  }
   engine = createEngine(created);
   seed = created;
   ended = false;
@@ -323,13 +331,26 @@ export function connectTeacherQuizSocket(sessionId: number, callbacks: Handlers)
     auth: { role: "teacher", session_id: sessionId }
   });
   socket = current;
+  // 只處理仍是目前這條 socket 的事件（換課後舊 socket 的訊息一律丟棄）。
+  const live = (fn: (msg: any) => void) => (msg: any) => {
+    if (socket === current) fn(msg);
+  };
   current.on("connect", () => callbacks.onConnection(true));
   current.on("disconnect", () => callbacks.onConnection(false));
-  current.on("connect_error", () => callbacks.onConnection(false));
-  current.on("relay:student-hello", onStudentHello);
-  current.on("relay:student-answer", onStudentAnswer);
-  current.on("relay:presence", onPresence);
-  current.on("relay:roster", onRoster);
+  current.on("connect_error", (error: any) => {
+    callbacks.onConnection(false);
+    // 伺服器在 handshake 拒絕（場次非 lobby、登入失效）：socket.io 4.x 的 socket.active 會變 false，
+    // 不會自動重連，錯誤也不是 TransportError。傳輸層錯誤（斷網、伺服器重啟）則會一直重試，
+    // 那段時間伺服器有 30 秒寬限期，不能當成課堂已結束。
+    const transport = error && error.type === "TransportError";
+    if (!transport && current.active !== true && socket === current && callbacks.onRefused) {
+      callbacks.onRefused();
+    }
+  });
+  current.on("relay:student-hello", live(onStudentHello));
+  current.on("relay:student-answer", live(onStudentAnswer));
+  current.on("relay:presence", live(onPresence));
+  current.on("relay:roster", live(onRoster));
   return () => {
     current.disconnect();
     if (socket === current) {

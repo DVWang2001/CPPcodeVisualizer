@@ -1014,3 +1014,65 @@ test("匯出作答是按鈕，點下去由瀏覽器內的引擎產生檔案", as
 
   expect(liveQuizClient.downloadLiveSessionExport).toHaveBeenCalledTimes(1);
 });
+
+// ── 伺服器已結束的課堂（寬限期過後）要在面板上收尾 ─────────────────────────────
+
+const lastSocketHandlers = () => {
+  const calls = (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls;
+  return calls[calls.length - 1][1];
+};
+
+const beforeUnloadBlocked = () => {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+};
+
+test("結束課堂時 /end 回 404（伺服器已結束）：面板收尾成已結束，並釋放 beforeunload 與 runtime", async () => {
+  await mountPanel();
+  expect(beforeUnloadBlocked()).toBe(true);
+  expect(lessonQuizRuntime.state().active).toBe(true);
+  const gone: any = new Error("找不到課堂。");
+  gone.status = 404;
+  (liveQuizClient.endLiveSession as jest.Mock).mockRejectedValue(gone);
+
+  clickButton("結束課堂");
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(root.textContent).toContain("本次課堂已結束");
+  expect(root.textContent).toContain("伺服器");
+  expect(beforeUnloadBlocked()).toBe(false);
+  expect(lessonQuizRuntime.state().active).toBe(false);
+  expect(root.querySelector('[data-testid="live-quiz-export"]')).not.toBeNull();
+});
+
+test("結束課堂時 /end 回 500：維持進行中並顯示錯誤，不會誤判為已結束", async () => {
+  await mountPanel();
+  const failure: any = new Error("boom");
+  failure.status = 500;
+  (liveQuizClient.endLiveSession as jest.Mock).mockRejectedValue(failure);
+
+  clickButton("結束課堂");
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(root.textContent).not.toContain("本次課堂已結束");
+  expect(beforeUnloadBlocked()).toBe(true);
+});
+
+test("中繼拒絕老師連線（onRefused）：收尾成已結束並說明；一般斷線（onConnection false）只顯示重新連線中", async () => {
+  await mountPanel();
+
+  act(() => { lastSocketHandlers().onConnection(false); });
+  expect(root.textContent).toContain("重新連線中");
+  expect(root.textContent).not.toContain("本次課堂已結束");
+  expect(beforeUnloadBlocked()).toBe(true);
+
+  act(() => { lastSocketHandlers().onRefused(); });
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(root.textContent).toContain("本次課堂已結束");
+  expect(root.textContent).toContain("伺服器");
+  expect(beforeUnloadBlocked()).toBe(false);
+  expect(lessonQuizRuntime.state().active).toBe(false);
+  expect(root.querySelector('[data-testid="live-quiz-export"]')).not.toBeNull();
+});

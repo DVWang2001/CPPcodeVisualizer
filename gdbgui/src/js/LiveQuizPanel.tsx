@@ -336,6 +336,8 @@ export default function LiveQuizPanel({
   const [busy, setBusy] = React.useState(false);
   const [connected, setConnected] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  /** 課堂不是老師按結束、而是伺服器那邊已經結束時的說明（顯示在已結束畫面）。 */
+  const [endedNotice, setEndedNotice] = React.useState<string | null>(null);
   const disconnectRef = React.useRef<(() => void) | null>(null);
   const endedRef = React.useRef(false);
   /** 正在把舊課堂換成新的：收課的收尾（載回最新教案）此時是有害的。 */
@@ -454,6 +456,7 @@ export default function LiveQuizPanel({
       .then(() => initial)
       .then(current => {
         endedRef.current = false;
+        setEndedNotice(null);
         restorationRef.current = null;
         // 同步更新 ref，不等下一次 render：舊課堂的 ended 事件可能在這之間就到，
         // 而 finishEnded 要靠 ref 判斷「這個 ended 屬於哪一堂」。
@@ -531,6 +534,8 @@ export default function LiveQuizPanel({
             }
           },
           onStats: setStats,
+          onRefused: () =>
+            finishServerEnded("課堂已由伺服器結束（連線中斷超過 30 秒），或伺服器拒絕了老師連線。"),
           onConnection: value => {
             // 斷線只是暫時的（Socket.IO 會自動重連，中繼保留 30 秒寬限期），
             // 不再向伺服器查場次是否已結束：課堂狀態以這個分頁為準。
@@ -712,12 +717,28 @@ export default function LiveQuizPanel({
       .then(() => setBusy(false));
   };
 
+  // 伺服器已經把這堂結束了（老師斷線超過 30 秒的寬限期，或登入失效）：引擎的資料還在，
+  // 所以只在面板上收尾（釋放 runtime 與離開確認），匯出仍可用。
+  const finishServerEnded = (reason: string) => {
+    const current = sessionRef.current;
+    if (!current || endedRef.current) return;
+    setEndedNotice(reason);
+    finishEnded({ ...current, state: "ended", active_question: null });
+  };
+
   const end = () => {
     if (!session) return;
     setBusy(true);
     endLiveSession(session.id)
       .then(finishEnded)
-      .catch(reason => setError(reason.message || "無法結束課堂。"))
+      .catch(reason => {
+        // /end 兩次都 404 = 伺服器說這堂已經不在了
+        if (reason && reason.status === 404) {
+          finishServerEnded("課堂已由伺服器結束（連線中斷超過 30 秒）。");
+          return;
+        }
+        setError(reason.message || "無法結束課堂。");
+      })
       .then(() => setBusy(false));
   };
 
@@ -737,8 +758,21 @@ export default function LiveQuizPanel({
     return (
       <section style={{ padding: "14px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc" }}>
         <strong style={{ color: ink }}>本次課堂已結束</strong>
-        <span style={{ color: muted, marginLeft: "10px" }}>匿名題目統計已保留，學生資料已清除。</span>
+        <span style={{ color: muted, marginLeft: "10px" }}>
+          {endedNotice || "匿名題目統計已保留，學生資料已清除。"}
+        </span>
         <span style={{ float: "right", display: "flex", gap: "8px" }}>
+          {endedNotice && (
+            <button
+              type="button"
+              className="btn btn-default btn-sm"
+              data-testid="live-quiz-export"
+              onClick={downloadLiveSessionExport}
+              title="這堂的作答還在這個分頁裡，關閉前可以下載。"
+            >
+              匯出作答
+            </button>
+          )}
           {error && <span role="alert" style={{ color: "#a61b1b" }}>{error}</span>}
           {error && <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={startRestore}>重試載入</button>}
           <button type="button" className="btn btn-default btn-sm" disabled={busy || !!error} onClick={onClose}>關閉</button>

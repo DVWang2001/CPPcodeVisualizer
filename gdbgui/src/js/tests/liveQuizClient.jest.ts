@@ -71,7 +71,7 @@ function jsonResponse(status: number, body: any) {
 }
 
 let endResponses: Array<() => Promise<any>>;
-let handlers: { onState: jest.Mock; onStats: jest.Mock; onConnection: jest.Mock };
+let handlers: { onState: jest.Mock; onStats: jest.Mock; onConnection: jest.Mock; onRefused?: jest.Mock };
 let disconnect: (() => void) | null;
 
 function fetchCalls(): any[][] {
@@ -432,7 +432,38 @@ test("connect / disconnect 事件轉成 onConnection", async () => {
 
   mockSocket.handlers["connect"]();
   mockSocket.handlers["disconnect"]();
-  mockSocket.handlers["connect_error"]();
+  mockSocket.handlers["connect_error"]({ type: "TransportError", message: "xhr poll error" });
 
   expect(handlers.onConnection.mock.calls.map(call => call[0])).toEqual([true, false, false]);
+});
+
+test("伺服器拒絕老師連線（connect_error 且 socket 不再自動重連）時呼叫 onRefused；網路層錯誤與一般斷線不會", async () => {
+  await startClass();
+  handlers.onRefused = jest.fn();
+  disconnect!();
+  disconnect = connectTeacherQuizSocket(7, handlers);
+  (mockSocket as any).active = true;
+
+  mockSocket.handlers["disconnect"]("transport close");
+  mockSocket.handlers["connect_error"]({ type: "TransportError", message: "websocket error" });
+  (mockSocket as any).active = true; // 4.x：傳輸錯誤時 socket 仍會自動重試
+  mockSocket.handlers["connect_error"](new Error("xhr poll error"));
+  expect(handlers.onRefused).not.toHaveBeenCalled();
+
+  (mockSocket as any).active = false; // 伺服器 handshake 拒絕：socket.io 不會重連
+  mockSocket.handlers["connect_error"](new Error("Connection rejected by server"));
+  expect(handlers.onRefused).toHaveBeenCalledTimes(1);
+  delete (mockSocket as any).active;
+});
+
+test("開新一堂後，舊一堂 socket 的事件不會套到新的引擎上", async () => {
+  await startClass();
+  await createLiveSession(3); // 第二堂；第一堂的 socket 仍掛著 handler
+  mockSocket.emit.mockClear();
+  handlers.onState.mockClear();
+
+  hello("S1", "dev-1");
+
+  expect(mockSocket.emit).not.toHaveBeenCalled();
+  expect(handlers.onState).not.toHaveBeenCalled();
 });
