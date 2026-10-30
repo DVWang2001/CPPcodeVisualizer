@@ -122,13 +122,16 @@ export function reduceStudentState(
   const sessionTitle = text(snapshot.session_title) || previous.session_title;
   const common = {
     session_title: sessionTitle,
-    nickname: text(snapshot.nickname),
+    nickname: text(snapshot.nickname) || previous.nickname,
     participant_id: positiveInteger(snapshot.participant_id),
     session_id: positiveInteger(snapshot.session_id),
     reconnecting: false,
     message: null
   };
   const raw = snapshot.active_question;
+  const sameQuestion = raw && previous.active_question && previous.active_question.id === text(raw.id)
+    ? previous.active_question
+    : null;
   if (!raw) {
     return {
       ...common,
@@ -154,7 +157,12 @@ export function reduceStudentState(
       raw.rows * raw.cols <= MAX_CELLS_CEILING;
     const rows = dimensionsValid ? raw.rows : 0;
     const cols = dimensionsValid ? raw.cols : 0;
-    const answer = dimensionsValid ? tableValues(raw.answer, rows, cols) : null;
+    // 全班廣播沒有 answer 這個欄位（個人狀態一定有，沒作答時是 null）：同一題就沿用
+    // 自己已送出的答案，不要被廣播洗掉。
+    const keptAnswer = raw.answer === undefined && sameQuestion && sameQuestion.kind === "table"
+      ? sameQuestion.answer
+      : raw.answer;
+    const answer = dimensionsValid ? tableValues(keptAnswer, rows, cols) : null;
     const question: StudentQuizTableQuestion = {
       ...base,
       kind: "table",
@@ -167,7 +175,22 @@ export function reduceStudentState(
     if (state === "closed") {
       const correctValues = dimensionsValid ? tableValues(raw.correct_values, rows, cols) : null;
       if (correctValues) question.correct_values = correctValues;
-      const rawResult = raw.result;
+      let rawResult = raw.result;
+      // 關題廣播的 result 只有全班共通的 explanation：用自己保留的答案在本機算格數。
+      if (rawResult && typeof rawResult === "object" && !Array.isArray(rawResult) &&
+        rawResult.correct_cells === undefined && rawResult.total_cells === undefined &&
+        question.correct_values) {
+        let right = 0;
+        question.correct_values.forEach((line, r) => line.forEach((expected, c) => {
+          const given = answer ? answer[r][c].trim() : "";
+          if (given !== "" && given === expected.trim()) right += 1;
+        }));
+        rawResult = {
+          ...rawResult,
+          correct_cells: answer ? right : null,
+          total_cells: answer ? rows * cols : null
+        };
+      }
       if (dimensionsValid && rawResult && typeof rawResult === "object" && !Array.isArray(rawResult) &&
         typeof rawResult.explanation === "string") {
         const correctCells = nonnegativeInteger(rawResult.correct_cells);
@@ -191,7 +214,13 @@ export function reduceStudentState(
     };
   }
 
-  const selected = typeof raw.selected_option_id === "string" ? raw.selected_option_id : null;
+  // 全班廣播沒有 selected_option_id 欄位（個人狀態一定有，沒選時是 null）：同一題就沿用
+  // 自己的選擇。
+  const selected = typeof raw.selected_option_id === "string"
+    ? raw.selected_option_id
+    : raw.selected_option_id === undefined && sameQuestion && sameQuestion.kind === "choice"
+      ? previous.selected_option_id
+      : null;
   const question: StudentQuizChoiceQuestion = {
     ...base,
     kind: "choice",
@@ -202,9 +231,13 @@ export function reduceStudentState(
       : []
   };
   if (state === "closed" && raw.result) {
+    const correctOption = text(raw.result.correct_option_id);
     question.result = {
-      is_correct: typeof raw.result.is_correct === "boolean" ? raw.result.is_correct : null,
-      correct_option_id: text(raw.result.correct_option_id),
+      // 廣播的 result 沒有 is_correct：用保留下來的選擇在本機判斷；沒選就是 null。
+      is_correct: typeof raw.result.is_correct === "boolean"
+        ? raw.result.is_correct
+        : raw.result.is_correct === undefined && selected ? selected === correctOption : null,
+      correct_option_id: correctOption,
       explanation: text(raw.result.explanation)
     };
   }
@@ -218,12 +251,16 @@ export function reduceStudentState(
 
 export function markSubmitted(
   state: StudentQuizState,
-  optionId?: string
+  optionId?: string,
+  tableAnswer?: string[][]
 ): StudentQuizState {
+  const question = state.active_question;
   return {
     ...state,
     status: "answered",
-    active_question: state.active_question ? { ...state.active_question } : null,
+    active_question: question
+      ? question.kind === "table" && tableAnswer ? { ...question, answer: tableAnswer } : { ...question }
+      : null,
     selected_option_id: state.active_question && state.active_question.kind === "choice"
       ? optionId || state.selected_option_id
       : null,

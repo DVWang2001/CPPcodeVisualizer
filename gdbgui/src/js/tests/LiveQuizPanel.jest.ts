@@ -7,9 +7,9 @@ jest.mock("../liveQuizClient", () => ({
   connectTeacherQuizSocket: jest.fn(() => jest.fn()),
   createLiveSession: jest.fn(),
   endLiveSession: jest.fn(),
-  getLiveSession: jest.fn(),
-  // 這一個在 render 期間就被呼叫，不像其他都在事件裡——漏掉會讓整個面板渲染失敗。
-  liveQuizExportUrl: jest.fn((id: number) => `/api/live-quiz/sessions/${id}/export`),
+  // 匯出改成按鈕：在瀏覽器內由引擎產生檔案，不再是 render 期間取用的網址。
+  downloadLiveSessionExport: jest.fn(),
+  fetchQuestionResponses: jest.fn(),
   triggerLiveQuestion: jest.fn()
 }));
 
@@ -52,6 +52,7 @@ beforeEach(() => {
   document.body.appendChild(root);
   (global_variable as any).__latest_containers = new Map();
   sessionStorage.clear();
+  localStorage.clear();
   lessonQuizRuntime.deactivate();
   jest.clearAllMocks();
 });
@@ -71,18 +72,23 @@ function render(onConfirm = jest.fn()) {
   return onConfirm;
 }
 
-async function mountPanel(session = panelSession()) {
-  (liveQuizClient.getLiveSession as jest.Mock).mockResolvedValue(session);
-  sessionStorage.setItem("gdbgui_live_quiz_session_id", "7");
+// 老師端不再還原課堂（D4）：掛載後沒有課堂，要經 restart 橋接開一堂新的——
+// 這也是實際流程（按 Run → gateRun → restartSession → createLiveSession）。
+async function mountPanel(session: any = panelSession(), props: any = {}) {
+  (liveQuizClient.createLiveSession as jest.Mock).mockResolvedValue(session);
   await act(async () => {
     ReactDOM.render(React.createElement(LiveQuizPanel, {
       lessonId: 2,
       startError: () => null,
       prepareVersion: () => Promise.resolve(),
       onSessionEnded: () => Promise.resolve(),
-      onClose: jest.fn()
+      onClose: jest.fn(),
+      ...props
     }), root);
     for (let i = 0; i < 6; i++) await Promise.resolve();
+  });
+  await act(async () => {
+    await (window as any).gdbgui_live_quiz_restart();
   });
   act(() => { lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 }); });
 }
@@ -304,11 +310,11 @@ test("an unrelated ready socket snapshot cannot reveal a table while its POST is
   expect(root.querySelector("select")).toBeNull();
 });
 
-test("a socket-open snapshot during statusless rejection reconciliation prevents stale restore", async () => {
+test("引擎的 EngineError 409 在本機核對，不打任何網路；之後的 socket 快照仍能讓表格維持隱藏", async () => {
+  // 原本這條靠 getLiveSession 的 race 驅動；引擎在本機同步計分，沒有網路往返可以 race，
+  // 改成以引擎丟出的 409（帶 status 的 Error）驅動，核對的對象是本機 runtime 的 session。
   let rejectTrigger!: (reason: Error) => void;
-  let resolveReconcile!: (session: any) => void;
   const triggerPromise = new Promise<any>((_, reject) => { rejectTrigger = reject; });
-  const reconcilePromise = new Promise<any>(resolve => { resolveReconcile = resolve; });
   const session = panelSession();
   (liveQuizClient.triggerLiveQuestion as jest.Mock).mockReturnValue(triggerPromise);
   (global_variable as any).__latest_containers = new Map([["dp", { values: [[1]] }]]);
@@ -317,13 +323,14 @@ test("a socket-open snapshot during statusless rejection reconciliation prevents
     container: { isOpen: () => true, open, close: jest.fn() }
   };
   await mountPanel(session);
-  (liveQuizClient.getLiveSession as jest.Mock).mockReturnValue(reconcilePromise);
 
   const confirm = Array.from(root.querySelectorAll("button"))
     .find(button => button.textContent === "確認出題")!;
   act(() => { Simulate.click(confirm); });
   await act(async () => { await Promise.resolve(); });
-  rejectTrigger(new Error("offline"));
+  const conflict: any = new Error("上一題尚未結束作答。");
+  conflict.status = 409;
+  rejectTrigger(conflict);
   await act(async () => { await triggerPromise.catch(() => undefined); await Promise.resolve(); });
   expect(open).not.toHaveBeenCalled();
 
@@ -335,8 +342,6 @@ test("a socket-open snapshot during statusless rejection reconciliation prevents
   act(() => {
     (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls[0][1].onState(opened);
   });
-  resolveReconcile(session);
-  await act(async () => { await reconcilePromise; await Promise.resolve(); });
 
   expect(open).not.toHaveBeenCalled();
   expect((window as any).gdbgui_table_quiz_hides_container).toBe(true);
@@ -396,9 +401,7 @@ test("a ready join snapshot cannot reveal a reconciled uncertain trigger before 
 
 test("HTTP 409 stays hidden until a socket snapshot reveals the other open question", async () => {
   let rejectTrigger!: (reason: Error) => void;
-  let resolveReconcile!: (session: any) => void;
   const triggerPromise = new Promise<any>((_, reject) => { rejectTrigger = reject; });
-  const reconcilePromise = new Promise<any>(resolve => { resolveReconcile = resolve; });
   const session = panelSession();
   const second = {
     id: "q2", state: "ready", kind: "choice", prompt: "另一題",
@@ -412,7 +415,6 @@ test("HTTP 409 stays hidden until a socket snapshot reveals the other open quest
     container: { isOpen: () => true, open, close: jest.fn() }
   };
   await mountPanel(session);
-  (liveQuizClient.getLiveSession as jest.Mock).mockReturnValue(reconcilePromise);
 
   const confirm = Array.from(root.querySelectorAll("button"))
     .find(button => button.textContent === "確認出題")!;
@@ -427,7 +429,6 @@ test("HTTP 409 stays hidden until a socket snapshot reveals the other open quest
   });
   expect(open).not.toHaveBeenCalled();
   expect(root.querySelector("select")).toBeNull();
-  expect(liveQuizClient.getLiveSession).toHaveBeenCalledTimes(3);
 
   const otherOpened = {
     ...session,
@@ -437,8 +438,6 @@ test("HTTP 409 stays hidden until a socket snapshot reveals the other open quest
   act(() => {
     (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls[0][1].onState(otherOpened);
   });
-  resolveReconcile(otherOpened);
-  await act(async () => { await reconcilePromise; await Promise.resolve(); });
 
   expect(open).not.toHaveBeenCalled();
   expect(root.textContent).not.toContain("重試");
@@ -503,18 +502,7 @@ test("restart 換課期間不把教案載回最新版本", async () => {
   // 原始碼換掉。換課時那是有害的：程式正在跑，換掉原始碼等於換掉 binary，下一步會
   // 得到 "The program is not being run."。新課堂馬上會鎖定同一個版本，不需要載回。
   const onSessionEnded = jest.fn(() => Promise.resolve());
-  (liveQuizClient.getLiveSession as jest.Mock).mockResolvedValue(panelSession());
-  sessionStorage.setItem("gdbgui_live_quiz_session_id", "7");
-  await act(async () => {
-    ReactDOM.render(React.createElement(LiveQuizPanel, {
-      lessonId: 2,
-      startError: () => null,
-      prepareVersion: () => Promise.resolve(),
-      onSessionEnded,
-      onClose: jest.fn()
-    }), root);
-    for (let i = 0; i < 6; i++) await Promise.resolve();
-  });
+  await mountPanel(panelSession(), { onSessionEnded });
 
   // 真實情況下 endLiveSession 之後，伺服器會經 socket 推 ended 狀態進來，
   // 那才是走到 finishEnded → restoreLatest → onSessionEnded 的那條路。
@@ -925,4 +913,190 @@ test("對照組：gdbgui_table_quiz_hides_container 是真的會壓住確認出�
   expect(confirmBtn).toBeUndefined();
 
   (window as any).gdbgui_table_quiz_hides_container = false;
+});
+
+// ── D4：老師分頁就是課堂，不保存、不還原 ───────────────────────────────────────
+
+const clickButton = (label: string) => {
+  const button = Array.from(root.querySelectorAll("button")).find(b => b.textContent === label)!;
+  act(() => { Simulate.click(button); });
+};
+
+test("課堂進行中註冊 beforeunload，結束後移除", async () => {
+  const add = jest.spyOn(window, "addEventListener");
+  const remove = jest.spyOn(window, "removeEventListener");
+  const unloadCalls = (spy: jest.SpyInstance) => spy.mock.calls.filter(call => call[0] === "beforeunload");
+
+  await mountPanel();
+
+  expect(unloadCalls(add)).toHaveLength(1);
+  const handler = unloadCalls(add)[0][1];
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true); // 瀏覽器原生的離開確認
+
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended" });
+  clickButton("結束課堂");
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(unloadCalls(remove).some(call => call[1] === handler)).toBe(true);
+  const after = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(after);
+  expect(after.defaultPrevented).toBe(false);
+  add.mockRestore();
+  remove.mockRestore();
+});
+
+test("面板卸載時移除 beforeunload，且沒有課堂時從未註冊", async () => {
+  const add = jest.spyOn(window, "addEventListener");
+  await act(async () => {
+    ReactDOM.render(React.createElement(LiveQuizPanel, {
+      lessonId: 2,
+      startError: () => null,
+      prepareVersion: () => Promise.resolve(),
+      onSessionEnded: () => Promise.resolve(),
+      onClose: jest.fn()
+    }), root);
+  });
+  expect(add.mock.calls.filter(call => call[0] === "beforeunload")).toHaveLength(0);
+  add.mockRestore();
+
+  await mountPanel();
+  const running = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(running);
+  expect(running.defaultPrevented).toBe(true);
+
+  act(() => { ReactDOM.unmountComponentAtNode(root); });
+
+  const gone = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(gone);
+  expect(gone.defaultPrevented).toBe(false);
+});
+
+test("重新載入頁面不會還原上一場課堂", async () => {
+  // 舊版把 session id 記在 sessionStorage 並在載入時還原；現在課堂只活在分頁記憶體。
+  sessionStorage.setItem("gdbgui_live_quiz_session_id", "7");
+
+  await act(async () => {
+    ReactDOM.render(React.createElement(LiveQuizPanel, {
+      lessonId: 2,
+      startError: () => null,
+      prepareVersion: () => Promise.resolve(),
+      onSessionEnded: () => Promise.resolve(),
+      onClose: jest.fn()
+    }), root);
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  });
+
+  expect(liveQuizClient.createLiveSession).not.toHaveBeenCalled();
+  expect(liveQuizClient.connectTeacherQuizSocket).not.toHaveBeenCalled();
+  expect(root.textContent).toBe("");
+});
+
+test("開課、結束的整個流程不寫入課堂 id 到 sessionStorage 或 localStorage", async () => {
+  const setItem = jest.spyOn(Storage.prototype, "setItem");
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended" });
+  clickButton("結束課堂");
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(setItem.mock.calls.filter(call => String(call[0]).includes("live_quiz"))).toEqual([]);
+  expect(sessionStorage.getItem("gdbgui_live_quiz_session_id")).toBeNull();
+  setItem.mockRestore();
+});
+
+test("匯出作答是按鈕，點下去由瀏覽器內的引擎產生檔案", async () => {
+  await mountPanel();
+
+  const button = root.querySelector('[data-testid="live-quiz-export"]') as HTMLElement;
+  expect(button.tagName).toBe("BUTTON");
+  act(() => { Simulate.click(button); });
+
+  expect(liveQuizClient.downloadLiveSessionExport).toHaveBeenCalledTimes(1);
+});
+
+// ── 伺服器已結束的課堂（寬限期過後）要在面板上收尾 ─────────────────────────────
+
+const lastSocketHandlers = () => {
+  const calls = (liveQuizClient.connectTeacherQuizSocket as jest.Mock).mock.calls;
+  return calls[calls.length - 1][1];
+};
+
+const beforeUnloadBlocked = () => {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+};
+
+test("結束課堂時 /end 回 404（伺服器已結束）：面板收尾成已結束，並釋放 beforeunload 與 runtime", async () => {
+  await mountPanel();
+  expect(beforeUnloadBlocked()).toBe(true);
+  expect(lessonQuizRuntime.state().active).toBe(true);
+  const gone: any = new Error("找不到課堂。");
+  gone.status = 404;
+  (liveQuizClient.endLiveSession as jest.Mock).mockRejectedValue(gone);
+
+  clickButton("結束課堂");
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(root.textContent).toContain("本次課堂已結束");
+  expect(root.textContent).toContain("伺服器");
+  expect(beforeUnloadBlocked()).toBe(false);
+  expect(lessonQuizRuntime.state().active).toBe(false);
+  expect(root.querySelector('[data-testid="live-quiz-export"]')).not.toBeNull();
+});
+
+test("結束時統計上傳被拒、改用空 body 收場：不說統計已保留，並顯示未保存與匯出作答", async () => {
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended", aggregatesSaved: false });
+
+  clickButton("結束課堂");
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(root.textContent).toContain("本次課堂已結束");
+  expect(root.textContent).not.toContain("統計已保留");
+  expect(root.textContent).toContain("沒有保存");
+  expect(root.querySelector('[data-testid="live-quiz-export"]')).not.toBeNull();
+});
+
+test("結束時統計已保存但 hint_saved=false：仍說統計已保留，並註明變數提示未保存", async () => {
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended", aggregatesSaved: true, hint_saved: false });
+
+  clickButton("結束課堂");
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(root.textContent).toContain("匿名題目統計已保留");
+  expect(root.textContent).toContain("變數提示未保存");
+});
+
+test("結束課堂時 /end 回 500：維持進行中並顯示錯誤，不會誤判為已結束", async () => {
+  await mountPanel();
+  const failure: any = new Error("boom");
+  failure.status = 500;
+  (liveQuizClient.endLiveSession as jest.Mock).mockRejectedValue(failure);
+
+  clickButton("結束課堂");
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(root.textContent).not.toContain("本次課堂已結束");
+  expect(beforeUnloadBlocked()).toBe(true);
+});
+
+test("中繼拒絕老師連線（onRefused）：收尾成已結束並說明；一般斷線（onConnection false）只顯示重新連線中", async () => {
+  await mountPanel();
+
+  act(() => { lastSocketHandlers().onConnection(false); });
+  expect(root.textContent).toContain("重新連線中");
+  expect(root.textContent).not.toContain("本次課堂已結束");
+  expect(beforeUnloadBlocked()).toBe(true);
+
+  act(() => { lastSocketHandlers().onRefused(); });
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(root.textContent).toContain("本次課堂已結束");
+  expect(root.textContent).toContain("伺服器");
+  expect(beforeUnloadBlocked()).toBe(false);
+  expect(lessonQuizRuntime.state().active).toBe(false);
+  expect(root.querySelector('[data-testid="live-quiz-export"]')).not.toBeNull();
 });

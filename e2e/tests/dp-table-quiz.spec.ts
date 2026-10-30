@@ -1,68 +1,18 @@
-import { readFileSync } from 'fs';
-import * as path from 'path';
 import { devices, expect, Page, test } from '@playwright/test';
-import { ensureLoggedIn, setupGuide, setupPage } from './helpers';
+import { setupGuide } from './helpers';
+import {
+  confirmSubmit,
+  csrfToken,
+  deleteLesson,
+  joinStudent,
+  loginAndOpenQuizLesson,
+  recordReceivedFrames,
+  releaseToBoundLine,
+  runAndDecodeQr,
+  tableQuestion,
+} from './live_quiz_helpers';
 
-const SOURCE = readFileSync(
-  path.resolve(__dirname, '../../examples/cpp/e2e_containers.cpp'),
-  'utf8'
-);
-
-async function csrfToken(page: Page): Promise<string> {
-  return page.evaluate(() => (window as any).initial_data.csrf_token);
-}
-
-async function createLesson(page: Page): Promise<number> {
-  await setupPage(page);
-  await page.addInitScript(() => localStorage.setItem('show_tour_guide', 'false'));
-  await ensureLoggedIn(page);
-  await page.goto('/edit');
-  const created = await page.request.post('/api/lessons', {
-    headers: {
-      'Content-Type': 'application/json',
-      'x-csrftoken': await csrfToken(page),
-    },
-    data: {
-      title: 'DP 填表 E2E',
-      bundle: {
-        version: '2.0',
-        fullname_to_render: 'e2e_containers.cpp',
-        source_code: SOURCE,
-        breakpoints: [{ line: '26', enabled: 'y', is_normal_breakpoint: true }],
-        program_input: '',
-        quiz: {
-          schema_version: 1,
-          questions: [{
-            id: 'dp-table',
-            kind: 'table',
-            prompt: '填出 dp 的內容',
-            explanation: '兩列兩欄的動態規劃表。',
-            table_spec: { var_hint: 'dp', max_cells: 4 },
-            trigger: {
-              kind: 'source_line',
-              source_file: 'e2e_containers.cpp',
-              line: 26,
-              anchor: {
-                line_text: 'volatile int x = 0; (void)x;',
-                before_text: ') {',
-                after_text: '}',
-              },
-            },
-          }],
-        },
-      },
-    },
-  });
-  expect(created.status()).toBe(201);
-  return (await created.json()).id;
-}
-
-async function join(page: Page, url: string, nickname: string): Promise<void> {
-  await page.goto(url);
-  await page.getByLabel('顯示暱稱').fill(nickname);
-  await page.getByRole('button', { name: '加入課堂' }).click();
-  await expect(page.getByText('已加入，請等待老師播放到題目。')).toBeVisible();
-}
+test.setTimeout(240_000);
 
 async function fillTable(page: Page, values: string[][]): Promise<void> {
   for (let row = 0; row < values.length; row += 1) {
@@ -73,8 +23,9 @@ async function fillTable(page: Page, values: string[][]): Promise<void> {
       await expect(input).toHaveValue(values[row][col]);
     }
   }
-  await page.getByRole('button', { name: '送出答案' }).click();
-  await expect(page.getByText('已收到答案，請等待老師關題。')).toBeVisible();
+  // 兩步送出：送出答案 → 確認送出；「已收到」要等老師端確認才會出現
+  await confirmSubmit(page, '送出答案');
+  await expect(page.getByText('已收到答案，關題前仍可修改。')).toBeVisible();
   for (let row = 0; row < values.length; row += 1) {
     for (let col = 0; col < values[row].length; col += 1) {
       await expect(page.getByLabel(`${row}，${col}`, { exact: true })).toHaveValue(values[row][col]);
@@ -97,34 +48,27 @@ test('two phones answer a captured DP table without leaking it before close', as
   const phoneB = await browser.newContext(android14);
   const studentA = await phoneA.newPage();
   const studentB = await phoneB.newPage();
+  const framesA = recordReceivedFrames(studentA);
+  const framesB = recordReceivedFrames(studentB);
   let lessonId: number | null = null;
+  let csrf = '';
 
   try {
-    lessonId = await createLesson(teacherPage);
-    await teacherPage.goto(`/edit?lesson=${lessonId}`);
-    await expect(teacherPage.getByTestId('live-quiz-open')).toBeVisible({ timeout: 15_000 });
+    lessonId = await loginAndOpenQuizLesson(teacherPage, 'DP 填表 E2E', [tableQuestion()]);
+    csrf = await csrfToken(teacherPage);
     await setupGuide(teacherPage, '{dp}');
-    await teacherPage.click('#run_button');
-    await teacherPage.waitForFunction(() =>
-      Number(sessionStorage.getItem('gdbgui_live_quiz_session_id')) > 0
-    );
-    await teacherPage.waitForFunction(
-      () => Number((window as any).store?.get('paused_on_frame')?.line) === 26,
-      null,
-      { timeout: 30_000 }
-    );
-    const sessionId = await teacherPage.evaluate(() =>
-      Number(sessionStorage.getItem('gdbgui_live_quiz_session_id'))
-    );
-    const session = await (await teacherPage.request.get(`/api/live-quiz/sessions/${sessionId}`)).json();
-    await teacherPage.getByRole('dialog', { name: '放大的加入 QR Code' })
-      .getByRole('button', { name: '關閉' }).click();
-    await Promise.all([
-      join(studentA, session.join_url, '手機甲'),
-      join(studentB, session.join_url, '手機乙'),
-    ]);
 
-    const selector = teacherPage.getByLabel('正解容器');
+    // 按 Run 開課並彈出 QR；學生從 QR 像素解出的網址加入，之後老師關 QR 放行播放。
+    const { sessionId, joinUrl } = await runAndDecodeQr(teacherPage);
+    await Promise.all([
+      joinStudent(studentA, joinUrl, '手機甲'),
+      joinStudent(studentB, joinUrl, '手機乙'),
+    ]);
+    await releaseToBoundLine(teacherPage);
+
+    // 老師在綁定行擷取當下的 dp 表格，確認後才出題
+    // 容器下拉選單沒有 aria-label（早先的「正解容器」標籤已不在畫面上），用確認彈窗的 testid 定位。
+    const selector = teacherPage.getByTestId('table-trigger-confirm-overlay').locator('select');
     await expect(selector).toHaveValue('dp', { timeout: 20_000 });
     const confirmation = teacherPage.getByRole('button', { name: '確認出題' }).locator('..');
     await expect.poll(() => confirmation.locator('td').allTextContents()).toEqual(['11', '22', '33', '44']);
@@ -132,26 +76,27 @@ test('two phones answer a captured DP table without leaking it before close', as
     await expect(studentA.getByRole('heading', { name: '填出 dp 的內容' })).toBeVisible();
     await expect(studentB.getByRole('heading', { name: '填出 dp 的內容' })).toBeVisible();
 
-    for (const student of [studentA, studentB]) {
-      const response = await student.request.get('/api/live-quiz/guest/state');
-      expect(response.status()).toBe(200);
-      const openState = await response.json();
-      expect(openState.active_question.answer).toBeNull();
-      expect(openState.active_question).not.toHaveProperty('correct_values');
-      const raw = JSON.stringify(openState);
-      for (const value of ['11', '22', '33', '44']) expect(raw).not.toContain(`"${value}"`);
+    // 收卷前學生端不得有正解：看學生實際收到的每一個 socket 框架（取代已移除的
+    // GET /api/live-quiz/guest/state），以及畫面本身。
+    for (const [student, frames] of [[studentA, framesA], [studentB, framesB]] as const) {
+      await expect.poll(() => frames.join('\n')).toContain('填出 dp 的內容'); // 確認真的有看到題目那個框架
+      const received = frames.join('\n');
+      expect(received).not.toContain('correct_values');
+      expect(received).not.toContain('兩列兩欄的動態規劃表。');
+      for (const value of ['11', '22', '33', '44']) expect(received).not.toContain(`"${value}"`);
+      await expect(student.locator('.result-box')).toHaveCount(0);
+      expect(await student.content()).not.toContain('兩列兩欄的動態規劃表。');
     }
 
     await Promise.all([
       fillTable(studentA, [['11', '22'], ['33', '44']]),
       fillTable(studentB, [['11', '999'], ['888', '44']]),
     ]);
-    // 收卷前不得看到個別作答：其他人還在寫，老師此刻也不需要看。
-    const questionKey = session.questions[0].id;
-    const beforeClose = await teacherPage.request.get(
-      `/api/live-quiz/sessions/${sessionId}/questions/${questionKey}/responses`
-    );
-    expect(beforeClose.status()).toBe(409);
+    await expect(teacherPage.getByText('已作答 2', { exact: true })).toBeVisible();
+    // 收卷前老師也不看個別作答：其他人還在寫（取代已移除的 responses 路由的 409）
+    await expect(teacherPage.getByTestId('live-quiz-review-item')).toHaveCount(0);
+    await expect(teacherPage.getByText('個別作答（')).toHaveCount(0);
+    await expect(teacherPage.getByText('正確答案', { exact: true })).toHaveCount(0);
 
     await teacherPage.getByRole('button', { name: '結束作答並繼續' }).click();
 
@@ -162,6 +107,8 @@ test('two phones answer a captured DP table without leaking it before close', as
     await expect(studentB.getByText('2/4 格正確')).toBeVisible();
     await expect(studentB.getByLabel('0，1，答案錯誤，正確答案 22')).toBeVisible();
     await expect(studentB.getByLabel('1，0，答案錯誤，正確答案 33')).toBeVisible();
+    // 收卷後才給解說
+    await expect(studentA.getByText('兩列兩欄的動態規劃表。')).toBeVisible();
 
     // 收卷後的個別作答檢討：答對最少的排最前，教師要檢討的就是那一份。
     const reviewItems = teacherPage.getByTestId('live-quiz-review-item');
@@ -175,12 +122,27 @@ test('two phones answer a captured DP table without leaking it before close', as
     await reviewItems.first().click();
     await expect(teacherPage.getByTitle('正解 22')).toBeVisible();
     await expect(teacherPage.getByTitle('正解 33')).toBeVisible();
+
+    // 收場：上傳的是匿名的逐格答錯次數（熱區圖的資料），不含暱稱與作答內容。
+    const endRequest = teacherPage.waitForResponse(
+      response =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === `/api/live-quiz/sessions/${sessionId}/end`
+    );
+    await teacherPage.getByRole('button', { name: '結束課堂' }).click();
+    const endResponse = await endRequest;
+    expect(endResponse.status()).toBe(200);
+    const summaryResponse = await teacherPage.request.get('/api/live-quiz/export');
+    expect(summaryResponse.status()).toBe(200);
+    const summaryText = await summaryResponse.text();
+    for (const secret of ['手機甲', '手機乙', '999', '888']) expect(summaryText).not.toContain(secret);
+    const row = JSON.parse(summaryText).sessions.find((item: any) => item.session_id === sessionId);
+    expect(row).toBeTruthy();
+    expect(row.questions[0].kind).toBe('table');
+    expect(row.questions[0].answer_count).toBe(2);
+    expect(row.questions[0].cell_stats).toEqual([0, 1, 1, 0]);
   } finally {
-    if (lessonId !== null) {
-      await teacherPage.request.delete(`/api/lessons/${lessonId}`, {
-        headers: { 'x-csrftoken': await csrfToken(teacherPage) },
-      });
-    }
+    await deleteLesson(teacherPage.request, lessonId, csrf);
     await phoneA.close();
     await phoneB.close();
     await teacher.close();

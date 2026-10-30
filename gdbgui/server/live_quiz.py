@@ -1,14 +1,17 @@
 """Persistent live-quiz state and strict lesson quiz validation."""
 
+import itertools
 import json
 import ipaddress
 import logging
+import os
 import re
 import secrets
+import unicodedata
 from contextlib import closing
-from datetime import datetime, timezone
-from hashlib import sha256
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from time import monotonic
 from typing import Optional
 from urllib.parse import urlsplit
 
@@ -29,11 +32,9 @@ MAX_QUESTIONS = 30
 MAX_PROMPT_LENGTH = 500
 MAX_OPTION_LENGTH = 200
 MAX_EXPLANATION_LENGTH = 1000
-MAX_NICKNAME_LENGTH = 50
 QUESTION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 MAX_CELLS_CEILING = 200
-MAX_CELL_LENGTH = 32
 
 QUIZ_KEYS = frozenset(("schema_version", "questions"))
 #: 兩種題型共用的鍵。`kind` 允許缺席：既有教案沒有這個欄位，缺席時視為 choice。
@@ -44,10 +45,56 @@ TABLE_SPEC_KEYS = frozenset(("var_hint", "max_cells"))
 OPTION_KEYS = frozenset(("id", "text"))
 TRIGGER_KEYS = frozenset(("kind", "source_file", "line", "anchor"))
 ANCHOR_KEYS = frozenset(("line_text", "before_text", "after_text"))
-CREDENTIAL_HASH_RE = re.compile(r"\A[0-9a-f]{64}\Z")
-GUEST_COOKIE = "gdbgui_quiz_guest"
-GUEST_MAX_AGE = 8 * 60 * 60
+#: 收場上傳（`POST /end` 的 body，形狀即 TS 的 `EndUpload`）。
+END_UPLOAD_KEYS = frozenset(("questions",))
+END_ITEM_KEYS = frozenset(("question_key",))
+END_ITEM_OPTIONAL_KEYS = frozenset(
+    (
+        "opened_at",
+        "closed_at",
+        "answer_count",
+        "correct_count",
+        "option_counts",
+        "cell_stats",
+        "rows",
+        "cols",
+        "var_hint",
+    )
+)
+END_TABLE_ONLY_KEYS = frozenset(("cell_stats", "rows", "cols", "var_hint"))
+END_HEATMAP_KEYS = ("cell_stats", "rows", "cols")
+MAX_VAR_HINT_LENGTH = 128
+MAX_UPLOAD_TIMESTAMP_LENGTH = 64
+#: 上傳時間戳來自老師筆電的時鐘，常與伺服器差上幾秒到幾分鐘（快或慢都有）。
+#: 開題／收卷時間的合法範圍是 [created_at - 此值, now + 此值]（controller ruling 16）。
+UPLOAD_CLOCK_SKEW_SECONDS = 300
+#: join token 的有效期，從場次建立時間起算（`load_join_token` 的預設值）。
+JOIN_TOKEN_MAX_AGE = 8 * 60 * 60
 TOKEN_SALT = "gdbgui-live-quiz-join-v1"
+
+# ── 薄中繼（/lesson_quiz）的上限 ──────────────────────────────────────────────
+def _grace_seconds_from_env(raw, default=30):
+    """環境變數只接受正整數；其他一律回預設值（正式環境維持 30 秒）。"""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+#: 老師最後一個分頁斷線後保留的秒數；期間內重連，課堂照常。測試會 monkeypatch，
+#: e2e 用 GDBGUI_TEACHER_GRACE_SECONDS 縮短（docker-compose.test.yml）。
+TEACHER_GRACE_SECONDS = _grace_seconds_from_env(os.environ.get("GDBGUI_TEACHER_GRACE_SECONDS"))
+MAX_STUDENT_SOCKETS_PER_SESSION = 200
+#: 單一事件 payload 以 JSON（UTF-8）編碼後的位元組上限。填表題 200 格 × 32 字約 7 KB。
+MAX_STUDENT_EVENT_BYTES = 16384
+MAX_TEACHER_EVENT_BYTES = 65536
+#: 每個學生 sid 一個 token bucket：容量 10、每秒補 5；連續丟棄 30 個就斷線。
+STUDENT_BUCKET_CAPACITY = 10
+STUDENT_BUCKET_REFILL_PER_SECOND = 5
+STUDENT_MAX_CONSECUTIVE_DROPS = 30
+#: `relay:to-student` 唯一允許的事件名。
+RELAY_TO_STUDENT_EVENTS = frozenset(("quiz:student-state", "quiz:answer-received"))
 
 blueprint = Blueprint("live_quiz", __name__)
 _socketio = None
@@ -55,86 +102,6 @@ _socketio = None
 
 class QuizRejected(ValueError):
     """Quiz data is malformed or does not belong to the requested resource."""
-
-
-class QuizConflict(QuizRejected):
-    """A valid request conflicts with the current live-session state."""
-
-
-def validate_captured_table(raw: object, max_cells: int) -> dict:
-    """驗證教師端送上來的表格快照。"""
-    if not isinstance(raw, dict):
-        raise QuizRejected("表格格式不正確。")
-    if set(raw) != {"rows", "cols", "row_labels", "col_labels", "values"}:
-        raise QuizRejected("表格含有未知欄位或缺少必要欄位。")
-
-    rows, cols = raw["rows"], raw["cols"]
-    for value in (rows, cols):
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise QuizRejected("表格維度必須是正整數。")
-    if rows * cols > max_cells:
-        raise QuizRejected(f"表格有 {rows}×{cols}={rows * cols} 格，超過上限 {max_cells} 格。")
-
-    values = raw["values"]
-    if not isinstance(values, list) or len(values) != rows:
-        raise QuizRejected("表格列數與內容不符。")
-    normalized_values = []
-    for index, row in enumerate(values):
-        if not isinstance(row, list) or len(row) != cols:
-            actual = len(row) if isinstance(row, list) else "?"
-            raise QuizRejected(f"第 {index + 1} 列有 {actual} 格，與其他列不一致。")
-        for cell in row:
-            if not isinstance(cell, str):
-                raise QuizRejected("表格內容必須是字串。")
-            if len(cell) > MAX_CELL_LENGTH:
-                raise QuizRejected(f"單格內容不可超過 {MAX_CELL_LENGTH} 字元。填表題只適用純量。")
-        normalized_values.append(list(row))
-
-    labels = {}
-    for key, expected in (("row_labels", rows), ("col_labels", cols)):
-        label = raw[key]
-        if not isinstance(label, list) or len(label) != expected:
-            raise QuizRejected("表格標籤數量與維度不符。")
-        for text in label:
-            if not isinstance(text, str) or len(text) > MAX_CELL_LENGTH:
-                raise QuizRejected("表格標籤格式不正確。")
-        labels[key] = list(label)
-
-    return {"rows": rows, "cols": cols, "values": normalized_values, **labels}
-
-
-def _table_cell_is_correct(given, expected):
-    given = given.strip()
-    return bool(given) and given == expected.strip()
-
-
-def grade_table(answer, correct):
-    """回傳 (答對格數, 總格數)；trim 後的非空字串才可能答對。"""
-    right = sum(
-        _table_cell_is_correct(answer[row_index][col_index], expected)
-        for row_index, row in enumerate(correct)
-        for col_index, expected in enumerate(row)
-    )
-    return right, sum(len(row) for row in correct)
-
-
-def accumulate_cell_stats(stats, answer, correct):
-    """把答錯的格子在列優先一維 stats 上 +1。"""
-    cols = len(correct[0]) if correct else 0
-    for row_index, row in enumerate(correct):
-        for col_index, expected in enumerate(row):
-            if not _table_cell_is_correct(answer[row_index][col_index], expected):
-                stats[row_index * cols + col_index] += 1
-
-
-def reverse_cell_stats(stats, old_answer, correct):
-    """學生在關題前改答案：先把舊答案曾經算進去的答錯次數扣掉，再讓呼叫端對新答案 accumulate。"""
-    cols = len(correct[0]) if correct else 0
-    for row_index, row in enumerate(correct):
-        for col_index, expected in enumerate(row):
-            if not _table_cell_is_correct(old_answer[row_index][col_index], expected):
-                index = row_index * cols + col_index
-                stats[index] = max(0, stats[index] - 1)
 
 
 def _exact_dict(value, keys, label, optional_keys=()):
@@ -342,41 +309,6 @@ def _valid_id(value):
     )
 
 
-def student_question_payload(row) -> dict:
-    """送給學生的題目內容；正解只在 closed 之後出現。"""
-    payload = {
-        "id": row["question_key"],
-        "kind": row["kind"],
-        "prompt": row["prompt"],
-        "test_input": row["test_input"] if "test_input" in row.keys() and row["test_input"] is not None else None,
-        "state": row["state"],
-        "source_file": row["source_file"],
-        "line": int(row["trigger_line"]),
-    }
-    closed = row["state"] == "closed"
-    if closed:
-        payload["explanation"] = row["explanation"]
-    if row["kind"] == "choice":
-        payload["options"] = json.loads(row["options_json"])
-        if closed:
-            payload["correct_option_id"] = row["correct_option_id"]
-        return payload
-
-    table = json.loads(row["correct_table_json"]) if row["correct_table_json"] else None
-    if table is not None:
-        payload.update(
-            {
-                "rows": table["rows"],
-                "cols": table["cols"],
-                "row_labels": table["row_labels"],
-                "col_labels": table["col_labels"],
-            }
-        )
-        if closed:
-            payload["correct_values"] = table["values"]
-    return payload
-
-
 def _question_payload(row):
     payload = {
         "id": row["question_key"],
@@ -407,9 +339,9 @@ def _question_payload(row):
                     "row_labels": table["row_labels"],
                     "col_labels": table["col_labels"],
                     "cell_stats": json.loads(row["cell_stats_json"]),
-                    # 正解只給教師。這個 payload 只走 _teacher_payload（owner-only），
-                    # 學生端走的是另一個函式 student_question_payload，那裡在 closed
-                    # 之前不會出現正解。檢討個別作答時要靠它標出哪幾格錯。
+                    # 正解只給教師：這個 payload 只出現在擁有者才拿得到的回應裡
+                    # （session_owned_by／_teacher_payload）。學生的畫面由老師分頁
+                    # 經中繼送出，伺服器不再產生任何學生端的題目內容。
                     "correct_values": table["values"],
                 }
             )
@@ -548,304 +480,16 @@ def create_session(owner_id: int, lesson_id: int) -> Optional[dict]:
     return session_owned_by(session_id, owner_id)
 
 
-def _persist_table_hint(session_id: int, owner_id: int, question_key: str, var_hint: str) -> None:
-    with closing(db.connect()) as conn:
-        snapshot = conn.execute(
-            "SELECT s.lesson_id, v.version, v.title, v.bundle_json "
-            "FROM live_quiz_sessions s JOIN lesson_versions v ON v.id=s.lesson_version_id "
-            "WHERE s.id=? AND s.owner_user_id=?",
-            (session_id, owner_id),
-        ).fetchone()
-    if snapshot is None:
-        return
-    bundle = json.loads(snapshot["bundle_json"])
-    questions = bundle.get("quiz", {}).get("questions", [])
-    question = next((item for item in questions if item.get("id") == question_key), None)
-    if question is None or question.get("kind") != "table":
-        return
-    if question["table_spec"]["var_hint"] == var_hint:
-        return
-    question["table_spec"]["var_hint"] = var_hint
-    try:
-        db.update_lesson_owned_by(
-            int(snapshot["lesson_id"]),
-            owner_id,
-            snapshot["title"],
-            json.dumps(bundle, ensure_ascii=False, separators=(",", ":")),
-            parent_version=int(snapshot["version"]),
-            expected_current_version=int(snapshot["version"]),
-        )
-    except db.LessonRejected as exc:
-        logger.warning("[live quiz] could not persist table hint: %s", exc)
-
-
-def trigger_question(
-    session_id: int,
-    owner_id: int,
-    question_key: str,
-    source_file: str,
-    line: int,
-    table=None,
-    var_hint=None,
-    test_input=None,
-) -> Optional[dict]:
-    if not _valid_id(session_id) or not _valid_id(owner_id):
-        return None
-    if not isinstance(question_key, str) or not question_key:
-        raise QuizRejected("缺少題目 ID。")
-    hint_to_persist = None
-    with closing(db.connect()) as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            session = _session_row(conn, session_id, owner_id)
-            if session is None or session["state"] != "lobby":
-                conn.commit()
-                return None
-            question = conn.execute(
-                "SELECT * FROM live_quiz_questions WHERE session_id=? AND question_key=?",
-                (session_id, question_key),
-            ).fetchone()
-            if question is None:
-                conn.commit()
-                return None
-            if (
-                isinstance(line, bool)
-                or not isinstance(line, int)
-                or line != int(question["trigger_line"])
-                or not isinstance(source_file, str)
-                or not _same_file(question["source_file"], source_file)
-            ):
-                raise QuizRejected("觸發位置與題目錨點不符。")
-            if question["state"] == "ready":
-                other = conn.execute(
-                    "SELECT 1 FROM live_quiz_questions "
-                    "WHERE session_id=? AND state='open' AND question_key<>?",
-                    (session_id, question_key),
-                ).fetchone()
-                if other is not None:
-                    raise QuizConflict("上一題尚未結束作答。")
-                if question["kind"] == "table":
-                    spec = json.loads(question["table_spec_json"])
-                    captured = validate_captured_table(table, spec["max_cells"])
-                    cell_stats = [0] * (captured["rows"] * captured["cols"])
-                    new_hint = var_hint if isinstance(var_hint, str) else spec["var_hint"]
-                    if len(new_hint) > 128:
-                        raise QuizRejected("變數提示過長。")
-                    conn.execute(
-                        "UPDATE live_quiz_questions SET correct_table_json=?, cell_stats_json=?, "
-                        "table_spec_json=? WHERE id=?",
-                        (
-                            json.dumps(captured, ensure_ascii=False),
-                            json.dumps(cell_stats),
-                            json.dumps({**spec, "var_hint": new_hint}, ensure_ascii=False),
-                            question["id"],
-                        ),
-                    )
-                    if new_hint != spec["var_hint"]:
-                        hint_to_persist = new_hint
-                conn.execute(
-                    "UPDATE live_quiz_questions SET state='open', opened_at=? WHERE id=?",
-                    (db._now(), question["id"]),
-                )
-            if isinstance(test_input, str):
-                conn.execute(
-                    "UPDATE live_quiz_questions SET test_input=? WHERE id=?",
-                    (test_input, question["id"]),
-                )
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
-    if hint_to_persist is not None:
-        _persist_table_hint(session_id, owner_id, question_key, hint_to_persist)
-    return session_owned_by(session_id, owner_id)
-
-
-def close_question(session_id: int, owner_id: int, question_key: str) -> Optional[dict]:
-    if not _valid_id(session_id) or not _valid_id(owner_id):
-        return None
-    with closing(db.connect()) as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            session = _session_row(conn, session_id, owner_id)
-            if session is None or session["state"] != "lobby":
-                conn.commit()
-                return None
-            question = conn.execute(
-                "SELECT id, state FROM live_quiz_questions WHERE session_id=? AND question_key=?",
-                (session_id, question_key),
-            ).fetchone()
-            if question is None:
-                conn.commit()
-                return None
-            if question["state"] == "ready":
-                raise QuizConflict("題目尚未開放。")
-            if question["state"] == "open":
-                conn.execute(
-                    "UPDATE live_quiz_questions SET state='closed', closed_at=? WHERE id=?",
-                    (db._now(), question["id"]),
-                )
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
-    return session_owned_by(session_id, owner_id)
-
-
-
-def responses_for_question(session_id: int, owner_id: int, question_key: str):
-    """收卷後，教師檢視每位學生的填表作答。
-
-    三道守衛，少一道這個功能就從教學工具變成外洩面：
-
-      * **擁有者**——只有開這堂課的人看得到。
-      * **題型是 table**——單選題不做這個畫面，選項分布已經說完了。
-      * **狀態是 closed**——收卷前不得外露個別作答：其他人還在寫，而老師此刻也不需要看。
-
-    排序把答對最少的排最前面：教師要檢討的就是那幾份。
-
-    ⚠️ `end_session()` 會刪光 responses 與 participants，所以這份資料只在課堂還開著的
-    時候存在。課後檢討需要另一套保留機制，那會再次動到資料邊界。
-    """
-    if not _valid_id(session_id) or not _valid_id(owner_id):
-        return None
-    with closing(db.connect()) as conn:
-        if _session_row(conn, session_id, owner_id) is None:
-            return None
-        question = conn.execute(
-            "SELECT id, kind, state FROM live_quiz_questions "
-            "WHERE session_id=? AND question_key=?",
-            (session_id, question_key),
-        ).fetchone()
-        if question is None:
-            return None
-        if question["kind"] != "table" or question["state"] != "closed":
-            raise QuizConflict("這一題沒有可檢視的個別作答。")
-        rows = conn.execute(
-            "SELECT p.nickname, r.answer_json, r.correct_cells, r.total_cells "
-            "FROM live_quiz_responses r "
-            "JOIN live_quiz_participants p ON p.id = r.participant_id "
-            "WHERE r.question_id=? ORDER BY r.correct_cells ASC, p.nickname ASC",
-            (question["id"],),
-        ).fetchall()
-    return [
-        {
-            "nickname": row["nickname"],
-            "answer": json.loads(row["answer_json"]) if row["answer_json"] else None,
-            "correct_cells": row["correct_cells"],
-            "total_cells": row["total_cells"],
-        }
-        for row in rows
-    ]
-
 def _json_or_none(value):
     return json.loads(value) if value else None
-
-
-def export_session(session_id: int, owner_id: int) -> Optional[dict]:
-    """研究用的逐筆作答快照，供教師在結束課堂前取走。
-
-    存在的理由：`end_session()` 會刪光 responses 與 participants，只留各題的匿名統計
-    摘要。那是對學生的隱私承諾，不該動；但這也代表逐筆作答——每一格對錯、作答時刻、
-    誰跳過了哪一題——每上完一堂課就永久消失，任何事後的教學研究都無從做起。
-
-    這條出口只多一個動作：課堂結束前匯出。它不放寬任何邊界——擁有者才拿得到，
-    內容也就是教師在收卷後檢討畫面本來看得到的東西。
-
-    ⚠️ 暱稱照實輸出，因為那是唯一能把系統作答接回紙本問卷的鍵。要拿來做研究，
-    請在課前就請學生以匿名代號當暱稱，這樣輸出天生就是去識別的；否則這份檔案
-    含個人可辨識資訊，保管責任在匯出的人身上。
-
-    這裡不加 state 守衛：課堂結束後 responses 與 participants 本來就空了，再擋一次
-    只是多一條會過期的分支。空的匯出仍有意義——題目與匿名統計摘要照留。
-    """
-    if not _valid_id(session_id) or not _valid_id(owner_id):
-        return None
-    with closing(db.connect()) as conn:
-        session = _session_row(conn, session_id, owner_id)
-        if session is None:
-            return None
-        questions = conn.execute(
-            "SELECT question_key, kind, prompt, position, state, opened_at, closed_at, "
-            "answer_count, correct_count, correct_option_id, option_counts_json, "
-            "table_spec_json, correct_table_json, cell_stats_json "
-            "FROM live_quiz_questions WHERE session_id=? ORDER BY position",
-            (session_id,),
-        ).fetchall()
-        participants = conn.execute(
-            "SELECT nickname, created_at, last_seen_at FROM live_quiz_participants "
-            "WHERE session_id=? ORDER BY nickname",
-            (session_id,),
-        ).fetchall()
-        responses = conn.execute(
-            "SELECT q.question_key, q.kind, p.nickname, r.answered_at, "
-            "r.selected_option_id, r.is_correct, r.answer_json, "
-            "r.correct_cells, r.total_cells "
-            "FROM live_quiz_responses r "
-            "JOIN live_quiz_questions q ON q.id = r.question_id "
-            "JOIN live_quiz_participants p ON p.id = r.participant_id "
-            "WHERE q.session_id=? ORDER BY q.position, p.nickname",
-            (session_id,),
-        ).fetchall()
-    return {
-        "exported_at": db._now(),
-        "session": {
-            "id": session["id"],
-            "title": session["title"],
-            "state": session["state"],
-            "created_at": session["created_at"],
-            "ended_at": session["ended_at"],
-        },
-        "participants": [
-            {
-                "nickname": row["nickname"],
-                "joined_at": row["created_at"],
-                "last_seen_at": row["last_seen_at"],
-            }
-            for row in participants
-        ],
-        "questions": [
-            {
-                "question_key": row["question_key"],
-                "kind": row["kind"],
-                "prompt": row["prompt"],
-                "position": row["position"],
-                "state": row["state"],
-                "opened_at": row["opened_at"],
-                "closed_at": row["closed_at"],
-                "answer_count": row["answer_count"],
-                "correct_count": row["correct_count"],
-                "correct_option_id": row["correct_option_id"],
-                "option_counts": _json_or_none(row["option_counts_json"]),
-                "table_spec": _json_or_none(row["table_spec_json"]),
-                "correct_table": _json_or_none(row["correct_table_json"]),
-                "cell_stats": _json_or_none(row["cell_stats_json"]),
-            }
-            for row in questions
-        ],
-        "responses": [
-            {
-                "question_key": row["question_key"],
-                "kind": row["kind"],
-                "nickname": row["nickname"],
-                "answered_at": row["answered_at"],
-                "selected_option_id": row["selected_option_id"],
-                "is_correct": row["is_correct"],
-                "answer": _json_or_none(row["answer_json"]),
-                "correct_cells": row["correct_cells"],
-                "total_cells": row["total_cells"],
-            }
-            for row in responses
-        ],
-    }
 
 
 def export_summary(owner_id: int) -> Optional[dict]:
     """擁有者所有課堂的匿名聚合，拿來證明「這幾場課堂確實辦過」。
 
-    跟 `export_session` 的差別：這裡**完全不碰** participants / responses，所以
-    不含暱稱、不含逐筆作答，結束課堂前後輸出一樣，天生是去識別的。只列出至少開過
-    一題的課堂——只建立、沒出過題的（多半是測試）不算辦過。
+    這裡**完全不碰** participants / responses，所以不含暱稱、不含逐筆作答，天生是
+    去識別的（逐筆的課堂匯出現在由老師分頁在本機產生，伺服器從未持有）。只列出至少
+    開過一題的課堂——只建立、沒出過題的（多半是測試）不算辦過。
     """
     if not _valid_id(owner_id):
         return None
@@ -892,9 +536,280 @@ def export_summary(owner_id: int) -> Optional[dict]:
     return {"exported_at": db._now(), "sessions": out}
 
 
-def end_session(session_id: int, owner_id: int) -> Optional[dict]:
+def _upload_count(value, label):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise QuizRejected(f"{label}必須是整數。")
+    if not 0 <= value <= db.SQLITE_MAX_INTEGER:
+        raise QuizRejected(f"{label}不可為負數或過大。")
+    return value
+
+
+def _utc_seconds(text):
+    """解析 ISO 8601 時間（接受結尾 Z），回傳截到秒的 UTC datetime；無效或沒有時區回傳 None。"""
+    if not isinstance(text, str) or not text or len(text) > MAX_UPLOAD_TIMESTAMP_LENGTH:
+        return None
+    if text[-1] in "Zz":
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            return None
+        return parsed.astimezone(timezone.utc).replace(microsecond=0)
+    except (ValueError, OverflowError):
+        return None
+
+
+def _upload_time(value, label, earliest, latest):
+    parsed = _utc_seconds(value)
+    if parsed is None:
+        raise QuizRejected(f"{label}不是有效的時間（需含時區）。")
+    if not earliest <= parsed <= latest:
+        raise QuizRejected(f"{label}不在課堂期間內。")
+    return parsed
+
+
+def _upload_var_hint(value, label):
+    if isinstance(value, str) and any(unicodedata.category(ch) == "Cc" for ch in value):
+        raise QuizRejected(f"{label}不可含控制字元。")
+    return _text(value, label, 0, MAX_VAR_HINT_LENGTH)
+
+
+def _upload_option_counts(value, question, answer_count, label):
+    option_ids = [option["id"] for option in json.loads(question["options_json"])]
+    if not isinstance(value, dict) or set(value) != set(option_ids):
+        raise QuizRejected(f"{label}的選項分布必須恰好對應題目的選項。")
+    counts = {
+        option_id: _upload_count(value[option_id], f"{label}選項計數")
+        for option_id in option_ids
+    }
+    if sum(counts.values()) != answer_count:
+        raise QuizRejected(f"{label}的選項分布總和與作答數不符。")
+    return counts
+
+
+def _upload_cell_stats(item, question, answer_count, label):
+    if any(key not in item for key in END_HEATMAP_KEYS):
+        raise QuizRejected(f"{label}缺少熱區圖或表格維度。")
+    rows, cols = item["rows"], item["cols"]
+    for value in (rows, cols):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise QuizRejected(f"{label}的表格維度必須是正整數。")
+    spec = json.loads(question["table_spec_json"])
+    limit = min(int(spec["max_cells"]), MAX_CELLS_CEILING)
+    if rows * cols > limit:
+        raise QuizRejected(f"{label}的表格超過 {limit} 格。")
+    stats = item["cell_stats"]
+    if not isinstance(stats, list) or len(stats) != rows * cols:
+        raise QuizRejected(f"{label}的熱區圖格數與表格維度不符。")
+    values = [_upload_count(value, f"{label}熱區圖") for value in stats]
+    if any(value > answer_count for value in values):
+        raise QuizRejected(f"{label}的熱區圖計數不可超過作答數。")
+    return values
+
+
+def _validated_end_upload(conn, session, upload, now):
+    """驗證收場上傳（安全審查 F2 的矩陣），回傳正規化後的各題資料。
+
+    只驗格式與範圍，不重新計算：伺服器不能證明數字是真的（設計說明的安全不變式 6）。
+    任何一條不符就整份拒絕；呼叫端在同一個交易裡，拒絕時什麼都不寫。
+    """
+    upload = _exact_dict(upload, END_UPLOAD_KEYS, "收場資料")
+    items = upload["questions"]
+    if not isinstance(items, list) or len(items) > MAX_QUESTIONS:
+        raise QuizRejected(f"收場資料的題目必須是不超過 {MAX_QUESTIONS} 題的清單。")
+    questions = {
+        row["question_key"]: row
+        for row in conn.execute(
+            "SELECT * FROM live_quiz_questions WHERE session_id=?", (session["id"],)
+        )
+    }
+    created_at = _utc_seconds(session["created_at"])
+    if created_at is None:
+        # 舊資料可能沒有時區；伺服器自己寫的一律是 UTC。
+        try:
+            created_at = datetime.fromisoformat(session["created_at"]).replace(
+                tzinfo=timezone.utc, microsecond=0
+            )
+        except (TypeError, ValueError) as exc:
+            raise QuizRejected("課堂建立時間無效。") from exc
+    # 時間戳來自老師筆電的時鐘：兩端都放寬 UPLOAD_CLOCK_SKEW_SECONDS（ruling 16）。
+    skew = timedelta(seconds=UPLOAD_CLOCK_SKEW_SECONDS)
+    earliest, latest = created_at - skew, now + skew
+
+    seen = set()
+    normalized = []
+    for index, raw in enumerate(items):
+        label = f"收場資料第 {index + 1} 題"
+        item = _exact_dict(raw, END_ITEM_KEYS, label, END_ITEM_OPTIONAL_KEYS)
+        key = item["question_key"]
+        if not isinstance(key, str) or key not in questions:
+            raise QuizRejected(f"{label}不屬於這堂課。")
+        if key in seen:
+            raise QuizRejected("收場資料的題目不可重複。")
+        seen.add(key)
+        question = questions[key]
+        kind = question["kind"]
+        if kind != "choice" and "option_counts" in item:
+            raise QuizRejected(f"{label}不是單選題，不可有選項分布。")
+        if kind != "table" and any(field in item for field in END_TABLE_ONLY_KEYS):
+            raise QuizRejected(f"{label}不是填表題，不可有熱區圖或變數提示。")
+
+        entry = {"row": question, "kind": kind, "opened": False}
+        if "var_hint" in item:
+            entry["var_hint"] = _upload_var_hint(item["var_hint"], f"{label}變數提示")
+
+        if item.get("opened_at") is None:
+            # 沒開過的題：伺服器不寫任何聚合，所以上傳也不能帶任何作答痕跡。
+            if item.get("closed_at") is not None:
+                raise QuizRejected(f"{label}尚未開放，不可有收卷時間。")
+            if any(field in item for field in END_HEATMAP_KEYS):
+                raise QuizRejected(f"{label}尚未開放，不可有熱區圖。")
+            for field in ("answer_count", "correct_count"):
+                if field in item and _upload_count(item[field], f"{label}作答數") != 0:
+                    raise QuizRejected(f"{label}尚未開放，不可有作答。")
+            if "option_counts" in item:
+                _upload_option_counts(item["option_counts"], question, 0, label)
+            normalized.append(entry)
+            continue
+
+        opened_at = _upload_time(item["opened_at"], f"{label}開題時間", earliest, latest)
+        closed_at = None
+        if item.get("closed_at") is not None:
+            closed_at = _upload_time(item["closed_at"], f"{label}收卷時間", earliest, latest)
+            if opened_at > closed_at:
+                raise QuizRejected(f"{label}的收卷時間早於開題時間。")
+        if "answer_count" not in item or "correct_count" not in item:
+            raise QuizRejected(f"{label}缺少作答數。")
+        answer_count = _upload_count(item["answer_count"], f"{label}作答數")
+        correct_count = _upload_count(item["correct_count"], f"{label}答對數")
+        if correct_count > answer_count:
+            raise QuizRejected(f"{label}的答對數不可超過作答數。")
+        if kind == "choice":
+            if "option_counts" not in item:
+                raise QuizRejected(f"{label}缺少選項分布。")
+            entry["option_counts"] = _upload_option_counts(
+                item["option_counts"], question, answer_count, label
+            )
+        else:
+            entry["cell_stats"] = _upload_cell_stats(item, question, answer_count, label)
+        entry.update(
+            opened=True,
+            opened_at=opened_at.isoformat(timespec="seconds"),
+            closed_at=closed_at.isoformat(timespec="seconds") if closed_at else None,
+            answer_count=answer_count,
+            correct_count=correct_count,
+        )
+        normalized.append(entry)
+    return normalized
+
+
+def _write_end_upload(conn, entries, ended_at):
+    """把驗證過的上傳寫進 live_quiz_questions；回傳要寫回教案的 {題目 ID: var_hint}。
+
+    題目 `state` 由伺服器決定：有 opened_at 的題一律 closed，沒有的維持原狀。
+    """
+    hints = {}
+    for entry in entries:
+        row = entry["row"]
+        if "var_hint" in entry:
+            spec = json.loads(row["table_spec_json"])
+            hints[row["question_key"]] = entry["var_hint"]
+            if spec.get("var_hint") != entry["var_hint"]:
+                conn.execute(
+                    "UPDATE live_quiz_questions SET table_spec_json=? WHERE id=?",
+                    (
+                        json.dumps({**spec, "var_hint": entry["var_hint"]}, ensure_ascii=False),
+                        row["id"],
+                    ),
+                )
+        if not entry["opened"]:
+            continue
+        conn.execute(
+            "UPDATE live_quiz_questions SET state='closed', opened_at=?, closed_at=?, "
+            "answer_count=?, correct_count=? WHERE id=?",
+            (
+                entry["opened_at"],
+                entry["closed_at"] or ended_at,
+                entry["answer_count"],
+                entry["correct_count"],
+                row["id"],
+            ),
+        )
+        if entry["kind"] == "choice":
+            conn.execute(
+                "UPDATE live_quiz_questions SET option_counts_json=? WHERE id=?",
+                (
+                    json.dumps(entry["option_counts"], ensure_ascii=False, separators=(",", ":")),
+                    row["id"],
+                ),
+            )
+        else:
+            conn.execute(
+                "UPDATE live_quiz_questions SET cell_stats_json=? WHERE id=?",
+                (json.dumps(entry["cell_stats"]), row["id"]),
+            )
+    return hints
+
+
+def _persist_table_hints(session_id: int, owner_id: int, hints: dict) -> bool:
+    """收場後把所有填表題的 var_hint 用**一次**教案更新寫回；回傳是否已寫回（或無須寫回）。
+
+    必須在收場交易 commit 之後才呼叫：`db.update_lesson_owned_by` 會開第二條連線與
+    `BEGIN IMMEDIATE`，在交易內呼叫會等滿 busy_timeout（安全審查 F1）。
+    任何失敗都不得回滾已結束的場次：記錄（不含上傳內容）後回傳 False。
+    """
+    if not hints:
+        return True
+    try:
+        with closing(db.connect()) as conn:
+            snapshot = conn.execute(
+                "SELECT s.lesson_id, v.version, v.title, v.bundle_json "
+                "FROM live_quiz_sessions s JOIN lesson_versions v ON v.id=s.lesson_version_id "
+                "WHERE s.id=? AND s.owner_user_id=?",
+                (session_id, owner_id),
+            ).fetchone()
+        if snapshot is None:
+            return False
+        bundle = json.loads(snapshot["bundle_json"])
+        changed = False
+        for question in bundle.get("quiz", {}).get("questions", []):
+            hint = hints.get(question.get("id"))
+            if hint is None or question.get("kind") != "table":
+                continue
+            if question["table_spec"]["var_hint"] != hint:
+                question["table_spec"]["var_hint"] = hint
+                changed = True
+        if not changed:
+            return True
+        result = db.update_lesson_owned_by(
+            int(snapshot["lesson_id"]),
+            owner_id,
+            snapshot["title"],
+            json.dumps(bundle, ensure_ascii=False, separators=(",", ":")),
+            parent_version=int(snapshot["version"]),
+            expected_current_version=int(snapshot["version"]),
+        )
+        # 教案在課堂期間有了更新的版本時，update 不覆蓋、回傳 changed=False。
+        return result is not None and result.changed
+    except Exception as exc:
+        logger.warning(
+            "[live quiz] could not persist table hints for session %s (%s)",
+            session_id,
+            type(exc).__name__,
+        )
+        return False
+
+
+def end_session(session_id: int, owner_id: int, upload: Optional[dict] = None) -> Optional[dict]:
+    """結束課堂。`upload` 是老師端算好的匿名聚合（TS `EndUpload`）。
+
+    `upload is None`（寬限期滿、分頁遺失或空 body）只把場次標為 ended，不寫聚合。
+    驗證與寫入在同一個 `BEGIN IMMEDIATE` 交易內；驗證失敗丟 `QuizRejected`，什麼都不寫。
+    教案的 var_hint 在 commit **之後**才寫回，結果放在回傳值的 `hint_saved`。
+    """
     if not _valid_id(session_id) or not _valid_id(owner_id):
         return None
+    hints = {}
     with closing(db.connect()) as conn:
         conn.execute("BEGIN IMMEDIATE")
         try:
@@ -903,6 +818,11 @@ def end_session(session_id: int, owner_id: int) -> Optional[dict]:
                 conn.commit()
                 return None
             now = db._now()
+            if upload is not None:
+                entries = _validated_end_upload(
+                    conn, session, upload, datetime.fromisoformat(now)
+                )
+                hints = _write_end_upload(conn, entries, now)
             conn.execute(
                 "UPDATE live_quiz_sessions SET state='ended', ended_at=? WHERE id=?",
                 (now, session_id),
@@ -912,6 +832,8 @@ def end_session(session_id: int, owner_id: int) -> Optional[dict]:
                 "WHERE session_id=? AND state='open'",
                 (now, session_id),
             )
+            # 新流程不再寫這兩張表，但部署當下仍在 lobby 的舊場次可能還留著暱稱與逐筆
+            # 作答（舊 HTTP 訪客 API 寫的）；收場一律刪光，不得移除（安全審查 F8）。
             conn.execute(
                 "DELETE FROM live_quiz_responses WHERE question_id IN "
                 "(SELECT id FROM live_quiz_questions WHERE session_id=?)",
@@ -922,337 +844,12 @@ def end_session(session_id: int, owner_id: int) -> Optional[dict]:
         except BaseException:
             conn.rollback()
             raise
-    return session_owned_by(session_id, owner_id)
-
-
-def join_session(session_id: int, nickname: str, credential_hash: str) -> dict:
-    if not _valid_id(session_id):
-        raise QuizConflict("課堂不存在或已結束。")
-    nickname = _text(nickname, "暱稱", 1, MAX_NICKNAME_LENGTH)
-    if any(ord(character) < 32 or ord(character) == 127 for character in nickname):
-        raise QuizRejected("暱稱不可含控制字元。")
-    if not isinstance(credential_hash, str) or CREDENTIAL_HASH_RE.fullmatch(credential_hash) is None:
-        raise QuizRejected("裝置憑證格式不正確。")
-
-    with closing(db.connect()) as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            session = _session_row(conn, session_id)
-            if session is None or session["state"] != "lobby":
-                raise QuizConflict("課堂不存在或已結束。")
-            existing = conn.execute(
-                "SELECT id, session_id, nickname FROM live_quiz_participants "
-                "WHERE credential_hash=?",
-                (credential_hash,),
-            ).fetchone()
-            now = db._now()
-            if existing is not None:
-                if int(existing["session_id"]) != session_id:
-                    raise QuizConflict("這個裝置憑證已用於其他課堂。")
-                conn.execute(
-                    "UPDATE live_quiz_participants SET last_seen_at=? WHERE id=?",
-                    (now, existing["id"]),
-                )
-                participant_id = int(existing["id"])
-                nickname = existing["nickname"]
-            else:
-                participant = conn.execute(
-                    "INSERT INTO live_quiz_participants "
-                    "(session_id, nickname, credential_hash, created_at, last_seen_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (session_id, nickname, credential_hash, now, now),
-                )
-                participant_id = int(participant.lastrowid)
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
-    return {"participant_id": participant_id, "session_id": session_id, "nickname": nickname}
-
-
-def _stats_from_row(row):
-    stats = {
-        "answer_count": int(row["answer_count"]),
-        "correct_count": int(row["correct_count"]),
-    }
-    key = "cell_stats" if row["kind"] == "table" else "option_counts"
-    column = "cell_stats_json" if row["kind"] == "table" else "option_counts_json"
-    stats[key] = json.loads(row[column])
-    return stats
-
-
-def answer_question(credential_hash: str, question_key: str, option_id: str) -> dict:
-    if not isinstance(credential_hash, str) or CREDENTIAL_HASH_RE.fullmatch(credential_hash) is None:
-        raise QuizRejected("裝置憑證格式不正確。")
-    if not isinstance(question_key, str) or not question_key:
-        raise QuizRejected("缺少題目 ID。")
-    if not isinstance(option_id, str) or not option_id:
-        raise QuizRejected("缺少答案選項。")
-
-    with closing(db.connect()) as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            row = conn.execute(
-                "SELECT p.id AS participant_id, s.state AS session_state, q.* "
-                "FROM live_quiz_participants p "
-                "JOIN live_quiz_sessions s ON s.id=p.session_id "
-                "JOIN live_quiz_questions q ON q.session_id=p.session_id "
-                "WHERE p.credential_hash=? AND q.question_key=?",
-                (credential_hash, question_key),
-            ).fetchone()
-            if row is None:
-                raise QuizConflict("找不到可作答的題目。")
-            if row["kind"] != "choice":
-                raise QuizRejected("作答格式與題型不符。")
-            existing = conn.execute(
-                "SELECT selected_option_id, is_correct FROM live_quiz_responses "
-                "WHERE participant_id=? AND question_id=?",
-                (row["participant_id"], row["id"]),
-            ).fetchone()
-            is_open = row["session_state"] == "lobby" and row["state"] == "open"
-            if existing is not None and not is_open:
-                # 老師已經關題／結束課堂：答案在公布前才能改，關題後永遠回舊答案。
-                conn.commit()
-                return {
-                    "inserted": False,
-                    "selected_option_id": existing["selected_option_id"],
-                    "is_correct": bool(existing["is_correct"]),
-                    "stats": _stats_from_row(row),
-                }
-            if not is_open:
-                raise QuizConflict("這一題目前未開放作答。")
-
-            option_ids = {option["id"] for option in json.loads(row["options_json"])}
-            if option_id not in option_ids:
-                raise QuizRejected("答案選項不存在。")
-            is_correct = option_id == row["correct_option_id"]
-            counts = json.loads(row["option_counts_json"])
-            if existing is not None:
-                # 題目還開著：允許改答案。先把舊選項的計數扣掉，再算新選項，answer_count 不變
-                # （同一個人只算一次「有作答」，不是每次修改都加一次）。
-                old_option = existing["selected_option_id"]
-                if old_option in counts:
-                    counts[old_option] = max(0, counts[old_option] - 1)
-                counts[option_id] = counts.get(option_id, 0) + 1
-                answer_count = int(row["answer_count"])
-                correct_count = int(row["correct_count"]) - int(bool(existing["is_correct"])) + int(is_correct)
-                conn.execute(
-                    "UPDATE live_quiz_responses SET selected_option_id=?, is_correct=?, answered_at=? "
-                    "WHERE participant_id=? AND question_id=?",
-                    (option_id, int(is_correct), db._now(), row["participant_id"], row["id"]),
-                )
-            else:
-                counts[option_id] = counts.get(option_id, 0) + 1
-                answer_count = int(row["answer_count"]) + 1
-                correct_count = int(row["correct_count"]) + int(is_correct)
-                conn.execute(
-                    "INSERT INTO live_quiz_responses "
-                    "(participant_id, question_id, selected_option_id, is_correct, answered_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (row["participant_id"], row["id"], option_id, int(is_correct), db._now()),
-                )
-            conn.execute(
-                "UPDATE live_quiz_questions SET answer_count=?, correct_count=?, "
-                "option_counts_json=? WHERE id=?",
-                (
-                    answer_count,
-                    correct_count,
-                    json.dumps(counts, ensure_ascii=False, separators=(",", ":")),
-                    row["id"],
-                ),
-            )
-            conn.commit()
-            return {
-                "inserted": existing is None,
-                "selected_option_id": option_id,
-                "is_correct": is_correct,
-                "stats": {
-                    "answer_count": answer_count,
-                    "correct_count": correct_count,
-                    "option_counts": counts,
-                },
-            }
-        except BaseException:
-            conn.rollback()
-            raise
-
-
-def answer_table_question(credential_hash: str, question_key: str, answer) -> dict:
-    if not isinstance(credential_hash, str) or CREDENTIAL_HASH_RE.fullmatch(credential_hash) is None:
-        raise QuizRejected("裝置憑證格式不正確。")
-    if not isinstance(question_key, str) or not question_key:
-        raise QuizRejected("缺少題目 ID。")
-
-    with closing(db.connect()) as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            row = conn.execute(
-                "SELECT p.id AS participant_id, s.state AS session_state, q.* "
-                "FROM live_quiz_participants p "
-                "JOIN live_quiz_sessions s ON s.id=p.session_id "
-                "JOIN live_quiz_questions q ON q.session_id=p.session_id "
-                "WHERE p.credential_hash=? AND q.question_key=?",
-                (credential_hash, question_key),
-            ).fetchone()
-            if row is None:
-                raise QuizConflict("找不到可作答的題目。")
-            if row["kind"] != "table":
-                raise QuizRejected("作答格式與題型不符。")
-            existing = conn.execute(
-                "SELECT answer_json, correct_cells, total_cells FROM live_quiz_responses "
-                "WHERE participant_id=? AND question_id=?",
-                (row["participant_id"], row["id"]),
-            ).fetchone()
-            is_open = row["session_state"] == "lobby" and row["state"] == "open"
-            if existing is not None and not is_open:
-                # 老師已經關題／結束課堂：答案在公布前才能改，關題後永遠回舊答案。
-                conn.commit()
-                return {
-                    "inserted": False,
-                    "correct_cells": int(existing["correct_cells"]),
-                    "total_cells": int(existing["total_cells"]),
-                    "stats": _stats_from_row(row),
-                }
-            if not is_open:
-                raise QuizConflict("這一題目前未開放作答。")
-
-            correct = json.loads(row["correct_table_json"])
-            if not isinstance(answer, list) or len(answer) != correct["rows"]:
-                raise QuizRejected("作答的表格維度與題目不符。")
-            for line in answer:
-                if not isinstance(line, list) or len(line) != correct["cols"]:
-                    raise QuizRejected("作答的表格維度與題目不符。")
-                if any(not isinstance(cell, str) for cell in line):
-                    raise QuizRejected("表格內容必須是字串。")
-            answer = [[cell[:MAX_CELL_LENGTH] for cell in line] for line in answer]
-            right, total = grade_table(answer, correct["values"])
-            cell_stats = json.loads(row["cell_stats_json"])
-            if existing is not None:
-                # 題目還開著：允許改答案。先把舊答案算進去的答錯次數扣掉，answer_count 不變。
-                old_answer = json.loads(existing["answer_json"])
-                reverse_cell_stats(cell_stats, old_answer, correct["values"])
-                old_all_correct = int(existing["correct_cells"]) == int(existing["total_cells"])
-                accumulate_cell_stats(cell_stats, answer, correct["values"])
-                answer_count = int(row["answer_count"])
-                correct_count = int(row["correct_count"]) - int(old_all_correct) + int(right == total)
-            else:
-                accumulate_cell_stats(cell_stats, answer, correct["values"])
-                answer_count = int(row["answer_count"]) + 1
-                correct_count = int(row["correct_count"]) + int(right == total)
-
-            if existing is not None:
-                conn.execute(
-                    "UPDATE live_quiz_responses SET answered_at=?, answer_json=?, correct_cells=?, total_cells=? "
-                    "WHERE participant_id=? AND question_id=?",
-                    (
-                        db._now(),
-                        json.dumps(answer, ensure_ascii=False),
-                        right,
-                        total,
-                        row["participant_id"],
-                        row["id"],
-                    ),
-                )
-            else:
-                conn.execute(
-                    "INSERT INTO live_quiz_responses "
-                    "(participant_id, question_id, answered_at, answer_json, correct_cells, total_cells) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        row["participant_id"],
-                        row["id"],
-                        db._now(),
-                        json.dumps(answer, ensure_ascii=False),
-                        right,
-                        total,
-                    ),
-                )
-            conn.execute(
-                "UPDATE live_quiz_questions SET answer_count=?, correct_count=?, "
-                "cell_stats_json=? WHERE id=?",
-                (answer_count, correct_count, json.dumps(cell_stats), row["id"]),
-            )
-            conn.commit()
-            return {
-                "inserted": existing is None,
-                "correct_cells": right,
-                "total_cells": total,
-                "stats": {
-                    "answer_count": answer_count,
-                    "correct_count": correct_count,
-                    "cell_stats": cell_stats,
-                },
-            }
-        except BaseException:
-            conn.rollback()
-            raise
-
-
-def guest_state(credential_hash: str) -> Optional[dict]:
-    if not isinstance(credential_hash, str) or CREDENTIAL_HASH_RE.fullmatch(credential_hash) is None:
-        return None
-    with closing(db.connect()) as conn:
-        participant = conn.execute(
-            "SELECT p.id, p.session_id, p.nickname, s.title, s.state "
-            "FROM live_quiz_participants p "
-            "JOIN live_quiz_sessions s ON s.id=p.session_id "
-            "WHERE p.credential_hash=? AND s.state='lobby'",
-            (credential_hash,),
-        ).fetchone()
-        if participant is None:
-            return None
-        question = conn.execute(
-            "SELECT q.*, r.selected_option_id, r.is_correct, r.answer_json, "
-            "r.correct_cells, r.total_cells "
-            "FROM live_quiz_questions q "
-            "LEFT JOIN live_quiz_responses r ON r.question_id=q.id AND r.participant_id=? "
-            "WHERE q.session_id=? AND q.state IN ('open', 'closed') AND q.opened_at IS NOT NULL "
-            "ORDER BY CASE q.state WHEN 'open' THEN 0 ELSE 1 END, q.opened_at DESC LIMIT 1",
-            (participant["id"], participant["session_id"]),
-        ).fetchone()
-        active = None
-        if question is not None:
-            active = student_question_payload(question)
-            if question["kind"] == "choice":
-                active["selected_option_id"] = question["selected_option_id"]
-            else:
-                active["answer"] = (
-                    json.loads(question["answer_json"])
-                    if question["answer_json"] is not None
-                    else None
-                )
-            if question["state"] == "closed" and question["kind"] == "choice":
-                active["result"] = {
-                    "is_correct": (
-                        bool(question["is_correct"])
-                        if question["selected_option_id"] is not None
-                        else None
-                    ),
-                    "correct_option_id": active.pop("correct_option_id"),
-                    "explanation": active.pop("explanation"),
-                }
-            elif question["state"] == "closed":
-                active["result"] = {
-                    "correct_cells": (
-                        int(question["correct_cells"])
-                        if question["answer_json"] is not None
-                        else None
-                    ),
-                    "total_cells": (
-                        int(question["total_cells"])
-                        if question["answer_json"] is not None
-                        else None
-                    ),
-                    "explanation": active.pop("explanation"),
-                }
-        return {
-            "participant_id": int(participant["id"]),
-            "session_id": int(participant["session_id"]),
-            "session_title": participant["title"],
-            "nickname": participant["nickname"],
-            "state": "active",
-            "active_question": active,
-        }
+    # 交易已 commit、連線已關：這之後的教案寫入失敗也不會讓場次回滾（F1）。
+    hint_saved = _persist_table_hints(session_id, owner_id, hints)
+    payload = session_owned_by(session_id, owner_id)
+    if payload is not None:
+        payload["hint_saved"] = hint_saved
+    return payload
 
 
 def validated_mobile_base_url(value):
@@ -1300,7 +897,7 @@ def make_join_token(session_row):
     )
 
 
-def load_join_token(token, max_age=GUEST_MAX_AGE):
+def load_join_token(token, max_age=JOIN_TOKEN_MAX_AGE):
     if not isinstance(token, str) or not token:
         return None
     try:
@@ -1370,69 +967,6 @@ def create_session_route():
         return _error(str(exc), 400)
 
 
-@blueprint.get("/api/live-quiz/sessions/<int:session_id>")
-def teacher_state(session_id):
-    payload = _teacher_payload(session_id, current_user_id())
-    return jsonify(payload) if payload is not None else _error("找不到課堂。", 404)
-
-
-@blueprint.post(
-    "/api/live-quiz/sessions/<int:session_id>/questions/<question_key>/trigger"
-)
-def trigger_question_route(session_id, question_key):
-    try:
-        body = _request_fields(
-            ("source_file", "line"), optional_keys=("table", "var_hint", "test_input")
-        )
-        updated = trigger_question(
-            session_id,
-            current_user_id(),
-            question_key,
-            body["source_file"],
-            body["line"],
-            table=body.get("table"),
-            var_hint=body.get("var_hint"),
-            test_input=body.get("test_input"),
-        )
-        if updated is None:
-            return _error("找不到課堂或題目。", 404)
-        emit_teacher_state(session_id)
-        emit_student_states(session_id)
-        return jsonify(_teacher_payload(session_id, current_user_id()))
-    except QuizConflict as exc:
-        return _error(str(exc), 409)
-    except QuizRejected as exc:
-        return _error(str(exc), 400)
-
-
-@blueprint.post(
-    "/api/live-quiz/sessions/<int:session_id>/questions/<question_key>/close"
-)
-def close_question_route(session_id, question_key):
-    try:
-        updated = close_question(session_id, current_user_id(), question_key)
-        if updated is None:
-            return _error("找不到課堂或題目。", 404)
-        emit_teacher_state(session_id)
-        emit_student_states(session_id)
-        return jsonify(_teacher_payload(session_id, current_user_id()))
-    except QuizConflict as exc:
-        return _error(str(exc), 409)
-
-
-
-@blueprint.get(
-    "/api/live-quiz/sessions/<int:session_id>/questions/<question_key>/responses"
-)
-def question_responses_route(session_id, question_key):
-    try:
-        rows = responses_for_question(session_id, current_user_id(), question_key)
-        if rows is None:
-            return _error("找不到課堂或題目。", 404)
-        return jsonify({"responses": rows})
-    except QuizConflict as exc:
-        return _error(str(exc), 409)
-
 @blueprint.get("/api/live-quiz/export")
 def export_summary_route():
     payload = export_summary(current_user_id())
@@ -1447,33 +981,33 @@ def export_summary_route():
     return response
 
 
-@blueprint.get("/api/live-quiz/sessions/<int:session_id>/export")
-def export_session_route(session_id):
-    payload = export_session(session_id, current_user_id())
-    if payload is None:
-        return _error("找不到課堂。", 404)
-    # 以附件回應，教師點連結就落地成檔案——結束課堂前的最後一個動作，不該還要另存新檔。
-    response = current_app.response_class(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        mimetype="application/json",
-    )
-    filename = "live-quiz-%d-%s.json" % (session_id, payload["exported_at"][:10])
-    response.headers["Content-Disposition"] = 'attachment; filename="%s"' % filename
-    return response
+def _end_upload_body():
+    """`/end` 的 body：空 body 或 `{}` 代表沒有上傳；其餘交給 end_session 驗證。
+
+    有 body 卻不是 JSON 就拒絕，不當成「沒有上傳」默默收場。
+    """
+    if not request.get_data(cache=True).strip():
+        return None
+    body = request.get_json(silent=True)
+    if body is None:
+        raise QuizRejected("收場資料不是有效的 JSON。")
+    if body == {}:
+        return None
+    return body
 
 
 @blueprint.post("/api/live-quiz/sessions/<int:session_id>/end")
 def end_session_route(session_id):
-    row = _invitation_row(session_id, current_user_id())
-    participant_credentials = _participant_credentials(session_id)
-    ended = end_session(session_id, current_user_id())
-    if ended is not None:
-        emit_teacher_state(session_id)
-        _emit_ended(participant_credentials)
-        if _socketio is not None and _socketio.server is not None and row is not None:
-            _socketio.close_room(
-                _teacher_room(row["join_nonce"]), namespace="/lesson_quiz"
-            )
+    try:
+        upload = _end_upload_body()
+        row = _invitation_row(session_id, current_user_id())
+        ended = end_session(session_id, current_user_id(), upload)
+    except QuizRejected as exc:
+        return _error(str(exc), 400)
+    if ended is not None and row is not None:
+        relay_end(row["join_nonce"])
+        if _socketio is not None and _socketio.server is not None:
+            _socketio.close_room(_teacher_room(row["join_nonce"]), namespace=LIVE_QUIZ_NAMESPACE)
     return jsonify(ended) if ended is not None else _error("找不到課堂。", 404)
 
 
@@ -1502,195 +1036,251 @@ def join_page(token):
     )
 
 
-def _cookie_hash():
-    return hash_guest_cookie(request.cookies.get(GUEST_COOKIE))
+# ── 薄中繼 ────────────────────────────────────────────────────────────────────
+#
+# 連線時伺服器決定角色與場次，寫進 `SIDS`；之後每一個 handler 的角色與場次**只**
+# 從 `SIDS` 讀，從不讀 handshake 的 `auth` 或事件 payload。中繼不保存、不解讀
+# 答題內容，也不把任何 token、device_id、暱稱或答案寫進 log。
+#
+# 全部狀態都在單一 eventlet hub 上被存取；底下沒有任何一段在讀與寫 `SIDS` 之間
+# 讓出 hub，所以不需要鎖。
 
+LIVE_QUIZ_NAMESPACE = "/lesson_quiz"
 
-def hash_guest_cookie(credential):
-    if not isinstance(credential, str) or not credential:
-        return None
-    return sha256(credential.encode("utf-8")).hexdigest()
-
-
-@blueprint.post("/api/live-quiz/guest/join")
-def guest_join():
-    try:
-        body = _request_fields(("token", "nickname"))
-        session_id = load_join_token(body["token"])
-        if session_id is None:
-            return _error("課堂不存在或已結束。", 404)
-
-        credential = request.cookies.get(GUEST_COOKIE)
-        credential_hash = _cookie_hash()
-        if credential_hash is not None:
-            with closing(db.connect()) as conn:
-                same_session = conn.execute(
-                    "SELECT 1 FROM live_quiz_participants "
-                    "WHERE credential_hash=? AND session_id=?",
-                    (credential_hash, session_id),
-                ).fetchone()
-            if same_session is None:
-                credential = credential_hash = None
-        if credential_hash is None:
-            credential = secrets.token_urlsafe(32)
-            credential_hash = sha256(credential.encode("utf-8")).hexdigest()
-
-        join_session(session_id, body["nickname"], credential_hash)
-        state = guest_state(credential_hash)
-        if state is None:
-            return _error("課堂不存在或已結束。", 409)
-        response = jsonify(state)
-        response.set_cookie(
-            GUEST_COOKIE,
-            credential,
-            max_age=GUEST_MAX_AGE,
-            httponly=True,
-            secure=bool(current_app.config.get("SESSION_COOKIE_SECURE")),
-            samesite="Lax",
-            path="/",
-        )
-        emit_teacher_state(session_id)
-        return response
-    except QuizConflict as exc:
-        return _error(str(exc), 409)
-    except QuizRejected as exc:
-        return _error(str(exc), 400)
-
-
-@blueprint.get("/api/live-quiz/guest/state")
-def guest_state_route():
-    state = guest_state(_cookie_hash())
-    return jsonify(state) if state is not None else _error("找不到參與者。", 404)
-
-
-@blueprint.post("/api/live-quiz/guest/answers")
-def guest_answer():
-    credential_hash = _cookie_hash()
-    if credential_hash is None:
-        return _error("找不到參與者。", 404)
-    try:
-        body = _request_fields(
-            ("question_id",), optional_keys=("option_id", "answer")
-        )
-        has_option = "option_id" in body
-        has_table = "answer" in body
-        if has_option == has_table:
-            raise QuizRejected("作答必須且只能提供一種答案格式。")
-        if has_option:
-            answer_question(credential_hash, body["question_id"], body["option_id"])
-        else:
-            answer_table_question(credential_hash, body["question_id"], body["answer"])
-        state = guest_state(credential_hash)
-        if state is None:
-            return _error("課堂不存在或已結束。", 409)
-        emit_teacher_state(state["session_id"])
-        emit_student_state(credential_hash)
-        return jsonify(state)
-    except QuizConflict as exc:
-        return _error(str(exc), 409)
-    except QuizRejected as exc:
-        return _error(str(exc), 400)
+#: sid -> {"role", "nonce", "session_id", "device_id", "bucket"}；斷線時移除。
+SIDS = {}
+#: join_nonce -> 寬限期計時器的世代號。老師重連或收場時移除，舊計時器醒來發現
+#: 世代號對不上就放棄。世代號取自全域遞增計數器，不會在同一個 nonce 上重複。
+_GRACE_TIMERS = {}
+_grace_generations = itertools.count(1)
+#: 流量限制用的時鐘；測試會 monkeypatch。
+_clock = monotonic
 
 
 def _teacher_room(join_nonce):
     return f"lesson_quiz:teacher:{join_nonce}"
 
 
-def _participant_room(credential_hash):
-    return f"lesson_quiz:participant:{credential_hash}"
+def _student_room(join_nonce):
+    return f"lesson_quiz:students:{join_nonce}"
 
 
-def _latest_question(state):
-    opened = [question for question in state["questions"] if question["opened_at"]]
-    return max(opened, key=lambda question: question["opened_at"]) if opened else None
+def _relay_emit(event, payload, to):
+    if _socketio is None or _socketio.server is None:
+        return
+    _socketio.emit(event, payload, to=to, namespace=LIVE_QUIZ_NAMESPACE)
 
 
-def _socket_stats_payload(state, question):
-    payload = {
-        "joined_count": state["joined_count"],
-        "question_id": question["id"],
-        "state": question["state"],
-        "answer_count": question["answer_count"],
-        "correct_count": question["correct_count"],
+def _disconnect_sid(sid):
+    if _socketio is not None and _socketio.server is not None:
+        _socketio.server.disconnect(sid, namespace=LIVE_QUIZ_NAMESPACE)
+
+
+def _single_dict_arg(args, limit):
+    """事件必須恰好帶一個 dict，且 JSON 編碼後不超過 `limit` 位元組；否則回傳 None。
+
+    bytes（Socket.IO 的二進位附件）與無法編碼的值會讓 `json.dumps` 拋例外，在這裡
+    吞掉，不讓它冒泡成 handler 例外。
+    """
+    if len(args) != 1 or not isinstance(args[0], dict):
+        return None
+    try:
+        encoded = json.dumps(
+            args[0], ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError):
+        return None
+    return args[0] if len(encoded) <= limit else None
+
+
+def _new_bucket():
+    return {"tokens": float(STUDENT_BUCKET_CAPACITY), "stamp": _clock(), "drops": 0}
+
+
+def _take_token(bucket):
+    now = _clock()
+    elapsed = max(0.0, now - bucket["stamp"])
+    bucket["stamp"] = now
+    bucket["tokens"] = min(
+        float(STUDENT_BUCKET_CAPACITY),
+        bucket["tokens"] + elapsed * STUDENT_BUCKET_REFILL_PER_SECOND,
+    )
+    if bucket["tokens"] >= 1:
+        bucket["tokens"] -= 1
+        return True
+    return False
+
+
+def _drop_student_event(sid, entry):
+    """丟棄一個學生事件；連續丟棄達上限就斷開這個 sid。"""
+    entry["bucket"]["drops"] += 1
+    if entry["bucket"]["drops"] >= STUDENT_MAX_CONSECUTIVE_DROPS:
+        _disconnect_sid(sid)
+
+
+def _role_sids(nonce, role):
+    return [sid for sid, entry in SIDS.items() if entry["nonce"] == nonce and entry["role"] == role]
+
+
+def _relay_from_student(out_event, args):
+    sid = request.sid
+    entry = SIDS.get(sid)
+    if entry is None or entry["role"] != "student":
+        return
+    if not _take_token(entry["bucket"]):
+        return _drop_student_event(sid, entry)
+    payload = _single_dict_arg(args, MAX_STUDENT_EVENT_BYTES)
+    device_id = payload.get("device_id") if payload is not None else None
+    if not isinstance(device_id, str) or not device_id:
+        return _drop_student_event(sid, entry)
+    if entry["device_id"] is None:
+        entry["device_id"] = device_id
+    elif entry["device_id"] != device_id:
+        return _drop_student_event(sid, entry)
+    entry["bucket"]["drops"] = 0
+    # 固定信封：學生 payload 裡自帶的 `sid` 只會留在 data 裡，蓋不掉伺服器的值。
+    _relay_emit(out_event, {"sid": sid, "data": payload}, _teacher_room(entry["nonce"]))
+
+
+def _teacher_caller():
+    """呼叫者是老師就回傳它的 SIDS 項目；學生冒用老師事件算一次丟棄。"""
+    sid = request.sid
+    entry = SIDS.get(sid)
+    if entry is None:
+        return None
+    if entry["role"] == "teacher":
+        return entry
+    if entry["role"] == "student":
+        _take_token(entry["bucket"])
+        _drop_student_event(sid, entry)
+    return None
+
+
+def _relay_to_students(args):
+    entry = _teacher_caller()
+    if entry is None:
+        return
+    body = _single_dict_arg(args, MAX_TEACHER_EVENT_BYTES)
+    payload = body.get("payload") if body is not None else None
+    if not isinstance(payload, dict):
+        return
+    _relay_emit("quiz:student-state", payload, _student_room(entry["nonce"]))
+
+
+def _relay_to_student(args):
+    entry = _teacher_caller()
+    if entry is None:
+        return
+    body = _single_dict_arg(args, MAX_TEACHER_EVENT_BYTES)
+    if body is None:
+        return
+    target, event, payload = body.get("sid"), body.get("event"), body.get("payload")
+    if not isinstance(event, str) or event not in RELAY_TO_STUDENT_EVENTS:
+        return
+    if not isinstance(target, str) or not isinstance(payload, dict):
+        return
+    target_entry = SIDS.get(target)
+    if (
+        target_entry is None
+        or target_entry["role"] != "student"
+        or target_entry["nonce"] != entry["nonce"]
+    ):
+        return
+    _relay_emit(event, payload, target)
+
+
+def relay_end(join_nonce):
+    """課堂結束：通知該場學生、斷開該場所有 sid，並清掉 SIDS 與寬限期計時器。
+
+    先把項目從 SIDS 拿掉再斷線，斷線 handler 就找不到它們，不會再啟動新的寬限期
+    計時器或送 presence。
+    """
+    _GRACE_TIMERS.pop(join_nonce, None)
+    sids = [sid for sid, entry in SIDS.items() if entry["nonce"] == join_nonce]
+    for sid in sids:
+        SIDS.pop(sid, None)
+    _relay_emit("quiz:student-state", {"state": "ended"}, _student_room(join_nonce))
+    for sid in sids:
+        _disconnect_sid(sid)
+
+
+def _start_teacher_grace(join_nonce, session_id):
+    generation = next(_grace_generations)
+    _GRACE_TIMERS[join_nonce] = generation
+    _socketio.start_background_task(_teacher_grace_expired, join_nonce, session_id, generation)
+
+
+def _teacher_grace_expired(join_nonce, session_id, generation):
+    _socketio.sleep(TEACHER_GRACE_SECONDS)
+    if _GRACE_TIMERS.get(join_nonce) != generation or _role_sids(join_nonce, "teacher"):
+        return
+    try:
+        row = _invitation_row(session_id)
+        if row is not None and row["state"] == "lobby":
+            end_session(session_id, int(row["owner_user_id"]))
+    except Exception:
+        # 只記場次編號；不記 token、裝置或任何作答內容。
+        logger.exception("live quiz: ending session %s after teacher grace failed", session_id)
+    relay_end(join_nonce)
+
+
+def _connect_teacher(auth):
+    owner_id = current_user_id()
+    session_id = auth.get("session_id")
+    if owner_id is None or not _valid_id(session_id):
+        return False
+    row = _invitation_row(session_id, owner_id)
+    if row is None or row["state"] != "lobby":
+        return False
+    nonce = row["join_nonce"]
+    join_room(_teacher_room(nonce))
+    # 老師不在時連上或送 hello 的學生，事件都進了空的老師房間。通知該場學生重送
+    # hello，並把伺服器端已知的事實（sid 與已釘住的 device_id）只交給這個老師連線。
+    _relay_emit("relay:teacher-online", {}, _student_room(nonce))
+    emit(
+        "relay:roster",
+        {
+            "students": [
+                {"sid": sid, "device_id": SIDS[sid]["device_id"]}
+                for sid in _role_sids(nonce, "student")
+            ]
+        },
+    )
+    # 寫入 SIDS 是最後一個步驟：上面任何一步拋例外，這個 sid 都不會留下老師身分，
+    # 之後的 relay:* 事件也就一律被忽略。以下兩行都是不會失敗的 dict 操作，中間不讓出 hub。
+    SIDS[request.sid] = {
+        "role": "teacher",
+        "nonce": nonce,
+        "session_id": int(row["id"]),
+        "device_id": None,
+        "bucket": None,
     }
-    key = "cell_stats" if question["kind"] == "table" else "option_counts"
-    payload[key] = question[key]
-    return payload
+    # 老師在寬限期內回來：撤銷計時器的世代號，舊計時器醒來就會放棄。
+    _GRACE_TIMERS.pop(nonce, None)
+    return True
 
 
-def emit_teacher_state(session_id):
-    if _socketio is None or _socketio.server is None:
-        return
+def _connect_relay_student(token):
+    session_id = load_join_token(token)
+    if session_id is None:
+        return False
     row = _invitation_row(session_id)
-    if row is None:
-        return
-    owner_id = int(row["owner_user_id"])
-    state = _teacher_payload(session_id, owner_id) or session_owned_by(session_id, owner_id)
-    if state is None:
-        return
-    room = _teacher_room(row["join_nonce"])
-    _socketio.emit("quiz:teacher-state", state, room=room, namespace="/lesson_quiz")
-    question = state["active_question"] or _latest_question(state)
-    if question is not None:
-        _socketio.emit(
-            "quiz:stats",
-            _socket_stats_payload(state, question),
-            room=room,
-            namespace="/lesson_quiz",
-        )
-
-
-def emit_student_state(credential_hash):
-    if _socketio is None or _socketio.server is None:
-        return
-    state = guest_state(credential_hash)
-    if state is not None:
-        _socketio.emit(
-            "quiz:student-state",
-            state,
-            room=_participant_room(credential_hash),
-            namespace="/lesson_quiz",
-        )
-
-
-def emit_student_states(session_id):
-    if _socketio is None or _socketio.server is None:
-        return
-    with closing(db.connect()) as conn:
-        credentials = [
-            row["credential_hash"]
-            for row in conn.execute(
-                "SELECT credential_hash FROM live_quiz_participants WHERE session_id=?",
-                (session_id,),
-            )
-        ]
-    for credential_hash in credentials:
-        emit_student_state(credential_hash)
-
-
-def _participant_credentials(session_id):
-    with closing(db.connect()) as conn:
-        return [
-            row["credential_hash"]
-            for row in conn.execute(
-                "SELECT credential_hash FROM live_quiz_participants WHERE session_id=?",
-                (session_id,),
-            )
-        ]
-
-
-def _emit_ended(participant_credentials):
-    if _socketio is None or _socketio.server is None:
-        return
-    for credential_hash in participant_credentials:
-        room = _participant_room(credential_hash)
-        _socketio.emit(
-            "quiz:student-state",
-            {"state": "ended"},
-            room=room,
-            namespace="/lesson_quiz",
-        )
-        _socketio.close_room(room, namespace="/lesson_quiz")
+    if row is None or row["state"] != "lobby":
+        return False
+    nonce = row["join_nonce"]
+    if len(_role_sids(nonce, "student")) >= MAX_STUDENT_SOCKETS_PER_SESSION:
+        return False
+    sid = request.sid
+    SIDS[sid] = {
+        "role": "student",
+        "nonce": nonce,
+        "session_id": int(row["id"]),
+        "device_id": None,
+        "bucket": _new_bucket(),
+    }
+    join_room(_student_room(nonce))
+    _relay_emit("relay:presence", {"sid": sid, "connected": True}, _teacher_room(nonce))
+    return True
 
 
 def register_socket_handlers(socketio):
@@ -1700,31 +1290,48 @@ def register_socket_handlers(socketio):
         return
     socketio._live_quiz_handlers_registered = True
 
-    @socketio.on("connect", namespace="/lesson_quiz")
+    # 刻意不註冊 catch-all（"*"）handler：沒列在這裡的事件一律被 Socket.IO 忽略。
+
+    @socketio.on("connect", namespace=LIVE_QUIZ_NAMESPACE)
     def connect_live_quiz(auth=None):
         if is_cross_origin(request):
             return False
         auth = auth if isinstance(auth, dict) else {}
-        if auth.get("role") == "teacher":
-            owner_id = current_user_id()
-            row = _invitation_row(auth.get("session_id"), owner_id)
-            state = _teacher_payload(auth.get("session_id"), owner_id)
-            if row is None or state is None or state["state"] != "lobby":
-                return False
-            join_room(_teacher_room(row["join_nonce"]))
-            emit("quiz:teacher-state", state)
-            question = state["active_question"] or _latest_question(state)
-            if question is not None:
-                emit(
-                    "quiz:stats",
-                    _socket_stats_payload(state, question),
-                )
-            return True
+        role = auth.get("role")
+        if role == "teacher":
+            # 老師：登入身分＋擁有的 lobby 場次；失敗直接拒絕，不落入學生分支。
+            return _connect_teacher(auth)
+        if role == "student":
+            # 學生：有效的 join token；沒有 token 就是 None，load_join_token 會拒絕。
+            return _connect_relay_student(auth.get("token"))
+        # 沒有角色、未知角色或 auth 不是 dict：一律 fail closed。
+        return False
 
-        credential_hash = _cookie_hash()
-        state = guest_state(credential_hash)
-        if state is None:
-            return False
-        join_room(_participant_room(credential_hash))
-        emit("quiz:student-state", state)
-        return True
+    @socketio.on("disconnect", namespace=LIVE_QUIZ_NAMESPACE)
+    def disconnect_live_quiz(*_reason):
+        sid = request.sid
+        entry = SIDS.pop(sid, None)
+        if entry is None:
+            return
+        nonce = entry["nonce"]
+        if entry["role"] == "student":
+            _relay_emit("relay:presence", {"sid": sid, "connected": False}, _teacher_room(nonce))
+        elif not _role_sids(nonce, "teacher"):
+            # 只有老師房間已空才起算寬限期；第二個老師分頁斷線不結束課堂。
+            _start_teacher_grace(nonce, entry["session_id"])
+
+    @socketio.on("student:hello", namespace=LIVE_QUIZ_NAMESPACE)
+    def student_hello(*args):
+        _relay_from_student("relay:student-hello", args)
+
+    @socketio.on("student:answer", namespace=LIVE_QUIZ_NAMESPACE)
+    def student_answer(*args):
+        _relay_from_student("relay:student-answer", args)
+
+    @socketio.on("relay:to-students", namespace=LIVE_QUIZ_NAMESPACE)
+    def relay_to_students(*args):
+        _relay_to_students(args)
+
+    @socketio.on("relay:to-student", namespace=LIVE_QUIZ_NAMESPACE)
+    def relay_to_student(*args):
+        _relay_to_student(args)

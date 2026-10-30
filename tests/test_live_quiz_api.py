@@ -2,7 +2,6 @@
 
 import json
 from contextlib import closing
-from hashlib import sha256
 from time import sleep
 from urllib.parse import urlsplit
 
@@ -11,7 +10,7 @@ import pytest
 from gdbgui.server import db, live_quiz
 from gdbgui.server.http_util import CSRF_EXEMPT_ENDPOINTS, PUBLIC_ENDPOINTS
 from .conftest import register_user
-from .test_live_quiz_db import valid_bundle
+from .test_live_quiz_db import credential_hash, seed_legacy_participant, valid_bundle
 
 
 @pytest.fixture
@@ -37,23 +36,32 @@ def _join_token(created):
     return urlsplit(created.get_json()["join_url"]).path.rsplit("/", 1)[-1]
 
 
-def _guest_join(app, token, nickname="小明"):
-    guest = app.test_client()
-    response = guest.post(
-        "/api/live-quiz/guest/join",
-        json={"token": token, "nickname": nickname},
-        headers={"Origin": "http://localhost"},
-    )
-    return guest, response
-
-
 def test_teacher_routes_require_owner_and_csrf(api_context):
     _, author, other, lesson_id = api_context
     created = _create(author, lesson_id)
     assert created.status_code == 201
     session_id = created.get_json()["id"]
-    assert other.http.get(f"/api/live-quiz/sessions/{session_id}").status_code == 404
-    assert author.http.post(f"/api/live-quiz/sessions/{session_id}/end").status_code == 403
+    end_path = f"/api/live-quiz/sessions/{session_id}/end"
+    assert other.http.post(end_path, headers={"x-csrftoken": other.csrf}).status_code == 404
+    assert author.http.post(end_path).status_code == 403
+    assert live_quiz._invitation_row(session_id)["state"] == "lobby"
+
+
+def test_cross_origin_teacher_posts_are_rejected_even_with_a_valid_token(api_context):
+    """取代已刪除的訪客 POST 跨來源測試：全域同源檢查對留下來的課堂寫入路由照樣生效。"""
+    _, author, _, lesson_id = api_context
+    evil = {"x-csrftoken": author.csrf, "Origin": "http://evil.example"}
+    with closing(db.connect()) as conn:
+        before = conn.execute("SELECT COUNT(*) FROM live_quiz_sessions").fetchone()[0]
+    crossed = author.http.post("/api/live-quiz/sessions", json={"lesson_id": lesson_id}, headers=evil)
+    assert crossed.status_code == 403
+    with closing(db.connect()) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM live_quiz_sessions").fetchone()[0] == before
+
+    session_id = _create(author, lesson_id).get_json()["id"]
+    end_path = f"/api/live-quiz/sessions/{session_id}/end"
+    assert author.http.post(end_path, headers=evil).status_code == 403
+    assert live_quiz._invitation_row(session_id)["state"] == "lobby"
 
 
 def test_public_and_csrf_exempt_endpoint_lists_are_exact():
@@ -64,14 +72,86 @@ def test_public_and_csrf_exempt_endpoint_lists_are_exact():
             "auth.logout",
             "static",
             "live_quiz.join_page",
-            "live_quiz.guest_join",
-            "live_quiz.guest_state_route",
-            "live_quiz.guest_answer",
         }
     )
-    assert CSRF_EXEMPT_ENDPOINTS == frozenset(
-        {"live_quiz.guest_join", "live_quiz.guest_answer"}
-    )
+    assert CSRF_EXEMPT_ENDPOINTS == frozenset()
+
+
+REMOVED_ENDPOINTS = frozenset(
+    {
+        "live_quiz.teacher_state",
+        "live_quiz.trigger_question_route",
+        "live_quiz.close_question_route",
+        "live_quiz.question_responses_route",
+        "live_quiz.export_session_route",
+        "live_quiz.guest_join",
+        "live_quiz.guest_state_route",
+        "live_quiz.guest_answer",
+    }
+)
+
+
+def test_removed_guest_routes_return_404(api_context):
+    """D5：舊的伺服器端計分與訪客 HTTP API 整組移除，不與中繼並存。
+
+    已登入且帶 CSRF token 的擁有者打這些路徑一律 404（路由不存在）；未登入的人
+    落回全站預設拒絕（GET 401、POST 403），不再有任何公開或免 CSRF 的課堂 API。
+    """
+    app, author, _, lesson_id = api_context
+    created = _create(author, lesson_id)
+    assert created.status_code == 201
+    session_id = created.get_json()["id"]
+    token = _join_token(created)
+    csrf = {"x-csrftoken": author.csrf}
+
+    removed = [
+        ("POST", "/api/live-quiz/guest/join", {"token": token, "nickname": "小明"}),
+        ("GET", "/api/live-quiz/guest/state", None),
+        ("POST", "/api/live-quiz/guest/answers", {"question_id": "q1", "option_id": "b"}),
+        ("GET", f"/api/live-quiz/sessions/{session_id}", None),
+        ("GET", f"/api/live-quiz/sessions/{session_id}/export", None),
+        (
+            "POST",
+            f"/api/live-quiz/sessions/{session_id}/questions/q1/trigger",
+            {"source_file": "main.cpp", "line": 3},
+        ),
+        ("POST", f"/api/live-quiz/sessions/{session_id}/questions/q1/close", None),
+        ("GET", f"/api/live-quiz/sessions/{session_id}/questions/q1/responses", None),
+    ]
+    anonymous = app.test_client()
+    for method, path, body in removed:
+        response = author.http.open(path, method=method, json=body, headers=csrf)
+        assert response.status_code == 404, (method, path, response.status_code)
+        denied = anonymous.open(
+            path, method=method, json=body, headers={"Origin": "http://localhost"}
+        )
+        assert denied.status_code == (401 if method == "GET" else 403), (method, path)
+
+    registered = {rule.endpoint for rule in app.url_map.iter_rules()}
+    assert not registered & REMOVED_ENDPOINTS
+    assert not {name for name in CSRF_EXEMPT_ENDPOINTS if name.startswith("live_quiz.guest_")}
+    assert not {name for name in PUBLIC_ENDPOINTS if name.startswith("live_quiz.guest_")}
+    # 沒有任何人 join 過：舊路徑不可能在被拒絕前寫進參與者。
+    with closing(db.connect()) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM live_quiz_participants WHERE session_id=?", (session_id,)
+        ).fetchone()[0] == 0
+
+
+def test_kept_live_quiz_endpoints_are_exactly_the_relay_flow(flask_app):
+    """刪除之後，live_quiz blueprint 只剩建立、收場、匯出總覽、QR 與加入頁。"""
+    registered = {
+        rule.endpoint
+        for rule in flask_app.url_map.iter_rules()
+        if rule.endpoint.startswith("live_quiz.")
+    }
+    assert registered == {
+        "live_quiz.create_session_route",
+        "live_quiz.end_session_route",
+        "live_quiz.export_summary_route",
+        "live_quiz.qr_image",
+        "live_quiz.join_page",
+    }
 
 
 @pytest.mark.parametrize(
@@ -129,93 +209,17 @@ def test_qr_is_owner_only_no_store_svg_and_join_page_contains_no_question(api_co
 
 
 def test_join_url_and_qr_stay_stable_for_the_session(api_context):
-    _, author, _, lesson_id = api_context
+    app, author, _, lesson_id = api_context
     created = _create(author, lesson_id).get_json()
-    session_path = f"/api/live-quiz/sessions/{created['id']}"
-    first_qr = author.http.get(urlsplit(created["qr_url"]).path).data
+    qr_path = urlsplit(created["qr_url"]).path
+    first_qr = author.http.get(qr_path).data
     sleep(1.1)
-    second = author.http.get(session_path).get_json()
-    second_qr = author.http.get(urlsplit(second["qr_url"]).path).data
+    second_qr = author.http.get(qr_path).data
+    with app.test_request_context():
+        reissued = live_quiz.make_join_token(live_quiz._invitation_row(created["id"]))
 
-    assert second["join_url"] == created["join_url"]
     assert second_qr == first_qr
-
-
-def test_guest_join_sets_http_only_cookie_and_database_keeps_only_its_hash(api_context):
-    app, author, _, lesson_id = api_context
-    created = _create(author, lesson_id)
-    session_id = created.get_json()["id"]
-    token = _join_token(created)
-    guest, joined = _guest_join(app, token)
-    assert joined.status_code == 200
-    cookie = guest.get_cookie("gdbgui_quiz_guest")
-    assert cookie is not None
-    assert cookie.http_only is True
-    assert cookie.same_site == "Lax"
-    assert "Max-Age=28800" in joined.headers["Set-Cookie"]
-    with closing(db.connect()) as conn:
-        stored = conn.execute(
-            "SELECT credential_hash FROM live_quiz_participants WHERE session_id=?",
-            (session_id,),
-        ).fetchone()[0]
-    assert stored == sha256(cookie.value.encode("utf-8")).hexdigest()
-    assert stored != cookie.value
-
-
-def test_guest_posts_still_reject_cross_origin_and_unknown_identity_fields(api_context):
-    app, author, _, lesson_id = api_context
-    token = _join_token(_create(author, lesson_id))
-    guest = app.test_client()
-    crossed = guest.post(
-        "/api/live-quiz/guest/join",
-        json={"token": token, "nickname": "小明"},
-        headers={"Origin": "http://evil.example"},
-    )
-    assert crossed.status_code == 403
-    injected = guest.post(
-        "/api/live-quiz/guest/join",
-        json={"token": token, "nickname": "小明", "participant_id": 1},
-        headers={"Origin": "http://localhost"},
-    )
-    assert injected.status_code == 400
-
-
-def test_answer_hides_result_until_teacher_closes_question(api_context):
-    app, author, _, lesson_id = api_context
-    created = _create(author, lesson_id)
-    session_id = created.get_json()["id"]
-    token = _join_token(created)
-    guest, joined = _guest_join(app, token)
-    assert joined.status_code == 200
-    triggered = author.http.post(
-        f"/api/live-quiz/sessions/{session_id}/questions/q1/trigger",
-        json={"source_file": "main.cpp", "line": 3},
-        headers={"x-csrftoken": author.csrf},
-    )
-    assert triggered.status_code == 200
-    answered = guest.post(
-        "/api/live-quiz/guest/answers",
-        json={"question_id": "q1", "option_id": "b"},
-        headers={"Origin": "http://localhost"},
-    )
-    assert answered.status_code == 200
-    open_json = json.dumps(answered.get_json(), ensure_ascii=False)
-    assert "correct_option_id" not in open_json
-    assert "explanation" not in open_json
-    assert "is_correct" not in open_json
-
-    closed = author.http.post(
-        f"/api/live-quiz/sessions/{session_id}/questions/q1/close",
-        headers={"x-csrftoken": author.csrf},
-    )
-    assert closed.status_code == 200
-    state = guest.get("/api/live-quiz/guest/state")
-    assert state.status_code == 200
-    assert state.get_json()["active_question"]["result"] == {
-        "is_correct": True,
-        "correct_option_id": "b",
-        "explanation": "i++ 會遞增。",
-    }
+    assert urlsplit(created["join_url"]).path.rsplit("/", 1)[-1] == reissued
 
 
 def test_tampered_nonce_and_ended_session_tokens_fail_closed(api_context):
@@ -249,6 +253,7 @@ def test_join_token_expires_from_the_session_creation_time(api_context):
     response = _create(author, lesson_id)
     created = response.get_json()
     token = _join_token(response)
+    assert live_quiz.JOIN_TOKEN_MAX_AGE == 8 * 60 * 60
     with closing(db.connect()) as conn:
         conn.execute(
             "UPDATE live_quiz_sessions SET created_at='2000-01-01T00:00:00+00:00' WHERE id=?",
@@ -259,83 +264,25 @@ def test_join_token_expires_from_the_session_creation_time(api_context):
     assert app.test_client().get(f"/join/{token}").status_code == 404
 
 
-@pytest.mark.parametrize("token", [123, {}, []])
-def test_guest_join_rejects_non_string_tokens_without_a_server_error(api_context, token):
-    app, _, _, _ = api_context
-    _, joined = _guest_join(app, token)
-    assert joined.status_code == 404
-
-
-def test_export_captures_responses_that_ending_the_session_destroys(api_context):
-    """匯出是研究資料唯一的出口：結束課堂會把逐筆作答刪光。"""
-    app, author, other, lesson_id = api_context
-    created = _create(author, lesson_id)
-    session_id = created.get_json()["id"]
-    token = _join_token(created)
-    guest, joined = _guest_join(app, token, nickname="3081")
-    assert joined.status_code == 200
-    assert author.http.post(
-        f"/api/live-quiz/sessions/{session_id}/questions/q1/trigger",
-        json={"source_file": "main.cpp", "line": 3},
-        headers={"x-csrftoken": author.csrf},
-    ).status_code == 200
-    assert guest.post(
-        "/api/live-quiz/guest/answers",
-        json={"question_id": "q1", "option_id": "b"},
-        headers={"Origin": "http://localhost"},
-    ).status_code == 200
-
-    # 別人的課堂拿不到，訪客更不行。
-    assert other.http.get(f"/api/live-quiz/sessions/{session_id}/export").status_code == 404
-    assert guest.get(f"/api/live-quiz/sessions/{session_id}/export").status_code in (302, 401, 403)
-
-    exported = author.http.get(f"/api/live-quiz/sessions/{session_id}/export")
-    assert exported.status_code == 200
-    assert "attachment" in exported.headers["Content-Disposition"]
-    payload = exported.get_json()
-    assert [p["nickname"] for p in payload["participants"]] == ["3081"]
-    assert len(payload["responses"]) == 1
-    answer = payload["responses"][0]
-    assert answer["question_key"] == "q1"
-    assert answer["nickname"] == "3081"
-    assert answer["selected_option_id"] == "b"
-    assert answer["is_correct"] == 1
-
-    assert author.http.post(
-        f"/api/live-quiz/sessions/{session_id}/questions/q1/close",
-        headers={"x-csrftoken": author.csrf},
-    ).status_code == 200
-    assert author.http.post(
-        f"/api/live-quiz/sessions/{session_id}/end",
-        headers={"x-csrftoken": author.csrf},
-    ).status_code == 200
-
-    after = author.http.get(f"/api/live-quiz/sessions/{session_id}/export").get_json()
-    assert after["responses"] == []
-    assert after["participants"] == []
-    # 題目與匿名統計摘要照留，這正是結束課堂該保住的東西。
-    assert [q["question_key"] for q in after["questions"]] == ["q1"]
-    assert after["questions"][0]["answer_count"] == 1
-
-
 def test_export_summary_is_anonymous_and_owner_scoped(api_context):
-    """總覽只給擁有者、只含開過題的課堂，且不含暱稱與逐筆作答。"""
-    app, author, other, lesson_id = api_context
+    """總覽只給擁有者、只含開過題的課堂，且不含暱稱與逐筆作答。
+
+    舊場次（D5 之前）在 lobby 期間資料庫裡可能同時有聚合與暱稱；總覽完全不讀
+    participants／responses，所以即使那些列還在，也不會出現在輸出裡。
+    """
+    _, author, other, lesson_id = api_context
     created = _create(author, lesson_id)
     session_id = created.get_json()["id"]
-    token = _join_token(created)
-    guest, _ = _guest_join(app, token, nickname="3081")
     _create(author, lesson_id)  # 只建立、沒出題：不該出現
-    assert author.http.post(
-        f"/api/live-quiz/sessions/{session_id}/questions/q1/trigger",
-        json={"source_file": "main.cpp", "line": 3},
-        headers={"x-csrftoken": author.csrf},
-    ).status_code == 200
-    assert guest.post(
-        "/api/live-quiz/guest/answers",
-        json={"question_id": "q1", "option_id": "b"},
-        headers={"Origin": "http://localhost"},
-    ).status_code == 200
+    seed_legacy_participant(session_id, "3081", credential_hash("summary-3081"), "q1")
+    with closing(db.connect()) as conn:
+        conn.execute(
+            "UPDATE live_quiz_questions SET state='open', opened_at=?, answer_count=1, "
+            "correct_count=1, option_counts_json='{\"a\":0,\"b\":1}' "
+            "WHERE session_id=? AND question_key='q1'",
+            (db._now(), session_id),
+        )
+        conn.commit()
 
     body = author.http.get("/api/live-quiz/export")
     assert body.status_code == 200
@@ -343,5 +290,6 @@ def test_export_summary_is_anonymous_and_owner_scoped(api_context):
     data = body.get_json()
     assert [s["session_id"] for s in data["sessions"]] == [session_id]
     assert data["sessions"][0]["questions"][0]["answer_count"] == 1
+    assert data["sessions"][0]["questions"][0]["option_counts"] == {"a": 0, "b": 1}
     assert "3081" not in body.get_data(as_text=True)
     assert other.http.get("/api/live-quiz/export").get_json()["sessions"] == []

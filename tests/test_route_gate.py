@@ -200,12 +200,13 @@ def test_unknown_paths_are_refused_too(flask_app):
 # ---------------------------------------------------------------------------
 
 
-def test_the_exempt_list_is_exactly_the_login_and_live_quiz_guest_flow(flask_app):
+def test_the_exempt_list_is_exactly_the_login_flow_and_the_quiz_join_page(flask_app):
     """白名單改動必須是有意識的。
 
     這是一條刻意的「變更偵測」測試：PUBLIC_ENDPOINTS 是全站唯一的豁免清單，
     往裡面加東西＝把一條路由公開出去，那件事應該要讓一條測試變紅、需要有人
-    看過並改掉，而不是靜靜地生效。
+    看過並改掉，而不是靜靜地生效。即時課堂只剩學生加入頁（GET）是公開的；
+    免 CSRF 的清單是空的。
     """
     assert PUBLIC_ENDPOINTS == frozenset(
         {
@@ -214,14 +215,9 @@ def test_the_exempt_list_is_exactly_the_login_and_live_quiz_guest_flow(flask_app
             "auth.logout",
             "static",
             "live_quiz.join_page",
-            "live_quiz.guest_join",
-            "live_quiz.guest_state_route",
-            "live_quiz.guest_answer",
         }
     )
-    assert CSRF_EXEMPT_ENDPOINTS == frozenset(
-        {"live_quiz.guest_join", "live_quiz.guest_answer"}
-    )
+    assert CSRF_EXEMPT_ENDPOINTS == frozenset()
 
 
 @pytest.mark.parametrize("path", ["/login", "/register", "/logout"])
