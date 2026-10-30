@@ -734,6 +734,25 @@ test("gateRun 卡住的動作要等 QR 關掉才送出，關閉前完全不會�
   expect(runNow).toHaveBeenCalledTimes(1);
 });
 
+test("gateRun：出題自動重跑（gdbgui_rerunning_for_quiz）不換課堂，直接重跑，學生不會被踢", async () => {
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockClear();
+  (liveQuizClient.createLiveSession as jest.Mock).mockClear();
+  (window as any).gdbgui_rerunning_for_quiz = true;
+  try {
+    const runNow = jest.fn();
+    await act(async () => {
+      (window as any).gdbgui_live_quiz_gate_run(runNow);
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(runNow).toHaveBeenCalledTimes(1);
+    expect(liveQuizClient.endLiveSession).not.toHaveBeenCalled();
+    expect(liveQuizClient.createLiveSession).not.toHaveBeenCalled();
+  } finally {
+    (window as any).gdbgui_rerunning_for_quiz = false;
+  }
+});
+
 test("gateRun 開課失敗、QR 沒跳出來時直接兜底送出，不留著等一個不存在的關閉", async () => {
   await act(async () => {
     ReactDOM.render(React.createElement(LiveQuizPanel, {

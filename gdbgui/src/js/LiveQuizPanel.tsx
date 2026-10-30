@@ -634,6 +634,12 @@ export default function LiveQuizPanel({
   const pendingRunRef = React.useRef<(() => void) | null>(null);
 
   const gateRun = React.useCallback((runNow: () => void) => {
+    // 「確認出題」發現測資不新鮮而自動重跑：這是同一堂課的同一題，不是老師要開新課堂。
+    // 換 session 會把學生踢掉（他們看到「課堂已結束」），所以直接重跑、不開新課堂。
+    if ((window as any).gdbgui_rerunning_for_quiz === true) {
+      runNow();
+      return;
+    }
     pendingRunRef.current = runNow;
     restartSession().then(shown => {
       if (!shown && pendingRunRef.current === runNow) {
