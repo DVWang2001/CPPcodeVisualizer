@@ -1,5 +1,6 @@
 """Persistent live-quiz state and strict lesson quiz validation."""
 
+import itertools
 import json
 import ipaddress
 import logging
@@ -9,6 +10,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from hashlib import sha256
 from io import BytesIO
+from time import monotonic
 from typing import Optional
 from urllib.parse import urlsplit
 
@@ -48,6 +50,20 @@ CREDENTIAL_HASH_RE = re.compile(r"\A[0-9a-f]{64}\Z")
 GUEST_COOKIE = "gdbgui_quiz_guest"
 GUEST_MAX_AGE = 8 * 60 * 60
 TOKEN_SALT = "gdbgui-live-quiz-join-v1"
+
+# ── 薄中繼（/lesson_quiz）的上限 ──────────────────────────────────────────────
+#: 老師最後一個分頁斷線後保留的秒數；期間內重連，課堂照常。測試會 monkeypatch。
+TEACHER_GRACE_SECONDS = 30
+MAX_STUDENT_SOCKETS_PER_SESSION = 200
+#: 單一事件 payload 以 JSON（UTF-8）編碼後的位元組上限。填表題 200 格 × 32 字約 7 KB。
+MAX_STUDENT_EVENT_BYTES = 16384
+MAX_TEACHER_EVENT_BYTES = 65536
+#: 每個學生 sid 一個 token bucket：容量 10、每秒補 5；連續丟棄 30 個就斷線。
+STUDENT_BUCKET_CAPACITY = 10
+STUDENT_BUCKET_REFILL_PER_SECOND = 5
+STUDENT_MAX_CONSECUTIVE_DROPS = 30
+#: `relay:to-student` 唯一允許的事件名。
+RELAY_TO_STUDENT_EVENTS = frozenset(("quiz:student-state", "quiz:answer-received"))
 
 blueprint = Blueprint("live_quiz", __name__)
 _socketio = None
@@ -1470,6 +1486,8 @@ def end_session_route(session_id):
     if ended is not None:
         emit_teacher_state(session_id)
         _emit_ended(participant_credentials)
+        if row is not None:
+            relay_end(row["join_nonce"])
         if _socketio is not None and _socketio.server is not None and row is not None:
             _socketio.close_room(
                 _teacher_room(row["join_nonce"]), namespace="/lesson_quiz"
@@ -1693,6 +1711,257 @@ def _emit_ended(participant_credentials):
         _socketio.close_room(room, namespace="/lesson_quiz")
 
 
+# ── 薄中繼 ────────────────────────────────────────────────────────────────────
+#
+# 連線時伺服器決定角色與場次，寫進 `SIDS`；之後每一個 handler 的角色與場次**只**
+# 從 `SIDS` 讀，從不讀 handshake 的 `auth` 或事件 payload。中繼不保存、不解讀
+# 答題內容，也不把任何 token、device_id、暱稱或答案寫進 log。
+#
+# 全部狀態都在單一 eventlet hub 上被存取；底下沒有任何一段在讀與寫 `SIDS` 之間
+# 讓出 hub，所以不需要鎖。
+
+LIVE_QUIZ_NAMESPACE = "/lesson_quiz"
+
+#: sid -> {"role", "nonce", "session_id", "device_id", "bucket"}；斷線時移除。
+SIDS = {}
+#: join_nonce -> 寬限期計時器的世代號。老師重連或收場時移除，舊計時器醒來發現
+#: 世代號對不上就放棄。世代號取自全域遞增計數器，不會在同一個 nonce 上重複。
+_GRACE_TIMERS = {}
+_grace_generations = itertools.count(1)
+#: 流量限制用的時鐘；測試會 monkeypatch。
+_clock = monotonic
+
+
+def _student_room(join_nonce):
+    return f"lesson_quiz:students:{join_nonce}"
+
+
+def _relay_emit(event, payload, to):
+    if _socketio is None or _socketio.server is None:
+        return
+    _socketio.emit(event, payload, to=to, namespace=LIVE_QUIZ_NAMESPACE)
+
+
+def _disconnect_sid(sid):
+    if _socketio is not None and _socketio.server is not None:
+        _socketio.server.disconnect(sid, namespace=LIVE_QUIZ_NAMESPACE)
+
+
+def _single_dict_arg(args, limit):
+    """事件必須恰好帶一個 dict，且 JSON 編碼後不超過 `limit` 位元組；否則回傳 None。
+
+    bytes（Socket.IO 的二進位附件）與無法編碼的值會讓 `json.dumps` 拋例外，在這裡
+    吞掉，不讓它冒泡成 handler 例外。
+    """
+    if len(args) != 1 or not isinstance(args[0], dict):
+        return None
+    try:
+        encoded = json.dumps(
+            args[0], ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError):
+        return None
+    return args[0] if len(encoded) <= limit else None
+
+
+def _new_bucket():
+    return {"tokens": float(STUDENT_BUCKET_CAPACITY), "stamp": _clock(), "drops": 0}
+
+
+def _take_token(bucket):
+    now = _clock()
+    elapsed = max(0.0, now - bucket["stamp"])
+    bucket["stamp"] = now
+    bucket["tokens"] = min(
+        float(STUDENT_BUCKET_CAPACITY),
+        bucket["tokens"] + elapsed * STUDENT_BUCKET_REFILL_PER_SECOND,
+    )
+    if bucket["tokens"] >= 1:
+        bucket["tokens"] -= 1
+        return True
+    return False
+
+
+def _drop_student_event(sid, entry):
+    """丟棄一個學生事件；連續丟棄達上限就斷開這個 sid。"""
+    entry["bucket"]["drops"] += 1
+    if entry["bucket"]["drops"] >= STUDENT_MAX_CONSECUTIVE_DROPS:
+        _disconnect_sid(sid)
+
+
+def _role_sids(nonce, role):
+    return [sid for sid, entry in SIDS.items() if entry["nonce"] == nonce and entry["role"] == role]
+
+
+def _relay_from_student(out_event, args):
+    sid = request.sid
+    entry = SIDS.get(sid)
+    if entry is None or entry["role"] != "student":
+        return
+    if not _take_token(entry["bucket"]):
+        return _drop_student_event(sid, entry)
+    payload = _single_dict_arg(args, MAX_STUDENT_EVENT_BYTES)
+    device_id = payload.get("device_id") if payload is not None else None
+    if not isinstance(device_id, str) or not device_id:
+        return _drop_student_event(sid, entry)
+    if entry["device_id"] is None:
+        entry["device_id"] = device_id
+    elif entry["device_id"] != device_id:
+        return _drop_student_event(sid, entry)
+    entry["bucket"]["drops"] = 0
+    # 固定信封：學生 payload 裡自帶的 `sid` 只會留在 data 裡，蓋不掉伺服器的值。
+    _relay_emit(out_event, {"sid": sid, "data": payload}, _teacher_room(entry["nonce"]))
+
+
+def _teacher_caller():
+    """呼叫者是老師就回傳它的 SIDS 項目；學生冒用老師事件算一次丟棄。"""
+    sid = request.sid
+    entry = SIDS.get(sid)
+    if entry is None:
+        return None
+    if entry["role"] == "teacher":
+        return entry
+    if entry["role"] == "student":
+        _take_token(entry["bucket"])
+        _drop_student_event(sid, entry)
+    return None
+
+
+def _relay_to_students(args):
+    entry = _teacher_caller()
+    if entry is None:
+        return
+    body = _single_dict_arg(args, MAX_TEACHER_EVENT_BYTES)
+    payload = body.get("payload") if body is not None else None
+    if not isinstance(payload, dict):
+        return
+    _relay_emit("quiz:student-state", payload, _student_room(entry["nonce"]))
+
+
+def _relay_to_student(args):
+    entry = _teacher_caller()
+    if entry is None:
+        return
+    body = _single_dict_arg(args, MAX_TEACHER_EVENT_BYTES)
+    if body is None:
+        return
+    target, event, payload = body.get("sid"), body.get("event"), body.get("payload")
+    if not isinstance(event, str) or event not in RELAY_TO_STUDENT_EVENTS:
+        return
+    if not isinstance(target, str) or not isinstance(payload, dict):
+        return
+    target_entry = SIDS.get(target)
+    if (
+        target_entry is None
+        or target_entry["role"] != "student"
+        or target_entry["nonce"] != entry["nonce"]
+    ):
+        return
+    _relay_emit(event, payload, target)
+
+
+def relay_end(join_nonce):
+    """課堂結束：通知該場學生、斷開該場所有 sid，並清掉 SIDS 與寬限期計時器。
+
+    先把項目從 SIDS 拿掉再斷線，斷線 handler 就找不到它們，不會再啟動新的寬限期
+    計時器或送 presence。
+    """
+    _GRACE_TIMERS.pop(join_nonce, None)
+    sids = [sid for sid, entry in SIDS.items() if entry["nonce"] == join_nonce]
+    for sid in sids:
+        SIDS.pop(sid, None)
+    _relay_emit("quiz:student-state", {"state": "ended"}, _student_room(join_nonce))
+    for sid in sids:
+        _disconnect_sid(sid)
+
+
+def _start_teacher_grace(join_nonce, session_id):
+    generation = next(_grace_generations)
+    _GRACE_TIMERS[join_nonce] = generation
+    _socketio.start_background_task(_teacher_grace_expired, join_nonce, session_id, generation)
+
+
+def _teacher_grace_expired(join_nonce, session_id, generation):
+    _socketio.sleep(TEACHER_GRACE_SECONDS)
+    if _GRACE_TIMERS.get(join_nonce) != generation or _role_sids(join_nonce, "teacher"):
+        return
+    try:
+        row = _invitation_row(session_id)
+        if row is not None and row["state"] == "lobby":
+            credentials = _participant_credentials(session_id)
+            if end_session(session_id, int(row["owner_user_id"])) is not None:
+                _emit_ended(credentials)
+    except Exception:
+        # 只記場次編號；不記 token、裝置或任何作答內容。
+        logger.exception("live quiz: ending session %s after teacher grace failed", session_id)
+    relay_end(join_nonce)
+
+
+def _connect_teacher(auth):
+    owner_id = current_user_id()
+    session_id = auth.get("session_id")
+    if owner_id is None or not _valid_id(session_id):
+        return False
+    row = _invitation_row(session_id, owner_id)
+    state = _teacher_payload(session_id, owner_id)
+    if row is None or state is None or state["state"] != "lobby":
+        return False
+    nonce = row["join_nonce"]
+    join_room(_teacher_room(nonce))
+    SIDS[request.sid] = {
+        "role": "teacher",
+        "nonce": nonce,
+        "session_id": int(row["id"]),
+        "device_id": None,
+        "bucket": None,
+    }
+    # 老師在寬限期內回來：撤銷計時器的世代號，舊計時器醒來就會放棄。
+    _GRACE_TIMERS.pop(nonce, None)
+    # 舊路徑的老師狀態推播（Task 7 刪除）。
+    emit("quiz:teacher-state", state)
+    question = state["active_question"] or _latest_question(state)
+    if question is not None:
+        emit("quiz:stats", _socket_stats_payload(state, question))
+    return True
+
+
+def _connect_relay_student(token):
+    session_id = load_join_token(token)
+    if session_id is None:
+        return False
+    row = _invitation_row(session_id)
+    if row is None or row["state"] != "lobby":
+        return False
+    nonce = row["join_nonce"]
+    if len(_role_sids(nonce, "student")) >= MAX_STUDENT_SOCKETS_PER_SESSION:
+        return False
+    sid = request.sid
+    SIDS[sid] = {
+        "role": "student",
+        "nonce": nonce,
+        "session_id": int(row["id"]),
+        "device_id": None,
+        "bucket": _new_bucket(),
+    }
+    join_room(_student_room(nonce))
+    _relay_emit("relay:presence", {"sid": sid, "connected": True}, _teacher_room(nonce))
+    return True
+
+
+def _connect_legacy_student():
+    """舊的 cookie 學生（HTTP guest API 的推播對象）。不進 SIDS，所以碰不到任何中繼事件。
+
+    Task 7 隨 HTTP guest API 一起刪除。
+    """
+    credential_hash = _cookie_hash()
+    state = guest_state(credential_hash)
+    if state is None:
+        return False
+    join_room(_participant_room(credential_hash))
+    emit("quiz:student-state", state)
+    return True
+
+
 def register_socket_handlers(socketio):
     global _socketio
     _socketio = socketio
@@ -1700,31 +1969,50 @@ def register_socket_handlers(socketio):
         return
     socketio._live_quiz_handlers_registered = True
 
-    @socketio.on("connect", namespace="/lesson_quiz")
+    # 刻意不註冊 catch-all（"*"）handler：沒列在這裡的事件一律被 Socket.IO 忽略。
+
+    @socketio.on("connect", namespace=LIVE_QUIZ_NAMESPACE)
     def connect_live_quiz(auth=None):
         if is_cross_origin(request):
             return False
         auth = auth if isinstance(auth, dict) else {}
-        if auth.get("role") == "teacher":
-            owner_id = current_user_id()
-            row = _invitation_row(auth.get("session_id"), owner_id)
-            state = _teacher_payload(auth.get("session_id"), owner_id)
-            if row is None or state is None or state["state"] != "lobby":
-                return False
-            join_room(_teacher_room(row["join_nonce"]))
-            emit("quiz:teacher-state", state)
-            question = state["active_question"] or _latest_question(state)
-            if question is not None:
-                emit(
-                    "quiz:stats",
-                    _socket_stats_payload(state, question),
-                )
-            return True
+        role = auth.get("role")
+        if role == "teacher":
+            # 老師驗證失敗直接拒絕，不落入任何學生分支。
+            return _connect_teacher(auth)
+        if role == "student" and "token" in auth:
+            return _connect_relay_student(auth.get("token"))
+        if role is None or role == "student":
+            # 沒有 token 的舊 cookie 學生路徑（Ruling 2；Task 7 刪除）。
+            return _connect_legacy_student()
+        # 未知角色 fail closed。
+        return False
 
-        credential_hash = _cookie_hash()
-        state = guest_state(credential_hash)
-        if state is None:
-            return False
-        join_room(_participant_room(credential_hash))
-        emit("quiz:student-state", state)
-        return True
+    @socketio.on("disconnect", namespace=LIVE_QUIZ_NAMESPACE)
+    def disconnect_live_quiz(*_reason):
+        sid = request.sid
+        entry = SIDS.pop(sid, None)
+        if entry is None:
+            return
+        nonce = entry["nonce"]
+        if entry["role"] == "student":
+            _relay_emit("relay:presence", {"sid": sid, "connected": False}, _teacher_room(nonce))
+        elif not _role_sids(nonce, "teacher"):
+            # 只有老師房間已空才起算寬限期；第二個老師分頁斷線不結束課堂。
+            _start_teacher_grace(nonce, entry["session_id"])
+
+    @socketio.on("student:hello", namespace=LIVE_QUIZ_NAMESPACE)
+    def student_hello(*args):
+        _relay_from_student("relay:student-hello", args)
+
+    @socketio.on("student:answer", namespace=LIVE_QUIZ_NAMESPACE)
+    def student_answer(*args):
+        _relay_from_student("relay:student-answer", args)
+
+    @socketio.on("relay:to-students", namespace=LIVE_QUIZ_NAMESPACE)
+    def relay_to_students(*args):
+        _relay_to_students(args)
+
+    @socketio.on("relay:to-student", namespace=LIVE_QUIZ_NAMESPACE)
+    def relay_to_student(*args):
+        _relay_to_student(args)
