@@ -848,3 +848,14 @@ body.tutorial .collapser {
 body.tutorial.tut-caption-on #middle {
   height: calc(100% - 138px) !important;
 }
+
+/* 教學頁左欄收合：寬度 0 時內容不外溢；左緣留一個「展開」小標籤。 */
+body.tut-doc-collapsed #folders_view { overflow: hidden !important; }
+.tut-doc-expand {
+  position: fixed; left: 0; top: 50%; z-index: 1000;
+  width: 22px; height: 56px; padding: 0;
+  border: 1px solid #c9cde4; border-left: 0; border-radius: 0 10px 10px 0;
+  background: #fff; color: #1c2033; font-size: 18px; line-height: 1; cursor: pointer;
+  box-shadow: 2px 2px 8px rgba(28, 32, 51, .15);
+}
+.tut-doc-expand:hover { background: #eceef8; }

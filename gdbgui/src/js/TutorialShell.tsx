@@ -7,6 +7,9 @@
  * 用 SourceCode 掛上的 window.gdbgui_apply_bundle 套進編輯器。
  */
 import React from "react";
+import ReactDOM from "react-dom";
+import { store } from "statorgfc";
+import { collapseSizes, isCollapsed } from "./tutorialPane";
 import { stepState, nextStep, prevStep } from "./tutorialSteps";
 import "../../static/css/tutorial.css";
 import "../../static/css/ide-theme.css";
@@ -65,6 +68,25 @@ export default function TutorialShell() {
   const [step, setStep] = React.useState(0);
   const [menuOpen, setMenuOpen] = React.useState(true); // 還沒選課時先打開選單
   const [openChap, setOpenChap] = React.useState<string>(""); // 手風琴：目前展開的章 id（空 = 全收合）
+
+  const [docCollapsed, setDocCollapsed] = React.useState(false);
+  const savedSizes = React.useRef<number[] | null>(null);
+
+  // 收合／展開左欄：直接調 splitjs 的欄寬（和 applyLayout 的 sidebar:N 同一個把手）。
+  const toggleDoc = () => {
+    const split: any = store.get("middle_panes_split_obj");
+    if (!split || typeof split.getSizes !== "function") return;
+    const sizes: number[] = split.getSizes();
+    if (isCollapsed(sizes)) {
+      split.setSizes(savedSizes.current || [34, 36, 29]);
+      setDocCollapsed(false);
+    } else {
+      savedSizes.current = sizes;
+      split.setSizes(collapseSizes(sizes));
+      setDocCollapsed(true);
+    }
+    document.body.classList.toggle("tut-doc-collapsed", !isCollapsed(sizes));
+  };
 
   React.useEffect(() => {
     fetch("/static/tutorial/chapters.json")
@@ -137,7 +159,17 @@ export default function TutorialShell() {
           {feature ? `第 ${chapterNo} 章　${feature.title}` : "選一課開始"} <span aria-hidden="true">{menuOpen ? "▴" : "▾"}</span>
         </button>
         <span className="tut-count">{current ? `課 ${idx + 1} / ${flat.length}` : `${flat.length} 課`}</span>
+        <button type="button" id="tutorial_doc_collapse" className="tut-chip" title="收合左側欄" aria-label="收合左側欄" onClick={toggleDoc}>
+          ‹
+        </button>
       </div>
+      {docCollapsed &&
+        ReactDOM.createPortal(
+          <button type="button" id="tutorial_doc_expand" className="tut-doc-expand" title="展開左側欄" aria-label="展開左側欄" onClick={toggleDoc}>
+            ›
+          </button>,
+          document.body
+        )}
 
       {error && <div style={{ color: "#b00" }}>{error}</div>}
 
