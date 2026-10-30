@@ -55,6 +55,10 @@ function thrownStatus(fn: () => any): number | undefined {
   try {
     fn();
   } catch (e) {
+    // 只接受引擎自己丟的 EngineError；其他例外（如 SyntaxError）代表 bug，直接讓測試失敗
+    if (!e || typeof e.status !== "number" || typeof e.message !== "string" || e instanceof Error) {
+      throw e;
+    }
     return e.status;
   }
   return undefined;
@@ -220,9 +224,47 @@ describe("liveQuizEngine", () => {
     }
     expect(thrownStatus(() => engine.answerChoice("constructor", "q1", "a"))).toBe(409);
     expect(JSON.stringify(engine.teacherSession())).toBe(before);
-    expect(({} as any).a).toBeUndefined();
     expect(engine.studentState("constructor")).toBeNull();
     expect(engine.studentState("__proto__")!.nickname).toBe("小明");
+  });
+
+  it("含填表題的課：選擇題照常運作，填表題 trigger 得到乾淨的 400", () => {
+    const session = makeSession();
+    const table: any = {
+      id: "t1", kind: "table", prompt: "填表", test_input: null, explanation: "",
+      source_file: "main.cpp", line: 30, anchor: { source_file: "main.cpp", line: 30 },
+      position: 2, state: "ready", opened_at: null, closed_at: null,
+      answer_count: 0, correct_count: 0, table_spec: { var_hint: "dp", max_cells: 16 }
+    };
+    session.questions.push(table);
+    const engine = createEngine(session, () => "now");
+    expect(engine.teacherSession().questions.length).toBe(3);
+    expect(thrownStatus(() => engine.trigger("t1", "main.cpp", 30))).toBe(400);
+    // 失敗的 trigger 不能留下 open 狀態
+    expect(engine.teacherSession().active_question).toBeNull();
+    const opened = engine.trigger("q1", "main.cpp", 10);
+    expect(opened.active_question.id).toBe("q1");
+    expect(engine.close("q1").questions[0].state).toBe("closed");
+    expect(engine.endedSummary().questions.length).toBe(3);
+  });
+
+  it("選項 ID 是 __proto__ 時仍正確計數", () => {
+    const session = makeSession();
+    (session.questions[0] as any).options = [
+      { id: "__proto__", text: "P" },
+      { id: "b", text: "B" }
+    ];
+    const engine = createEngine(session, () => "now");
+    engine.hello("d1", "小明");
+    engine.trigger("q1", "main.cpp", 10);
+    engine.answerChoice("d1", "q1", "__proto__");
+    const counts = engine.stats()!.option_counts!;
+    expect(Object.keys(counts).sort()).toEqual(["__proto__", "b"]);
+    expect(Object.getOwnPropertyDescriptor(counts, "__proto__")!.value).toBe(1);
+    engine.answerChoice("d1", "q1", "b");
+    const after = engine.stats()!.option_counts!;
+    expect(Object.getOwnPropertyDescriptor(after, "__proto__")!.value).toBe(0);
+    expect(after.b).toBe(1);
   });
 
   it("teacherSession 的欄位與 _session_payload 相同", () => {

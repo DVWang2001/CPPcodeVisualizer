@@ -70,7 +70,10 @@ type Question = {
   correct_count: number;
   options: Option[];
   correct_option_id: string;
-  option_counts: { [id: string]: number };
+  /** 用 Map 存：選項 ID 可以是任何字串（含 __proto__），不能當一般物件的屬性。 */
+  option_counts: Map<string, number>;
+  /** 填表題的規格，原樣帶出（目前不計分）。 */
+  table_spec?: any;
 };
 type Participant = { nickname: string };
 type Response = { selected: string; isCorrect: boolean };
@@ -97,7 +100,16 @@ function sameFile(left: any, right: any): boolean {
 }
 
 function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value));
+  return value === undefined ? value : JSON.parse(JSON.stringify(value));
+}
+
+/** Map 轉成 payload 用的物件；用 defineProperty 才能放 __proto__ 這種 key。 */
+function countsObject(counts: Map<string, number>): { [id: string]: number } {
+  const out: { [id: string]: number } = {};
+  counts.forEach((value, key) => {
+    Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true });
+  });
+  return out;
 }
 
 export function createEngine(
@@ -106,8 +118,8 @@ export function createEngine(
 ): LiveQuizEngine {
   const questions: Question[] = session.questions.map(raw => {
     const q = clone(raw) as any;
-    const counts: { [id: string]: number } = {};
-    for (const option of q.options || []) counts[option.id] = 0;
+    const counts = new Map<string, number>();
+    for (const option of q.options || []) counts.set(option.id, 0);
     return {
       id: q.id,
       kind: q.kind,
@@ -125,7 +137,8 @@ export function createEngine(
       correct_count: 0,
       options: q.options,
       correct_option_id: q.correct_option_id,
-      option_counts: counts
+      option_counts: counts,
+      table_spec: q.table_spec
     };
   });
   const participants = new Map<string, Participant>();
@@ -136,7 +149,7 @@ export function createEngine(
 
   // _question_payload：選擇題的欄位與順序
   function questionPayload(q: Question) {
-    return {
+    const base = {
       id: q.id,
       kind: q.kind,
       prompt: q.prompt,
@@ -150,10 +163,15 @@ export function createEngine(
       opened_at: q.opened_at,
       closed_at: q.closed_at,
       answer_count: q.answer_count,
-      correct_count: q.correct_count,
+      correct_count: q.correct_count
+    };
+    // 填表題沒有選項欄位（與伺服器相同）；其專屬欄位等填表題支援後再補
+    if (q.kind === "table") return { ...base, table_spec: clone(q.table_spec) };
+    return {
+      ...base,
       options: clone(q.options),
       correct_option_id: q.correct_option_id,
-      option_counts: { ...q.option_counts }
+      option_counts: countsObject(q.option_counts)
     };
   }
 
@@ -293,15 +311,14 @@ export function createEngine(
       const isCorrect = optionId === q.correct_option_id;
       if (existing) {
         // 還開著可改答案：扣舊、加新，answer_count 不變
-        if (Object.prototype.hasOwnProperty.call(q.option_counts, existing.selected)) {
-          q.option_counts[existing.selected] = Math.max(0, q.option_counts[existing.selected] - 1);
-        }
+        const old = q.option_counts.get(existing.selected);
+        if (old !== undefined) q.option_counts.set(existing.selected, Math.max(0, old - 1));
         q.correct_count += (isCorrect ? 1 : 0) - (existing.isCorrect ? 1 : 0);
       } else {
         q.answer_count += 1;
         q.correct_count += isCorrect ? 1 : 0;
       }
-      q.option_counts[optionId] = (q.option_counts[optionId] || 0) + 1;
+      q.option_counts.set(optionId, (q.option_counts.get(optionId) || 0) + 1);
       byDevice.set(deviceId, { selected: optionId, isCorrect });
       return studentState(deviceId)!;
     },
@@ -317,7 +334,7 @@ export function createEngine(
         state: q.state,
         answer_count: q.answer_count,
         correct_count: q.correct_count,
-        option_counts: { ...q.option_counts }
+        option_counts: countsObject(q.option_counts)
       };
     },
 
@@ -331,7 +348,7 @@ export function createEngine(
           closed_at: q.closed_at,
           answer_count: q.answer_count,
           correct_count: q.correct_count,
-          option_counts: { ...q.option_counts }
+          ...(q.kind === "choice" ? { option_counts: countsObject(q.option_counts) } : {})
         }))
       };
     }
