@@ -581,6 +581,93 @@ def test_teacher_reconnect_within_grace_keeps_session(relay, monkeypatch):
     assert [msg["data"]["nonce"] for msg in take(back, "relay:student-answer")] == ["still-alive"]
 
 
+def test_teacher_reconnect_triggers_teacher_online_for_students(relay):
+    """老師在寬限期內回來時，學生要收到 relay:teacher-online，好重送 student:hello。"""
+    author, created = relay.new_session()
+    other_author, other_created = relay.new_session()
+    session_id = created["id"]
+    teacher = relay.teacher(author, session_id)
+    early = relay.student(token_of(created))
+    stranger = relay.student(token_of(other_created))
+    teacher.disconnect(namespace=NS)
+
+    # 老師不在時才連上的學生：它的 presence 與 hello 送進了空的老師房間。
+    late = relay.student(token_of(created))
+    hello(late, device_id="dev-late")
+    for client in (early, late, stranger):
+        take(client)
+
+    back = relay.teacher(author, session_id)
+    assert back.is_connected(NS)
+    assert take(early, "relay:teacher-online") == [{}]
+    assert take(late, "relay:teacher-online") == [{}]
+    assert take(stranger) == []
+    assert take(back, "relay:teacher-online") == []
+
+    # 學生收到通知後重送 hello，老師就認得它了。
+    hello(late, device_id="dev-late", nickname="晚到")
+    assert take(back, "relay:student-hello") == [
+        {"sid": relay.sid_of(late), "data": {"device_id": "dev-late", "nickname": "晚到"}}
+    ]
+
+
+def test_teacher_connect_receives_roster_with_pinned_device_ids_only(relay):
+    author, created = relay.new_session()
+    other_author, other_created = relay.new_session()
+    session_id = created["id"]
+    pinned = relay.student(token_of(created))
+    silent = relay.student(token_of(created))
+    stranger = relay.student(token_of(other_created))
+    hello(pinned, device_id="dev-pinned", nickname="不該出現的暱稱")
+    hello(stranger, device_id="dev-stranger")
+    # 被丟棄的事件不得改變名單上的 device_id。
+    hello(pinned, device_id="dev-spoofed")
+    relay.teacher(other_author, other_created["id"])
+
+    teacher = relay.teacher(author, session_id)
+    rosters = take(teacher, "relay:roster")
+    assert len(rosters) == 1
+    assert set(rosters[0]) == {"students"}
+    by_sid = lambda item: item["sid"]  # noqa: E731
+    assert sorted(rosters[0]["students"], key=by_sid) == sorted(
+        [
+            {"sid": relay.sid_of(pinned), "device_id": "dev-pinned"},
+            {"sid": relay.sid_of(silent), "device_id": None},
+        ],
+        key=by_sid,
+    )
+    assert "不該出現的暱稱" not in json.dumps(rosters, ensure_ascii=False)
+
+    # 學生斷線後，下一個老師連線拿到的名單就不再有它。
+    silent.disconnect(namespace=NS)
+    second_tab = relay.teacher(author, session_id)
+    assert take(second_tab, "relay:roster") == [
+        {"students": [{"sid": relay.sid_of(pinned), "device_id": "dev-pinned"}]}
+    ]
+
+
+def test_roster_never_goes_to_students(relay):
+    author, created = relay.new_session()
+    students = [relay.student(token_of(created)) for _ in range(2)]
+    hello(students[0], device_id="dev-0")
+    for client in students:
+        take(client)
+
+    teacher = relay.teacher(author, created["id"])
+    assert len(take(teacher, "relay:roster")) == 1
+    take(teacher)  # 舊路徑的 quiz:teacher-state（Task 7 刪除）
+    for client in students:
+        received = take(client)
+        assert [name for name, _ in received] == ["relay:teacher-online"]
+        assert "dev-0" not in json.dumps(received)
+
+    # 學生自己送 relay:roster／relay:teacher-online 也不會被轉給任何人。
+    students[0].emit("relay:roster", {"students": []}, namespace=NS)
+    students[0].emit("relay:teacher-online", {}, namespace=NS)
+    assert take(students[1]) == []
+    assert take(teacher) == []
+
+
 def test_teacher_second_tab_disconnect_does_not_end_session(relay, monkeypatch):
     """F6：寬限期只在老師房間已空時才結束課堂。"""
     monkeypatch.setattr(live_quiz, "TEACHER_GRACE_SECONDS", 0)

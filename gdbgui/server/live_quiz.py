@@ -1917,6 +1917,18 @@ def _connect_teacher(auth):
     }
     # 老師在寬限期內回來：撤銷計時器的世代號，舊計時器醒來就會放棄。
     _GRACE_TIMERS.pop(nonce, None)
+    # 老師不在時連上或送 hello 的學生，事件都進了空的老師房間。通知該場學生重送
+    # hello，並把伺服器端已知的事實（sid 與已釘住的 device_id）只交給這個老師連線。
+    _relay_emit("relay:teacher-online", {}, _student_room(nonce))
+    emit(
+        "relay:roster",
+        {
+            "students": [
+                {"sid": sid, "device_id": SIDS[sid]["device_id"]}
+                for sid in _role_sids(nonce, "student")
+            ]
+        },
+    )
     # 舊路徑的老師狀態推播（Task 7 刪除）。
     emit("quiz:teacher-state", state)
     question = state["active_question"] or _latest_question(state)
