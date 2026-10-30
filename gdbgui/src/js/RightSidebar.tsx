@@ -243,10 +243,10 @@ class RightSidebar extends React.Component<any, any> {
     return defs;
   }
 
-  /** 面板是否勾選；沒有勾選設定時全部視為勾選（舊行為）。 */
+  /** 面板是否勾選；沒有勾選設定時一律不勾（執行模式仍走舊行為，見 isHidden；老師第一次勾選才建立設定）。 */
   isChecked(key: string): boolean {
     const selection = this.state.sidebar_selection;
-    return selection ? !!selection[key] : true;
+    return selection ? !!selection[key] : false;
   }
 
   isOpen(def: PanelDef): boolean {

@@ -51,11 +51,11 @@ beforeEach(() => {
 });
 
 describe("RightSidebar：勾選設定", () => {
-  test("沒有勾選設定（舊教案）：編輯模式全部面板都勾著，執行模式收合的隱藏", () => {
+  test("沒有勾選設定（舊教案或新教案）：編輯模式全部面板都不勾，執行模式維持舊行為", () => {
     const edit = mount(true);
     KEYS.forEach(k => {
       const box = panel(edit, k).querySelector("input[type=checkbox]") as HTMLInputElement;
-      expect(box.checked).toBe(true);
+      expect(box.checked).toBe(false);
     });
   });
 
