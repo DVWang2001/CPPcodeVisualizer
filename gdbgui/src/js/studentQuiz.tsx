@@ -338,7 +338,9 @@ export default function StudentQuizApp({ data }: { data: InitialData }) {
   };
 
   const question = state.active_question;
-  const notice = noticeState && question && question.id === noticeState.questionId ? noticeState.text : null;
+  // 老師端其實已記錄這份答案（只是回執遺失）：個人狀態帶著答案，就不顯示「沒有送出」。
+  const counted = !!question && (question.kind === "table" ? question.answer !== null : state.selected_option_id !== null);
+  const notice = noticeState && question && question.id === noticeState.questionId && !counted ? noticeState.text : null;
 
   // 老師換題了：任何還沒確認送出的舊題目答案都作廢，不要讓確認列繼續掛著。
   React.useEffect(() => {

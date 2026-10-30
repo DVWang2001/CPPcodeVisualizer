@@ -1046,6 +1046,30 @@ test("結束課堂時 /end 回 404（伺服器已結束）：面板收尾成已�
   expect(root.querySelector('[data-testid="live-quiz-export"]')).not.toBeNull();
 });
 
+test("結束時統計上傳被拒、改用空 body 收場：不說統計已保留，並顯示未保存與匯出作答", async () => {
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended", aggregatesSaved: false });
+
+  clickButton("結束課堂");
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(root.textContent).toContain("本次課堂已結束");
+  expect(root.textContent).not.toContain("統計已保留");
+  expect(root.textContent).toContain("沒有保存");
+  expect(root.querySelector('[data-testid="live-quiz-export"]')).not.toBeNull();
+});
+
+test("結束時統計已保存但 hint_saved=false：仍說統計已保留，並註明變數提示未保存", async () => {
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), state: "ended", aggregatesSaved: true, hint_saved: false });
+
+  clickButton("結束課堂");
+  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+  expect(root.textContent).toContain("匿名題目統計已保留");
+  expect(root.textContent).toContain("變數提示未保存");
+});
+
 test("結束課堂時 /end 回 500：維持進行中並顯示錯誤，不會誤判為已結束", async () => {
   await mountPanel();
   const failure: any = new Error("boom");

@@ -319,6 +319,21 @@ test("收卷後送出的填表題：顯示已收卷，草稿保留", () => {
   expect(text()).not.toContain("答案未送達");
 });
 
+test("答案其實已被老師記錄、只是回執遺失：收卷後顯示個人結果，不顯示「沒有送出」", () => {
+  storeDevice();
+  mount();
+  fire("connect");
+  fire("quiz:student-state", choiceBroadcast());
+  submitChoice("b");
+  // 沒有 answer-received；先是全班收卷廣播，緊接著個人狀態帶著老師端記下的選擇。
+  fire("quiz:student-state", choiceBroadcast("closed"));
+  const closed = choiceBroadcast("closed");
+  fire("quiz:student-state", { ...closed, active_question: { ...closed.active_question, selected_option_id: "b" } });
+
+  expect(text()).not.toContain("沒有送出");
+  expect(text()).not.toContain("答案未送達");
+});
+
 test("答案確認前收到全班廣播（同一題仍開放）不會取消等待，也不洗掉選擇", () => {
   storeDevice();
   mount();

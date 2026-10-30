@@ -338,6 +338,7 @@ test("endLiveSession 以引擎的 endedSummary 為 body 呼叫 /end", async () =
   expect(body.questions.map((q: any) => q.question_key)).toEqual(["q1", "q2"]);
   expect(body.questions[0]).toMatchObject({ answer_count: 1, correct_count: 1, option_counts: { a: 0, b: 1 } });
   expect(ended.state).toBe("ended");
+  expect(ended.aggregatesSaved).toBe(true);
 });
 
 test.each([
@@ -357,6 +358,7 @@ test.each([
   expect(endCalls[1][1].body).toBeUndefined(); // 空 body = 不上傳
   expect(ended.state).toBe("ended");
   expect(ended.hint_saved).toBe(false); // hint_saved:false 不是錯誤
+  expect(ended.aggregatesSaved).toBe(false); // 空 body 重試成功 ≠ 統計已保存
 });
 
 test("endLiveSession 兩次都失敗時以重試那次的錯誤 reject", async () => {

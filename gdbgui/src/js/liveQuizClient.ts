@@ -316,13 +316,15 @@ export const endLiveSession = async (sessionId: number): Promise<LiveQuizSession
   const path = `/api/live-quiz/sessions/${sessionId}/end`;
   const summary = guard(sessionId, current => current.endedSummary());
   let result: LiveQuizSession;
+  let aggregatesSaved = true;
   try {
     result = await request("POST", path, summary);
   } catch (_) {
     result = await request("POST", path);
+    aggregatesSaved = false;
   }
   ended = true;
-  return result;
+  return { ...result, aggregatesSaved };
 };
 
 export function connectTeacherQuizSocket(sessionId: number, callbacks: Handlers): () => void {

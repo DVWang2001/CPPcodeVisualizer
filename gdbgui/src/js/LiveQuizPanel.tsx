@@ -338,6 +338,7 @@ export default function LiveQuizPanel({
   const [error, setError] = React.useState<string | null>(null);
   /** 課堂不是老師按結束、而是伺服器那邊已經結束時的說明（顯示在已結束畫面）。 */
   const [endedNotice, setEndedNotice] = React.useState<string | null>(null);
+  const [endedNote, setEndedNote] = React.useState<string | null>(null);
   const disconnectRef = React.useRef<(() => void) | null>(null);
   const endedRef = React.useRef(false);
   /** 正在把舊課堂換成新的：收課的收尾（載回最新教案）此時是有害的。 */
@@ -730,7 +731,14 @@ export default function LiveQuizPanel({
     if (!session) return;
     setBusy(true);
     endLiveSession(session.id)
-      .then(finishEnded)
+      .then(ended => {
+        if (ended.aggregatesSaved === false) {
+          setEndedNotice("匿名題目統計沒有保存（伺服器拒絕了上傳）。請按「匯出作答」把這堂的資料存到本機。");
+        } else if (ended.hint_saved === false) {
+          setEndedNote("變數提示未保存。");
+        }
+        return finishEnded(ended);
+      })
       .catch(reason => {
         // /end 兩次都 404 = 伺服器說這堂已經不在了
         if (reason && reason.status === 404) {
@@ -759,7 +767,7 @@ export default function LiveQuizPanel({
       <section style={{ padding: "14px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc" }}>
         <strong style={{ color: ink }}>本次課堂已結束</strong>
         <span style={{ color: muted, marginLeft: "10px" }}>
-          {endedNotice || "匿名題目統計已保留，學生資料已清除。"}
+          {endedNotice || `匿名題目統計已保留，學生資料已清除。${endedNote ? endedNote : ""}`}
         </span>
         <span style={{ float: "right", display: "flex", gap: "8px" }}>
           {endedNotice && (
