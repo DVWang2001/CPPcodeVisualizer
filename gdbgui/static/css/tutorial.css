@@ -850,7 +850,25 @@ body.tutorial.tut-caption-on #middle {
 }
 
 /* 教學頁左欄收合：寬度 0 時內容不外溢；左緣留一個「展開」小標籤。 */
-body.tut-doc-collapsed #folders_view { overflow: hidden !important; }
+body.tut-doc-collapsed #folders_view,
+body.tut-animating #folders_view { overflow: hidden !important; }
+
+/* 收合動畫（方案 A「滑順收合」，300 ms ease-in-out）：左欄與編輯器的寬度同步過渡，
+   文字先淡出、不跟著擠壓換行。只在 body.tut-animating（按鈕觸發的那 350 ms）內生效。 */
+body.tut-animating #folders_view,
+body.tut-animating #source_code_view {
+  transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+#folders_view #tutorial_doc { min-width: 240px; transition: opacity 150ms ease; }
+body.tut-doc-collapsed #folders_view #tutorial_doc { opacity: 0; }
+.tut-doc-expand { animation: tut-tab-in 200ms ease 250ms both; }
+@keyframes tut-tab-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  body.tut-animating #folders_view,
+  body.tut-animating #source_code_view,
+  #folders_view #tutorial_doc,
+  .tut-doc-expand { transition: none; animation: none; }
+}
 .tut-doc-expand {
   position: fixed; left: 0; top: 50%; z-index: 1000;
   width: 22px; height: 56px; padding: 0;

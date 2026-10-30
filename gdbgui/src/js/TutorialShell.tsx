@@ -86,6 +86,9 @@ export default function TutorialShell() {
       setDocCollapsed(true);
     }
     document.body.classList.toggle("tut-doc-collapsed", !isCollapsed(sizes));
+    // 只在這次收合／展開期間開啟寬度過渡；平常拖曳分隔線要即時跟手，不能有過渡。
+    document.body.classList.add("tut-animating");
+    window.setTimeout(() => document.body.classList.remove("tut-animating"), 350);
   };
 
   React.useEffect(() => {
