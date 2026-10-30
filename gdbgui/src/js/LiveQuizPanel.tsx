@@ -4,9 +4,8 @@ import {
   closeLiveQuestion,
   connectTeacherQuizSocket,
   createLiveSession,
+  downloadLiveSessionExport,
   endLiveSession,
-  getLiveSession,
-  liveQuizExportUrl,
   LiveQuizStats,
   triggerLiveQuestion,
   fetchQuestionResponses,
@@ -27,7 +26,6 @@ type Props = {
   onClose: () => void;
 };
 
-const STORAGE_KEY = "gdbgui_live_quiz_session_id";
 const ink = "#17233b";
 const muted = "#667085";
 const amber = "#e9a319";
@@ -293,34 +291,12 @@ export function TableTriggerConfirm({
   );
 }
 
-function storedSessionId(): number | null {
-  try {
-    const value = Number(sessionStorage.getItem(STORAGE_KEY));
-    return Number.isInteger(value) && value > 0 ? value : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function rememberSession(id: number | null) {
-  try {
-    if (id === null) sessionStorage.removeItem(STORAGE_KEY);
-    else sessionStorage.setItem(STORAGE_KEY, String(id));
-  } catch (_) {}
-}
-
 function latestQuestion(session: LiveQuizSession | null): any {
   if (!session) return null;
   if (session.active_question) return session.active_question;
   const opened = session.questions.filter(question => question.opened_at);
   return opened.length ? opened[opened.length - 1] : null;
 }
-
-const endedSession = (session: LiveQuizSession): LiveQuizSession => ({
-  ...session,
-  state: "ended",
-  active_question: null
-});
 
 export default function LiveQuizPanel({
   lessonId,
@@ -465,7 +441,6 @@ export default function LiveQuizPanel({
     restoreHiddenContainer();
     if (disconnectRef.current) disconnectRef.current();
     disconnectRef.current = null;
-    rememberSession(null);
     setConnected(false);
     setSession(ended);
     setStats(null);
@@ -473,20 +448,11 @@ export default function LiveQuizPanel({
   };
 
   const connect = (initial: LiveQuizSession): Promise<void> => {
-    rememberSession(initial.id);
     if (initial.state === "ended") return finishEnded(initial);
+    // 課堂剛由 createLiveSession 建立、引擎也剛用它初始化，不必再向伺服器核對一次。
     return prepareVersion(initial.lesson_version)
-      .then(() =>
-        getLiveSession(initial.id).catch(reason => {
-          if (reason.status === 404) {
-            return finishEnded(endedSession(initial)).then(() => null);
-          }
-          throw reason;
-        })
-      )
+      .then(() => initial)
       .then(current => {
-        if (current === null) return;
-        if (current.state === "ended") return finishEnded(current);
         endedRef.current = false;
         restorationRef.current = null;
         // 同步更新 ref，不等下一次 render：舊課堂的 ended 事件可能在這之間就到，
@@ -511,24 +477,20 @@ export default function LiveQuizPanel({
                   restoreHiddenContainer();
                   throw reason;
                 }
-                return getLiveSession(sessionId).then(latest => {
-                  if (
-                    !mountedRef.current || endedRef.current ||
-                    triggerGenerationRef.current !== requestGeneration
-                  ) {
-                    return lessonQuizRuntime.state().session || latest;
-                  }
-                  setSession(latest);
-                  lessonQuizRuntime.syncSession(latest);
-                  const question = latest.questions.find(value => value.id === questionId);
-                  const tableOpen = latest.questions.some(
-                    value => value.kind === "table" && value.state === "open"
-                  );
-                  if (question && question.state === "ready" && !tableOpen) {
-                    throw reason;
-                  }
-                  return latest;
-                }, () => { throw reason; });
+                // 引擎在本機同步計分，runtime 手上的 session 就是最新的（每次狀態改變
+                // client 都會推 onState 進來），不需要再向伺服器核對。
+                const latest = lessonQuizRuntime.state().session;
+                if (!latest) throw reason;
+                setSession(latest);
+                lessonQuizRuntime.syncSession(latest);
+                const question = latest.questions.find(value => value.id === questionId);
+                const tableOpen = latest.questions.some(
+                  value => value.kind === "table" && value.state === "open"
+                );
+                if (question && question.state === "ready" && !tableOpen) {
+                  throw reason;
+                }
+                return latest;
               }
             );
           },
@@ -570,52 +532,18 @@ export default function LiveQuizPanel({
           },
           onStats: setStats,
           onConnection: value => {
+            // 斷線只是暫時的（Socket.IO 會自動重連，中繼保留 30 秒寬限期），
+            // 不再向伺服器查場次是否已結束：課堂狀態以這個分頁為準。
             setConnected(value);
-            if (!value && !endedRef.current) {
-              getLiveSession(current.id)
-                .then(next => {
-                  if (next.state === "ended") finishEnded(next);
-                })
-                .catch(reason => {
-                  if (reason.status === 404) finishEnded(endedSession(current));
-                });
-            }
           }
         });
       });
   };
 
   React.useEffect(() => {
+    // 不還原先前的課堂（D4）：課堂只活在這個分頁的記憶體裡，重新整理 = 結束。
     mountedRef.current = true;
-    let cancelled = false;
-    const remembered = storedSessionId();
-    if (remembered !== null) {
-      setBusy(true);
-      getLiveSession(remembered)
-        .then(existing => {
-          if (cancelled) return;
-          if (existing.lesson_id !== lessonId) {
-            rememberSession(null);
-            return;
-          }
-          return connect(existing);
-        })
-        .catch(reason => {
-          if (!cancelled) {
-            if (reason.status === 404) rememberSession(null);
-            setError(
-              reason.status === 404
-                ? "先前的課堂已結束，可開始新的課堂。"
-                : reason.message || "無法恢復課堂。"
-            );
-          }
-        })
-        .then(() => {
-          if (!cancelled) setBusy(false);
-        });
-    }
     return () => {
-      cancelled = true;
       mountedRef.current = false;
       triggerGenerationRef.current += 1;
       if (disconnectRef.current) disconnectRef.current();
@@ -623,6 +551,19 @@ export default function LiveQuizPanel({
       restoreHiddenContainer();
     };
   }, [lessonId]);
+
+  // 課堂進行中，離開或重新整理 = 結束課堂（狀態只在這個分頁的記憶體裡）。
+  // 註冊瀏覽器原生的離開確認，避免誤按；課堂結束或面板卸載就移除。
+  const classRunning = !!session && session.state !== "ended";
+  React.useEffect(() => {
+    if (!classRunning) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [classRunning]);
 
   // 「重新執行」＝開一堂新的課堂。這是刻意選的行為：每按一次就換一個 session。
   //
@@ -644,8 +585,7 @@ export default function LiveQuizPanel({
       : Promise.resolve();
     return ended
       .then(() => {
-        rememberSession(null); // 不沿用舊 session，這裡要的就是一堂新的
-        return createLiveSession(lessonId);
+        return createLiveSession(lessonId); // 不沿用舊 session，這裡要的就是一堂新的
       })
       .then(connect)
       .then(() => {
@@ -820,14 +760,15 @@ export default function LiveQuizPanel({
   const actionButtons = (
     <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" }}>
       {/* 結束課堂會刪光逐筆作答，所以匯出擺在它旁邊——要按錯之前先看到。 */}
-      <a
+      <button
+        type="button"
         className="btn btn-default btn-sm"
         data-testid="live-quiz-export"
-        href={liveQuizExportUrl(session.id)}
+        onClick={downloadLiveSessionExport}
         title="下載逐筆作答。結束課堂後這些資料就會被清除。"
       >
         匯出作答
-      </a>
+      </button>
       <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={end}>結束課堂</button>
       <button
         type="button"
