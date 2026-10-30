@@ -26,6 +26,21 @@ const CLOSED_NOTICE = "已收卷，這份答案沒有送出（你填的內容已
 
 type Device = { device_id: string; nickname: string };
 
+// 規則必須和老師端引擎的 hello 一致（trim 後 1~50 個字元、不含 <32 或 127 的控制字元），
+// 否則老師端會靜默丟掉 hello，這個學生就永遠無法作答。
+export type NicknameProblem = "empty" | "too_long" | "control" | null;
+export function nicknameProblem(raw: string): NicknameProblem {
+  const name = raw.trim();
+  const length = Array.from(name).length;
+  if (length < 1) return "empty";
+  if (length > 50) return "too_long";
+  for (let i = 0; i < name.length; i++) {
+    const code = name.charCodeAt(i);
+    if (code < 32 || code === 127) return "control";
+  }
+  return null;
+}
+
 // crypto.randomUUID 只在安全環境（https / localhost）存在；教室用區網 http，手機上
 // 通常沒有，所以要有退路。
 export function newDeviceId(): string {
@@ -41,7 +56,7 @@ function loadDevice(): Device | null {
   try {
     const parsed = JSON.parse(localStorage.getItem(DEVICE_KEY) || "null");
     if (parsed && typeof parsed.device_id === "string" && parsed.device_id &&
-      typeof parsed.nickname === "string" && parsed.nickname) {
+      typeof parsed.nickname === "string" && nicknameProblem(parsed.nickname) === null) {
       return { device_id: parsed.device_id, nickname: parsed.nickname };
     }
   } catch {
@@ -259,7 +274,7 @@ export default function StudentQuizApp({ data }: { data: InitialData }) {
   const join = (event: React.FormEvent) => {
     event.preventDefault();
     const trimmed = nickname.trim();
-    if (!trimmed || Array.from(trimmed).length > 50) return;
+    if (nicknameProblem(trimmed) !== null) return;
     const device = {
       device_id: deviceRef.current ? deviceRef.current.device_id : newDeviceId(),
       nickname: trimmed
@@ -332,6 +347,7 @@ export default function StudentQuizApp({ data }: { data: InitialData }) {
   }, [question?.id]);
 
   const nicknameLength = Array.from(nickname.trim()).length;
+  const problem = nicknameProblem(nickname);
   // 分頁而不是並排：手機直向的可視高度放不下「題幹＋作答＋一個夠大的畫布」，
   // 硬擠會讓兩邊都不好用。
   const [tab, setTab] = React.useState<"answer" | "canvas">("answer");
@@ -377,10 +393,10 @@ export default function StudentQuizApp({ data }: { data: InitialData }) {
               onChange={event => setNickname(event.target.value)}
               aria-describedby="nickname-help"
             />
-            <div id="nickname-help" className={nicknameLength > 50 ? "field-help error" : "field-help"}>
-              {nicknameLength}/50 字；只會在本次課堂中顯示。
+            <div id="nickname-help" className={problem === "too_long" || problem === "control" ? "field-help error" : "field-help"}>
+              {nicknameLength}/50 字；只會在本次課堂中顯示。{problem === "control" && "暱稱不可含控制字元（如 Tab）。"}
             </div>
-            <button className="primary-action" disabled={submitting || nicknameLength < 1 || nicknameLength > 50}>
+            <button className="primary-action" disabled={submitting || problem !== null}>
               加入課堂
             </button>
           </form>

@@ -359,3 +359,40 @@ test("unanswered table result stays neutral instead of comparing null counts equ
   expect(tableResultClass({ correct_cells: 0, total_cells: 4, explanation: "" })).toBe("is-wrong");
   expect(tableResultClass({ correct_cells: 4, total_cells: 4, explanation: "" })).toBe("is-correct");
 });
+
+test("暱稱含控制字元（如 Tab）時不寫 localStorage、不連線，按鈕停用並說明原因", () => {
+  mount();
+  const setItem = jest.spyOn(Storage.prototype, "setItem");
+  try {
+    const input = root.querySelector("#quiz-nickname") as HTMLInputElement;
+    act(() => { Simulate.change(input, { target: { value: "小\t明" } } as any); });
+    expect((root.querySelector("button.primary-action") as HTMLButtonElement).disabled).toBe(true);
+    expect(text()).toContain("控制字元");
+    act(() => { Simulate.submit(root.querySelector("form")!); });
+
+    expect(setItem).not.toHaveBeenCalled();
+    expect(localStorage.getItem(DEVICE_KEY)).toBeNull();
+    expect((io as any).connect).not.toHaveBeenCalled();
+  } finally {
+    setItem.mockRestore();
+  }
+});
+
+test("DEL(127) 與超過 50 個字元的暱稱同樣被擋下", () => {
+  mount();
+  const input = root.querySelector("#quiz-nickname") as HTMLInputElement;
+  for (const bad of ["a\u007fb", "x".repeat(51)]) {
+    act(() => { Simulate.change(input, { target: { value: bad } } as any); });
+    act(() => { Simulate.submit(root.querySelector("form")!); });
+  }
+  expect((io as any).connect).not.toHaveBeenCalled();
+  expect(localStorage.getItem(DEVICE_KEY)).toBeNull();
+});
+
+test("localStorage 裡的暱稱不合規則（舊版寫入或手改）時視為沒有，重新顯示暱稱表單", () => {
+  storeDevice("小\t明", "dev-1");
+  mount();
+
+  expect(root.querySelector("#quiz-nickname")).not.toBeNull();
+  expect((io as any).connect).not.toHaveBeenCalled();
+});
