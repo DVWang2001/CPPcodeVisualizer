@@ -2,6 +2,7 @@
  * An object to manage the websocket connection to the python server that manages gdb,
  * to send various commands to gdb, to and to dispatch gdb responses to gdbgui.
  */
+import { ensurePanelChecked } from "./sidebarSelection";
 import { store } from "statorgfc";
 // @ts-ignore
 import * as _ from "lodash";
@@ -666,6 +667,7 @@ const GdbApi = {
             store.set("compile_stderr", stderr);
             if (errors.length > 0) {
               const registry = (window as any).gdbgui_collapser_registry || {};
+              ensurePanelChecked("compile_errors"); // 沒勾選時先勾上，否則開了也看不到
               if (registry["compile_errors"]) registry["compile_errors"].open();
             }
             // Return to edit mode so the user sees their code (with error markers), not "no source code"

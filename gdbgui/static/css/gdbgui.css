@@ -153,12 +153,29 @@ td {
   overflow-y: auto;
 }
 .live-quiz-slot-flex {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 40px;
   overflow-y: auto;
 }
+/* 面板欄吃掉剩下的高度；展開面板的高度由 RightSidebar 依 sidebarLayout 算好寫進去，
+   量不到欄高時退回自然排版並由這裡捲動。 */
 .sidebar-collapsers {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* 舊行為（沒有勾選設定）：維持改版前的排版——即時課堂吃滿剩餘空間，面板自然高度，整欄捲動。 */
+.right-sidebar-content.sidebar-legacy .live-quiz-slot-flex {
+  flex: 1 1 auto;
+}
+.right-sidebar-content.sidebar-legacy .sidebar-collapsers {
   flex: 0 0 auto;
+  overflow: visible;
+}
+.sidebar-hint {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #5a6472;
 }
 .pointer {
   cursor: pointer;

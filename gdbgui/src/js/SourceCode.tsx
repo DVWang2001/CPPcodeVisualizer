@@ -456,6 +456,7 @@ class SourceCode extends React.Component<{}, State> {
         source_code,
         breakpoints: store.get("breakpoints") || [],
         program_input: store.get("program_input") || "",
+        sidebar_panels: store.get("sidebar_selection"),
         // 下次沒有 ?lesson= 開啟時，AutosavePromptDialog 要秀給使用者看，
         // 讓「要不要繼續用這份草稿」是看得到時間點的選擇，不是憑空猜。
         savedAt: Date.now(),
@@ -474,6 +475,7 @@ class SourceCode extends React.Component<{}, State> {
     (global_variable as any).__pending_source_code = v2.source_code;
     if (v2.breakpoints) store.set("breakpoints", v2.breakpoints);
     if (v2.program_input) store.set("program_input", v2.program_input);
+    store.set("sidebar_selection", v2.sidebar_panels);
     this.forceUpdate();
   };
 
@@ -1325,6 +1327,8 @@ class SourceCode extends React.Component<{}, State> {
       source_code: source_code,
       breakpoints: breakpoints,
       program_input: programInput,
+      // 右側欄勾選了哪些面板；undefined（沒設定過）時 JSON 會省略，載入時回到舊行為。
+      sidebar_panels: store.get("sidebar_selection"),
     };
     if (this.lessonQuizDraft) bundle.quiz = cloneQuiz(this.lessonQuizDraft);
     return bundle;
@@ -1524,6 +1528,8 @@ class SourceCode extends React.Component<{}, State> {
           localStorage.setItem("gdbgui_program_input", programInput);
           store.set("program_input", programInput);
         }
+        // 沒有 sidebar_panels 的舊教案設成 undefined，等於回到全部面板可見的舊行為。
+        store.set("sidebar_selection", projectData.sidebar_panels);
 
         // import 後的 fullname_to_render（可能是合成名稱或舊路徑）
         const currentFullname = this.state.fullname_to_render || "imported_code.cpp";

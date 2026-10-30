@@ -3,6 +3,7 @@ import { serializeAnnotation } from "./sourceAnnotations";
 export type V2Bundle = {
   version: string; fullname_to_render: string; source_code: string;
   breakpoints: any[]; program_input: string;
+  sidebar_panels?: Record<string, boolean>;
 };
 
 function emptyV2(): V2Bundle {
@@ -21,6 +22,8 @@ export function normalizeBundle(raw: any): V2Bundle {
     source_code: typeof raw.source_code === "string" ? raw.source_code : "",
     breakpoints: Array.isArray(raw.breakpoints) ? raw.breakpoints : [],
     program_input: raw.program_input || "",
+    // 右側欄勾選（沒有就是 undefined，回到舊行為）；少了這行，自動存檔還原會把勾選弄丟。
+    ...(raw.sidebar_panels && typeof raw.sidebar_panels === "object" ? { sidebar_panels: raw.sidebar_panels } : {}),
   };
   const ld = raw.line_data;
   if (!ld || typeof ld !== "object" || Object.keys(ld).length === 0) {

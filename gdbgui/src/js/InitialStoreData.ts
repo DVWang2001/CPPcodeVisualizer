@@ -52,6 +52,7 @@ const initial_store_data = {
   monaco_line_height: 21, // Monaco 實際算出的 line height（px），mount 後由 SourceCode.tsx 回寫
   monaco_content_height: 400, // Monaco 編輯器可視高度（px），mount 後由 SourceCode.tsx 回寫
   edit_mode: true, // 編輯模式：顯示 Guide/TTS 輸入欄；按下 Run 自動切為 false
+  sidebar_selection: undefined, // 右側欄勾選的面板 {key: boolean}；undefined = 舊行為（全部可見），見 sidebarSelection.ts
 
   pretty_print: true, // whether gdb should "pretty print" variables. There is an option for this in Settings
   refresh_state_after_sending_console_command: true, // If true, send commands to refresh GUI store after each command is sent from console
