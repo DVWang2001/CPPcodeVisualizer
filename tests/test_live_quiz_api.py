@@ -47,6 +47,23 @@ def test_teacher_routes_require_owner_and_csrf(api_context):
     assert live_quiz._invitation_row(session_id)["state"] == "lobby"
 
 
+def test_cross_origin_teacher_posts_are_rejected_even_with_a_valid_token(api_context):
+    """取代已刪除的訪客 POST 跨來源測試：全域同源檢查對留下來的課堂寫入路由照樣生效。"""
+    _, author, _, lesson_id = api_context
+    evil = {"x-csrftoken": author.csrf, "Origin": "http://evil.example"}
+    with closing(db.connect()) as conn:
+        before = conn.execute("SELECT COUNT(*) FROM live_quiz_sessions").fetchone()[0]
+    crossed = author.http.post("/api/live-quiz/sessions", json={"lesson_id": lesson_id}, headers=evil)
+    assert crossed.status_code == 403
+    with closing(db.connect()) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM live_quiz_sessions").fetchone()[0] == before
+
+    session_id = _create(author, lesson_id).get_json()["id"]
+    end_path = f"/api/live-quiz/sessions/{session_id}/end"
+    assert author.http.post(end_path, headers=evil).status_code == 403
+    assert live_quiz._invitation_row(session_id)["state"] == "lobby"
+
+
 def test_public_and_csrf_exempt_endpoint_lists_are_exact():
     assert PUBLIC_ENDPOINTS == frozenset(
         {
