@@ -25,6 +25,7 @@ import RightSidebar from "../RightSidebar";
 import initialStoreData from "../InitialStoreData";
 import { normalizeBundle } from "../bundleAdapter";
 import { forcePanelChecked, clearForcedPanels } from "../sidebarSelection";
+import { global_variable } from "../global_variable";
 
 const KEYS = ["compile_errors", "memory_watch", "callgraph", "visualizer", "container", "uml_visualizer", "locals", "watch_table", "breakpoints"];
 
@@ -172,6 +173,33 @@ describe("RightSidebar：layout 點名的面板在執行期間強制勾選", () 
     act(() => { forcePanelChecked("callgraph"); });
     expect(isVisible(play, "callgraph")).toBe(true);
     act(() => { clearForcedPanels(); });
+    expect(isVisible(play, "callgraph")).toBe(false);
+  });
+});
+
+describe("RightSidebar：教學頁預告 layout 會開的面板", () => {
+  afterEach(() => { delete (global_variable as any).__layout; });
+
+  test("教學頁：layout 點名的面板以收合標題列顯示（含別名），沒點名的仍隱藏", () => {
+    (window as any).initial_data = { tutorial: true };
+    (global_variable as any).__layout = { "4": "open:callgraph", "8": "open:memory" };
+    const play = mount(false);
+    expect(isVisible(play, "callgraph")).toBe(true);
+    expect(isVisible(play, "memory_watch")).toBe(true);
+    expect((panel(play, "callgraph").children[1] as HTMLElement).classList.contains("hidden")).toBe(true);
+    expect(isVisible(play, "locals")).toBe(false);
+  });
+
+  test("教學頁沒有 layout 點名：維持原本隱藏", () => {
+    (window as any).initial_data = { tutorial: true };
+    const play = mount(false);
+    expect(isVisible(play, "callgraph")).toBe(false);
+  });
+
+  test("非教學頁不受影響", () => {
+    (global_variable as any).__layout = { "4": "open:callgraph" };
+    store.set("sidebar_selection", { visualizer: true });
+    const play = mount(false);
     expect(isVisible(play, "callgraph")).toBe(false);
   });
 });

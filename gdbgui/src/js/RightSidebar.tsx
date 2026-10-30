@@ -23,6 +23,8 @@ import WatchTable from "./WatchTable";
 import MemoryWatch from "./MemoryWatch";
 import CompileErrors from "./CompileErrors";
 import { layoutSidebar, dragDivider } from "./sidebarLayout";
+import { layoutOpenedPanels } from "./sidebarSelection";
+import { global_variable } from "./global_variable";
 import type { SidebarPanel, SidebarSizing } from "./sidebarLayout";
 
 // Global registry so applyLayout() can open/close collapsers by id
@@ -259,7 +261,8 @@ class RightSidebar extends React.Component<any, any> {
   /** 教學頁收合的面板一律隱藏；執行模式下，沒勾的面板隱藏（舊行為：收合的隱藏）。 */
   isHidden(def: PanelDef, play_mode: boolean): boolean {
     const tutorial = !!(window as any).initial_data?.tutorial;
-    if (tutorial && !this.isOpen(def)) return true;
+    // 教學頁：收合的面板隱藏，但教案 layout 會開的面板先以收合的標題列露臉，右欄不會一片空白。
+    if (tutorial && !this.isOpen(def)) return !layoutOpenedPanels((global_variable as any).__layout).includes(def.key);
     if (!play_mode) return false;
     if (this.state.sidebar_selection) return !this.isChecked(def.key, true);
     return !this.isOpen(def);

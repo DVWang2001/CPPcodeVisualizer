@@ -23,3 +23,22 @@ export function forcePanelChecked(key: string) {
 export function clearForcedPanels() {
   if (store.get("sidebar_forced")) store.set("sidebar_forced", undefined);
 }
+
+const PANEL_ALIASES: Record<string, string> = { memory: "memory_watch", pointer: "memory_watch" };
+
+/** 教案的 //@ @layout 裡所有 open: 點名過的面板 key（依出現順序、去重；別名換成真正的 key）。 */
+export function layoutOpenedPanels(layoutMap: Record<string, string> | undefined): string[] {
+  const found: string[] = [];
+  Object.keys(layoutMap || {})
+    .sort((a, b) => Number(a) - Number(b))
+    .forEach(line => {
+      (layoutMap![line] || "").trim().split(/\s+/).forEach(token => {
+        if (!token.startsWith("open:")) return;
+        token.slice(5).split(",").forEach(raw => {
+          const id = PANEL_ALIASES[raw.trim()] || raw.trim();
+          if (id && !found.includes(id)) found.push(id);
+        });
+      });
+    });
+  return found;
+}
