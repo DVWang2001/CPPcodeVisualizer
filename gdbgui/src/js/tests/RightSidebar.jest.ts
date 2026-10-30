@@ -24,6 +24,7 @@ jest.mock("../InferiorProgramInfo", () => ({ __esModule: true, default: () => nu
 import RightSidebar from "../RightSidebar";
 import initialStoreData from "../InitialStoreData";
 import { normalizeBundle } from "../bundleAdapter";
+import { forcePanelChecked, clearForcedPanels } from "../sidebarSelection";
 
 const KEYS = ["compile_errors", "memory_watch", "callgraph", "visualizer", "container", "uml_visualizer", "locals", "watch_table", "breakpoints"];
 
@@ -138,6 +139,40 @@ describe("RightSidebar：編輯模式只能勾選、執行時勾選的面板預�
     const play = mount(false);
     expect(isVisible(play, "visualizer")).toBe(false);
     expect(isVisible(play, "container")).toBe(false);
+  });
+});
+
+describe("RightSidebar：layout 點名的面板在執行期間強制勾選", () => {
+  const bodyHidden = (root: HTMLElement, key: string) => (panel(root, key).children[1] as HTMLElement).classList.contains("hidden");
+
+  beforeEach(() => { store.set("sidebar_forced", undefined); });
+
+  test("執行模式：沒勾但被 layout 點名的面板顯示並展開；沒被點名的仍隱藏", () => {
+    store.set("sidebar_selection", { visualizer: true });
+    const play = mount(false);
+    expect(isVisible(play, "callgraph")).toBe(false);
+    act(() => { forcePanelChecked("callgraph"); });
+    expect(isVisible(play, "callgraph")).toBe(true);
+    expect(bodyHidden(play, "callgraph")).toBe(false);
+    expect(isVisible(play, "locals")).toBe(false);
+  });
+
+  test("強制勾選不會改到老師的勾選（編輯模式 checkbox 與 sidebar_selection 不變）", () => {
+    store.set("sidebar_selection", { visualizer: true });
+    act(() => { forcePanelChecked("callgraph"); });
+    expect(store.get("sidebar_selection")).toEqual({ visualizer: true });
+    const edit = mount(true);
+    const box = panel(edit, "callgraph").querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(box.checked).toBe(false);
+  });
+
+  test("重新執行（clearForcedPanels）後恢復成只顯示老師勾選的面板", () => {
+    store.set("sidebar_selection", { visualizer: true });
+    const play = mount(false);
+    act(() => { forcePanelChecked("callgraph"); });
+    expect(isVisible(play, "callgraph")).toBe(true);
+    act(() => { clearForcedPanels(); });
+    expect(isVisible(play, "callgraph")).toBe(false);
   });
 });
 

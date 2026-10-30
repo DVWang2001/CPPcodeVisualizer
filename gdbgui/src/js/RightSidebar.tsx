@@ -201,7 +201,7 @@ class RightSidebar extends React.Component<any, any> {
   constructor(props: any) {
     super(props);
     this.state = { total_px: 0, weights: {}, open_map: {}, fixed_px: {} };
-    (store as any).connectComponentState(this, ["edit_mode", "sidebar_selection", "monaco_line_height"]);
+    (store as any).connectComponentState(this, ["edit_mode", "sidebar_selection", "sidebar_forced", "monaco_line_height"]);
     this.measure = this.measure.bind(this);
   }
 
@@ -244,8 +244,10 @@ class RightSidebar extends React.Component<any, any> {
   }
 
   /** 面板是否勾選；沒有勾選設定時一律不勾（執行模式仍走舊行為，見 isHidden；老師第一次勾選才建立設定）。 */
-  isChecked(key: string): boolean {
+  isChecked(key: string, play = false): boolean {
     const selection = this.state.sidebar_selection;
+    // 執行模式：教案 layout 點名開過的面板強制算勾選（編輯模式的 checkbox 只反映老師的勾選）。
+    if (play && this.state.sidebar_forced?.[key]) return true;
     return selection ? !!selection[key] : false;
   }
 
@@ -259,7 +261,7 @@ class RightSidebar extends React.Component<any, any> {
     const tutorial = !!(window as any).initial_data?.tutorial;
     if (tutorial && !this.isOpen(def)) return true;
     if (!play_mode) return false;
-    if (this.state.sidebar_selection) return !this.isChecked(def.key);
+    if (this.state.sidebar_selection) return !this.isChecked(def.key, true);
     return !this.isOpen(def);
   }
 
@@ -361,7 +363,7 @@ class RightSidebar extends React.Component<any, any> {
                 hidden={this.isHidden(d, play_mode)}
                 forced_collapsed={dropped}
                 edit_locked={!play_mode}
-                open_on_play={!legacy && this.isChecked(d.key) && !(window as any).initial_data?.tutorial}
+                open_on_play={!legacy && this.isChecked(d.key, true) && !(window as any).initial_data?.tutorial}
                 height_px={height_px}
                 content={d.content}
                 selection={play_mode ? undefined : { checked: this.isChecked(d.key), onChange: (v: boolean) => this.setChecked(d.key, v, defs) }}

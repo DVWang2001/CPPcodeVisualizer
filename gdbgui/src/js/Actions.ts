@@ -16,6 +16,7 @@ import { classifyStop } from "./silentPass";
 import { isSilentPassActive, takeStopBkptno, finishSilentPass, forgetSilentPassNumbers } from "./silentPassRunner";
 import { recordSilentStop, endSilentPassAndCleanup, endSilentPassOnManualResume } from "./silentPassWire";
 import localEngine from "./localEngine";
+import { clearForcedPanels } from "./sidebarSelection";
 void React; // using jsx implicity uses React
 
 // ── for 迴圈三段式單步：每個真正的 GDB 停駐點重算一次 ──────────
@@ -93,6 +94,7 @@ const Actions = {
     // 保留字幕，讓使用者看到目前播放到哪句話
   },
   inferior_program_starting: function () {
+    clearForcedPanels();
     lessonQuizRuntime.clearGate();
     Actions.stop_tts();
     // 這次真正拿去跑的測資是什麼——「確認出題」要拿它跟目前的 program_input

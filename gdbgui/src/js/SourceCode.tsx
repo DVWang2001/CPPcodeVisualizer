@@ -36,6 +36,7 @@ import ToolbarHost from "./ToolbarHost";
 import LiveQuizPanel from "./LiveQuizPanel";
 import { resolveContainerAutoOpenSuppression } from "./containerAutoOpenGate";
 import { cloneQuiz, QuizSpec, validateQuiz } from "./quizSchema";
+import { forcePanelChecked } from "./sidebarSelection";
 import {
   hasSnapshotChanges,
   LessonBundle,
@@ -1187,6 +1188,7 @@ class SourceCode extends React.Component<{}, State> {
         val.split(",").forEach((raw: string) => {
           const id = resolveId(raw.trim());
           console.log("[applyLayout] opening:", raw, "→", id, "exists:", !!registry[id]);
+          forcePanelChecked(id); // 沒勾也要看得到：這一行的 layout 點名要開它
           if (registry[id]) registry[id].open();
         });
       } else if (key === "close") {
