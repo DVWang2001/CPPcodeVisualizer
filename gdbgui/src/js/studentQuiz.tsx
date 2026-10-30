@@ -18,57 +18,44 @@ import "../css/studentQuiz.css";
 
 type InitialData = { token: string; session_title: string };
 
-async function guestRequest(method: string, path: string, body?: any): Promise<any> {
-  const response = await fetch(path, {
-    method,
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body)
+// 老師端離線時沒有任何回覆，所以不能無限等：超過這個時間就當作答案沒送達。
+export const ANSWER_ACK_TIMEOUT_MS = 5000;
+const DEVICE_KEY = "gdbgui_quiz_device";
+const REFUSED_MESSAGE = "課堂不存在或已結束（或加入人數已滿），請向老師索取新的加入連結。";
+const CLOSED_NOTICE = "已收卷，這份答案沒有送出（你填的內容已保留）。";
+
+type Device = { device_id: string; nickname: string };
+
+// crypto.randomUUID 只在安全環境（https / localhost）存在；教室用區網 http，手機上
+// 通常沒有，所以要有退路。
+export function newDeviceId(): string {
+  const cryptoObject: any = (window as any).crypto;
+  if (cryptoObject && typeof cryptoObject.randomUUID === "function") return cryptoObject.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, char => {
+    const digit = Math.floor(Math.random() * 16);
+    return (char === "x" ? digit : (digit & 0x3) | 0x8).toString(16);
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = response.status === 404
-      ? "本次課堂不存在、已結束或連結已失效。"
-      : response.status === 409
-        ? "目前無法作答，正在重新整理課堂狀態。"
-        : payload.error || payload.message || "課堂連線失敗，請稍後重試。";
-    const error = new Error(message) as Error & { status: number };
-    error.status = response.status;
-    throw error;
-  }
-  return payload;
 }
 
-const joinSession = (token: string, nickname: string) =>
-  guestRequest("POST", "/api/live-quiz/guest/join", { token, nickname });
-const getGuestState = () => guestRequest("GET", "/api/live-quiz/guest/state");
-const submitChoiceAnswer = (questionId: string, optionId: string) =>
-  guestRequest("POST", "/api/live-quiz/guest/answers", {
-    question_id: questionId,
-    option_id: optionId
-  });
-
-export async function submitTableAnswer(
-  questionId: string,
-  answer: string[][],
-  applySnapshot: (snapshot: any) => void,
-  refresh?: () => Promise<any>
-): Promise<void> {
-  let snapshot: any;
+function loadDevice(): Device | null {
   try {
-    snapshot = await guestRequest("POST", "/api/live-quiz/guest/answers", {
-      question_id: questionId,
-      answer
-    });
-  } catch (reason) {
-    if ((reason as any).status === 409 && refresh) {
-      await refresh();
-      return;
+    const parsed = JSON.parse(localStorage.getItem(DEVICE_KEY) || "null");
+    if (parsed && typeof parsed.device_id === "string" && parsed.device_id &&
+      typeof parsed.nickname === "string" && parsed.nickname) {
+      return { device_id: parsed.device_id, nickname: parsed.nickname };
     }
-    throw reason;
+  } catch {
+    // 讀不到就當作第一次加入。
   }
-  applySnapshot(snapshot);
-  clearDraft(questionId);
+  return null;
+}
+
+function saveDevice(device: Device): void {
+  try {
+    localStorage.setItem(DEVICE_KEY, JSON.stringify(device));
+  } catch {
+    // 存不起來只代表重新整理後要再輸入一次暱稱。
+  }
 }
 
 export function tableResultClass(result: StudentQuizTableResult): "" | "is-correct" | "is-wrong" {
@@ -76,14 +63,19 @@ export function tableResultClass(result: StudentQuizTableResult): "" | "is-corre
   return result.correct_cells === result.total_cells ? "is-correct" : "is-wrong";
 }
 
-function statusText(state: StudentQuizState, submitting: boolean, confirming: boolean): string {
+type Delivery = { phase: "sending" | "failed" };
+
+function statusText(
+  state: StudentQuizState,
+  delivery: Delivery | null,
+  notice: string | null,
+  confirming: boolean
+): string {
   if (confirming) return "請確認要送出的答案。";
-  if (submitting) return "正在送出答案…";
-  if (state.reconnecting) {
-    return state.status === "open"
-      ? "即時連線中斷，仍可透過網頁送出答案。"
-      : "連線中斷，正在重新連線…";
-  }
+  if (delivery && delivery.phase === "sending") return "正在送出答案…";
+  if (delivery && delivery.phase === "failed") return "老師連線中斷，答案未送達。";
+  if (notice) return notice;
+  if (state.reconnecting) return "連線中斷，正在重新連線…";
   switch (state.status) {
     case "joining": return "輸入暱稱後加入課堂。";
     case "waiting": return "已加入，請等待老師播放到題目。";
@@ -101,56 +93,155 @@ type PendingSubmit =
   | { kind: "choice"; optionId: string }
   | { kind: "table"; values: string[][] };
 
-function StudentQuizApp({ data }: { data: InitialData }) {
-  const [state, setState] = React.useState<StudentQuizState>(() =>
-    initialStudentState(data.session_title)
-  );
-  const [nickname, setNickname] = React.useState("");
+// 還在等老師確認的那一份答案。nonce 讓「老師的回覆」能對回「這一次送出」。
+type InFlight = {
+  nonce: string;
+  questionKey: string;
+  answer: string | string[][];
+  phase: "sending" | "failed";
+};
+
+// 確認後要套用到畫面的本機資料（選了哪個選項／填了哪張表）。
+type LocalAnswer = { optionId?: string; table?: string[][] };
+
+export default function StudentQuizApp({ data }: { data: InitialData }) {
+  const deviceRef = React.useRef<Device | null>(null);
+  if (deviceRef.current === null) deviceRef.current = loadDevice();
+  const [state, setState] = React.useState<StudentQuizState>(() => {
+    const initial = initialStudentState(data.session_title);
+    // 已經加入過（重新整理）：沿用暱稱，直接進入等待，不再詢問。
+    return deviceRef.current
+      ? { ...initial, status: "waiting", nickname: deviceRef.current.nickname }
+      : initial;
+  });
+  const [nickname, setNickname] = React.useState(deviceRef.current ? deviceRef.current.nickname : "");
   const [selected, setSelected] = React.useState<string | null>(null);
-  const [submitting, setSubmitting] = React.useState(false);
+  const [delivery, setDelivery] = React.useState<Delivery | null>(null);
+  // 只對那一題有效：換題後就不再顯示。
+  const [noticeState, setNoticeState] = React.useState<{ text: string; questionId: string } | null>(null);
   const [pending, setPending] = React.useState<PendingSubmit | null>(null);
   const socketRef = React.useRef<any>(null);
+  const inFlightRef = React.useRef<InFlight | null>(null);
+  const localRef = React.useRef<LocalAnswer>({});
+  const timerRef = React.useRef<any>(null);
+  const submitting = delivery !== null && delivery.phase === "sending";
 
-  const applySnapshot = (snapshot: any) => {
-    setState(previous => reduceStudentState(previous, snapshot));
-    const selectedOption = snapshot && snapshot.active_question?.selected_option_id;
-    setSelected(typeof selectedOption === "string" ? selectedOption : null);
+  const clearInFlight = () => {
+    clearTimeout(timerRef.current);
+    inFlightRef.current = null;
+    setDelivery(null);
   };
 
-  const refresh = () =>
-    getGuestState()
-      .then(applySnapshot)
-      .catch(reason => setState(previous => markStudentError(previous, reason.message)));
+  const sendHello = () => {
+    const device = deviceRef.current;
+    if (socketRef.current && device) {
+      socketRef.current.emit("student:hello", { device_id: device.device_id, nickname: device.nickname });
+    }
+  };
+
+  const transmit = (flight: InFlight, local: LocalAnswer) => {
+    const device = deviceRef.current;
+    if (!socketRef.current || !device) return;
+    clearTimeout(timerRef.current);
+    inFlightRef.current = flight;
+    localRef.current = local;
+    setDelivery({ phase: flight.phase });
+    setNoticeState(null);
+    timerRef.current = setTimeout(() => {
+      if (inFlightRef.current && inFlightRef.current.nonce === flight.nonce) {
+        inFlightRef.current = { ...flight, phase: "failed" };
+        setDelivery({ phase: "failed" });
+      }
+    }, ANSWER_ACK_TIMEOUT_MS);
+    socketRef.current.emit("student:answer", {
+      device_id: device.device_id,
+      question_key: flight.questionKey,
+      answer: flight.answer,
+      nonce: flight.nonce
+    });
+  };
+
+  const applySnapshot = (snapshot: any) => {
+    const flight = inFlightRef.current;
+    const incoming = snapshot && snapshot.active_question;
+    if (flight && snapshot && snapshot.state !== "ended") {
+      // 老師端拒絕答案時不會回 answer-received，只會刷新狀態：題目收卷或換掉了，
+      // 這一份就不會再被接受，別讓畫面卡在「送出中」。草稿不動。
+      if (!incoming || incoming.id !== flight.questionKey) {
+        clearInFlight();
+      } else if (incoming.state === "closed") {
+        clearInFlight();
+        setNoticeState({ text: CLOSED_NOTICE, questionId: flight.questionKey });
+      }
+    }
+    setState(previous => reduceStudentState(previous, snapshot));
+    if (snapshot && (snapshot.state === "ended" || snapshot.status === "ended")) {
+      clearInFlight();
+      setPending(null);
+      if (socketRef.current) socketRef.current.disconnect();
+    }
+  };
+
+  const onAnswerReceived = (message: any) => {
+    const flight = inFlightRef.current;
+    if (!flight || !message || message.nonce !== flight.nonce) return;
+    const local = localRef.current;
+    clearInFlight();
+    setNoticeState(null);
+    setSelected(null);
+    setState(previous => markSubmitted(previous, local.optionId, local.table));
+    if (local.table) clearDraft(flight.questionKey);
+  };
 
   const connectSocket = () => {
     if (socketRef.current) return;
-    const socket: any = (io as any).connect("/lesson_quiz", { auth: { role: "student" } });
+    const socket: any = (io as any).connect("/lesson_quiz", {
+      auth: { role: "student", token: data.token }
+    });
     socketRef.current = socket;
-    socket.on("connect", refresh);
-    socket.on("disconnect", () => setState(previous => markReconnecting(previous)));
-    socket.on("connect_error", () => setState(previous => markReconnecting(previous)));
+    // 每次連上（含斷線重連）都要重新自我介紹，老師端才知道這個裝置是誰。
+    socket.on("connect", sendHello);
+    socket.on("relay:teacher-online", sendHello);
+    socket.on("disconnect", () =>
+      setState(previous =>
+        previous.status === "ended" || previous.status === "error" ? previous : markReconnecting(previous)
+      )
+    );
+    socket.on("connect_error", (error: any) => {
+      // 網路層錯誤會自動重試；其他（token 被伺服器拒絕）重試也沒用，直接停下。
+      const transient = error && (error.type === "TransportError" || socket.active === true);
+      if (transient) {
+        setState(previous => markReconnecting(previous));
+      } else {
+        clearInFlight();
+        setState(previous => markStudentError(previous, REFUSED_MESSAGE));
+        socket.disconnect();
+      }
+    });
     socket.on("quiz:student-state", applySnapshot);
+    socket.on("quiz:answer-received", onAnswerReceived);
   };
 
   React.useEffect(() => {
-    getGuestState()
-      .then(snapshot => {
-        applySnapshot(snapshot);
-        connectSocket();
-      })
-      .catch(() => undefined);
+    if (deviceRef.current) connectSocket();
     return () => {
+      clearTimeout(timerRef.current);
       if (socketRef.current) socketRef.current.disconnect();
     };
   }, []);
 
   // 手機切到別的 App、過一段時間再切回來，JS 執行環境常常被系統暫停或從 bfcache
-  // 復原；socket 斷線事件不一定會確實觸發。這裡主動在「分頁再次可見」時重新拉一次
-  // 課堂狀態，避免畫面停在切走前那一刻不動。已加入之後才需要這個（加入前/已結束
-  // 不必浪費一次請求）。
+  // 復原；socket 斷線事件不一定會確實觸發。這裡主動在「分頁再次可見」時確認連線：
+  // 還連著就重新自我介紹（老師端會回這個學生目前的狀態），斷了就重連。
+  const resync = () => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    if (socket.connected) sendHello();
+    else socket.connect();
+  };
+
   React.useEffect(() => {
-    if (state.status === "joining" || state.status === "ended") return;
-    const resync = () => refresh();
+    if (state.status === "joining" || state.status === "ended" || state.status === "error") return;
     const onVisibility = () => {
       if (document.visibilityState === "visible") resync();
     };
@@ -169,25 +260,35 @@ function StudentQuizApp({ data }: { data: InitialData }) {
     event.preventDefault();
     const trimmed = nickname.trim();
     if (!trimmed || Array.from(trimmed).length > 50) return;
-    setSubmitting(true);
-    joinSession(data.token, trimmed)
-      .then(snapshot => {
-        applySnapshot(snapshot);
-        connectSocket();
-      })
-      .catch(reason => setState(previous => markStudentError(previous, reason.message)))
-      .then(() => setSubmitting(false));
+    const device = {
+      device_id: deviceRef.current ? deviceRef.current.device_id : newDeviceId(),
+      nickname: trimmed
+    };
+    deviceRef.current = device;
+    saveDevice(device);
+    // 從錯誤畫面重新加入：丟掉舊的 socket（它可能已經被拒絕），用同一個身分重連。
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+    setState(previous => ({
+      ...initialStudentState(previous.session_title),
+      status: "waiting",
+      nickname: trimmed
+    }));
+    connectSocket();
   };
 
-  // 找不到參與者／連線失敗時，與其卡在一個沒有出路的錯誤畫面，不如讓學生直接重新
-  // 加入——伺服器的 join 本來就會在舊身分失效時自動核發新的。
+  // 連線失敗時，與其卡在一個沒有出路的錯誤畫面，不如讓學生直接重新加入。
   const rejoin = () => setState(previous => initialStudentState(previous.session_title));
+
+  const currentSelection = selected !== null ? selected : state.selected_option_id;
 
   const requestChoiceSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     const question = state.active_question;
-    if (!question || question.kind !== "choice" || !selected || question.state !== "open") return;
-    setPending({ kind: "choice", optionId: selected });
+    if (!question || question.kind !== "choice" || !currentSelection || question.state !== "open") return;
+    setPending({ kind: "choice", optionId: currentSelection });
   };
 
   const requestTableSubmit = (values: string[][]) => {
@@ -200,42 +301,34 @@ function StudentQuizApp({ data }: { data: InitialData }) {
 
   const confirmPending = () => {
     const question = state.active_question;
-    if (!pending || !question) {
-      setPending(null);
-      return;
+    if (pending && question && pending.kind === "choice" && question.kind === "choice") {
+      transmit(
+        { nonce: newDeviceId(), questionKey: question.id, answer: pending.optionId, phase: "sending" },
+        { optionId: pending.optionId }
+      );
+    } else if (pending && question && pending.kind === "table" && question.kind === "table") {
+      transmit(
+        { nonce: newDeviceId(), questionKey: question.id, answer: pending.values, phase: "sending" },
+        { table: pending.values }
+      );
     }
-    setSubmitting(true);
-    if (pending.kind === "choice" && question.kind === "choice") {
-      setState(previous => markSubmitted(previous, pending.optionId));
-      submitChoiceAnswer(question.id, pending.optionId)
-        .then(applySnapshot)
-        .catch(reason => {
-          if (reason.status === 409) return refresh();
-          else setState(previous => markStudentError(previous, reason.message));
-        })
-        .then(() => {
-          setSubmitting(false);
-          setPending(null);
-        });
-    } else if (pending.kind === "table" && question.kind === "table") {
-      setState(previous => markSubmitted(previous));
-      submitTableAnswer(question.id, pending.values, applySnapshot, refresh)
-        .catch(reason => setState(previous => markStudentError(previous, reason.message)))
-        .then(() => {
-          setSubmitting(false);
-          setPending(null);
-        });
-    } else {
-      setSubmitting(false);
-      setPending(null);
-    }
+    setPending(null);
+  };
+
+  // 逾時之後原樣重送同一份答案，但要用新的 nonce（老師端對同一裝置的重送是冪等的）。
+  const resend = () => {
+    const flight = inFlightRef.current;
+    if (!flight || flight.phase !== "failed") return;
+    transmit({ ...flight, nonce: newDeviceId(), phase: "sending" }, localRef.current);
   };
 
   const question = state.active_question;
+  const notice = noticeState && question && question.id === noticeState.questionId ? noticeState.text : null;
 
   // 老師換題了：任何還沒確認送出的舊題目答案都作廢，不要讓確認列繼續掛著。
   React.useEffect(() => {
     setPending(null);
+    setSelected(null);
   }, [question?.id]);
 
   const nicknameLength = Array.from(nickname.trim()).length;
@@ -300,7 +393,7 @@ function StudentQuizApp({ data }: { data: InitialData }) {
           <div className="error-state">
             <h2>連線發生問題</h2>
             <p className="error-message" role="alert">{state.message || "課堂連線失敗。"}</p>
-            <button type="button" className="primary-action" onClick={() => refresh()}>重新連線</button>
+            <button type="button" className="primary-action" onClick={resync}>重新連線</button>
             <button type="button" className="secondary-action" onClick={rejoin}>重新加入課堂</button>
           </div>
         ) : question ? (
@@ -349,7 +442,7 @@ function StudentQuizApp({ data }: { data: InitialData }) {
                     <fieldset disabled={locked(question)}>
                       <legend className="sr-only">請選擇一個答案</legend>
                       {question.options.map(option => {
-                        const chosen = selected === option.id || state.selected_option_id === option.id;
+                        const chosen = currentSelection === option.id;
                         const correct = state.status === "closed" && question.result?.correct_option_id === option.id;
                         return (
                           <label
@@ -370,7 +463,7 @@ function StudentQuizApp({ data }: { data: InitialData }) {
                       })}
                     </fieldset>
                     {question.state === "open" && !pending && (
-                      <button className="primary-action" disabled={!selected || submitting}>
+                      <button className="primary-action" disabled={!currentSelection || submitting}>
                         {state.status === "answered" ? "更新答案" : "送出答案"}
                       </button>
                     )}
@@ -433,14 +526,20 @@ function StudentQuizApp({ data }: { data: InitialData }) {
           </div>
         )}
 
+        {delivery && delivery.phase === "failed" && (
+          <div className="confirm-actions">
+            <button type="button" className="primary-action" onClick={resend}>重送答案</button>
+          </div>
+        )}
+
         <p className="status-line" role="status" aria-live="polite">
-          {statusText(state, submitting, pending !== null)}
+          {statusText(state, delivery, notice, pending !== null)}
         </p>
       </section>
     </main>
   );
 }
 
-const data = (window as any).initial_quiz_data as InitialData;
+const initialData = (window as any).initial_quiz_data as InitialData;
 const root = document.getElementById("quiz-app");
-if (root && data) ReactDOM.render(<StudentQuizApp data={data} />, root);
+if (root && initialData) ReactDOM.render(<StudentQuizApp data={initialData} />, root);

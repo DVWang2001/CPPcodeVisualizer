@@ -272,3 +272,112 @@ test("unanswered closed table keeps null counts for a neutral result", () => {
     explanation: "看轉移式。"
   });
 });
+
+// ---- 中繼：全班廣播不帶個人欄位，套用時不能洗掉學生自己的選擇／答案／結果 ----
+
+const broadcastOpen = (id = "q2") => ({
+  state: "active",
+  session_id: 7,
+  session_title: "迴圈課堂",
+  active_question: {
+    id,
+    kind: "choice",
+    prompt: "下一題",
+    options: [{ id: "a", text: "A" }, { id: "b", text: "B" }],
+    source_file: "main.cpp",
+    line: 4,
+    state: "open"
+  }
+});
+
+test("全班廣播（同一題、無個人欄位）不會洗掉自己的選擇與暱稱", () => {
+  const answered = markSubmitted(
+    reduceStudentState(initialStudentState("迴圈課堂"), openSnapshot()),
+    "b"
+  );
+  const next = reduceStudentState(answered, broadcastOpen());
+
+  expect(next.status).toBe("answered");
+  expect(next.selected_option_id).toBe("b");
+  expect(next.nickname).toBe("小明");
+});
+
+test("廣播換了一題時不沿用上一題的選擇", () => {
+  const answered = markSubmitted(
+    reduceStudentState(initialStudentState("迴圈課堂"), openSnapshot()),
+    "b"
+  );
+  const next = reduceStudentState(answered, broadcastOpen("q3"));
+
+  expect(next.status).toBe("open");
+  expect(next.selected_option_id).toBeNull();
+});
+
+test("關題廣播只有全班結果：選擇題依自己保留的選擇算出對錯，未作答則為 null", () => {
+  const closedBroadcast = (selectedBefore: string | null) => {
+    const base = reduceStudentState(initialStudentState("迴圈課堂"), openSnapshot());
+    const mine = selectedBefore ? markSubmitted(base, selectedBefore) : base;
+    return reduceStudentState(mine, {
+      ...broadcastOpen(),
+      active_question: {
+        ...broadcastOpen().active_question,
+        state: "closed",
+        result: { correct_option_id: "b", explanation: "解釋" }
+      }
+    });
+  };
+
+  const right = closedBroadcast("b");
+  const wrong = closedBroadcast("a");
+  const none = closedBroadcast(null);
+
+  expect(right.status).toBe("closed");
+  expect((right.active_question as any).result).toEqual({
+    is_correct: true, correct_option_id: "b", explanation: "解釋"
+  });
+  expect((wrong.active_question as any).result.is_correct).toBe(false);
+  expect((none.active_question as any).result.is_correct).toBeNull();
+});
+
+test("填表題廣播保留自己已送出的答案；關題廣播用保留的答案算格數", () => {
+  const myAnswer = [["0", "9"], ["1", "2"]];
+  const answered = markSubmitted(
+    reduceStudentState(initialStudentState("DP 課堂"), tableSnapshot()),
+    undefined,
+    myAnswer
+  );
+  expect((answered.active_question as any).answer).toEqual(myAnswer);
+
+  const tableBroadcast = (state: "open" | "closed") => {
+    const { answer, ...rest } = tableSnapshot(state).active_question as any;
+    return {
+      state: "active",
+      session_id: 7,
+      session_title: "DP 課堂",
+      active_question: state === "closed"
+        ? { ...rest, correct_values: [["0", "1"], ["1", "2"]], result: { explanation: "看轉移式。" } }
+        : rest
+    };
+  };
+
+  const open = reduceStudentState(answered, tableBroadcast("open"));
+  expect(open.status).toBe("answered");
+  expect((open.active_question as any).answer).toEqual(myAnswer);
+
+  const closed = reduceStudentState(answered, tableBroadcast("closed"));
+  expect(closed.status).toBe("closed");
+  expect((closed.active_question as any).result).toEqual({
+    correct_cells: 3, total_cells: 4, explanation: "看轉移式。"
+  });
+});
+
+test("完整個人狀態（帶 selected_option_id: null）仍然可以清掉選擇", () => {
+  const answered = markSubmitted(
+    reduceStudentState(initialStudentState("迴圈課堂"), openSnapshot()),
+    "b"
+  );
+  const next = reduceStudentState(answered, openSnapshot());
+
+  expect(next.status).toBe("open");
+  expect(next.selected_option_id).toBeNull();
+});
