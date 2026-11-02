@@ -4,6 +4,7 @@ import importlib.util
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 # 挑這一組的理由都是在正式機上量出來的，不是看規格挑的：
 #
@@ -18,6 +19,15 @@ from pathlib import Path
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = "deepseek-ai/deepseek-v4.1-flash"
 MAX_SOURCE_BYTES = 100 * 1024
+
+# base_url 主機白名單（防 SSRF）：只允許連到這些主機，擋掉任意/內部網址
+# （169.254.169.254、127.0.0.1、attacker.example.com 等）。這份清單 = 前端
+# lessonGen.ts 的 PRESETS 實際提供的三家供應商；新增供應商時兩邊都要加。
+ALLOWED_API_HOSTS = frozenset({
+    "integrate.api.nvidia.com",  # NVIDIA（預設，也是唯一能用伺服器金鑰的一家）
+    "opencode.ai",               # OpenCode Zen big-pickle（需自備 key）
+    "api.mistral.ai",            # Mistral（需自備 key）
+})
 
 _SYSTEM_TEMPLATE = (
     "你是 CPPcodeVisualizer 的教案產生器。以下是教案撰寫指南全文，語法必須嚴格遵守：\n\n"
@@ -78,6 +88,9 @@ def validate_base_url(url):
     # the literal "https://" prefix and are therefore rejected (fail closed)
     # rather than silently accepted.
     if not u.startswith("https://"):
+        return None
+    host = urlsplit(u).hostname
+    if host is None or host not in ALLOWED_API_HOSTS:
         return None
     return u
 

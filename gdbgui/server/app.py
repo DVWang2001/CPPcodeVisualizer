@@ -2,6 +2,9 @@ import logging
 import os
 from flask import Flask, abort, request, session
 
+# ponytail: Security: this disables engineio's packet-count DoS guard and swallows
+# the "Too many packets" error. Revisit after bumping socket.io versions; if kept,
+# lower 500 to the measured minimum and stop swallowing the exception.
 # python-engineio 4.10+ 將 max_decode_packets 改為 1（強制 v4 協議），
 # 但瀏覽器 socket.io client 仍會批次送多個封包，造成大量 ValueError。
 # 用兩層防禦：class attribute + monkey-patch decode，確保各版本都能正常。
@@ -113,6 +116,7 @@ app.secret_key = db.get_or_create_secret_key()
 # 讓 http 部署完全無法登入，那是比缺一個旗標更糟的失效模式）。
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Production MUST set GDBGUI_SECURE_COOKIES=1 (site is HTTPS); tracked in the security-hardening plan.
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("GDBGUI_SECURE_COOKIES") == "1"
 
 # ── 請求本體的全域上限 ────────────────────────────────────────────────────────
@@ -173,6 +177,18 @@ def csrf_protect_all_post_and_cross_origin_requests():
                 return success
             logger.warning("Received invalid csrf token. Aborting")
             abort(403)
+
+
+@app.after_request
+def set_security_headers(response):
+    """Add baseline security headers to every response.
+
+    CSP intentionally deferred: needs UI verification with Monaco; add
+    frame-ancestors/script-src after testing.
+    """
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
 
 
 # ── 全站登入閘門 ──────────────────────────────────────────────────────────────

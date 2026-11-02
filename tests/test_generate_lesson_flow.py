@@ -167,3 +167,33 @@ def test_existing_annotations_are_hidden_from_the_model_and_do_not_leak_into_the
     sent = payloads[0]["messages"][-1]["content"]
     assert "舊旁白" not in sent and "舊的" not in sent and "int n = 5;" in sent
     assert done["done"] and "舊旁白" not in done["code"]
+
+
+# --- base_url 主機白名單（SSRF 防護）---
+
+def test_validate_base_url_allows_default_host():
+    assert lesson_gen.validate_base_url("https://integrate.api.nvidia.com/v1") == "https://integrate.api.nvidia.com/v1"
+
+
+def test_validate_base_url_rejects_cloud_metadata_host():
+    assert lesson_gen.validate_base_url("https://169.254.169.254/latest") is None
+
+
+def test_validate_base_url_rejects_loopback_with_port():
+    assert lesson_gen.validate_base_url("https://127.0.0.1:8080") is None
+
+
+def test_validate_base_url_rejects_unlisted_host():
+    assert lesson_gen.validate_base_url("https://attacker.example.com") is None
+
+
+def test_validate_base_url_empty_returns_default():
+    assert lesson_gen.validate_base_url("") == lesson_gen.DEFAULT_BASE_URL
+
+
+def test_validate_base_url_rejects_http_scheme():
+    assert lesson_gen.validate_base_url("http://integrate.api.nvidia.com") is None
+
+
+def test_validate_base_url_rejects_uppercase_scheme():
+    assert lesson_gen.validate_base_url("HTTPS://integrate.api.nvidia.com") is None

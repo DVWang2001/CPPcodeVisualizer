@@ -4,9 +4,9 @@
 
 ## 這裡刻意**沒有**的東西
 
-**登入失敗的速率限制。** 使用者於 2026-07-29 明確決定不做，理由是會要求所有人
-使用拋棄式密碼。後果記錄於設計文件：公開註冊 + 無速率限制 = 任何人可對任一
-帳號無限次嘗試密碼。若日後對外開放，這是第一個該補的東西。
+**登入失敗的速率限制已補上**（見 ratelimit.py）。原本於 2026-07-29 決定不做，
+公開上線後改為實作：以 (client IP, 使用者名稱) 為鍵，連續失敗 5 次後指數退避，
+上限 15 分鐘。被擋時的回應與一般失敗完全相同（同訊息、同狀態碼、同耗時）。
 
 **不做的其他項目**：密碼重設（需要 email）、頭像（檔案上傳是獨立的攻擊面）、
 學習紀錄統計。
@@ -30,7 +30,7 @@ from typing import Optional
 from flask import Blueprint, abort, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from . import blocking, db, tags
+from . import blocking, db, ratelimit, tags
 from .constants import TEMPLATE_DIR
 from .http_util import add_csrf_token_to_session, current_user_id
 
@@ -118,6 +118,19 @@ def _verify_password(stored_hash: Optional[str], password: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _client_ip() -> str:
+    """Client address for rate-limit keys.
+
+    The nginx proxy appends the real client to X-Forwarded-For, so the entry
+    nearest the server (the last one) is the address the proxy saw. The first
+    entry is whatever the client sent, so keying on it would let an attacker
+    pick a new fake IP per request and bypass the limit.
+    """
+    if request.access_route:
+        return request.access_route[-1]
+    return request.remote_addr or ""
+
+
 def start_user_session(user_id: int) -> None:
     """登入成功：**整個** session 換新，再放進新身分。
 
@@ -153,12 +166,21 @@ def login():
         username = (request.form.get("username") or "").strip().lower()
         password = request.form.get("password") or ""
 
+        client_ip = _client_ip()
+        blocked = ratelimit.limiter.is_blocked(client_ip, username)
+
         user = db.user_by_username(username) if username else None
         stored_hash = user["password_hash"] if user is not None else None
 
-        if len(password) > MAX_PASSWORD_LENGTH or not _verify_password(
+        # 即使已被速率限制也照樣跑一次雜湊比對，結果丟掉。若被擋時直接回傳，
+        # 回應會快上 ~100 ms，等於把「被擋了」這件事透過時間洩露出來。
+        password_ok = len(password) <= MAX_PASSWORD_LENGTH and _verify_password(
             stored_hash, password
-        ):
+        )
+
+        if blocked or not password_ok:
+            if not blocked:
+                ratelimit.limiter.record_failure(client_ip, username)
             # 伺服器 log 裡也不寫是哪一種失敗、不寫嘗試的帳號名——那份 log 之後
             # 若被誰看到，就是一份「有人在猜這些帳號」的清單。
             logger.info("[auth] login attempt refused")
@@ -171,6 +193,7 @@ def login():
                 401,
             )
 
+        ratelimit.limiter.record_success(client_ip, username)
         start_user_session(int(user["id"]))
         logger.info("[auth] user %s logged in", user["id"])
         return redirect(url_for("http_routes.gdbgui"))

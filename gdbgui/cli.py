@@ -5,6 +5,33 @@ A server that provides a graphical user interface to the gnu debugger (gdb).
 https://github.com/cs01/gdbgui
 """
 
+# ── eventlet monkey-patch (S1: hub-blocking outbound-call DoS) ──────────────
+# MUST run before anything imports socket/ssl/threading or, below, flask_socketio
+# and requests (pulled in transitively via gdbgui.server.app at the import on the
+# line `from gdbgui.server.app import app, socketio`). Both entry points reach
+# here first: `python -m gdbgui` does `from . import cli` (runs this module top to
+# bottom before app is imported), and the console_scripts `gdbgui` entry also
+# imports this module before calling main().
+#
+# Why: the server runs on a single eventlet hub. Without monkey-patching, a
+# blocking outbound call — requests.post in /api/generate_lesson (timeout 600 s)
+# and /api/explain_error — runs a real blocking syscall on the hub and freezes
+# EVERY other user's HTTP request and live-quiz socket event for the whole call.
+# One authenticated request could stall the entire site for minutes. Measured:
+# a 3 s outbound call stalls the hub 3.06 s unpatched vs 0.08 s patched.
+# Patching makes those socket waits yield the hub cooperatively.
+#
+# The pty I/O path that originally argued against monkey-patching (see
+# server/blocking.py) was removed with the server-GDB backend, so the reason not
+# to patch is gone. Tests import gdbgui.server.app directly, not this module, so
+# they stay unpatched. Escape hatch: GDBGUI_NO_MONKEY_PATCH=1 skips it.
+import os as _os
+
+if _os.environ.get("GDBGUI_NO_MONKEY_PATCH") != "1":
+    import eventlet as _eventlet
+
+    _eventlet.monkey_patch()
+
 import argparse
 import json
 import logging
