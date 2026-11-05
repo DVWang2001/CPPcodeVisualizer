@@ -47,7 +47,7 @@ describe("parseAnnotations", () => {
 
   test("plain // comments and empty //@ produce nothing", () => {
     const code = ["int a; // normal", "int b;  //@   "].join("\n");
-    expect(parseAnnotations(code)).toEqual({ guide: {}, tts: {}, layout: {} });
+    expect(parseAnnotations(code)).toEqual({ guide: {}, tts: {}, layout: {}, bug: {} });
   });
 
   test("trims surrounding whitespace of each field", () => {

@@ -1,6 +1,8 @@
-export type Annotation = { guide: string; tts: string; layout: string };
+// `bug` (optional): why the line is wrong for a student — shown in the error-diagnosis panel when the
+// stop reaches this line. Optional so existing Annotation literals stay valid.
+export type Annotation = { guide: string; tts: string; layout: string; bug?: string };
 
-const FIELD_RE = /@(guide|tts|layout)\b/g;
+const FIELD_RE = /@(guide|tts|layout|bug)\b/g;
 
 // A `//@` directive lives on ONE source line, but guide/tts values may contain
 // real newlines (multi-line narration). Escape them (and backslashes) so the
@@ -47,6 +49,7 @@ export function parseAnnotations(code: string) {
   const guide: Record<string, string> = {};
   const tts: Record<string, string> = {};
   const layout: Record<string, string> = {};
+  const bug: Record<string, string> = {};
   const lines = code.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const body = directiveBody(lines[i]);
@@ -56,8 +59,9 @@ export function parseAnnotations(code: string) {
     if (a.guide) guide[n] = a.guide;
     if (a.tts) tts[n] = a.tts;
     if (a.layout) layout[n] = a.layout;
+    if (a.bug) bug[n] = a.bug;
   }
-  return { guide, tts, layout };
+  return { guide, tts, layout, bug };
 }
 
 export function parseLineAnnotation(line: string): Annotation {
@@ -70,6 +74,7 @@ export function serializeAnnotation(a: Annotation): string {
   if (a.guide.trim()) parts.push(`@guide ${escapeValue(a.guide.trim())}`);
   if (a.tts.trim()) parts.push(`@tts ${escapeValue(a.tts.trim())}`);
   if (a.layout.trim()) parts.push(`@layout ${escapeValue(a.layout.trim())}`);
+  if (a.bug && a.bug.trim()) parts.push(`@bug ${escapeValue(a.bug.trim())}`);
   return parts.length ? `//@ ${parts.join(" ")}` : "";
 }
 

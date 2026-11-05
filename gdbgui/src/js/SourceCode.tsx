@@ -306,10 +306,11 @@ class SourceCode extends React.Component<{}, State> {
 
   refreshAnnotationGlobals = () => {
     const code = this.editorInstance?.getValue?.() || "";
-    const { guide, tts, layout } = parseAnnotations(code);
+    const { guide, tts, layout, bug } = parseAnnotations(code);
     (global_variable as any).__line = guide;
     (global_variable as any).__tts = tts;
     (global_variable as any).__layout = layout;
+    (global_variable as any).__bug = bug;
     // 右側欄（教學頁預告 layout 會開的面板）要立刻重畫，不必等到下一次 Enter／Restart。
     window.dispatchEvent(new CustomEvent("gdbgui-layout-updated"));
   };
@@ -1089,13 +1090,15 @@ class SourceCode extends React.Component<{}, State> {
     if (this.liveQuizVersionLock) return;
     const p = this.state.linePanel; if (!p || !this.editorInstance || !this.monaco) return;
     const d = p.draft;
+    const model = this.editorInstance.getModel();
+    const oldLine = model.getLineContent(p.lineNum);
     const annotation = {
       guide: d.guide || "",
       tts: this._buildTts(d.ttsSpeed, d.ttsContinue, d.ttsText),
       layout: this._buildLayout(d.layoutSidebar, d.layoutOpen, d.layoutClose, d.layoutMaze, d.layoutBst),
+      // the simple/advanced panel does not edit @bug; keep whatever the line already carries
+      bug: parseLineAnnotation(oldLine).bug || "",
     };
-    const model = this.editorInstance.getModel();
-    const oldLine = model.getLineContent(p.lineNum);
     const newLine = upsertLineAnnotation(oldLine, annotation);
     // Use a model-level edit (not editor.executeEdits, which is a no-op when the
     // editor is readOnly) so save works in play mode too, where the editor is
