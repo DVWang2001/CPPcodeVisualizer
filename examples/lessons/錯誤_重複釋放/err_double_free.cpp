@@ -5,8 +5,8 @@ class Buffer {
 public:
   explicit Buffer(int n) : data_(new int[n]), n_(n) {}   //@ @tts [step-in] 建立 Buffer 時，配一塊有 n 格的陣列，data_ 指向它
   ~Buffer() { delete[] data_; }          //@ @bug 解構子會 delete[] 自己的 data_。若兩個物件的 data_ 指向同一塊，這塊記憶體就會被釋放兩次 @tts [step-in] 解構子釋放 data_ 指向的那塊陣列
-  int* data_;                            //@ @guide data_ 指向一塊堆積上的陣列
-  int n_;                                //@ @guide 陣列有幾格
+  int* data_;                            //@ @guide data_ 指向堆積上的一塊陣列 
+  int n_;                                //@ @guide n_ 是陣列的格數 
 };
 
 int main() {                             //@ @tts [next] 程式開始

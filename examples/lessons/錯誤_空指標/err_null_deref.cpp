@@ -2,8 +2,8 @@
 #include <iostream>
 
 struct Node {
-  int val;                               //@ @guide 節點的值
-  Node* next;                            //@ @guide 下一個節點的位置；最後一個節點的 next 是空指標（nullptr）
+  int val;                               //@ @guide val 是節點的值 
+  Node* next;                            //@ @guide next 指向下一個節點；最後一個節點的 next 是空指標（nullptr） 
 };
 
 int main() {                             //@ @tts [next] 程式開始，我們要建立一條只有兩個節點的鏈結串列
