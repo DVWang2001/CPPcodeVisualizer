@@ -1,0 +1,11 @@
+// 錯誤教案 #3：懸空指標（delete 之後仍然使用）
+#include <iostream>
+
+int main() {                             //@ @tts [next] 程式開始
+  int* p = new int(5);                   //@ @tts [next] 用 new 配一塊記憶體放 5，p 指向它
+  std::cout << "*p = " << *p << std::endl;  //@ @tts [next] 印出 *p，是 5
+  delete p;                              //@ @tts [next] delete 把那塊記憶體還給系統，但 p 還記得它的位置
+  *p = 7;                                //@ @bug delete 之後 p 仍指向那塊記憶體，但它已經不屬於 p。寫入 7 就是懸空指標的寫入，這次沒有被發現，不代表它是對的 @tts [next] 透過 p 寫入 7，但那塊記憶體已經還給系統了
+  std::cout << "after free, *p = " << *p << std::endl;  //@ @tts [next] 再讀 *p，結果不可預期
+  return 0;                              //@ @tts [next] 回傳 0，main 即將結束
+}  //@ @tts [continue] 教案播放完畢
