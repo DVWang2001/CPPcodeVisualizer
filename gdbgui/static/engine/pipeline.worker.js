@@ -153,7 +153,7 @@ if (isWorker) g.onmessage = async (/** @type {MessageEvent} */ ev) => {
       const r = await compileProgram(m.source, m.opts || {}, stage);
       post({ type: "compiled", id: m.id, ...r });
     } else if (m.type === "decode") {
-      const r = decodeTrace(m.trace, m.meta);
+      const r = decodeTrace(m.trace, m.meta, { stamps: m.stamps || null });
       post({ type: "decoded", id: m.id, ...r });
     }
   } catch (e) {

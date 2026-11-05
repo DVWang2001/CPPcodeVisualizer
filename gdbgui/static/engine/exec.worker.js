@@ -112,6 +112,9 @@ export function createWasi(opts = {}) {
   let stdinPos = 0;
   const closed = new Set();
   const sinks = { 1: makeSink(limits.stdoutBytes), 2: makeSink(limits.stderrBytes), [TRACE_FD]: makeSink(limits.traceBytes) };
+  // S1 host stamps: at every successful trace write, how many stdout / stderr bytes exist so far.
+  // Host-computed, so the program cannot forge them; index i matches the i-th trace write.
+  const stamps = { out: /** @type {number[]} */ ([]), err: /** @type {number[]} */ ([]) };
   /** @type {WebAssembly.Memory | null} */
   let memory = null;
   const counters = { nosys: /** @type {Record<string, number>} */ (Object.create(null)) };
@@ -216,6 +219,7 @@ export function createWasi(opts = {}) {
         }
         total += l;
       }
+      if (fd === TRACE_FD) { stamps.out.push(sinks[1].used); stamps.err.push(sinks[2].used); }
       dv().setUint32(nwrittenPtr, total, true);
       return ERRNO.SUCCESS;
     },
@@ -244,6 +248,7 @@ export function createWasi(opts = {}) {
     bindMemory(m) { memory = m; },
     sinks,
     counters,
+    stamps,
   };
 }
 
@@ -320,6 +325,7 @@ export async function execute(module, opts = {}) {
     stderr: wasi.sinks[2].bytes(),
     trace: wasi.sinks[TRACE_FD].bytes(),
     limitHit: { stdout: wasi.sinks[1].hit, stderr: wasi.sinks[2].hit, trace: wasi.sinks[TRACE_FD].hit },
+    stamps: wasi.stamps,
     nosys: { ...wasi.counters.nosys },
     ms,
   };

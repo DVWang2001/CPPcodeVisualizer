@@ -62,10 +62,18 @@ export function decodeTrace(bytes, meta, opts = {}) {
   let raw = 0;
   /** @type {{ line: number, fn: string, frame: number } | null} */
   let prev = null;
+  // S1: host stamps (exec.worker.js) — one per trace write. Offsets are kept only when the stamp
+  // count matches the record count exactly (otherwise attribution would be guessed, so none is given).
+  // a malformed stamps object is ignored (no offsets), never allowed to throw inside the record loop
+  const stamps = opts.stamps && Array.isArray(opts.stamps.out) && Array.isArray(opts.stamps.err) ? opts.stamps : null;
+  /** @type {Array<{ out: number | null, err: number | null }>} */
+  const stepOffsets = [];
+  let recordLines = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line === "") continue;
+    recordLines++;
     try {
       if (raw >= maxRecords) throw new Error("too many records");
       const rec = JSON.parse(line);
@@ -123,6 +131,7 @@ export function decodeTrace(bytes, meta, opts = {}) {
         const s = { line: rec.line, fn: rec.fn, depth: rec.depth, frame: rec.frame, vars };
         if (un.length) s.uninit = un;
         steps.push(s);
+        stepOffsets.push({ out: stamps ? stamps.out[raw - 1] ?? null : null, err: stamps ? stamps.err[raw - 1] ?? null : null });
         prev = { line: rec.line, fn: rec.fn, frame: rec.frame };
       }
       for (const k of site.w) init.add(k);
@@ -131,5 +140,13 @@ export function decodeTrace(bytes, meta, opts = {}) {
       break;
     }
   }
-  return { steps, rawSteps: raw, errors, limit, truncated };
+  if (stamps) {
+    // Offsets are trustworthy only if every trace write was decoded and stamped exactly once, and the
+    // stamps never go backwards. Otherwise every offset is null (the trace error itself is still reported).
+    const writes = recordLines + (truncated ? 1 : 0);
+    const monotonic = (a) => a.every((v, j) => Number.isInteger(v) && (j === 0 || v >= a[j - 1]));
+    const aligned = errors.length === 0 && stamps.out.length === writes && stamps.err.length === writes && monotonic(stamps.out) && monotonic(stamps.err);
+    if (!aligned) for (const o of stepOffsets) { o.out = null; o.err = null; }
+  }
+  return { steps, rawSteps: raw, errors, limit, truncated, stepOffsets };
 }

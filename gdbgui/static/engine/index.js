@@ -327,13 +327,16 @@ class Engine {
 
     if (c.meta && x.trace && x.trace.length) {
       const t2 = performance.now();
-      const d = await this.request({ type: "decode", trace: x.trace, meta: c.meta, transfer: [x.trace.buffer] }, { studentBudgetMs: LIMITS.decodeTimeoutMs, pchBudgetMs: LIMITS.decodeTimeoutMs });
+      const d = await this.request({ type: "decode", trace: x.trace, meta: c.meta, stamps: x.stamps || null, transfer: [x.trace.buffer] }, { studentBudgetMs: LIMITS.decodeTimeoutMs, pchBudgetMs: LIMITS.decodeTimeoutMs });
       result.timings.decode = performance.now() - t2;
       if (d.type !== "decoded") {
         result.errors.push({ kind: "internal-error", message: "trace decoding failed: " + (d.error || d.type) });
       } else {
         result.steps = d.steps.map((/** @type {any} */ s) => ({ ...s, vars: nullProto(s.vars) }));
         result.rawSteps = d.rawSteps;
+        // S1: byte offsets into result.stdout / result.stderr (UTF-8 bytes, not characters), parallel
+        // to result.steps. {out: null, err: null} when the host stamps could not be aligned with the trace.
+        result.stepOffsets = d.stepOffsets;
         result.errors.push(...d.errors);
         if (d.limit) result.exit = { reason: "step-limit", code: result.exit && result.exit.code, message: d.limit === "steps" ? `stopped after ${LIMITS.maxSteps} recorded steps` : "trace size limit (20 MB) reached" };
         if (d.truncated) result.errors.push({ kind: "trace-truncated", message: "the last trace record was incomplete" });
