@@ -10,6 +10,7 @@ import { VarObjs } from "./varobj.js";
 import { isSimple } from "./types.js";
 import { parseFastForward, pyJson } from "./fastforward.js";
 import { chainAt } from "./scopes.js";
+import { afterStates } from "./afterState.js";
 
 /** Features of the golden sample's GDB 16.3 plus "reverse" (spec §12 N3: enables the reverse UI). */
 export const FEATURES = [
@@ -132,11 +133,31 @@ export class LocalGdbSession {
         items = items.concat(it);
       }
       this.out("gdb_response", { run_token: job.runToken, request_id: this.lastRequestId, packet_seq_num: ++this.seq, data: items });
+      // S4: a side event (not part of gdb_response, so the golden protocol is unchanged): what the line at
+      // the stop we just reached did — variables it changed and the output it printed (S3 after-state).
+      if (this.hasStack() && items.some((x) => x && x.type === "notify" && x.message === "stopped")) {
+        const la = this.lineAfterOf(this.topStep());
+        if (la) this.after.push(["vg_line_after", { run_token: job.runToken, request_id: this.lastRequestId, ...la }]);
+      }
       const after = this.after;
       this.after = [];
       for (const [ev, p] of after) this.out(ev, p);
     }
     this.draining = false;
+  }
+
+  /**
+   * S4: the after-state of the stop at step index `idx` (computed once per run from the engine result).
+   * @param {number} idx
+   */
+  lineAfterOf(idx) {
+    const r = this.opts.runResult;
+    if (!r || !Array.isArray(r.stepOffsets)) return null;
+    if (!this._afterCache) {
+      const enc = new TextEncoder();
+      this._afterCache = afterStates({ steps: r.steps, stepOffsets: r.stepOffsets, stdout: enc.encode(r.stdout || ""), stderr: enc.encode(r.stderr || ""), exit: r.exit || null });
+    }
+    return this._afterCache[idx] || null;
   }
 
   /** Names of the frame-0 variables whose value is not initialised yet (test/diagnostic aid). @returns {string[]} */
