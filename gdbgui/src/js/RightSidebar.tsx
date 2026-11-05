@@ -22,6 +22,7 @@ import CallGraph from "./CallGraph";
 import WatchTable from "./WatchTable";
 import MemoryWatch from "./MemoryWatch";
 import CompileErrors from "./CompileErrors";
+import LineAfterPanel from "./LineAfterPanel";
 import { layoutSidebar, dragDivider } from "./sidebarLayout";
 import { layoutOpenedPanels } from "./sidebarSelection";
 import { global_variable } from "./global_variable";
@@ -243,6 +244,7 @@ class RightSidebar extends React.Component<any, any> {
   panelDefs(): PanelDef[] {
     const defs: PanelDef[] = [
       { key: "compile_errors", id: "compile_errors", title: "編譯錯誤", collapsed: true, content: <CompileErrors /> },
+      { key: "line_after", id: "line_after", title: "執行這行的結果", collapsed: true, content: <LineAfterPanel /> },
       { key: "memory_watch", id: "memory_watch", title: "記憶體與指標追蹤", content: <MemoryWatch /> },
       { key: "callgraph", id: "callgraph", title: "呼叫歷史圖", content: <CallGraph /> },
       { key: "visualizer", id: "visualizer", title: "程式追蹤表", primary: true, content: <Visualizer /> },

@@ -175,6 +175,12 @@ const GdbApi = {
       );
       socket.close();
     });
+    // S5: side event from the engine (what the line at the stop did). Forwarded as a window event so
+    // components can listen without importing GdbApi (same pattern as gdbgui-layout-updated).
+    socket.on("vg_line_after", function (payload: any) {
+      window.dispatchEvent(new CustomEvent("gdbgui-line-after", { detail: payload }));
+    });
+
     socket.on("error_running_gdb_command", function (data: { message: any }) {
       Actions.add_console_entries(
         `Error occurred on server when running gdb command: ${data.message}`,
