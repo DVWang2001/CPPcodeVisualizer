@@ -23,6 +23,9 @@ import WatchTable from "./WatchTable";
 import MemoryWatch from "./MemoryWatch";
 import CompileErrors from "./CompileErrors";
 import LineAfterPanel from "./LineAfterPanel";
+
+/** Panels that are on by default (no lesson has to ask for them): the line-after explanation. */
+const DEFAULT_ON_PANELS = ["line_after"];
 import { layoutSidebar, dragDivider } from "./sidebarLayout";
 import { layoutOpenedPanels } from "./sidebarSelection";
 import { global_variable } from "./global_variable";
@@ -244,7 +247,7 @@ class RightSidebar extends React.Component<any, any> {
   panelDefs(): PanelDef[] {
     const defs: PanelDef[] = [
       { key: "compile_errors", id: "compile_errors", title: "編譯錯誤", collapsed: true, content: <CompileErrors /> },
-      { key: "line_after", id: "line_after", title: "執行這行的結果", collapsed: true, content: <LineAfterPanel /> },
+      { key: "line_after", id: "line_after", title: "執行這行的結果", collapsed: false, content: <LineAfterPanel /> },
       { key: "memory_watch", id: "memory_watch", title: "記憶體與指標追蹤", content: <MemoryWatch /> },
       { key: "callgraph", id: "callgraph", title: "呼叫歷史圖", content: <CallGraph /> },
       { key: "visualizer", id: "visualizer", title: "程式追蹤表", primary: true, content: <Visualizer /> },
@@ -265,6 +268,8 @@ class RightSidebar extends React.Component<any, any> {
     const selection = this.state.sidebar_selection;
     // 執行模式：教案 layout 點名開過的面板強制算勾選（編輯模式的 checkbox 只反映老師的勾選）。
     if (play && this.state.sidebar_forced?.[key]) return true;
+    // 系統預設開啟的面板（不需要教案點名）：老師沒有設定過它時就是勾選。
+    if (DEFAULT_ON_PANELS.includes(key) && (!selection || selection[key] === undefined)) return true;
     return selection ? !!selection[key] : false;
   }
 

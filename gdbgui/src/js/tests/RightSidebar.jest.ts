@@ -218,3 +218,30 @@ test("自動存檔還原會保留右側欄勾選（normalizeBundle 不能丟掉 
   expect(v2.sidebar_panels).toEqual({ visualizer: true });
   expect(normalizeBundle({ version: "2.0", source_code: "" }).sidebar_panels).toBeUndefined();
 });
+
+describe("RightSidebar：系統預設開啟的「執行這行的結果」面板", () => {
+  test("沒有任何勾選設定時，這個面板預設勾選（不需要教案點名）", () => {
+    store.set("sidebar_selection", undefined);
+    const edit = mount(true);
+    const box = panel(edit, "line_after").querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(box.checked).toBe(true);
+  });
+
+  test("執行模式下預設可見，不需要教案 @layout 點名", () => {
+    store.set("sidebar_selection", undefined);
+    const play = mount(false);
+    expect(isVisible(play, "line_after")).toBe(true);
+  });
+
+  test("老師已有勾選設定但從未設定過這個面板：仍視為勾選", () => {
+    store.set("sidebar_selection", { visualizer: true });
+    const play = mount(false);
+    expect(isVisible(play, "line_after")).toBe(true);
+  });
+
+  test("老師明確取消勾選後，尊重老師的設定", () => {
+    store.set("sidebar_selection", { line_after: false, visualizer: true });
+    const play = mount(false);
+    expect(isVisible(play, "line_after")).toBe(false);
+  });
+});
