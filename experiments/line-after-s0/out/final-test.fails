@@ -1,0 +1,24 @@
+CC-2602B (std::__gcd, __int64) compiles and runs uninstrumented and instrumented with equal stdout
+-data-evaluate-expression: GDB print format with children (deque/stack plain, list index-labelled)
+E3 01 技巧一 5x4: instrument+compile+run, stdout == g++
+E3 16 deque經典_BrokenKeyb: instrument+compile+run, stdout == g++
+engine run of the fixture compiles and reaches every line
+golden: engine stdout equals the program output GDB's pty delivered (CRLF from the pty line discipline)
+golden: every UI command stops at the same kind/line/function in the engine trace (allowed: (b) std-library step-in)
+replay coverage: the replay compared the core commands, and every not-tested item has one of the documented reasons
+replay: zero differences outside the allow list
+std::__gcd works for signed/unsigned/__int64 alongside libc++'s <numeric> template
+UI rule replay: decideForSegment on our stops classifies every tsp `for` stop exactly like on the GOLDEN addresses (lines 33, 37, 41, 36)
+-var-create: deque — value, type, displayhint array, flat .[i] children
+-var-create: empty deque — 'with 0 elements', has_more 0, no children
+-var-create: empty list — 'empty std::__cxx11::list' (not 'with 0 elements'), has_more 0
+-var-create: list — value/type carry the __cxx11 tag, no count, no displayhint at all
+-var-create: map — value/type/children (flat alternating key,value, numchild 2×N) match real GDB exactly
+-var-create: priority_queue — value/type match real GDB, displayhint array; children are OUR priority-drain order, not GDB's raw heap array (documented divergence)
+-var-create: queue — 'wrapping: std::deque with N elements', children front-to-back (push order)
+-var-create: set — value/type/children match real GDB exactly, NO displayhint (like list)
+-var-create: singular 'element' for a 1-element container
+-var-create: stack — 'wrapping: std::deque with N elements', children bottom-to-top (push order)
+-var-update: growth after push_back/push/pop is reflected (numchild via var-list-children, value text, no crash)
+-var-update: priority_queue/set/map growth after push/insert/[]= is reflected (new_num_children, values)
+WASI oracle: iostream + cin + getline + sort

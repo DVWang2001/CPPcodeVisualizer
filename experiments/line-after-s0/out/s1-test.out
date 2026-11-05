@@ -1,0 +1,2917 @@
+TAP version 13
+# Subtest: dependencies are pinned to exact versions with lockfile integrity
+ok 1 - dependencies are pinned to exact versions with lockfile integrity
+  ---
+  duration_ms: 3.188158
+  ...
+# Subtest: vendored emscripten glue is byte-identical to the pinned package and listed in SHA256SUMS
+ok 2 - vendored emscripten glue is byte-identical to the pinned package and listed in SHA256SUMS
+  ---
+  duration_ms: 2.867449
+  ...
+# Subtest: assets/manifest.json matches every asset (sha256, SRI integrity, size); binaries equal the pinned package
+ok 3 - assets/manifest.json matches every asset (sha256, SRI integrity, size); binaries equal the pinned package
+  ---
+  duration_ms: 865.591381
+  ...
+# Subtest: headers.tar is reproducible from include/ + vg.h and contains the compat layer
+ok 4 - headers.tar is reproducible from include/ + vg.h and contains the compat layer
+  ---
+  duration_ms: 30.004959
+  ...
+# Subtest: Node loader fails closed on a single flipped byte
+ok 5 - Node loader fails closed on a single flipped byte
+  ---
+  duration_ms: 24.29667
+  ...
+# Subtest: browser loader: manifest fetched no-cache, every asset fetched with its SRI integrity; SRI failure fails closed
+ok 6 - browser loader: manifest fetched no-cache, every asset fetched with its SRI integrity; SRI failure fails closed
+  ---
+  duration_ms: 40.952061
+  ...
+# Subtest: browser worker adapter uses static same-origin module-worker URLs (never blob:)
+ok 7 - browser worker adapter uses static same-origin module-worker URLs (never blob:)
+  ---
+  duration_ms: 0.664514
+  ...
+# Subtest: PCH IndexedDB adapter (fake IndexedDB): round trip, LRU, corrupted bytes rejected
+ok 8 - PCH IndexedDB adapter (fake IndexedDB): round trip, LRU, corrupted bytes rejected
+  ---
+  duration_ms: 65.58475
+  ...
+# Subtest: 第二次載入只抓 manifest，資產全部來自快取
+ok 9 - 第二次載入只抓 manifest，資產全部來自快取
+  ---
+  duration_ms: 41.587293
+  ...
+# Subtest: 快取被竄改（大小相同、內容不同）：丟棄並重新下載
+ok 10 - 快取被竄改（大小相同、內容不同）：丟棄並重新下載
+  ---
+  duration_ms: 7.672129
+  ...
+# Subtest: 伺服器上的資產被竄改：SRI 不符 → 載入失敗（fail closed），且不寫入快取
+ok 11 - 伺服器上的資產被竄改：SRI 不符 → 載入失敗（fail closed），且不寫入快取
+  ---
+  duration_ms: 3.18312
+  ...
+# Subtest: manifest 換了（不同雜湊）：不會拿到舊的快取位元組
+ok 12 - manifest 換了（不同雜湊）：不會拿到舊的快取位元組
+  ---
+  duration_ms: 9.850827
+  ...
+# Subtest: 沒有儲存空間（例如無痕模式）：仍可載入，只是每次都下載
+ok 13 - 沒有儲存空間（例如無痕模式）：仍可載入，只是每次都下載
+  ---
+  duration_ms: 2.562052
+  ...
+# Subtest: CC-2602B (std::__gcd, __int64) compiles and runs uninstrumented and instrumented with equal stdout
+not ok 14 - CC-2602B (std::__gcd, __int64) compiles and runs uninstrumented and instrumented with equal stdout
+  ---
+  duration_ms: 8634.196043
+  location: '/w/tests/engine/compile_support.test.mjs:22:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    [{"kind":"compile-timeout","stage":"link","message":"compilation exceeded its time budget (8000 ms) in stage link; the compiler worker was restarted"}]
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/compile_support.test.mjs:26:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: CC-2603B (std::__gcd) compiles and runs uninstrumented and instrumented with equal stdout
+ok 15 - CC-2603B (std::__gcd) compiles and runs uninstrumented and instrumented with equal stdout
+  ---
+  duration_ms: 11573.942456
+  ...
+# Subtest: CC-2604B (std::__gcd) compiles and runs uninstrumented and instrumented with equal stdout
+ok 16 - CC-2604B (std::__gcd) compiles and runs uninstrumented and instrumented with equal stdout
+  ---
+  duration_ms: 7156.814876
+  ...
+# Subtest: CC-2605B (std::__gcd) compiles and runs uninstrumented and instrumented with equal stdout
+ok 17 - CC-2605B (std::__gcd) compiles and runs uninstrumented and instrumented with equal stdout
+  ---
+  duration_ms: 7052.171531
+  ...
+# Subtest: CC-2606B (std::__gcd) compiles and runs uninstrumented and instrumented with equal stdout
+ok 18 - CC-2606B (std::__gcd) compiles and runs uninstrumented and instrumented with equal stdout
+  ---
+  duration_ms: 6520.403555
+  ...
+# Subtest: CC-2608B (std::__gcd) compiles and runs uninstrumented and instrumented with equal stdout
+ok 19 - CC-2608B (std::__gcd) compiles and runs uninstrumented and instrumented with equal stdout
+  ---
+  duration_ms: 6953.880358
+  ...
+# Subtest: std::__gcd works for signed/unsigned/__int64 alongside libc++'s <numeric> template
+not ok 20 - std::__gcd works for signed/unsigned/__int64 alongside libc++'s <numeric> template
+  ---
+  duration_ms: 9505.743438
+  location: '/w/tests/engine/compile_support.test.mjs:42:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '6 6 5 6\n32\n'
+    - undefined
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  actual: |-
+    6 6 5 6
+    32
+    
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/compile_support.test.mjs:58:19)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: bits/stdc++.h (c++17) compiles, instrumented, and matches the C++17 reference output
+ok 21 - bits/stdc++.h (c++17) compiles, instrumented, and matches the C++17 reference output
+  ---
+  duration_ms: 9119.422255
+  ...
+# Subtest: bits/stdc++.h (c++20) compiles, instrumented, and matches the C++17 reference output
+ok 22 - bits/stdc++.h (c++20) compiles, instrumented, and matches the C++17 reference output
+  ---
+  duration_ms: 14961.042422
+  ...
+# Subtest: bits/stdc++.h (c++23) compiles, instrumented, and matches the C++17 reference output
+ok 23 - bits/stdc++.h (c++23) compiles, instrumented, and matches the C++17 reference output
+  ---
+  duration_ms: 15794.704451
+  ...
+# Subtest: bits/extc++.h (pb_ds full case) matches the production GCC 14.2 reference output
+ok 24 - bits/extc++.h (pb_ds full case) matches the production GCC 14.2 reference output
+  ---
+  duration_ms: 17695.09245
+  ...
+# Subtest: bits/extc++.h small case matches local g++
+ok 25 - bits/extc++.h small case matches local g++
+  ---
+  duration_ms: 7327.240177
+  ...
+# Subtest: C++17 features (optional, structured bindings, if constexpr) and C++20/23 cases
+ok 26 - C++17 features (optional, structured bindings, if constexpr) and C++20/23 cases
+  ---
+  duration_ms: 14654.908527
+  ...
+# Subtest: a syntax error returns the clang diagnostics of the ORIGINAL source (not the instrumented one)
+ok 27 - a syntax error returns the clang diagnostics of the ORIGINAL source (not the instrumented one)
+  ---
+  duration_ms: 4416.972898
+  ...
+# \# tsp: not tested; stops ours/GDB undefined/undefined; value cells undefined; capacity cells undefined; allowed a=undefined b=undefined c=undefined d=undefined e=undefined
+# \# grid1: not tested; stops ours/GDB undefined/undefined; value cells undefined; capacity cells undefined; allowed a=undefined b=undefined c=undefined d=undefined e=undefined
+# \# deriv: not tested; stops ours/GDB undefined/undefined; value cells undefined; capacity cells undefined; allowed a=undefined b=undefined c=undefined d=undefined e=undefined
+# \# run: not tested; stops ours/GDB undefined/undefined; value cells undefined; capacity cells undefined; allowed a=undefined b=undefined c=undefined d=undefined e=undefined
+# \# rangefor2: not tested; stops ours/GDB undefined/undefined; value cells undefined; capacity cells undefined; allowed a=undefined b=undefined c=undefined d=undefined e=undefined
+# Subtest: differential: tsp is identical to the GDB reference outside the allowed list
+not ok 28 - differential: tsp is identical to the GDB reference outside the allowed list
+  ---
+  duration_ms: 13345.452944
+  location: '/w/tests/engine/differential.test.mjs:15:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    "ENOENT: no such file or directory, open '/w/examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp'"
+    + actual - expected
+    
+    + 'not tested'
+    - 'identical'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'identical'
+  actual: 'not tested'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/differential.test.mjs:19:12)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: differential: grid1 is identical to the GDB reference outside the allowed list
+not ok 29 - differential: grid1 is identical to the GDB reference outside the allowed list
+  ---
+  duration_ms: 2.062513
+  location: '/w/tests/engine/differential.test.mjs:15:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    "ENOENT: no such file or directory, open '/w/examples/lessons/走方格_AtCoder_Grid1/grid_paths.cpp'"
+    + actual - expected
+    
+    + 'not tested'
+    - 'identical'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'identical'
+  actual: 'not tested'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/differential.test.mjs:19:12)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: differential: deriv is identical to the GDB reference outside the allowed list
+not ok 30 - differential: deriv is identical to the GDB reference outside the allowed list
+  ---
+  duration_ms: 0.535442
+  location: '/w/tests/engine/differential.test.mjs:15:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    "ENOENT: no such file or directory, open '/w/examples/lessons/走方格_DP推導/grid_derivation.cpp'"
+    + actual - expected
+    
+    + 'not tested'
+    - 'identical'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'identical'
+  actual: 'not tested'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/differential.test.mjs:19:12)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: differential: run is identical to the GDB reference outside the allowed list
+not ok 31 - differential: run is identical to the GDB reference outside the allowed list
+  ---
+  duration_ms: 0.960034
+  location: '/w/tests/engine/differential.test.mjs:15:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    "ENOENT: no such file or directory, open '/w/examples/lessons/技巧二_記憶化搜尋_UVA10285/longest_run.cpp'"
+    + actual - expected
+    
+    + 'not tested'
+    - 'identical'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'identical'
+  actual: 'not tested'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/differential.test.mjs:19:12)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: differential: rangefor2 is identical to the GDB reference outside the allowed list
+not ok 32 - differential: rangefor2 is identical to the GDB reference outside the allowed list
+  ---
+  duration_ms: 0.719848
+  location: '/w/tests/engine/differential.test.mjs:15:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    "[{\"kind\":\"compile-timeout\",\"stage\":\"link\",\"message\":\"compilation exceeded its time budget (8000 ms) in stage link; the compiler worker was restarted\"}]"
+    + actual - expected
+    
+    + 'not tested'
+    - 'identical'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'identical'
+  actual: 'not tested'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/differential.test.mjs:19:12)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# node:internal/test_runner/harness:46
+#       throw err;
+#       ^
+# Error: ENOENT: no such file or directory, scandir '/w/examples/lessons'
+#     at Object.readdirSync (node:fs:1521:26)
+#     at dir (file:///w/tests/engine/e3_cases.mjs:15:30)
+#     at e3Cases (file:///w/tests/engine/e3_cases.mjs:19:14)
+#     at file:///w/tests/engine/e3.test.mjs:19:15 {
+#   errno: -2,
+#   code: 'ENOENT',
+#   syscall: 'scandir',
+#   path: '/w/examples/lessons'
+# }
+# Node.js v20.20.2
+# Subtest: /w/tests/engine/e3.test.mjs
+not ok 5 - /w/tests/engine/e3.test.mjs
+  ---
+  duration_ms: 567.708798
+  location: '/w/tests/engine/e3.test.mjs:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 7
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: golden: parser extracts commands, stops, breakpoints, stdin and the fast-forward blob
+not ok 34 - golden: parser extracts commands, stops, breakpoints, stdin and the fast-forward blob
+  ---
+  duration_ms: 321.37741
+  location: '/w/tests/engine/golden.test.mjs:26:1'
+  failureType: 'hookFailed'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/golden.test.mjs:22:33)
+    async TestHook.run (node:internal/test_runner/test:797:9)
+  ...
+# Subtest: golden: engine stdout equals the program output GDB's pty delivered (CRLF from the pty line discipline)
+not ok 35 - golden: engine stdout equals the program output GDB's pty delivered (CRLF from the pty line discipline)
+  ---
+  duration_ms: 1.460638
+  location: '/w/tests/engine/golden.test.mjs:37:1'
+  failureType: 'hookFailed'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/golden.test.mjs:22:33)
+    async TestHook.run (node:internal/test_runner/test:797:9)
+  ...
+# Subtest: golden: every UI command stops at the same kind/line/function in the engine trace (allowed: (b) std-library step-in)
+not ok 36 - golden: every UI command stops at the same kind/line/function in the engine trace (allowed: (b) std-library step-in)
+  ---
+  duration_ms: 0.170908
+  location: '/w/tests/engine/golden.test.mjs:42:1'
+  failureType: 'hookFailed'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/golden.test.mjs:22:33)
+    async TestHook.run (node:internal/test_runner/test:797:9)
+  ...
+# Subtest: unsupported construct is refused explicitly: goto
+ok 37 - unsupported construct is refused explicitly: goto
+  ---
+  duration_ms: 6709.156461
+  ...
+# Subtest: unsupported construct is refused explicitly: try
+ok 38 - unsupported construct is refused explicitly: try
+  ---
+  duration_ms: 3692.064581
+  ...
+# Subtest: unsupported construct is refused explicitly: template
+ok 39 - unsupported construct is refused explicitly: template
+  ---
+  duration_ms: 1237.234873
+  ...
+# Subtest: unsupported construct is refused explicitly: virtual inheritance
+ok 40 - unsupported construct is refused explicitly: virtual inheritance
+  ---
+  duration_ms: 1270.174928
+  ...
+# Subtest: unsupported construct is refused explicitly: static class member
+ok 41 - unsupported construct is refused explicitly: static class member
+  ---
+  duration_ms: 1213.791297
+  ...
+# Subtest: unsupported construct is refused explicitly: nested class
+ok 42 - unsupported construct is refused explicitly: nested class
+  ---
+  duration_ms: 1119.266709
+  ...
+# Subtest: unsupported construct is refused explicitly: union
+ok 43 - unsupported construct is refused explicitly: union
+  ---
+  duration_ms: 1109.00448
+  ...
+# Subtest: unsupported construct is refused explicitly: default member initializer
+ok 44 - unsupported construct is refused explicitly: default member initializer
+  ---
+  duration_ms: 1109.24244
+  ...
+# Subtest: unsupported construct is refused explicitly: member function without a body
+ok 45 - unsupported construct is refused explicitly: member function without a body
+  ---
+  duration_ms: 1098.861522
+  ...
+# Subtest: unsupported construct is refused explicitly: namespace
+ok 46 - unsupported construct is refused explicitly: namespace
+  ---
+  duration_ms: 1101.146642
+  ...
+# Subtest: unsupported construct is refused explicitly: if with initializer
+ok 47 - unsupported construct is refused explicitly: if with initializer
+  ---
+  duration_ms: 1312.988622
+  ...
+# Subtest: unsupported construct is refused explicitly: static local variable
+ok 48 - unsupported construct is refused explicitly: static local variable
+  ---
+  duration_ms: 1102.607891
+  ...
+# Subtest: unsupported construct is refused explicitly: function-like macro in while condition
+ok 49 - unsupported construct is refused explicitly: function-like macro in while condition
+  ---
+  duration_ms: 1156.599061
+  ...
+# Subtest: unsupported construct is refused explicitly: if constexpr
+ok 50 - unsupported construct is refused explicitly: if constexpr
+  ---
+  duration_ms: 1160.682537
+  ...
+# Subtest: unsupported construct is refused explicitly: macro in for increment
+ok 51 - unsupported construct is refused explicitly: macro in for increment
+  ---
+  duration_ms: 1122.352369
+  ...
+# Subtest: supported: recursion, reference params, range-for, globals, long long, structs without methods, macros that are safe
+ok 52 - supported: recursion, reference params, range-for, globals, long long, structs without methods, macros that are safe
+  ---
+  duration_ms: 6977.953283
+  ...
+# Subtest: class support: ctor/dtor/method stepping matches real GDB exactly (implicit destructor call at scope exit, `this` as first arg)
+ok 53 - class support: ctor/dtor/method stepping matches real GDB exactly (implicit destructor call at scope exit, `this` as first arg)
+  ---
+  duration_ms: 6263.696468
+  ...
+# Subtest: class support: multi-line member-initializer-list steps one clause per line (bottom-up ordering), same frame throughout the constructor
+ok 54 - class support: multi-line member-initializer-list steps one clause per line (bottom-up ordering), same frame throughout the constructor
+  ---
+  duration_ms: 2851.956329
+  ...
+# Subtest: class support: still unsupported — virtual inheritance, library base classes, static members, nested class, union, default member initializer, out-of-line definition (explicit errors, never silently mis-instrumented)
+ok 55 - class support: still unsupported — virtual inheritance, library base classes, static members, nested class, union, default member initializer, out-of-line definition (explicit errors, never silently mis-instrumented)
+  ---
+  duration_ms: 10758.227613
+  ...
+# Subtest: class support: a plain data struct with no constructor/destructor at all is unaffected (no methods to instrument)
+ok 56 - class support: a plain data struct with no constructor/destructor at all is unaffected (no methods to instrument)
+  ---
+  duration_ms: 2888.134083
+  ...
+# Subtest: D6: variables declared without initialiser show 0 and are flagged until first written
+ok 57 - D6: variables declared without initialiser show 0 and are flagged until first written
+  ---
+  duration_ms: 6180.356887
+  ...
+# Subtest: D6 is per activation: a recursive call's own uninitialised local is flagged independently
+ok 58 - D6 is per activation: a recursive call's own uninitialised local is flagged independently
+  ---
+  duration_ms: 2936.145831
+  ...
+# Subtest: D5: a bare long/size_t/sizeof(pointer) is a non-fatal warning (kind width-warning), never rejects or blocks ok
+ok 59 - D5: a bare long/size_t/sizeof(pointer) is a non-fatal warning (kind width-warning), never rejects or blocks ok
+  ---
+  duration_ms: 22694.438348
+  ...
+# Subtest: D5: cv-qualified and array long/size_t (const long, volatile long, long[N]) still warn (independent verifier advisory)
+ok 60 - D5: cv-qualified and array long/size_t (const long, volatile long, long[N]) still warn (independent verifier advisory)
+  ---
+  duration_ms: 14515.570302
+  ...
+# Subtest: D5: long long, long double, and sizeof of a non-pointer never produce a width-warning
+ok 61 - D5: long long, long double, and sizeof of a non-pointer never produce a width-warning
+  ---
+  duration_ms: 14000.842333
+  ...
+# Subtest: cStr escapes C++ string literals (quotes, backslashes, control chars, trigraph '?')
+ok 62 - cStr escapes C++ string literals (quotes, backslashes, control chars, trigraph '?')
+  ---
+  duration_ms: 0.48223
+  ...
+# node:fs:448
+#     return binding.readFileUtf8(path, stringToFlags(options.flag));
+#                    ^
+# Error: ENOENT: no such file or directory, open '/w/examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp'
+#     at Object.readFileSync (node:fs:448:20)
+#     at file:///w/tests/engine/localgdb/addresses.test.mjs:17:16 {
+#   errno: -2,
+#   code: 'ENOENT',
+#   syscall: 'open',
+#   path: '/w/examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp'
+# }
+# Node.js v20.20.2
+# Subtest: /w/tests/engine/localgdb/addresses.test.mjs
+not ok 8 - /w/tests/engine/localgdb/addresses.test.mjs
+  ---
+  duration_ms: 84.416006
+  location: '/w/tests/engine/localgdb/addresses.test.mjs:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: engine run of the fixture: arrays in the trace, decls give `int[3]`-style types
+ok 64 - engine run of the fixture: arrays in the trace, decls give `int[3]`-style types
+  ---
+  duration_ms: 13074.785589
+  ...
+# Subtest: -stack-list-variables: array types `int [3]`, --simple-values omits the value (golden `cand`), --all-values prints like GDB
+ok 65 - -stack-list-variables: array types `int [3]`, --simple-values omits the value (golden `cand`), --all-values prints like GDB
+  ---
+  duration_ms: 13.997103
+  ...
+# Subtest: -var-create: value `[N]`, numchild N, not dynamic; children `var.i` / exp `i`; multi-dimensional; char/string/vector elements; globals
+ok 66 - -var-create: value `[N]`, numchild N, not dynamic; children `var.i` / exp `i`; multi-dimensional; char/string/vector elements; globals
+  ---
+  duration_ms: 12.552067
+  ...
+# Subtest: -var-update: element changes are reported through the children; the array varobj (value [N]) never changes; uninitialised array is zeros (D6)
+ok 67 - -var-update: element changes are reported through the children; the array varobj (value [N]) never changes; uninitialised array is zeros (D6)
+  ---
+  duration_ms: 6.903256
+  ...
+# Subtest: arrays in expressions, -data-evaluate-expression print format, &(array)
+ok 68 - arrays in expressions, -data-evaluate-expression print format, &(array)
+  ---
+  duration_ms: 12.433375
+  ...
+# Subtest: -var-create on a class instance: static (non-dynamic) varobj, value '{...}', numchild = distinct access levels with fields
+ok 69 - -var-create on a class instance: static (non-dynamic) varobj, value '{...}', numchild = distinct access levels with fields
+  ---
+  duration_ms: 13140.173001
+  ...
+# Subtest: -var-list-children: one access pseudo-node per access level with fields, no `type` key on it, empty value
+ok 70 - -var-list-children: one access pseudo-node per access level with fields, no `type` key on it, empty value
+  ---
+  duration_ms: 3258.176426
+  ...
+# Subtest: expanding the access pseudo-node gives the real fields, one level down, plain field names/types
+ok 71 - expanding the access pseudo-node gives the real fields, one level down, plain field names/types
+  ---
+  duration_ms: 3153.751133
+  ...
+# Subtest: -data-evaluate-expression: GDB print format `{field = value, ...}`, no access-level grouping
+ok 72 - -data-evaluate-expression: GDB print format `{field = value, ...}`, no access-level grouping
+  ---
+  duration_ms: 3117.094402
+  ...
+# Subtest: access pseudo-node order is ALWAYS public/private/protected, never declaration order (declared protected, private, public here — the order most likely to expose a declaration-order bug)
+ok 73 - access pseudo-node order is ALWAYS public/private/protected, never declaration order (declared protected, private, public here — the order most likely to expose a declaration-order bug)
+  ---
+  duration_ms: 3101.239163
+  ...
+# Subtest: -var-update: a field mutated through a method call is detected via its classfield varobj
+ok 74 - -var-update: a field mutated through a method call is detected via its classfield varobj
+  ---
+  duration_ms: 2891.853824
+  ...
+# Subtest: nested class composition: a field whose own type is another supported class recurses (Rect { Point tl, br; })
+ok 75 - nested class composition: a field whose own type is another supported class recurses (Rect { Point tl, br; })
+  ---
+  duration_ms: 2967.734112
+  ...
+# Subtest: a class field of a supported non-scalar type (std::vector, std::string) prints via the same machinery those types already use
+ok 76 - a class field of a supported non-scalar type (std::vector, std::string) prints via the same machinery those types already use
+  ---
+  duration_ms: 6521.905518
+  ...
+# Subtest: a class with zero fields at one access level does not get an empty pseudo-node for it (only levels WITH fields get one)
+ok 77 - a class with zero fields at one access level does not get an empty pseudo-node for it (only levels WITH fields get one)
+  ---
+  duration_ms: 3057.423266
+  ...
+# Subtest: a class with a field of an unsupported type is itself unsupported (recursive isSupported), never silently mis-serialised
+ok 78 - a class with a field of an unsupported type is itself unsupported (recursive isSupported), never silently mis-serialised
+  ---
+  duration_ms: 6431.570945
+  ...
+# Subtest: std::stack-list-variables/--simple-values shows the class-typed variable's name/type without a value (matches C-array/struct-not-simple convention)
+ok 79 - std::stack-list-variables/--simple-values shows the class-typed variable's name/type without a value (matches C-array/struct-not-simple convention)
+  ---
+  duration_ms: 2820.026236
+  ...
+# Subtest: reference to a class (`const Acc&` parameter): var-create/list-children work like a plain instance, but the value text differs from both a plain class and a scalar reference
+ok 80 - reference to a class (`const Acc&` parameter): var-create/list-children work like a plain instance, but the value text differs from both a plain class and a scalar reference
+  ---
+  duration_ms: 2824.139847
+  ...
+# Subtest: `this` inside a member function: var-create/list-children give the object's REAL field data, not a placeholder
+ok 81 - `this` inside a member function: var-create/list-children give the object's REAL field data, not a placeholder
+  ---
+  duration_ms: 2843.460557
+  ...
+# Subtest: a constructor need not mention every std::string/std::vector/class-typed field in its initializer list
+ok 82 - a constructor need not mention every std::string/std::vector/class-typed field in its initializer list
+  ---
+  duration_ms: 8756.612588
+  ...
+# Subtest: a self-referential class (linked-list/BST node shape) compiles, runs and steps without hanging — and its own -var-create actually exercises the code path that hung (runProgram alone does not build a TraceModel)
+ok 83 - a self-referential class (linked-list/BST node shape) compiles, runs and steps without hanging — and its own -var-create actually exercises the code path that hung (runProgram alone does not build a TraceModel)
+  ---
+  duration_ms: 5403.263132
+  ...
+# Subtest: `this` inside a self-referential class's own method is consistently rejected too (not accepted with made-up field data for its raw-pointer fields)
+ok 84 - `this` inside a self-referential class's own method is consistently rejected too (not accepted with made-up field data for its raw-pointer fields)
+  ---
+  duration_ms: 2919.099292
+  ...
+# Subtest: `this` still works fully for a class with no raw-pointer fields (the fix above did not over-reject)
+ok 85 - `this` still works fully for a class with no raw-pointer fields (the fix above did not over-reject)
+  ---
+  duration_ms: 2675.514598
+  ...
+# Subtest: an unmentioned class-typed field is rejected through EVERY spelling that names it (const, array, typedef, using, elaborated struct/class), including nested inside std::pair/std::array/std::tuple — the polarity is 'only unreachable-from-__vg_user is safe to skip'
+ok 86 - an unmentioned class-typed field is rejected through EVERY spelling that names it (const, array, typedef, using, elaborated struct/class), including nested inside std::pair/std::array/std::tuple — the polarity is 'only unreachable-from-__vg_user is safe to skip'
+  ---
+  duration_ms: 22735.490159
+  ...
+# Subtest: ...but a genuinely std::-prefixed field (const-qualified, or an array of them) is still safely skipped, and a pointer-to-class field is skipped too (its own construction is trivial and untraced regardless of what it points to)
+ok 87 - ...but a genuinely std::-prefixed field (const-qualified, or an array of them) is still safely skipped, and a pointer-to-class field is skipped too (its own construction is trivial and untraced regardless of what it points to)
+  ---
+  duration_ms: 17275.755081
+  ...
+# Subtest: a field spelled without std:: under `using namespace std;` is still safely skipped
+ok 88 - a field spelled without std:: under `using namespace std;` is still safely skipped
+  ---
+  duration_ms: 6419.327556
+  ...
+# Subtest: a registered class hidden inside a std::pair/array/tuple/vector template argument is rejected, not silently accepted
+ok 89 - a registered class hidden inside a std::pair/array/tuple/vector template argument is rejected, not silently accepted
+  ---
+  duration_ms: 5508.892823
+  ...
+# Subtest: an array field this can't resolve (aliased element type, or std-type spelled without std:: prefix) is rejected, never silently accepted
+ok 90 - an array field this can't resolve (aliased element type, or std-type spelled without std:: prefix) is rejected, never silently accepted
+  ---
+  duration_ms: 6212.131314
+  ...
+# Subtest: an array of a std::pair/array/tuple that itself wraps a registered class is rejected, not silently accepted (F-C)
+ok 91 - an array of a std::pair/array/tuple that itself wraps a registered class is rejected, not silently accepted (F-C)
+  ---
+  duration_ms: 6765.289475
+  ...
+# Subtest: an array of a std container that wraps only std/scalar types is still safely skipped
+ok 92 - an array of a std container that wraps only std/scalar types is still safely skipped
+  ---
+  duration_ms: 16097.938927
+  ...
+# Subtest: a Class* other than `this` is explicitly rejected, never silently shown with wrong field data
+ok 93 - a Class* other than `this` is explicitly rejected, never silently shown with wrong field data
+  ---
+  duration_ms: 6631.203072
+  ...
+# Subtest: an unmentioned field whose type is ANOTHER registered class is rejected explicitly (not silently given the wrong call stack)
+ok 94 - an unmentioned field whose type is ANOTHER registered class is rejected explicitly (not silently given the wrong call stack)
+  ---
+  duration_ms: 1274.918447
+  ...
+# Subtest: engine run of the fixture is as documented (trace shape the assertions below rely on)
+not ok 95 - engine run of the fixture is as documented (trace shape the assertions below rely on)
+  ---
+  duration_ms: 13475.112818
+  location: '/w/tests/engine/localgdb/commands.test.mjs:30:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    [{"kind":"compile-timeout","stage":"link","message":"compilation exceeded its time budget (8000 ms) in stage link; the compiler worker was restarted"}]
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:31:10)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -break-insert: line, function, temp, disabled, condition, ignore count; bkpt fields and signatures
+not ok 96 - -break-insert: line, function, temp, disabled, condition, ignore count; bkpt fields and signatures
+  ---
+  duration_ms: 5.282367
+  location: '/w/tests/engine/localgdb/commands.test.mjs:38:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:39:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -break-insert errors and pending breakpoints
+not ok 97 - -break-insert errors and pending breakpoints
+  ---
+  duration_ms: 0.418117
+  location: '/w/tests/engine/localgdb/commands.test.mjs:54:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:55:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -break-delete / -enable / -disable / -condition: results, notifications, errors
+not ok 98 - -break-delete / -enable / -disable / -condition: results, notifications, errors
+  ---
+  duration_ms: 3.485136
+  location: '/w/tests/engine/localgdb/commands.test.mjs:69:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:70:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: hit counts, temporary breakpoint deletion, condition and ignore count
+not ok 99 - hit counts, temporary breakpoint deletion, condition and ignore count
+  ---
+  duration_ms: 0.450567
+  location: '/w/tests/engine/localgdb/commands.test.mjs:91:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:92:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -exec-run without breakpoints runs to the end: exit items in golden order, then the program output
+not ok 100 - -exec-run without breakpoints runs to the end: exit items in golden order, then the program output
+  ---
+  duration_ms: 0.508622
+  location: '/w/tests/engine/localgdb/commands.test.mjs:123:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:124:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: run / continue stop at breakpoints with the golden console text; continue after the last one ends the program
+not ok 101 - run / continue stop at breakpoints with the golden console text; continue after the last one ends the program
+  ---
+  duration_ms: 0.344767
+  location: '/w/tests/engine/localgdb/commands.test.mjs:134:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:135:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: next steps over calls; step enters user functions; a breakpoint inside a stepped-over call stops there
+not ok 102 - next steps over calls; step enters user functions; a breakpoint inside a stepped-over call stops there
+  ---
+  duration_ms: 0.4819
+  location: '/w/tests/engine/localgdb/commands.test.mjs:143:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:144:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: stepping onto a breakpoint line reports breakpoint-hit (GDB behaviour)
+not ok 103 - stepping onto a breakpoint line reports breakpoint-hit (GDB behaviour)
+  ---
+  duration_ms: 0.444904
+  location: '/w/tests/engine/localgdb/commands.test.mjs:162:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:163:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: returning from a function by next/step does NOT stop on the caller's call line: the statement is finished and the NEXT line is reported (GDB 16.3 reference)
+not ok 104 - returning from a function by next/step does NOT stop on the caller's call line: the statement is finished and the NEXT line is reported (GDB 16.3 reference)
+  ---
+  duration_ms: 3.441978
+  location: '/w/tests/engine/localgdb/commands.test.mjs:170:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:171:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -exec-finish: function-finished at the call line; breakpoints inside are honoured; outermost frame error
+not ok 105 - -exec-finish: function-finished at the call line; breakpoints inside are honoured; outermost frame error
+  ---
+  duration_ms: 0.351301
+  location: '/w/tests/engine/localgdb/commands.test.mjs:186:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:187:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -exec-finish finishes the SELECTED frame
+not ok 106 - -exec-finish finishes the SELECTED frame
+  ---
+  duration_ms: 0.44769
+  location: '/w/tests/engine/localgdb/commands.test.mjs:205:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:206:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: reverse execution: next/step/continue/finish backwards, no-history at the start, forward again afterwards
+not ok 107 - reverse execution: next/step/continue/finish backwards, no-history at the start, forward again afterwards
+  ---
+  duration_ms: 54.335604
+  location: '/w/tests/engine/localgdb/commands.test.mjs:216:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:217:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: exec commands after the program ended: not being run; -exec-run restarts
+not ok 108 - exec commands after the program ended: not being run; -exec-run restarts
+  ---
+  duration_ms: 1.538681
+  location: '/w/tests/engine/localgdb/commands.test.mjs:255:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:256:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -stack-list-frames / -arguments / -variables / -select-frame / -thread-info in a recursive call
+not ok 109 - -stack-list-frames / -arguments / -variables / -select-frame / -thread-info in a recursive call
+  ---
+  duration_ms: 0.637106
+  location: '/w/tests/engine/localgdb/commands.test.mjs:265:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:266:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: locals follow GDB's block rules: innermost block first, later declarations listed, shadowing, reference arguments
+not ok 110 - locals follow GDB's block rules: innermost block first, later declarations listed, shadowing, reference arguments
+  ---
+  duration_ms: 0.465251
+  location: '/w/tests/engine/localgdb/commands.test.mjs:292:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:293:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: supported types with GDB's type strings, value strings and dynamic fields
+not ok 111 - -var-create: supported types with GDB's type strings, value strings and dynamic fields
+  ---
+  duration_ms: 0.605947
+  location: '/w/tests/engine/localgdb/commands.test.mjs:316:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:317:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: unsupported types and expressions get an explicit MI error; GDB's own errors are reproduced; the counter advances on failures
+not ok 112 - -var-create: unsupported types and expressions get an explicit MI error; GDB's own errors are reproduced; the counter advances on failures
+  ---
+  duration_ms: 0.434841
+  location: '/w/tests/engine/localgdb/commands.test.mjs:338:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:339:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-list-children: nested vectors, numchild after expansion, ranges, value flags; scalars and strings have no children
+not ok 113 - -var-list-children: nested vectors, numchild after expansion, ranges, value flags; scalars and strings have no children
+  ---
+  duration_ms: 3.647864
+  location: '/w/tests/engine/localgdb/commands.test.mjs:366:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:367:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-update: value changes, in_scope false when the block is left (once), value again when re-entered; roots newest first
+not ok 114 - -var-update: value changes, in_scope false when the block is left (once), value again when re-entered; roots newest first
+  ---
+  duration_ms: 0.523618
+  location: '/w/tests/engine/localgdb/commands.test.mjs:392:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:393:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: varobj scope across frames: a recursive frame's varobj stays valid in callees; a returned frame's varobj goes out of scope
+not ok 115 - varobj scope across frames: a recursive frame's varobj stays valid in callees; a returned frame's varobj goes out of scope
+  ---
+  duration_ms: 0.406062
+  location: '/w/tests/engine/localgdb/commands.test.mjs:421:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:422:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: vector varobj: growth is reported with new_num_children; the children show the new elements (reference parameter)
+not ok 116 - vector varobj: growth is reported with new_num_children; the children show the new elements (reference parameter)
+  ---
+  duration_ms: 0.359055
+  location: '/w/tests/engine/localgdb/commands.test.mjs:452:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:453:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -data-evaluate-expression: plain variables only; errors like -var-create
+not ok 117 - -data-evaluate-expression: plain variables only; errors like -var-create
+  ---
+  duration_ms: 0.405758
+  location: '/w/tests/engine/localgdb/commands.test.mjs:469:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:470:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: [fast @N]: python exec is recognised, simulated on the trace, blob + echo + per-next items in golden order
+not ok 118 - [fast @N]: python exec is recognised, simulated on the trace, blob + echo + per-next items in golden order
+  ---
+  duration_ms: 0.382727
+  location: '/w/tests/engine/localgdb/commands.test.mjs:497:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:498:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: [fast @N]: program exits before the target -> landed false, exit items, program output after the packet
+not ok 119 - [fast @N]: program exits before the target -> landed false, exit items, program output after the packet
+  ---
+  duration_ms: 3.447345
+  location: '/w/tests/engine/localgdb/commands.test.mjs:523:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:524:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: [fast @N]: step limit, missing program, non-template python
+not ok 120 - [fast @N]: step limit, missing program, non-template python
+  ---
+  duration_ms: 0.320395
+  location: '/w/tests/engine/localgdb/commands.test.mjs:538:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:539:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: [fast @N] in a recursive stack: whole stack per stop, args only while the pc is in the function's own block (gdb.Frame.block())
+not ok 121 - [fast @N] in a recursive stack: whole stack per stop, args only while the pc is in the function's own block (gdb.Frame.block())
+  ---
+  duration_ms: 3.435666
+  location: '/w/tests/engine/localgdb/commands.test.mjs:551:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:552:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create of arithmetic expressions: C++ types and GDB's value spelling (int wrap, truncating division, bool, double, char, long long, subscripts)
+not ok 122 - -var-create of arithmetic expressions: C++ types and GDB's value spelling (int wrap, truncating division, bool, double, char, long long, subscripts)
+  ---
+  duration_ms: 0.459596
+  location: '/w/tests/engine/localgdb/commands.test.mjs:576:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:577:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -data-evaluate-expression evaluates the same expressions (value only)
+not ok 123 - -data-evaluate-expression evaluates the same expressions (value only)
+  ---
+  duration_ms: 0.36515
+  location: '/w/tests/engine/localgdb/commands.test.mjs:622:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:623:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: expression varobjs update like GDB's: value changes, out of scope with the block of the variables they use
+not ok 124 - expression varobjs update like GDB's: value changes, out of scope with the block of the variables they use
+  ---
+  duration_ms: 0.296006
+  location: '/w/tests/engine/localgdb/commands.test.mjs:635:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:636:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: &(name): pointer varobjs shaped like the golden's (numchild 1, `T *`, child `*&(name)`; vector: `_Vector_base` child)
+not ok 125 - &(name): pointer varobjs shaped like the golden's (numchild 1, `T *`, child `*&(name)`; vector: `_Vector_base` child)
+  ---
+  duration_ms: 0.474573
+  location: '/w/tests/engine/localgdb/commands.test.mjs:648:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:649:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -exec-run clears breakpoint hit counts (GDB): times back to 0, then 1 after the first hit of the new run (verifier A3)
+not ok 126 - -exec-run clears breakpoint hit counts (GDB): times back to 0, then 1 after the first hit of the new run (verifier A3)
+  ---
+  duration_ms: 0.347323
+  location: '/w/tests/engine/localgdb/commands.test.mjs:681:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:682:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: expression literals (verifier A4): octal, hex, true/false, integer suffixes with C++ literal types
+not ok 127 - expression literals (verifier A4): octal, hex, true/false, integer suffixes with C++ literal types
+  ---
+  duration_ms: 0.435408
+  location: '/w/tests/engine/localgdb/commands.test.mjs:701:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:702:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: expression depth / length limits give an explicit error, never an internal error (verifier A5)
+not ok 128 - expression depth / length limits give an explicit error, never an internal error (verifier A5)
+  ---
+  duration_ms: 0.46518
+  location: '/w/tests/engine/localgdb/commands.test.mjs:724:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/commands.test.mjs:26:22)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/commands.test.mjs:725:13)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: identical item lists: no differences, no allowances used
+ok 129 - identical item lists: no differences, no allowances used
+  ---
+  duration_ms: 4.525437
+  ...
+# Subtest: allowed: addr, file, pid/thread, process N text, gdb noise, extra `reverse` feature; each is counted
+ok 130 - allowed: addr, file, pid/thread, process N text, gdb noise, extra `reverse` feature; each is counted
+  ---
+  duration_ms: 1.130615
+  ...
+# Subtest: allowed: value of an uninitialised variable (ours is the zero of its type) - but only for variables flagged uninitialised
+ok 131 - allowed: value of an uninitialised variable (ours is the zero of its type) - but only for variables flagged uninitialised
+  ---
+  duration_ms: 1.088345
+  ...
+# Subtest: fast-forward blob: compared as JSON with addr allowed; counts/landed/lines differences fail
+ok 132 - fast-forward blob: compared as JSON with addr allowed; counts/landed/lines differences fail
+  ---
+  duration_ms: 0.959746
+  ...
+# Subtest: NOT allowed: token value/presence, type, message, payload keys, array lengths, stream, item count, order
+ok 133 - NOT allowed: token value/presence, type, message, payload keys, array lengths, stream, item count, order
+  ---
+  duration_ms: 1.785414
+  ...
+# Subtest: golden segmentation attributes items by command kind and fails loudly when the stream does not fit
+ok 134 - golden segmentation attributes items by command kind and fails loudly when the stream does not fit
+  ---
+  duration_ms: 1.562913
+  ...
+# Subtest: address rules are strict: whole hex address on both sides, or `@0xADDR: rest` with the rest equal; pid only digits
+ok 135 - address rules are strict: whole hex address on both sides, or `@0xADDR: rest` with the rest equal; pid only digits
+  ---
+  duration_ms: 1.875737
+  ...
+# Subtest: uninit-value rule: zero on our side, integer garbage on the golden side, the SAME entry uninitialised per LocalGdb and per the engine trace; (line, variable@declLine) recorded
+ok 136 - uninit-value rule: zero on our side, integer garbage on the golden side, the SAME entry uninitialised per LocalGdb and per the engine trace; (line, variable@declLine) recorded
+  ---
+  duration_ms: 0.629222
+  ...
+# Subtest: uninit-value rule resolves shadowing by entry, not by name (verifier A1): an initialised inner `r` is not excused by an uninitialised outer `r`
+ok 137 - uninit-value rule resolves shadowing by entry, not by name (verifier A1): an initialised inner `r` is not excused by an uninitialised outer `r`
+  ---
+  duration_ms: 0.419702
+  ...
+# Subtest: address rule: 0x0 never matches a non-null address (verifier A2)
+ok 138 - address rule: 0x0 never matches a non-null address (verifier A2)
+  ---
+  duration_ms: 0.558669
+  ...
+# Subtest: engine run of the fixture compiles and reaches every line
+not ok 139 - engine run of the fixture compiles and reaches every line
+  ---
+  duration_ms: 13158.162088
+  location: '/w/tests/engine/localgdb/containers.test.mjs:48:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    [{"kind":"compile-timeout","stage":"link","message":"compilation exceeded its time budget (8000 ms) in stage link; the compiler worker was restarted"}]
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:49:10)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: deque — value, type, displayhint array, flat .[i] children
+not ok 140 - -var-create: deque — value, type, displayhint array, flat .[i] children
+  ---
+  duration_ms: 1.934069
+  location: '/w/tests/engine/localgdb/containers.test.mjs:52:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:53:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: list — value/type carry the __cxx11 tag, no count, no displayhint at all
+not ok 141 - -var-create: list — value/type carry the __cxx11 tag, no count, no displayhint at all
+  ---
+  duration_ms: 0.40366
+  location: '/w/tests/engine/localgdb/containers.test.mjs:68:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:69:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: stack — 'wrapping: std::deque with N elements', children bottom-to-top (push order)
+not ok 142 - -var-create: stack — 'wrapping: std::deque with N elements', children bottom-to-top (push order)
+  ---
+  duration_ms: 0.331587
+  location: '/w/tests/engine/localgdb/containers.test.mjs:80:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:81:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: queue — 'wrapping: std::deque with N elements', children front-to-back (push order)
+not ok 143 - -var-create: queue — 'wrapping: std::deque with N elements', children front-to-back (push order)
+  ---
+  duration_ms: 0.505039
+  location: '/w/tests/engine/localgdb/containers.test.mjs:88:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:89:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: empty deque — 'with 0 elements', has_more 0, no children
+not ok 144 - -var-create: empty deque — 'with 0 elements', has_more 0, no children
+  ---
+  duration_ms: 0.28873
+  location: '/w/tests/engine/localgdb/containers.test.mjs:96:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:97:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: empty list — 'empty std::__cxx11::list' (not 'with 0 elements'), has_more 0
+not ok 145 - -var-create: empty list — 'empty std::__cxx11::list' (not 'with 0 elements'), has_more 0
+  ---
+  duration_ms: 0.366756
+  location: '/w/tests/engine/localgdb/containers.test.mjs:104:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:105:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-update: deque growing from empty reports has_more "1" without -var-list-children ever being called first
+ok 146 - -var-update: deque growing from empty reports has_more "1" without -var-list-children ever being called first
+  ---
+  duration_ms: 6987.227862
+  ...
+# Subtest: -var-update: set growing from empty reports has_more "1" without -var-list-children ever being called first
+ok 147 - -var-update: set growing from empty reports has_more "1" without -var-list-children ever being called first
+  ---
+  duration_ms: 6112.761712
+  ...
+# Subtest: -var-update: map growing from empty reports has_more "1" without -var-list-children ever being called first
+ok 148 - -var-update: map growing from empty reports has_more "1" without -var-list-children ever being called first
+  ---
+  duration_ms: 6122.634736
+  ...
+# Subtest: -var-create: singular 'element' for a 1-element container
+not ok 149 - -var-create: singular 'element' for a 1-element container
+  ---
+  duration_ms: 0.551128
+  location: '/w/tests/engine/localgdb/containers.test.mjs:145:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:146:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-update: growth after push_back/push/pop is reflected (numchild via var-list-children, value text, no crash)
+not ok 150 - -var-update: growth after push_back/push/pop is reflected (numchild via var-list-children, value text, no crash)
+  ---
+  duration_ms: 0.454511
+  location: '/w/tests/engine/localgdb/containers.test.mjs:151:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:152:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -data-evaluate-expression: GDB print format with children (deque/stack plain, list index-labelled)
+not ok 151 - -data-evaluate-expression: GDB print format with children (deque/stack plain, list index-labelled)
+  ---
+  duration_ms: 0.656044
+  location: '/w/tests/engine/localgdb/containers.test.mjs:179:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:180:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: priority_queue — value/type match real GDB, displayhint array; children are OUR priority-drain order, not GDB's raw heap array (documented divergence)
+not ok 152 - -var-create: priority_queue — value/type match real GDB, displayhint array; children are OUR priority-drain order, not GDB's raw heap array (documented divergence)
+  ---
+  duration_ms: 0.414818
+  location: '/w/tests/engine/localgdb/containers.test.mjs:191:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:192:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: set — value/type/children match real GDB exactly, NO displayhint (like list)
+not ok 153 - -var-create: set — value/type/children match real GDB exactly, NO displayhint (like list)
+  ---
+  duration_ms: 0.419995
+  location: '/w/tests/engine/localgdb/containers.test.mjs:203:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:204:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-create: map — value/type/children (flat alternating key,value, numchild 2×N) match real GDB exactly
+not ok 154 - -var-create: map — value/type/children (flat alternating key,value, numchild 2×N) match real GDB exactly
+  ---
+  duration_ms: 1.362286
+  location: '/w/tests/engine/localgdb/containers.test.mjs:219:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:220:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: -var-update: priority_queue/set/map growth after push/insert/[]= is reflected (new_num_children, values)
+not ok 155 - -var-update: priority_queue/set/map growth after push/insert/[]= is reflected (new_num_children, values)
+  ---
+  duration_ms: 0.459108
+  location: '/w/tests/engine/localgdb/containers.test.mjs:234:1'
+  failureType: 'testCodeFailure'
+  error: 'createLocalGdb: runResult.ok is false; only a successful run can be debugged'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    new LocalGdbSession (file:///w/gdbgui/static/engine/localgdb/session.js:59:44)
+    createLocalGdb (file:///w/gdbgui/static/engine/localgdb/index.js:28:19)
+    newGdb (file:///w/tests/engine/localgdb/helpers.mjs:22:10)
+    fresh (file:///w/tests/engine/localgdb/containers.test.mjs:40:21)
+    at (file:///w/tests/engine/localgdb/containers.test.mjs:42:13)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/containers.test.mjs:235:19)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: still unsupported (documented gap): a map/set/priority_queue of an unsupported key/element type
+ok 156 - still unsupported (documented gap): a map/set/priority_queue of an unsupported key/element type
+  ---
+  duration_ms: 0.801081
+  ...
+# Subtest: std::pair (standalone element type, not map's key/value) is supported when both members are
+ok 157 - std::pair (standalone element type, not map's key/value) is supported when both members are
+  ---
+  duration_ms: 0.470696
+  ...
+# Subtest: -var-create: queue<pair<int,int>> — pair elements format as leaf "{first = X, second = Y}" strings
+ok 158 - -var-create: queue<pair<int,int>> — pair elements format as leaf "{first = X, second = Y}" strings
+  ---
+  duration_ms: 6469.264178
+  ...
+# Subtest: C++ typing and values
+ok 159 - C++ typing and values
+  ---
+  duration_ms: 8.122884
+  ...
+# Subtest: agreement with evalexpr.js on the shared grammar (integer expressions without wrap-around)
+ok 160 - agreement with evalexpr.js on the shared grammar (integer expressions without wrap-around)
+  ---
+  duration_ms: 3.616402
+  ...
+# Subtest: parser errors use GDB's wording
+ok 161 - parser errors use GDB's wording
+  ---
+  duration_ms: 1.139462
+  ...
+# Subtest: template placeholders are exactly the ones the parser substitutes
+not ok 162 - template placeholders are exactly the ones the parser substitutes
+  ---
+  duration_ms: 3.223739
+  location: '/w/tests/engine/localgdb/fastforward_template.test.mjs:10:1'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/gdbgui/src/js/fastForwardJump.ts'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    readTemplate (file:///w/tests/engine/localgdb/ff_template.mjs:12:17)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/fastforward_template.test.mjs:11:21)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+    node:internal/test_runner/harness:255:12
+    node:internal/process/task_queues:140:7
+    AsyncResource.runInAsyncScope (node:async_hooks:206:9)
+    AsyncResource.runMicrotask (node:internal/process/task_queues:137:8)
+  ...
+# Subtest: parseFastForward reads limit / line / need / markers back from the command built with the real template
+not ok 163 - parseFastForward reads limit / line / need / markers back from the command built with the real template
+  ---
+  duration_ms: 0.342485
+  location: '/w/tests/engine/localgdb/fastforward_template.test.mjs:20:1'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/gdbgui/src/js/fastForwardJump.ts'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    readTemplate (file:///w/tests/engine/localgdb/ff_template.mjs:12:17)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/fastforward_template.test.mjs:21:15)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+    Test.postRun (node:internal/test_runner/test:889:19)
+    Test.run (node:internal/test_runner/test:835:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: parseFastForward reads the golden sample's command (event 206) and rejects other python commands
+not ok 164 - parseFastForward reads the golden sample's command (event 206) and rejects other python commands
+  ---
+  duration_ms: 7.441148
+  location: '/w/tests/engine/localgdb/fastforward_template.test.mjs:28:1'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/gdbgui/src/js/fastForwardJump.ts'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    readTemplate (file:///w/tests/engine/localgdb/ff_template.mjs:12:17)
+    buildJumpCommand (file:///w/tests/engine/localgdb/ff_template.mjs:22:65)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/fastforward_template.test.mjs:33:22)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+    Test.postRun (node:internal/test_runner/test:889:19)
+    Test.run (node:internal/test_runner/test:835:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: pyJson matches Python json.dumps (separators, key order incl. integer-like keys, escapes)
+ok 165 - pyJson matches Python json.dumps (separators, key order incl. integer-like keys, escapes)
+  ---
+  duration_ms: 0.509764
+  ...
+# Subtest: one snapshot per call (main + every fib activation), not per line
+ok 166 - one snapshot per call (main + every fib activation), not per line
+  ---
+  duration_ms: 12674.379883
+  ...
+# Subtest: first snapshot is just [main]; each fib snapshot's chain is innermost-first ending at main
+ok 167 - first snapshot is just [main]; each fib snapshot's chain is innermost-first ending at main
+  ---
+  duration_ms: 2964.628269
+  ...
+# Subtest: args carry GDB print-format values (n=3,2,1,0,1 at each fib entry)
+ok 168 - args carry GDB print-format values (n=3,2,1,0,1 at each fib entry)
+  ---
+  duration_ms: 2761.183812
+  ...
+# Subtest: sibling calls on the same source line get distinct parent addr (fib(n-1) vs fib(n-2) don't collapse into one ghost node)
+ok 169 - sibling calls on the same source line get distinct parent addr (fib(n-1) vs fib(n-2) don't collapse into one ghost node)
+  ---
+  duration_ms: 2844.277133
+  ...
+# Subtest: addr is stable across repeated snapshots of the very same call (not used here — one snapshot per call — but the value must still be deterministic given the same trace)
+ok 170 - addr is stable across repeated snapshots of the very same call (not used here — one snapshot per call — but the value must still be deterministic given the same trace)
+  ---
+  duration_ms: 6123.377445
+  ...
+# Subtest: non-recursive program: exactly one snapshot per call, args match the call site's values
+ok 171 - non-recursive program: exactly one snapshot per call, args match the call site's values
+  ---
+  duration_ms: 2740.911448
+  ...
+# Subtest: a program that never calls a user function beyond main: a single [main] snapshot
+ok 172 - a program that never calls a user function beyond main: a single [main] snapshot
+  ---
+  duration_ms: 3361.026191
+  ...
+# Subtest: every signature a live session actually visits was already present in the ghost (the property CallGraph.tsx relies on to keep showing it)
+ok 173 - every signature a live session actually visits was already present in the ghost (the property CallGraph.tsx relies on to keep showing it)
+  ---
+  duration_ms: 3330.329048
+  ...
+# Subtest: a loop calling the same function from the same call site: one ghost node, not one per iteration (matches a real compiled call instruction's fixed address)
+ok 174 - a loop calling the same function from the same call site: one ghost node, not one per iteration (matches a real compiled call instruction's fixed address)
+  ---
+  duration_ms: 2735.226307
+  ...
+# \# lesson corpus (LocalGdb vs recorded GDB / wasm, collapsed line sequences):
+# \#    0 DP課1_一維陣列與索引/dp1_row.json                    skipped: recorded run exited immediately
+# \#    1 DP課2_雙層迴圈填表/dp2_grid.json                    skipped: recorded run exited immediately
+# \#    2 DP課3_背包填表/dp3_knapsack.json                  skipped: GDB baseline invalid (running/null steps)
+# \#    7 list經典_串列走訪/list_walkthrough.json            skipped: GDB baseline invalid (stuck running)
+# \#    8 queue經典_老鼠走迷宮/maze_bfs_lesson.json           skipped: input randomised per page load
+# \#   12 vector經典_排序/bubble_sort.json                 skipped: GDB baseline invalid (exited at once)
+# \#   15 while迴圈_貪婪找零/greedy_coin_change.json         skipped: GDB baseline invalid (running/null steps)
+# \#   16 函式_SWAP寫法/swap_pointer.json                  skipped: GDB baseline invalid (running/null steps)
+# \#   19 走方格_AtCoder_Grid1/grid_paths.json            skipped: input randomised per page load
+# Subtest: lesson 0 DP課1_一維陣列與索引/dp1_row.json
+ok 175 - lesson 0 DP課1_一維陣列與索引/dp1_row.json # SKIP recorded run exited immediately
+  ---
+  duration_ms: 393.568321
+  ...
+# Subtest: lesson 1 DP課2_雙層迴圈填表/dp2_grid.json
+ok 176 - lesson 1 DP課2_雙層迴圈填表/dp2_grid.json # SKIP recorded run exited immediately
+  ---
+  duration_ms: 0.292309
+  ...
+# Subtest: lesson 2 DP課3_背包填表/dp3_knapsack.json
+ok 177 - lesson 2 DP課3_背包填表/dp3_knapsack.json # SKIP GDB baseline invalid (running/null steps)
+  ---
+  duration_ms: 0.215285
+  ...
+# Subtest: lesson 3 DP課4_同一題改用遞迴/dp4_recursion.json
+not ok 178 - lesson 3 DP課4_同一題改用遞迴/dp4_recursion.json
+  ---
+  duration_ms: 0.880156
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/DP課4_同一題改用遞迴/dp4_recursion.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 4 DP課5_記憶化剪掉重複/dp5_memo.json
+not ok 179 - lesson 4 DP課5_記憶化剪掉重複/dp5_memo.json
+  ---
+  duration_ms: 0.320421
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/DP課5_記憶化剪掉重複/dp5_memo.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 5 deque經典_BrokenKeyboard/broken_keyboard.json
+not ok 180 - lesson 5 deque經典_BrokenKeyboard/broken_keyboard.json
+  ---
+  duration_ms: 0.576209
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/deque經典_BrokenKeyboard/broken_keyboard.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 6 for迴圈_因數抽血/factor_sum.json
+not ok 181 - lesson 6 for迴圈_因數抽血/factor_sum.json
+  ---
+  duration_ms: 0.368365
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/for迴圈_因數抽血/factor_sum.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 7 list經典_串列走訪/list_walkthrough.json
+ok 182 - lesson 7 list經典_串列走訪/list_walkthrough.json # SKIP GDB baseline invalid (stuck running)
+  ---
+  duration_ms: 0.241145
+  ...
+# Subtest: lesson 8 queue經典_老鼠走迷宮/maze_bfs_lesson.json
+ok 183 - lesson 8 queue經典_老鼠走迷宮/maze_bfs_lesson.json # SKIP input randomised per page load
+  ---
+  duration_ms: 0.237856
+  ...
+# Subtest: lesson 9 stack經典_Rails/stack_rails.json
+not ok 184 - lesson 9 stack經典_Rails/stack_rails.json
+  ---
+  duration_ms: 0.316439
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/stack經典_Rails/stack_rails.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 10 string經典_迴文判斷/palindrome.json
+not ok 185 - lesson 10 string經典_迴文判斷/palindrome.json
+  ---
+  duration_ms: 0.287894
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/string經典_迴文判斷/palindrome.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 11 vector經典_快速排序/quick_sort.json
+not ok 186 - lesson 11 vector經典_快速排序/quick_sort.json
+  ---
+  duration_ms: 0.32181
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/vector經典_快速排序/quick_sort.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 12 vector經典_排序/bubble_sort.json
+ok 187 - lesson 12 vector經典_排序/bubble_sort.json # SKIP GDB baseline invalid (exited at once)
+  ---
+  duration_ms: 0.283561
+  ...
+# Subtest: lesson 13 vector經典_矩陣轉置/matrix_transpose.json
+not ok 188 - lesson 13 vector經典_矩陣轉置/matrix_transpose.json
+  ---
+  duration_ms: 0.666481
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/vector經典_矩陣轉置/matrix_transpose.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 14 while迴圈_考拉斯猜想/collatz.json
+not ok 189 - lesson 14 while迴圈_考拉斯猜想/collatz.json
+  ---
+  duration_ms: 0.314419
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/while迴圈_考拉斯猜想/collatz.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 15 while迴圈_貪婪找零/greedy_coin_change.json
+ok 190 - lesson 15 while迴圈_貪婪找零/greedy_coin_change.json # SKIP GDB baseline invalid (running/null steps)
+  ---
+  duration_ms: 0.235043
+  ...
+# Subtest: lesson 16 函式_SWAP寫法/swap_pointer.json
+ok 191 - lesson 16 函式_SWAP寫法/swap_pointer.json # SKIP GDB baseline invalid (running/null steps)
+  ---
+  duration_ms: 0.14286
+  ...
+# Subtest: lesson 17 技巧一_環狀最小成本_UVA116/tsp_uva116.json
+not ok 192 - lesson 17 技巧一_環狀最小成本_UVA116/tsp_uva116.json
+  ---
+  duration_ms: 0.289731
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 18 技巧二_記憶化搜尋_UVA10285/longest_run.json
+not ok 193 - lesson 18 技巧二_記憶化搜尋_UVA10285/longest_run.json
+  ---
+  duration_ms: 0.421255
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/技巧二_記憶化搜尋_UVA10285/longest_run.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 19 走方格_AtCoder_Grid1/grid_paths.json
+ok 194 - lesson 19 走方格_AtCoder_Grid1/grid_paths.json # SKIP input randomised per page load
+  ---
+  duration_ms: 0.23531
+  ...
+# Subtest: lesson 20 走方格_DP推導/grid_derivation.json
+not ok 195 - lesson 20 走方格_DP推導/grid_derivation.json
+  ---
+  duration_ms: 0.264172
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/走方格_DP推導/grid_derivation.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 21 遞迴_硬幣所有解析法/coin_change.json
+not ok 196 - lesson 21 遞迴_硬幣所有解析法/coin_change.json
+  ---
+  duration_ms: 0.292662
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/遞迴_硬幣所有解析法/coin_change.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:68:34)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: Task 3: rails (idx 9) and maze (idx 8) do exit under repeated `continue`; loops with breakpoints simply need many presses
+not ok 197 - Task 3: rails (idx 9) and maze (idx 8) do exit under repeated `continue`; loops with breakpoints simply need many presses
+  ---
+  duration_ms: 0.489339
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:95:1'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/stack經典_Rails/stack_rails.json'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    run1 (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:97:29)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:109:23)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: fixture trace has the second probe on line 8 (then-branch after the callee) - the situation of the bug
+ok 198 - fixture trace has the second probe on line 8 (then-branch after the callee) - the situation of the bug
+  ---
+  duration_ms: 12800.681109
+  ...
+# Subtest: next over a call in an if condition: line 8 is ONE stop (7, 8, 9), not 8 twice
+ok 199 - next over a call in an if condition: line 8 is ONE stop (7, 8, 9), not 8 twice
+  ---
+  duration_ms: 9.726972
+  ...
+# Subtest: step into the callee and out again: 8, 3, 4, 5, then the NEXT line 9 (the rest of line 8 is skipped)
+ok 200 - step into the callee and out again: 8, 3, 4, 5, then the NEXT line 9 (the rest of line 8 is skipped)
+  ---
+  duration_ms: 3.5106
+  ...
+# Subtest: next from the callee's `}` returns and stops on the caller's next line; finish still stops mid-line on the call
+ok 201 - next from the callee's `}` returns and stops on the caller's next line; finish still stops mid-line on the call
+  ---
+  duration_ms: 28.238824
+  ...
+# Subtest: reverse: next/step backwards do not stop twice on the same line either
+ok 202 - reverse: next/step backwards do not stop twice on the same line either
+  ---
+  duration_ms: 3.820265
+  ...
+# Subtest: for-header stops keep their pseudo addresses: init once, increment after each body (different addresses)
+ok 203 - for-header stops keep their pseudo addresses: init once, increment after each body (different addresses)
+  ---
+  duration_ms: 2.311208
+  ...
+# Subtest: a breakpoint on a loop-header line (`for`, `while`) hits at loop ENTRY only, not at every re-evaluation (the lesson bundle's recorded hit counts)
+ok 204 - a breakpoint on a loop-header line (`for`, `while`) hits at loop ENTRY only, not at every re-evaluation (the lesson bundle's recorded hit counts)
+  ---
+  duration_ms: 2.681784
+  ...
+# Subtest: the trace carries pointer targets and reference aliases (shape the model relies on)
+ok 205 - the trace carries pointer targets and reference aliases (shape the model relies on)
+  ---
+  duration_ms: 13188.545062
+  ...
+# Subtest: a pointer parameter shows the address of the variable it points to, equal to &(x) in the caller; null prints 0x0
+ok 206 - a pointer parameter shows the address of the variable it points to, equal to &(x) in the caller; null prints 0x0
+  ---
+  duration_ms: 12.419437
+  ...
+# Subtest: -var-create of a pointer: value = pointee address, one child `*a` with the pointee's current value; follows writes through the pointer
+ok 207 - -var-create of a pointer: value = pointee address, one child `*a` with the pointee's current value; follows writes through the pointer
+  ---
+  duration_ms: 6.788841
+  ...
+# Subtest: *b and *a in -data-evaluate-expression; dereferencing null is GDB's memory error
+ok 208 - *b and *a in -data-evaluate-expression; dereferencing null is GDB's memory error
+  ---
+  duration_ms: 2.715313
+  ...
+# Subtest: a pointer declared later in main follows the variable it was given (p = &x, then *p = 5)
+ok 209 - a pointer declared later in main follows the variable it was given (p = &x, then *p = 5)
+  ---
+  duration_ms: 1.588313
+  ...
+# Subtest: a reference parameter shares its referent's address (what GDB's &(ref) and the memory view alias on)
+ok 210 - a reference parameter shares its referent's address (what GDB's &(ref) and the memory view alias on)
+  ---
+  duration_ms: 2.062737
+  ...
+# Subtest: a caller's variable shows the value a callee wrote through a pointer while only the callee runs
+ok 211 - a caller's variable shows the value a callee wrote through a pointer while only the callee runs
+  ---
+  duration_ms: 2.991559
+  ...
+# Subtest: an array is never taken for the scalar its first element's address points to (the caller's array keeps its shape)
+ok 212 - an array is never taken for the scalar its first element's address points to (the caller's array keeps its shape)
+  ---
+  duration_ms: 3026.346067
+  ...
+# Subtest: a pointer in a caller's frame follows what the callee wrote through its copy (*p after store5(p) writes x)
+ok 213 - a pointer in a caller's frame follows what the callee wrote through its copy (*p after store5(p) writes x)
+  ---
+  duration_ms: 2.289944
+  ...
+# Subtest: a pointer to a global has the global's address (&(G))
+ok 214 - a pointer to a global has the global's address (&(G))
+  ---
+  duration_ms: 2.600126
+  ...
+# Subtest: a callee assigning through `int*& r` moves the caller's pointer too
+ok 215 - a callee assigning through `int*& r` moves the caller's pointer too
+  ---
+  duration_ms: 6828.388806
+  ...
+# Subtest: handshake: `connect` first, then debug_session_connection_event {ok, started_new_gdb_process:true, pid, message}
+ok 216 - handshake: `connect` first, then debug_session_connection_event {ok, started_new_gdb_process:true, pid, message}
+  ---
+  duration_ms: 13.799457
+  ...
+# Subtest: socket surface: on / once / off / emit / connected / close (the subset the UI uses)
+ok 217 - socket surface: on / once / off / emit / connected / close (the subset the UI uses)
+  ---
+  duration_ms: 3.157501
+  ...
+# Subtest: gdb_response shape: run_token echoed, request_id = session-level last request id, packet_seq_num strictly increasing
+ok 218 - gdb_response shape: run_token echoed, request_id = session-level last request id, packet_seq_num strictly increasing
+  ---
+  duration_ms: 1.141773
+  ...
+# Subtest: FIFO: commands sent back to back are answered in order even when an exec command sits between them
+ok 219 - FIFO: commands sent back to back are answered in order even when an exec command sits between them
+  ---
+  duration_ms: 5.152858
+  ...
+# Subtest: token rules: result items carry the numeric prefix (or null); output/console/log have no token key; notify has token null; stream on every item
+ok 220 - token rules: result items carry the numeric prefix (or null); output/console/log have no token key; notify has token null; stream on every item
+  ---
+  duration_ms: 1.741948
+  ...
+# Subtest: bare ^done / ^running reach the UI as raw output items (golden), a token stays in the raw text
+ok 221 - bare ^done / ^running reach the UI as raw output items (golden), a token stays in the raw text
+  ---
+  duration_ms: 1.348806
+  ...
+# Subtest: stale run_token is dropped silently; null or matching tokens are processed
+ok 222 - stale run_token is dropped silently; null or matching tokens are processed
+  ---
+  duration_ms: 0.776832
+  ...
+# Subtest: malformed run_gdb_command / pty_interaction payloads -> error_running_gdb_command {message}
+ok 223 - malformed run_gdb_command / pty_interaction payloads -> error_running_gdb_command {message}
+  ---
+  duration_ms: 0.774227
+  ...
+# Subtest: pty_interaction: flush and write are acknowledged (stdin already given), set_winsize ignored, user_pty write refused
+ok 224 - pty_interaction: flush and write are acknowledged (stdin already given), set_winsize ignored, user_pty write refused
+  ---
+  duration_ms: 0.948078
+  ...
+# Subtest: path mapping (spec §12 N1): fullname = display path, file = pseudo real path; the same in bkpt, frame, stack
+ok 225 - path mapping (spec §12 N1): fullname = display path, file = pseudo real path; the same in bkpt, frame, stack
+  ---
+  duration_ms: 1.600332
+  ...
+# Subtest: stopped/frame shape matches the golden sample (keys and value types)
+ok 226 - stopped/frame shape matches the golden sample (keys and value types)
+  ---
+  duration_ms: 1.400274
+  ...
+# Subtest: not running: exec/stack/varobj commands answer with the GDB errors, thread-info with no threads
+ok 227 - not running: exec/stack/varobj commands answer with the GDB errors, thread-info with no threads
+  ---
+  duration_ms: 3.116402
+  ...
+# Subtest: program output: nothing before the program ends; then once, after the exit packet, LF -> CRLF (stderr appended)
+ok 228 - program output: nothing before the program ends; then once, after the exit packet, LF -> CRLF (stderr appended)
+  ---
+  duration_ms: 0.753899
+  ...
+# Subtest: exit paths: exit code != 0, signal from a trap, and running again
+ok 229 - exit paths: exit code != 0, signal from a trap, and running again
+  ---
+  duration_ms: 1.829246
+  ...
+# Subtest: non-instrumented run (no steps): -exec-run just runs to the end and delivers the output
+ok 230 - non-instrumented run (no steps): -exec-run just runs to the end and delivers the output
+  ---
+  duration_ms: 1.120536
+  ...
+# Subtest: createLocalGdb refuses a failed run and a missing result
+ok 231 - createLocalGdb refuses a failed run and a missing result
+  ---
+  duration_ms: 0.931607
+  ...
+# Subtest: MI error paths: undefined command, known-but-unsupported command, CLI, python other than [fast], -interpreter-exec forms
+ok 232 - MI error paths: undefined command, known-but-unsupported command, CLI, python other than [fast], -interpreter-exec forms
+  ---
+  duration_ms: 1.957464
+  ...
+# Subtest: initial sequence: features, target features, load commands, break-list (golden shapes)
+ok 233 - initial sequence: features, target features, load commands, break-list (golden shapes)
+  ---
+  duration_ms: 1.802162
+  ...
+# Subtest: small commands: -exec-arguments, -environment-cd, -stack-info-depth, `-interpreter-exec console "delete"` clears the table (numbers keep counting)
+ok 234 - small commands: -exec-arguments, -environment-cd, -stack-info-depth, `-interpreter-exec console "delete"` clears the table (numbers keep counting)
+  ---
+  duration_ms: 2.167106
+  ...
+# Subtest: kill: live inferior -> console line, thread exit notifications, ^done; then no process; without process -> GDB's error
+ok 235 - kill: live inferior -> console line, thread exit notifications, ^done; then no process; without process -> GDB's error
+  ---
+  duration_ms: 2.0219
+  ...
+# Subtest: refs: -var-create v1 * nv == real GDB 16.3
+ok 236 - refs: -var-create v1 * nv == real GDB 16.3
+  ---
+  duration_ms: 3.351708
+  ...
+# Subtest: refs: -var-create v2 * cv == real GDB 16.3
+ok 237 - refs: -var-create v2 * cv == real GDB 16.3
+  ---
+  duration_ms: 1.347831
+  ...
+# Subtest: refs: -var-create v3 * ns == real GDB 16.3
+ok 238 - refs: -var-create v3 * ns == real GDB 16.3
+  ---
+  duration_ms: 1.68024
+  ...
+# Subtest: refs: -var-create v4 * cs == real GDB 16.3
+ok 239 - refs: -var-create v4 * cs == real GDB 16.3
+  ---
+  duration_ms: 1.298194
+  ...
+# Subtest: refs: -var-create v5 * na == real GDB 16.3
+ok 240 - refs: -var-create v5 * na == real GDB 16.3
+  ---
+  duration_ms: 1.50619
+  ...
+# Subtest: refs: -var-create v6 * nset == real GDB 16.3
+ok 241 - refs: -var-create v6 * nset == real GDB 16.3
+  ---
+  duration_ms: 1.648269
+  ...
+# Subtest: refs: -var-create v7 * ni == real GDB 16.3
+ok 242 - refs: -var-create v7 * ni == real GDB 16.3
+  ---
+  duration_ms: 1.341156
+  ...
+# Subtest: refs: -var-create v8 * ci == real GDB 16.3
+ok 243 - refs: -var-create v8 * ci == real GDB 16.3
+  ---
+  duration_ms: 1.771246
+  ...
+# Subtest: refs: -var-evaluate-expression v3 == real GDB 16.3
+ok 244 - refs: -var-evaluate-expression v3 == real GDB 16.3
+  ---
+  duration_ms: 1.590224
+  ...
+# Subtest: refs: -var-evaluate-expression v4 == real GDB 16.3
+ok 245 - refs: -var-evaluate-expression v4 == real GDB 16.3
+  ---
+  duration_ms: 465.071847
+  ...
+# Subtest: refs: -var-evaluate-expression v7 == real GDB 16.3
+ok 246 - refs: -var-evaluate-expression v7 == real GDB 16.3
+  ---
+  duration_ms: 0.289725
+  ...
+# Subtest: refs: -stack-list-arguments 1 0 0 == real GDB 16.3
+ok 247 - refs: -stack-list-arguments 1 0 0 == real GDB 16.3
+  ---
+  duration_ms: 0.472763
+  ...
+# Subtest: refs: -var-create v9 * s == real GDB 16.3
+ok 248 - refs: -var-create v9 * s == real GDB 16.3
+  ---
+  duration_ms: 0.232385
+  ...
+# Subtest: refs: -var-create v10 * v == real GDB 16.3
+ok 249 - refs: -var-create v10 * v == real GDB 16.3
+  ---
+  duration_ms: 0.271717
+  ...
+# Subtest: refs: -var-create v11 * a == real GDB 16.3
+ok 250 - refs: -var-create v11 * a == real GDB 16.3
+  ---
+  duration_ms: 0.268509
+  ...
+# Subtest: refs: -var-list-children --all-values v11 == real GDB 16.3
+ok 251 - refs: -var-list-children --all-values v11 == real GDB 16.3
+  ---
+  duration_ms: 0.227137
+  ...
+# Subtest: refs: -var-list-children --all-values v11.public == real GDB 16.3
+ok 252 - refs: -var-list-children --all-values v11.public == real GDB 16.3
+  ---
+  duration_ms: 0.227926
+  ...
+# Subtest: refs: -var-list-children --all-values v11.public._M_elems == real GDB 16.3
+ok 253 - refs: -var-list-children --all-values v11.public._M_elems == real GDB 16.3
+  ---
+  duration_ms: 0.406083
+  ...
+# Subtest: e2e_containers: -var-create V * v == real GDB 16.3
+ok 254 - e2e_containers: -var-create V * v == real GDB 16.3
+  ---
+  duration_ms: 1.348275
+  ...
+# Subtest: e2e_containers: -var-create S * s == real GDB 16.3
+ok 255 - e2e_containers: -var-create S * s == real GDB 16.3
+  ---
+  duration_ms: 0.91841
+  ...
+# Subtest: e2e_containers: -var-create A * a == real GDB 16.3
+ok 256 - e2e_containers: -var-create A * a == real GDB 16.3
+  ---
+  duration_ms: 0.685968
+  ...
+# Subtest: e2e_containers: -var-create D * se == real GDB 16.3
+ok 257 - e2e_containers: -var-create D * se == real GDB 16.3
+  ---
+  duration_ms: 0.874124
+  ...
+# Subtest: e2e_containers: -var-list-children --all-values V == real GDB 16.3
+ok 258 - e2e_containers: -var-list-children --all-values V == real GDB 16.3
+  ---
+  duration_ms: 1.319831
+  ...
+# Subtest: e2e_containers: -var-list-children --all-values S == real GDB 16.3
+ok 259 - e2e_containers: -var-list-children --all-values S == real GDB 16.3
+  ---
+  duration_ms: 0.556631
+  ...
+# Subtest: e2e_containers: -var-list-children --all-values A == real GDB 16.3
+ok 260 - e2e_containers: -var-list-children --all-values A == real GDB 16.3
+  ---
+  duration_ms: 0.339748
+  ...
+# Subtest: e2e_containers: -var-list-children --all-values D == real GDB 16.3
+ok 261 - e2e_containers: -var-list-children --all-values D == real GDB 16.3
+  ---
+  duration_ms: 0.250769
+  ...
+# Subtest: e2e_containers: -var-evaluate-expression S == real GDB 16.3
+ok 262 - e2e_containers: -var-evaluate-expression S == real GDB 16.3
+  ---
+  duration_ms: 0.17855
+  ...
+# Subtest: e2e_containers: -var-evaluate-expression A == real GDB 16.3
+ok 263 - e2e_containers: -var-evaluate-expression A == real GDB 16.3
+  ---
+  duration_ms: 0.15555
+  ...
+# Subtest: e2e_containers: -var-update --all-values * == real GDB 16.3
+ok 264 - e2e_containers: -var-update --all-values * == real GDB 16.3
+  ---
+  duration_ms: 0.181703
+  ...
+# node:fs:448
+#     return binding.readFileUtf8(path, stringToFlags(options.flag));
+#                    ^
+# Error: ENOENT: no such file or directory, open '/w/examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp'
+#     at Object.readFileSync (node:fs:448:20)
+#     at file:///w/tests/engine/localgdb/replay.test.mjs:15:19 {
+#   errno: -2,
+#   code: 'ENOENT',
+#   syscall: 'open',
+#   path: '/w/examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp'
+# }
+# Node.js v20.20.2
+# Subtest: /w/tests/engine/localgdb/replay.test.mjs
+not ok 22 - /w/tests/engine/localgdb/replay.test.mjs
+  ---
+  duration_ms: 76.309466
+  location: '/w/tests/engine/localgdb/replay.test.mjs:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: type expansion is libstdc++-style (the spec's example, spaces before `>`)
+ok 266 - type expansion is libstdc++-style (the spec's example, spaces before `>`)
+  ---
+  duration_ms: 2.783426
+  ...
+# Subtest: type spelling: builtins, string, containers, pointers, references, arrays, const, aliases
+ok 267 - type spelling: builtins, string, containers, pointers, references, arrays, const, aliases
+  ---
+  duration_ms: 1.918095
+  ...
+# Subtest: classification: supported set, simple values, dynamic (pretty-printed) types
+ok 268 - classification: supported set, simple values, dynamic (pretty-printed) types
+  ---
+  duration_ms: 2.767627
+  ...
+# Subtest: value formatting like GDB: bool, char escapes, floating point (%g with 17/9 digits), strings
+ok 269 - value formatting like GDB: bool, char escapes, floating point (%g with 17/9 digits), strings
+  ---
+  duration_ms: 1.286464
+  ...
+# Subtest: scopes: the golden lesson's blocks reproduce GDB's variable order at every line (checked against the golden sample's variable lists)
+not ok 270 - scopes: the golden lesson's blocks reproduce GDB's variable order at every line (checked against the golden sample's variable lists)
+  ---
+  duration_ms: 0.664843
+  location: '/w/tests/engine/localgdb/types_scopes.test.mjs:77:1'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/w/examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:448:20)
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/types_scopes.test.mjs:78:18)
+    Test.runInAsyncScope (node:async_hooks:206:9)
+    Test.run (node:internal/test_runner/test:796:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+    Test.postRun (node:internal/test_runner/test:889:19)
+    Test.run (node:internal/test_runner/test:835:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: scopes: parameters first, multi-declarators, arrays, range-for, structured bindings, comments/strings with braces, one-line for
+ok 271 - scopes: parameters first, multi-declarators, arrays, range-for, structured bindings, comments/strings with braces, one-line for
+  ---
+  duration_ms: 2.015654
+  ...
+# Subtest: scopes: same name declared twice keeps its declaration order (nth) for type lookup; unplaced names fall back to the function block
+ok 272 - scopes: same name declared twice keeps its declaration order (nth) for type lookup; unplaced names fall back to the function block
+  ---
+  duration_ms: 0.569294
+  ...
+# Subtest: lexer: comments, strings, char literals, raw strings and preprocessor lines never produce tokens
+ok 273 - lexer: comments, strings, char literals, raw strings and preprocessor lines never produce tokens
+  ---
+  duration_ms: 0.285395
+  ...
+# Subtest: `using namespace std;` programs: unqualified std names (clang prints `vector<int>`) get the same expansion and support
+ok 274 - `using namespace std;` programs: unqualified std names (clang prints `vector<int>`) get the same expansion and support
+  ---
+  duration_ms: 0.408766
+  ...
+# Subtest: PCH with content validation: identical inputs are accepted
+ok 275 - PCH with content validation: identical inputs are accepted
+  ---
+  duration_ms: 6351.484366
+  ...
+# Subtest: PCH with content validation: -std mismatch is rejected (it is silently accepted with -fno-validate-pch)
+ok 276 - PCH with content validation: -std mismatch is rejected (it is silently accepted with -fno-validate-pch)
+  ---
+  duration_ms: 1329.979237
+  ...
+# Subtest: PCH with content validation: a modified system header (vg.h) or pch_src.h is rejected
+ok 277 - PCH with content validation: a modified system header (vg.h) or pch_src.h is rejected
+  ---
+  duration_ms: 329.777679
+  ...
+# Subtest: engine: PCH built once per include set, then reused; outputs identical with and without PCH
+not ok 278 - engine: PCH built once per include set, then reused; outputs identical with and without PCH
+  ---
+  duration_ms: 22862.226874
+  location: '/w/tests/engine/pch_integration.test.mjs:57:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    [{"kind":"compile-timeout","stage":"link","message":"compilation exceeded its time budget (8000 ms) in stage link; the compiler worker was restarted"}]
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/pch_integration.test.mjs:67:41)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: s1 stamps: one offset per stop, taken from the first record of a merged stop
+ok 279 - s1 stamps: one offset per stop, taken from the first record of a merged stop
+  ---
+  duration_ms: 311.20714
+  ...
+# Subtest: s1 stamps: a stamp count that does not match the record count gives null offsets
+ok 280 - s1 stamps: a stamp count that does not match the record count gives null offsets
+  ---
+  duration_ms: 0.552429
+  ...
+# Subtest: s1 stamps: decreasing stamps are refused (null offsets)
+ok 281 - s1 stamps: decreasing stamps are refused (null offsets)
+  ---
+  duration_ms: 0.630701
+  ...
+# Subtest: s1 stamps: without stamps the offsets exist but are null (existing callers unaffected)
+ok 282 - s1 stamps: without stamps the offsets exist but are null (existing callers unaffected)
+  ---
+  duration_ms: 0.720067
+  ...
+# Subtest: s1 stamps: a trace error keeps the steps before it but drops all offsets
+ok 283 - s1 stamps: a trace error keeps the steps before it but drops all offsets
+  ---
+  duration_ms: 0.455862
+  ...
+# Subtest: s1 integration: stdout bytes sliced by the stop offsets give the output of each line (endl flushes)
+not ok 284 - s1 integration: stdout bytes sliced by the stop offsets give the output of each line (endl flushes)
+  ---
+  duration_ms: 13662.812593
+  location: '/w/tests/engine/s1_stamps.test.mjs:73:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    [{"kind":"compile-timeout","stage":"link","message":"compilation exceeded its time budget (8000 ms) in stage link; the compiler worker was restarted"}]
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/s1_stamps.test.mjs:75:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: s1 integration: segments always concatenate to the full stdout (no byte is lost or duplicated)
+ok 285 - s1 integration: segments always concatenate to the full stdout (no byte is lost or duplicated)
+  ---
+  duration_ms: 6838.749609
+  ...
+# Subtest: M1: a program importing env.x is rejected before instantiation
+ok 286 - M1: a program importing env.x is rejected before instantiation
+  ---
+  duration_ms: 13408.195935
+  ...
+# Subtest: M1: path_open and sock_send return ENOSYS (52); no filesystem is reachable
+ok 287 - M1: path_open and sock_send return ENOSYS (52); no filesystem is reachable
+  ---
+  duration_ms: 3508.264164
+  ...
+# Subtest: M2: linker caps linear memory at 512 MiB with an 8 MiB stack placed first
+ok 288 - M2: linker caps linear memory at 512 MiB with an 8 MiB stack placed first
+  ---
+  duration_ms: 6396.794477
+  ...
+# Subtest: M2: deep recursion overflowing the wasm shadow stack is classified stack-overflow (not a generic trap)
+ok 289 - M2: deep recursion overflowing the wasm shadow stack is classified stack-overflow (not a generic trap)
+  ---
+  duration_ms: 7381.485713
+  ...
+# Subtest: M2: an unrelated bad pointer access (no recursion) stays a generic memory trap, not stack-overflow
+ok 290 - M2: an unrelated bad pointer access (no recursion) stays a generic memory trap, not stack-overflow
+  ---
+  duration_ms: 3030.128285
+  ...
+# Subtest: M2: vector<char>(3e9) aborts cleanly (no host memory blow-up)
+ok 291 - M2: vector<char>(3e9) aborts cleanly (no host memory blow-up)
+  ---
+  duration_ms: 6545.577487
+  ...
+# Subtest: M2: a loop of new char[1<<30] aborts at the 512 MiB cap
+ok 292 - M2: a loop of new char[1<<30] aborts at the 512 MiB cap
+  ---
+  duration_ms: 5398.001324
+  ...
+# Subtest: M2: an infinite 1 MB print loop stops at the stdout cap
+ok 293 - M2: an infinite 1 MB print loop stops at the stdout cap
+  ---
+  duration_ms: 8777.721419
+  ...
+# Subtest: M2: stderr is capped too
+ok 294 - M2: stderr is capped too
+  ---
+  duration_ms: 358.190764
+  ...
+# \# recursion 10000 instrument=true: exit={"reason":"exit","code":0} stdout="10000\\n" steps=30006 errors=[]
+# \# recursion 10000 instrument=false: exit={"reason":"exit","code":0} stdout="10000\\n" steps=0 errors=[]
+# Subtest: M2: recursion depth 10000 ends with a clean classified verdict (behaviour recorded)
+ok 295 - M2: recursion depth 10000 ends with a clean classified verdict (behaviour recorded)
+  ---
+  duration_ms: 6531.631828
+  ...
+# \# recursion 100000 instrument=true: exit={"reason":"stack-overflow","code":null,"message":"host call stack exhausted (recursion too deep)"} stdout="" steps=90362 errors=[]
+# \# recursion 100000 instrument=false: exit={"reason":"exit","code":0} stdout="100000\\n" steps=0 errors=[]
+# Subtest: M2: recursion depth 100000 ends with a clean classified verdict (behaviour recorded)
+ok 296 - M2: recursion depth 100000 ends with a clean classified verdict (behaviour recorded)
+  ---
+  duration_ms: 7452.613513
+  ...
+# Subtest: M2: plain recursion depth 1e4 completes in the Node worker (4 MB native stack)
+ok 297 - M2: plain recursion depth 1e4 completes in the Node worker (4 MB native stack)
+  ---
+  duration_ms: 2743.775813
+  ...
+# Subtest: M3: fake \\x01VG / JSON trace lines printed to stdout and stderr have no effect
+ok 298 - M3: fake \\x01VG / JSON trace lines printed to stdout and stderr have no effect
+  ---
+  duration_ms: 6195.535269
+  ...
+# Subtest: M3: garbage written straight to fd 3 is reported as trace-corrupted, earlier steps survive
+ok 299 - M3: garbage written straight to fd 3 is reported as trace-corrupted, earlier steps survive
+  ---
+  duration_ms: 6038.006011
+  ...
+# Subtest: M3: a well-formed record for an unknown function forged on fd 3 is rejected
+ok 300 - M3: a well-formed record for an unknown function forged on fd 3 is rejected
+  ---
+  duration_ms: 3043.657368
+  ...
+# Subtest: M3: function names with special characters (operator""_km, unicode) round-trip through the trace
+ok 301 - M3: function names with special characters (operator""_km, unicode) round-trip through the trace
+  ---
+  duration_ms: 2799.979158
+  ...
+# Subtest: M3: variables named __proto__ / constructor / toString are plain data, no prototype pollution
+ok 302 - M3: variables named __proto__ / constructor / toString are plain data, no prototype pollution
+  ---
+  duration_ms: 2792.570234
+  ...
+# Subtest: warm-up: a normal program compiles (PCH built outside the student budget)
+ok 303 - warm-up: a normal program compiles (PCH built outside the student budget)
+  ---
+  duration_ms: 12564.505926
+  ...
+# \# compile bomb instrument=true: 8045 ms, errors=[{"kind":"compile-timeout","stage":"ast","message":"compilation exceeded its time budget (8000 ms) in stage ast; the compiler worker was restarted"}]
+# Subtest: compile bomb (instrument=true) is stopped within 10 s, worker respawned, next run works
+ok 304 - compile bomb (instrument=true) is stopped within 10 s, worker respawned, next run works
+  ---
+  duration_ms: 14603.055717
+  ...
+# \# compile bomb instrument=false: 8063 ms, errors=[{"kind":"compile-timeout","stage":"compile","message":"compilation exceeded its time budget (8000 ms) in stage compile; the compiler worker was restarted"}]
+# Subtest: compile bomb (instrument=false) is stopped within 10 s, worker respawned, next run works
+ok 305 - compile bomb (instrument=false) is stopped within 10 s, worker respawned, next run works
+  ---
+  duration_ms: 14354.786385
+  ...
+# Subtest: for(;;){} without any probe is terminated by the wall-clock watchdog
+ok 306 - for(;;){} without any probe is terminated by the wall-clock watchdog
+  ---
+  duration_ms: 8026.923652
+  ...
+# Subtest: while(true) x++ with probes hits the 200000-step limit and keeps the trace
+ok 307 - while(true) x++ with probes hits the 200000-step limit and keeps the trace
+  ---
+  duration_ms: 5387.691937
+  ...
+# Subtest: execution timeout is clamped to 30 s and compile budget to 9.5 s
+ok 308 - execution timeout is clamped to 30 s and compile budget to 9.5 s
+  ---
+  duration_ms: 3.922554
+  ...
+# Subtest: trace: delta decoding reconstructs full snapshots
+ok 309 - trace: delta decoding reconstructs full snapshots
+  ---
+  duration_ms: 3.220063
+  ...
+# Subtest: trace: D6 flags a declared-without-initialiser variable as 0 until the writing statement ran
+ok 310 - trace: D6 flags a declared-without-initialiser variable as 0 until the writing statement ran
+  ---
+  duration_ms: 0.42934
+  ...
+# Subtest: trace: rejects a corrupted record (not JSON) and keeps the steps before it
+ok 311 - trace: rejects a corrupted record (not JSON) and keeps the steps before it
+  ---
+  duration_ms: 0.282253
+  ...
+# Subtest: trace: rejects a corrupted record (array) and keeps the steps before it
+ok 312 - trace: rejects a corrupted record (array) and keeps the steps before it
+  ---
+  duration_ms: 0.337312
+  ...
+# Subtest: trace: rejects a corrupted record (unknown probe id) and keeps the steps before it
+ok 313 - trace: rejects a corrupted record (unknown probe id) and keeps the steps before it
+  ---
+  duration_ms: 0.300262
+  ...
+# Subtest: trace: rejects a corrupted record (line out of range) and keeps the steps before it
+ok 314 - trace: rejects a corrupted record (line out of range) and keeps the steps before it
+  ---
+  duration_ms: 0.528128
+  ...
+# Subtest: trace: rejects a corrupted record (line mismatch) and keeps the steps before it
+ok 315 - trace: rejects a corrupted record (line mismatch) and keeps the steps before it
+  ---
+  duration_ms: 0.402099
+  ...
+# Subtest: trace: rejects a corrupted record (non-integer line) and keeps the steps before it
+ok 316 - trace: rejects a corrupted record (non-integer line) and keeps the steps before it
+  ---
+  duration_ms: 0.369137
+  ...
+# Subtest: trace: rejects a corrupted record (unknown function) and keeps the steps before it
+ok 317 - trace: rejects a corrupted record (unknown function) and keeps the steps before it
+  ---
+  duration_ms: 0.496724
+  ...
+# Subtest: trace: rejects a corrupted record (unknown variable) and keeps the steps before it
+ok 318 - trace: rejects a corrupted record (unknown variable) and keeps the steps before it
+  ---
+  duration_ms: 0.441328
+  ...
+# Subtest: trace: rejects a corrupted record (missing variable) and keeps the steps before it
+ok 319 - trace: rejects a corrupted record (missing variable) and keeps the steps before it
+  ---
+  duration_ms: 0.246784
+  ...
+# Subtest: trace: rejects a corrupted record (duplicate variable) and keeps the steps before it
+ok 320 - trace: rejects a corrupted record (duplicate variable) and keeps the steps before it
+  ---
+  duration_ms: 0.247799
+  ...
+# Subtest: trace: rejects a corrupted record (value for variable not in scope) and keeps the steps before it
+ok 321 - trace: rejects a corrupted record (value for variable not in scope) and keeps the steps before it
+  ---
+  duration_ms: 0.222868
+  ...
+# Subtest: trace: rejects a corrupted record (extra field) and keeps the steps before it
+ok 322 - trace: rejects a corrupted record (extra field) and keeps the steps before it
+  ---
+  duration_ms: 0.299835
+  ...
+# Subtest: trace: rejects a corrupted record (bad depth) and keeps the steps before it
+ok 323 - trace: rejects a corrupted record (bad depth) and keeps the steps before it
+  ---
+  duration_ms: 0.243965
+  ...
+# Subtest: trace: rejects a corrupted record (bad frame) and keeps the steps before it
+ok 324 - trace: rejects a corrupted record (bad frame) and keeps the steps before it
+  ---
+  duration_ms: 0.29829
+  ...
+# Subtest: trace: rejects a corrupted record (d not an object) and keeps the steps before it
+ok 325 - trace: rejects a corrupted record (d not an object) and keeps the steps before it
+  ---
+  duration_ms: 0.211409
+  ...
+# Subtest: trace: rejects a corrupted record (variable name not a string) and keeps the steps before it
+ok 326 - trace: rejects a corrupted record (variable name not a string) and keeps the steps before it
+  ---
+  duration_ms: 0.441061
+  ...
+# Subtest: trace: rejects a corrupted record (bad limit) and keeps the steps before it
+ok 327 - trace: rejects a corrupted record (bad limit) and keeps the steps before it
+  ---
+  duration_ms: 0.331453
+  ...
+# Subtest: trace: __proto__/constructor as variable names are own data on a null-prototype object
+ok 328 - trace: __proto__/constructor as variable names are own data on a null-prototype object
+  ---
+  duration_ms: 0.381633
+  ...
+# Subtest: trace: capacity pseudo variables are accepted only for known names
+ok 329 - trace: capacity pseudo variables are accepted only for known names
+  ---
+  duration_ms: 0.369476
+  ...
+# Subtest: trace: limit record stops decoding; incomplete last line is flagged
+ok 330 - trace: limit record stops decoding; incomplete last line is flagged
+  ---
+  duration_ms: 0.340017
+  ...
+# Subtest: trace: record count cap
+ok 331 - trace: record count cap
+  ---
+  duration_ms: 0.520455
+  ...
+# Subtest: pch: key covers std, includes, vg.h, headers, clang and sysroot hashes
+ok 332 - pch: key covers std, includes, vg.h, headers, clang and sysroot hashes
+  ---
+  duration_ms: 31.135542
+  ...
+# Subtest: pch: LRU eviction by entry count and by total bytes
+ok 333 - pch: LRU eviction by entry count and by total bytes
+  ---
+  duration_ms: 2.995206
+  ...
+# Subtest: pch: sha256 is verified on read; a corrupted entry is dropped and treated as a miss
+ok 334 - pch: sha256 is verified on read; a corrupted entry is dropped and treated as a miss
+  ---
+  duration_ms: 1.792925
+  ...
+# Subtest: pch: storage failures degrade to a miss, never an exception
+ok 335 - pch: storage failures degrade to a miss, never an exception
+  ---
+  duration_ms: 1.102403
+  ...
+# Subtest: sha256: JS fallback matches node:crypto (NIST vectors + random lengths)
+ok 336 - sha256: JS fallback matches node:crypto (NIST vectors + random lengths)
+  ---
+  duration_ms: 9.976276
+  ...
+# Subtest: wasi: import object is frozen and has exactly the 46 preview1 names
+ok 337 - wasi: import object is frozen and has exactly the 46 preview1 names
+  ---
+  duration_ms: 0.887517
+  ...
+# Subtest: wasi: every non-implemented function returns ENOSYS
+ok 338 - wasi: every non-implemented function returns ENOSYS
+  ---
+  duration_ms: 0.585099
+  ...
+# Subtest: wasi: fd_write enforces host-side caps and bounds; fd 3 is separate; unknown fds are EBADF
+ok 339 - wasi: fd_write enforces host-side caps and bounds; fd 3 is separate; unknown fds are EBADF
+  ---
+  duration_ms: 0.906878
+  ...
+# Subtest: wasi: fd_read serves stdin then EOF; prestat reports no preopens
+ok 340 - wasi: fd_read serves stdin then EOF; prestat reports no preopens
+  ---
+  duration_ms: 0.60787
+  ...
+# Subtest: wasi: checkImports rejects non-WASI modules, non-function imports and unknown names
+ok 341 - wasi: checkImports rejects non-WASI modules, non-function imports and unknown names
+  ---
+  duration_ms: 1.362808
+  ...
+# Subtest: evalexpr: own-property lookups only (no prototype names), unchanged semantics otherwise
+ok 342 - evalexpr: own-property lookups only (no prototype names), unchanged semantics otherwise
+  ---
+  duration_ms: 2.036742
+  ...
+# Subtest: manifest validation requires sha256 + SRI integrity + size for every asset
+ok 343 - manifest validation requires sha256 + SRI integrity + size for every asset
+  ---
+  duration_ms: 0.505264
+  ...
+# Subtest: jsonsplit splits concatenated objects and rejects truncated input
+ok 344 - jsonsplit splits concatenated objects and rejects truncated input
+  ---
+  duration_ms: 0.359711
+  ...
+# Subtest: prelude scan: CRLF, comments, code before includes, PCH eligibility, namespace line
+ok 345 - prelude scan: CRLF, comments, code before includes, PCH eligibility, namespace line
+  ---
+  duration_ms: 1.372997
+  ...
+# Subtest: WASI oracle: iostream + cin + getline + sort
+not ok 346 - WASI oracle: iostream + cin + getline + sort
+  ---
+  duration_ms: 8582.941663
+  location: '/w/tests/engine/wasi_oracle.test.mjs:44:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    [{"kind":"compile-timeout","stage":"link","message":"compilation exceeded its time budget (8000 ms) in stage link; the compiler worker was restarted"}]
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/wasi_oracle.test.mjs:46:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: WASI oracle: exit code and EOF handling
+ok 347 - WASI oracle: exit code and EOF handling
+  ---
+  duration_ms: 4026.964056
+  ...
+# Subtest: WASI oracle: random_device, chrono and time()
+ok 348 - WASI oracle: random_device, chrono and time()
+  ---
+  duration_ms: 4184.94597
+  ...
+1..348
+# tests 348
+# suites 0
+# pass 257
+# fail 82
+# cancelled 0
+# skipped 9
+# todo 0
+# duration_ms 830939.739063

@@ -1,0 +1,229 @@
+TAP version 13
+# Subtest: golden fact: for-lines have init < increment (33: 0x40147d < 0x4014ec, 41: 0x401586 < 0x401644), body addresses in between
+ok 1 - golden fact: for-lines have init < increment (33: 0x40147d < 0x4014ec, 41: 0x401586 < 0x401644), body addresses in between
+  ---
+  duration_ms: 20192.004424
+  ...
+# Subtest: ours: nested loops - init < body < increment per for-line, inner increment below outer increment, fixed per for-line, monotonic lines, 0x + 16 hex digits
+ok 2 - ours: nested loops - init < body < increment per for-line, inner increment below outer increment, fixed per for-line, monotonic lines, 0x + 16 hex digits
+  ---
+  duration_ms: 15.645856
+  ...
+# Subtest: ours: caller frames - return addresses are stable per call site and distinct for calls on the same line; frame 0 after finish is the return address
+ok 3 - ours: caller frames - return addresses are stable per call site and distinct for calls on the same line; frame 0 after finish is the return address
+  ---
+  duration_ms: 6.985499
+  ...
+# Subtest: ours: finish lands at the return address (frame 0 addr == the caller frame's addr seen from inside the callee)
+ok 4 - ours: finish lands at the return address (frame 0 addr == the caller frame's addr seen from inside the callee)
+  ---
+  duration_ms: 1.460664
+  ...
+# Subtest: UI rule replay: decideForSegment on our stops classifies every tsp `for` stop exactly like on the GOLDEN addresses (lines 33, 37, 41, 36)
+not ok 5 - UI rule replay: decideForSegment on our stops classifies every tsp `for` stop exactly like on the GOLDEN addresses (lines 33, 37, 41, 36)
+  ---
+  duration_ms: 115.365723
+  location: '/w/tests/engine/localgdb/addresses.test.mjs:116:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+    + [
+    +   'event 61 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "init")',
+    +   'event 114 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")',
+    +   'event 172 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")',
+    +   'event 206 sub#0 python exec("import gdb, json\\n_ST=[]\\n_C={}\\n_ok=False\\n_i= item[4] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")',
+    +   'event 206 sub#0 python exec("import gdb, json\\n_ST=[]\\n_C={}\\n_ok=False\\n_i= item[10] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")',
+    +   'event 242 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")',
+    +   'event 264 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "init")',
+    +   'event 285 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "init")',
+    +   'event 347 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "init")',
+    +   'event 444 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")',
+    +   'event 525 sub#0 -exec-step item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "init")'
+    + ]
+    - []
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+    0: 'event 61 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "init")'
+    1: 'event 114 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")'
+    2: 'event 172 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")'
+    3: 'event 206 sub#0 python exec("import gdb, json\\n_ST=[]\\n_C={}\\n_ok=False\\n_i= item[4] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")'
+    4: 'event 206 sub#0 python exec("import gdb, json\\n_ST=[]\\n_C={}\\n_ok=False\\n_i= item[10] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")'
+    5: 'event 242 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")'
+    6: 'event 264 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "init")'
+    7: 'event 285 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "init")'
+    8: 'event 347 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "init")'
+    9: 'event 444 sub#0 -exec-next item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "incr")'
+    10: 'event 525 sub#0 -exec-step item[2] notify/stopped#null.payload.frame.for-seg: not in golden (ours "init")'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/addresses.test.mjs:124:10)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 0 DP課1_一維陣列與索引/dp1_row.json
+ok 6 - lesson 0 DP課1_一維陣列與索引/dp1_row.json # SKIP recorded run exited immediately
+  ---
+  duration_ms: 348.676255
+  ...
+# Subtest: lesson 1 DP課2_雙層迴圈填表/dp2_grid.json
+ok 7 - lesson 1 DP課2_雙層迴圈填表/dp2_grid.json # SKIP recorded run exited immediately
+  ---
+  duration_ms: 0.287294
+  ...
+# Subtest: lesson 2 DP課3_背包填表/dp3_knapsack.json
+ok 8 - lesson 2 DP課3_背包填表/dp3_knapsack.json # SKIP GDB baseline invalid (running/null steps)
+  ---
+  duration_ms: 0.16634
+  ...
+# Subtest: lesson 3 DP課4_同一題改用遞迴/dp4_recursion.json
+not ok 9 - lesson 3 DP課4_同一題改用遞迴/dp4_recursion.json
+  ---
+  duration_ms: 13157.325212
+  location: '/w/tests/engine/localgdb/lessons_corpus.test.mjs:65:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    [{"kind":"compile-timeout","stage":"link","message":"compilation exceeded its time budget (8000 ms) in stage link; the compiler worker was restarted"}]
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///w/tests/engine/localgdb/lessons_corpus.test.mjs:70:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: lesson 4 DP課5_記憶化剪掉重複/dp5_memo.json
+ok 10 - lesson 4 DP課5_記憶化剪掉重複/dp5_memo.json
+  ---
+  duration_ms: 7080.44909
+  ...
+# Subtest: lesson 5 deque經典_BrokenKeyboard/broken_keyboard.json
+ok 11 - lesson 5 deque經典_BrokenKeyboard/broken_keyboard.json
+  ---
+  duration_ms: 7474.6349
+  ...
+# Subtest: lesson 6 for迴圈_因數抽血/factor_sum.json
+ok 12 - lesson 6 for迴圈_因數抽血/factor_sum.json
+  ---
+  duration_ms: 2967.554121
+  ...
+# Subtest: lesson 7 list經典_串列走訪/list_walkthrough.json
+ok 13 - lesson 7 list經典_串列走訪/list_walkthrough.json # SKIP GDB baseline invalid (stuck running)
+  ---
+  duration_ms: 0.25412
+  ...
+# Subtest: lesson 8 queue經典_老鼠走迷宮/maze_bfs_lesson.json
+ok 14 - lesson 8 queue經典_老鼠走迷宮/maze_bfs_lesson.json # SKIP input randomised per page load
+  ---
+  duration_ms: 0.271199
+  ...
+# Subtest: lesson 9 stack經典_Rails/stack_rails.json
+ok 15 - lesson 9 stack經典_Rails/stack_rails.json
+  ---
+  duration_ms: 8076.359789
+  ...
+# Subtest: lesson 10 string經典_迴文判斷/palindrome.json
+ok 16 - lesson 10 string經典_迴文判斷/palindrome.json
+  ---
+  duration_ms: 6036.303987
+  ...
+# Subtest: lesson 11 vector經典_快速排序/quick_sort.json
+ok 17 - lesson 11 vector經典_快速排序/quick_sort.json
+  ---
+  duration_ms: 6286.553341
+  ...
+# Subtest: lesson 12 vector經典_排序/bubble_sort.json
+ok 18 - lesson 12 vector經典_排序/bubble_sort.json # SKIP GDB baseline invalid (exited at once)
+  ---
+  duration_ms: 0.366161
+  ...
+# Subtest: lesson 13 vector經典_矩陣轉置/matrix_transpose.json
+ok 19 - lesson 13 vector經典_矩陣轉置/matrix_transpose.json
+  ---
+  duration_ms: 3197.647253
+  ...
+# Subtest: lesson 14 while迴圈_考拉斯猜想/collatz.json
+ok 20 - lesson 14 while迴圈_考拉斯猜想/collatz.json
+  ---
+  duration_ms: 2821.461588
+  ...
+# Subtest: lesson 15 while迴圈_貪婪找零/greedy_coin_change.json
+ok 21 - lesson 15 while迴圈_貪婪找零/greedy_coin_change.json # SKIP GDB baseline invalid (running/null steps)
+  ---
+  duration_ms: 0.290689
+  ...
+# Subtest: lesson 16 函式_SWAP寫法/swap_pointer.json
+ok 22 - lesson 16 函式_SWAP寫法/swap_pointer.json # SKIP GDB baseline invalid (running/null steps)
+  ---
+  duration_ms: 0.197009
+  ...
+# Subtest: lesson 17 技巧一_環狀最小成本_UVA116/tsp_uva116.json
+ok 23 - lesson 17 技巧一_環狀最小成本_UVA116/tsp_uva116.json
+  ---
+  duration_ms: 7009.891981
+  ...
+# Subtest: lesson 18 技巧二_記憶化搜尋_UVA10285/longest_run.json
+ok 24 - lesson 18 技巧二_記憶化搜尋_UVA10285/longest_run.json
+  ---
+  duration_ms: 3867.940188
+  ...
+# Subtest: lesson 19 走方格_AtCoder_Grid1/grid_paths.json
+ok 25 - lesson 19 走方格_AtCoder_Grid1/grid_paths.json # SKIP input randomised per page load
+  ---
+  duration_ms: 0.275034
+  ...
+# Subtest: lesson 20 走方格_DP推導/grid_derivation.json
+ok 26 - lesson 20 走方格_DP推導/grid_derivation.json
+  ---
+  duration_ms: 7075.246437
+  ...
+# Subtest: lesson 21 遞迴_硬幣所有解析法/coin_change.json
+ok 27 - lesson 21 遞迴_硬幣所有解析法/coin_change.json
+  ---
+  duration_ms: 6104.656239
+  ...
+# \# lesson corpus (LocalGdb vs recorded GDB / wasm, collapsed line sequences):
+# \#    0 DP課1_一維陣列與索引/dp1_row.json                    skipped: recorded run exited immediately
+# \#    1 DP課2_雙層迴圈填表/dp2_grid.json                    skipped: recorded run exited immediately
+# \#    2 DP課3_背包填表/dp3_knapsack.json                  skipped: GDB baseline invalid (running/null steps)
+# \#    4 DP課5_記憶化剪掉重複/dp5_memo.json                   vs GDB: identical(31 lines, ended) | vs wasm: same(31)
+# \#    5 deque經典_BrokenKeyboard/broken_keyboard.json  vs GDB: identical(31 lines, ended) | vs wasm: same(31)
+# \#    6 for迴圈_因數抽血/factor_sum.json                   vs GDB: identical(24 lines, ended) | vs wasm: same(24)
+# \#    7 list經典_串列走訪/list_walkthrough.json            skipped: GDB baseline invalid (stuck running)
+# \#    8 queue經典_老鼠走迷宮/maze_bfs_lesson.json           skipped: input randomised per page load
+# \#    9 stack經典_Rails/stack_rails.json               vs GDB: identical(27 lines, ended) | vs wasm: same(27)
+# \#   10 string經典_迴文判斷/palindrome.json                vs GDB: identical(31 lines, ended) | vs wasm: differs (pre-fix recording: recorded before the same-line fix: wasm stopped twice on line 23 (`if (isPalindrome(s)) cout ...` after the callee))
+# \#   11 vector經典_快速排序/quick_sort.json                vs GDB: identical(24 lines, ended) | vs wasm: same(24)
+# \#   12 vector經典_排序/bubble_sort.json                 skipped: GDB baseline invalid (exited at once)
+# \#   13 vector經典_矩陣轉置/matrix_transpose.json          vs GDB: identical(20 lines, ended) | vs wasm: same(20)
+# \#   14 while迴圈_考拉斯猜想/collatz.json                   vs GDB: identical(31 lines, ended) | vs wasm: same(31)
+# \#   15 while迴圈_貪婪找零/greedy_coin_change.json         skipped: GDB baseline invalid (running/null steps)
+# \#   16 函式_SWAP寫法/swap_pointer.json                  skipped: GDB baseline invalid (running/null steps)
+# \#   17 技巧一_環狀最小成本_UVA116/tsp_uva116.json            vs GDB: identical(22 lines, ended) | vs wasm: same(22)
+# \#   18 技巧二_記憶化搜尋_UVA10285/longest_run.json          vs GDB: identical(25 lines, ended) | vs wasm: same(25)
+# \#   19 走方格_AtCoder_Grid1/grid_paths.json            skipped: input randomised per page load
+# \#   20 走方格_DP推導/grid_derivation.json                vs GDB: identical(24 lines, ended) | vs wasm: same(24)
+# \#   21 遞迴_硬幣所有解析法/coin_change.json                  vs GDB: identical(23 lines, ended) | vs wasm: same(23)
+# Subtest: Task 3: rails (idx 9) and maze (idx 8) do exit under repeated `continue`; loops with breakpoints simply need many presses
+ok 28 - Task 3: rails (idx 9) and maze (idx 8) do exit under repeated `continue`; loops with breakpoints simply need many presses
+  ---
+  duration_ms: 15340.536654
+  ...
+1..28
+# tests 28
+# suites 0
+# pass 17
+# fail 2
+# cancelled 0
+# skipped 9
+# todo 0
+# duration_ms 118379.818784

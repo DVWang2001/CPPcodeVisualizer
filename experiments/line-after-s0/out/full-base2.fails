@@ -1,0 +1,62 @@
+[fast @N] in a recursive stack: whole stack per stop, args only while the pc is in the function's own block (gdb.Frame.block())
+[fast @N]: program exits before the target -> landed false, exit items, program output after the packet
+[fast @N]: python exec is recognised, simulated on the trace, blob + echo + per-next items in golden order
+[fast @N]: step limit, missing program, non-template python
+CC-2602B (std::__gcd, __int64) compiles and runs uninstrumented and instrumented with equal stdout
+comparator fails on an altered golden: breakpoint line
+comparator fails on an altered golden: changelist value
+comparator fails on an altered golden: child value of a vector varobj
+comparator fails on an altered golden: error text of the inlined-method error
+comparator fails on an altered golden: extra item in a response
+comparator fails on an altered golden: extra token key on a console item
+comparator fails on an altered golden: fast-forward blob counts
+comparator fails on an altered golden: fast-forward landed flag
+comparator fails on an altered golden: features list
+comparator fails on an altered golden: initialised inner r shadowing an uninitialised outer r (A1)
+comparator fails on an altered golden: integer expression value (w - 1)
+comparator fails on an altered golden: message done -> error
+comparator fails on an altered golden: missing token key on a result
+comparator fails on an altered golden: null pointer vs address (A2)
+comparator fails on an altered golden: packet run_token
+comparator fails on an altered golden: packet run_token null vs set
+comparator fails on an altered golden: pointer child value
+comparator fails on an altered golden: pointer value that is not an address
+comparator fails on an altered golden: pointer varobj type
+comparator fails on an altered golden: program output
+comparator fails on an altered golden: stop line of a next
+comparator fails on an altered golden: stop reason
+comparator fails on an altered golden: token of a result
+comparator fails on an altered golden: uninitialised variable: garbage replaced by a non-number
+comparator fails on an altered golden: uninitialised variable: type differs
+comparator fails on an altered golden: variable type string
+comparator fails on an altered golden: vector value string
+-data-evaluate-expression: GDB print format with children (deque/stack plain, list index-labelled)
+E3 01 技巧一 5x4: instrument+compile+run, stdout == g++
+E3 16 deque經典_BrokenKeyb: instrument+compile+run, stdout == g++
+engine run of the fixture compiles and reaches every line
+engine run of the golden program succeeds and its stdout equals the pty output
+golden: engine stdout equals the program output GDB's pty delivered (CRLF from the pty line discipline)
+golden: every UI command stops at the same kind/line/function in the engine trace (allowed: (b) std-library step-in)
+one snapshot per call (main + every fib activation), not per line
+parseFastForward reads limit / line / need / markers back from the command built with the real template
+parseFastForward reads the golden sample's command (event 206) and rejects other python commands
+replay coverage: the replay compared the core commands, and every not-tested item has one of the documented reasons
+replay: packet_seq_num strictly increases and request_id is the session-level last request id
+replay: program output arrives once, after the exit packet, CRLF like the pty
+replay: zero differences outside the allow list
+std::__gcd works for signed/unsigned/__int64 alongside libc++'s <numeric> template
+template placeholders are exactly the ones the parser substitutes
+UI rule replay: decideForSegment on our stops classifies every tsp `for` stop exactly like on the GOLDEN addresses (lines 33, 37, 41, 36)
+-var-create: deque — value, type, displayhint array, flat .[i] children
+-var-create: empty deque — 'with 0 elements', has_more 0, no children
+-var-create: empty list — 'empty std::__cxx11::list' (not 'with 0 elements'), has_more 0
+-var-create: list — value/type carry the __cxx11 tag, no count, no displayhint at all
+-var-create: map — value/type/children (flat alternating key,value, numchild 2×N) match real GDB exactly
+-var-create: priority_queue — value/type match real GDB, displayhint array; children are OUR priority-drain order, not GDB's raw heap array (documented divergence)
+-var-create: queue — 'wrapping: std::deque with N elements', children front-to-back (push order)
+-var-create: set — value/type/children match real GDB exactly, NO displayhint (like list)
+-var-create: singular 'element' for a 1-element container
+-var-create: stack — 'wrapping: std::deque with N elements', children bottom-to-top (push order)
+-var-update: growth after push_back/push/pop is reflected (numchild via var-list-children, value text, no crash)
+-var-update: priority_queue/set/map growth after push/insert/[]= is reflected (new_num_children, values)
+WASI oracle: iostream + cin + getline + sort

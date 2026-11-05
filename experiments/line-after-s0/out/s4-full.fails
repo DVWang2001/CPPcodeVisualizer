@@ -1,0 +1,6 @@
+CC-2602B (std::__gcd, __int64) compiles and runs uninstrumented and instrumented with equal stdout
+E3 16 deque經典_BrokenKeyb: instrument+compile+run, stdout == g++
+replay coverage: the replay compared the core commands, and every not-tested item has one of the documented reasons
+replay: zero differences outside the allow list
+std::__gcd works for signed/unsigned/__int64 alongside libc++'s <numeric> template
+UI rule replay: decideForSegment on our stops classifies every tsp `for` stop exactly like on the GOLDEN addresses (lines 33, 37, 41, 36)
