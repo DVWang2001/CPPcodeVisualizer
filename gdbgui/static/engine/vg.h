@@ -284,6 +284,9 @@ inline std::map<std::string, std::string>& last() {
 }
 
 inline void step(int probe, int line, const char* fn, std::initializer_list<Var> vars) {
+  // S2: flush stdout before this stop is recorded, so the output a line printed is stamped between its
+  // own stop and the next one (per-line attribution, see docs/superpowers/plans/2026-11-05-line-after-S0b-report.md)
+  std::fflush(stdout);
   static long long steps = 0, bytes = 0;
   const std::string qfn = quote(fn);
   std::string names = "[", diff = "{";
