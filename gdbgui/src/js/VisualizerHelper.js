@@ -906,7 +906,7 @@ class VisualizerHelper {
 
       // 若複用現有 varobj，記錄目前的 changelist 版本號，
       // checkStore 必須等到版本號遞增（代表本次 stop 的 changelist 已處理完畢）再讀值。
-      const capturedChangelistVersion = existingInScopeVar
+      let capturedChangelistVersion = existingInScopeVar
         ? (window.__gdbgui_changelist_version || 0)
         : -1; // -1 表示不需要等待
 
@@ -934,6 +934,20 @@ class VisualizerHelper {
               (window.__gdbgui_changelist_version || 0) <= capturedChangelistVersion) {
             setTimeout(checkStore, 50);
             return;
+          }
+          if (capturedChangelistVersion >= 0) {
+            capturedChangelistVersion = -1;
+            // 停下來時指導文字比 -var-update 先處理，所以「看起來還在 scope」的 varobj 可能屬於
+            // 已經返回的那一層（quickSort 遞迴裡下一次 partition 的 arr）。這次 stop 的 changelist
+            // 一回來它就是 in_scope "false"，下面按 displayKey 找不到、等到逾時，畫面停在舊值。
+            // 這時改成刪掉重建，綁到現在這一層。
+            const now = store.get("expressions").find(o => o.name === existingInScopeVar.name);
+            if (!now || now.in_scope !== "true") {
+              GdbVariable.delete_gdb_variable(existingInScopeVar.name);
+              GdbVariable.create_variable(trimmedInst, "expr", displayKey);
+              setTimeout(checkStore, 50);
+              return;
+            }
           }
           // 版本號變動時清除舊快取，確保跨 stop 不復用舊值
           const _cv = window.__gdbgui_changelist_version || 0;

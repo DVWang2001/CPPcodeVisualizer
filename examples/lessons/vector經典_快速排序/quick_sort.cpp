@@ -4,30 +4,30 @@
 using namespace std;
 
 int partition(vector<int>& arr, int low, int high) {
-    int pivot = arr[high];
-    int i = low - 1;
-    for (int j = low; j < high; j++) {
-        if (arr[j] < pivot) {
-            i++;
-            swap(arr[i], arr[j]);
+    int pivot = arr[high];                           //@ @guide 取範圍最右邊那格當基準 pivot\n{arr[high]:orange} @tts [next] 這一段從第 {low} 格到第 {high} 格。先拿最右邊那格當基準，它是 {arr[high]}
+    int i = low - 1;                                 //@ @guide i 指向「比基準小的區域」的最後一格，一開始還沒有任何一格\n{arr} @tts [next] i 記住比基準小的那一區排到哪裡，一開始一格都還沒有
+    for (int j = low; j < high; j++) {               //@ @guide j 從左往右掃到基準前一格\n{arr} @tts [next] 用 j 一格一格掃過去，每一格都跟基準比一比
+        if (arr[j] < pivot) {                        //@ @guide 這一格比基準小嗎\n{arr[j]:orange}\n{arr[high]:lime} @tts [next] 第 {j} 格是 {arr[j]}，比基準 {pivot} 小嗎
+            i++;                                     //@ @guide 比基準小：小的區域多一格\n{arr} @tts [next] 比較小，小的那一區要多一格
+            swap(arr[i], arr[j]);                    //@ @guide 把這一格換進小的區域\n{arr[i]:orange}\n{arr[j]:lime} @tts [next] 把第 {j} 格換到第 {i} 格，小的數字往左集中
         }
     }
-    swap(arr[i + 1], arr[high]);
-    return i + 1;
-}
+    swap(arr[i + 1], arr[high]);                     //@ @guide 把基準換到小的區域右邊，它就到了最後的位置\n{arr[i + 1]:orange}\n{arr[high]:lime} @tts [next] 掃完了。把基準換到小的那一區右邊，也就是第 {i + 1} 格
+    return i + 1;                                    //@ @guide 基準左邊都比它小、右邊都比它大\n{arr[i + 1]:lightblue} @tts [next] 基準 {arr[i + 1]} 已經站在最後的位置，左邊都比它小，右邊都比它大
+}                                                    //@ @tts [next] 這一段分好了，回到 quickSort
 
 void quickSort(vector<int>& arr, int low, int high) {
-    if (low < high) {
-        int pi = partition(arr, low, high);
-        quickSort(arr, low, pi - 1);
-        quickSort(arr, pi + 1, high);
+    if (low < high) {                                //@ @guide 範圍至少有兩格才需要排\n{arr} @tts [next] 現在要排第 {low} 格到第 {high} 格，至少兩格才需要排
+        int pi = partition(arr, low, high);          //@ @guide 先分割：選基準，小的放左邊、大的放右邊\n{arr} @tts [step-in] 先把這一段分成比基準小和比基準大的兩邊
+        quickSort(arr, low, pi - 1);                 //@ @guide 再排基準左邊那一段\n{arr} @tts [step-in] 接著排基準左邊那一段
+        quickSort(arr, pi + 1, high);                //@ @guide 再排基準右邊那一段\n{arr} @tts [step-in] 接著排基準右邊那一段
     }
-}
+}                                                    //@ @tts [next] 這一段排好了，回到上一層
 
 int main() {
-    vector<int> arr = {10, 7, 8, 9, 1, 5};
-    quickSort(arr, 0, arr.size() - 1);
-    for (int x : arr) cout << x << " ";
-    cout << endl;
-    return 0;
+    vector<int> arr = {10, 7, 8, 9, 1, 5};           //@ @tts [next] 準備一個還沒排序的陣列：10、7、8、9、1、5
+    quickSort(arr, 0, arr.size() - 1);               //@ @guide 從整個陣列開始快速排序\n{arr} @tts [step-in] 從整個陣列開始排
+    for (int x : arr) cout << x << " ";              //@ @guide 印出排序後的陣列\n{arr} @tts [next] 全部排好了，印出來看看 | @2 [next] 下一個
+    cout << endl;                                    //@ @tts [next] 換行
+    return 0;                                        //@ @tts [continue] 選基準、分兩邊、兩邊各自再排，這就是快速排序。教案播放完畢
 }

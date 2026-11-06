@@ -1,32 +1,12 @@
 {
-  "version": "1.0",
-  "project_name": "quicksort_tutorial",
-  "source_code": "#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\n\nint partition(vector<int>& arr, int low, int high) {\n    int pivot = arr[high];\n    int i = low - 1;\n    for (int j = low; j < high; j++) {\n        if (arr[j] < pivot) {\n            i++;\n            swap(arr[i], arr[j]);\n        }\n    }\n    swap(arr[i + 1], arr[high]);\n    return i + 1;\n}\n\nvoid quickSort(vector<int>& arr, int low, int high) {\n    if (low < high) {\n        int pi = partition(arr, low, high);\n        quickSort(arr, low, pi - 1);\n        quickSort(arr, pi + 1, high);\n    }\n}\n\nint main() {\n    vector<int> arr = {10, 7, 8, 9, 1, 5};\n    quickSort(arr, 0, arr.size() - 1);\n    for (int x : arr) cout << x << \" \";\n    cout << endl;\n    return 0;\n}",
-  "line_data": {
-    "7": {
-      "guide": "[Pivot] 選擇 {pivot} 作為基準點 (arr[high])\n{arr[high]}",
-      "tts": "[next] 快速排序的第一步：從目前的範圍中選一個基準點 Pivot，這裡我們選最右邊的元素 {pivot}。",
-      "layout": "sidebar:50 open:container"
-    },
-    "9": {
-      "guide": "[掃描] 目前檢查 arr[{j}]={arr[j]}\n{arr[j]}",
-      "tts": "[next] 開始掃描，比較目前元素 {arr[j]} 是否小於 Pivot。 | @3 繼續掃描...",
-      "layout": "sidebar:50 open:container"
-    },
-    "12": {
-      "guide": "[Swap] 將小於 Pivot 的元素移到左邊\n{arr[i]} {arr[j]}",
-      "tts": "[next] 因為 {arr[j]} 小於 Pivot，所以把它換到左側。 | @2 交換成功。",
-      "layout": "sidebar:50 open:container"
-    },
-    "14": {
-      "guide": "[定位 Pivot] 將 Pivot 放回正確位置\n{arr[i+1]} {arr[high]}",
-      "tts": "[next] 最後把 Pivot 換到它最終的位置。現在 Pivot 左邊的都比它小，右邊都比它大。",
-      "layout": "sidebar:55 open:container"
-    }
-  },
-  "program_input": "",
+  "version": "2.0",
+  "fullname_to_render": "quick_sort.cpp",
+  "source_code": "#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\n\nint partition(vector<int>& arr, int low, int high) {\n    int pivot = arr[high];                           //@ @guide 取範圍最右邊那格當基準 pivot\\n{arr[high]:orange} @tts [next] 這一段從第 {low} 格到第 {high} 格。先拿最右邊那格當基準，它是 {arr[high]}\n    int i = low - 1;                                 //@ @guide i 指向「比基準小的區域」的最後一格，一開始還沒有任何一格\\n{arr} @tts [next] i 記住比基準小的那一區排到哪裡，一開始一格都還沒有\n    for (int j = low; j < high; j++) {               //@ @guide j 從左往右掃到基準前一格\\n{arr} @tts [next] 用 j 一格一格掃過去，每一格都跟基準比一比\n        if (arr[j] < pivot) {                        //@ @guide 這一格比基準小嗎\\n{arr[j]:orange}\\n{arr[high]:lime} @tts [next] 第 {j} 格是 {arr[j]}，比基準 {pivot} 小嗎\n            i++;                                     //@ @guide 比基準小：小的區域多一格\\n{arr} @tts [next] 比較小，小的那一區要多一格\n            swap(arr[i], arr[j]);                    //@ @guide 把這一格換進小的區域\\n{arr[i]:orange}\\n{arr[j]:lime} @tts [next] 把第 {j} 格換到第 {i} 格，小的數字往左集中\n        }\n    }\n    swap(arr[i + 1], arr[high]);                     //@ @guide 把基準換到小的區域右邊，它就到了最後的位置\\n{arr[i + 1]:orange}\\n{arr[high]:lime} @tts [next] 掃完了。把基準換到小的那一區右邊，也就是第 {i + 1} 格\n    return i + 1;                                    //@ @guide 基準左邊都比它小、右邊都比它大\\n{arr[i + 1]:lightblue} @tts [next] 基準 {arr[i + 1]} 已經站在最後的位置，左邊都比它小，右邊都比它大\n}                                                    //@ @tts [next] 這一段分好了，回到 quickSort\n\nvoid quickSort(vector<int>& arr, int low, int high) {\n    if (low < high) {                                //@ @guide 範圍至少有兩格才需要排\\n{arr} @tts [next] 現在要排第 {low} 格到第 {high} 格，至少兩格才需要排\n        int pi = partition(arr, low, high);          //@ @guide 先分割：選基準，小的放左邊、大的放右邊\\n{arr} @tts [step-in] 先把這一段分成比基準小和比基準大的兩邊\n        quickSort(arr, low, pi - 1);                 //@ @guide 再排基準左邊那一段\\n{arr} @tts [step-in] 接著排基準左邊那一段\n        quickSort(arr, pi + 1, high);                //@ @guide 再排基準右邊那一段\\n{arr} @tts [step-in] 接著排基準右邊那一段\n    }\n}                                                    //@ @tts [next] 這一段排好了，回到上一層\n\nint main() {\n    vector<int> arr = {10, 7, 8, 9, 1, 5};           //@ @tts [next] 準備一個還沒排序的陣列：10、7、8、9、1、5\n    quickSort(arr, 0, arr.size() - 1);               //@ @guide 從整個陣列開始快速排序\\n{arr} @tts [step-in] 從整個陣列開始排\n    for (int x : arr) cout << x << \" \";              //@ @guide 印出排序後的陣列\\n{arr} @tts [next] 全部排好了，印出來看看 | @2 [next] 下一個\n    cout << endl;                                    //@ @tts [next] 換行\n    return 0;                                        //@ @tts [continue] 選基準、分兩邊、兩邊各自再排，這就是快速排序。教案播放完畢\n}\n",
   "breakpoints": [
-    { "line": "7", "is_normal_breakpoint": true },
-    { "line": "14", "is_normal_breakpoint": true }
-  ]
+    {
+      "line": "20",
+      "is_normal_breakpoint": true
+    }
+  ],
+  "program_input": ""
 }
