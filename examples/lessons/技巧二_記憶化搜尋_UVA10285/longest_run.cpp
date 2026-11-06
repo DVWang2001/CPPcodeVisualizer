@@ -22,19 +22,19 @@ int dj[4] = {0, 0, -1, 1};
 
 int solve(int i, int j) {
     int result;
-    if (dp[i][j] != 0) {                         //@ @guide 先查記憶表：從第 i 列第 j 欄出發的答案算過了嗎（0 代表還沒算） @tts [next] 動手算之前，先查記憶表：從第 {i} 列第 {j} 欄出發的答案算過了嗎 | @2 [next] 先查記憶表：第 {i} 列第 {j} 欄 | @3 [continue] 後面每一格的做法都一模一樣，我們直接快轉，等每個起點都問完 | @4 [continue] 繼續 @layout sidebar:55 open:container,callgraph close:locals
-        result = dp[i][j];                       //@ @guide 查到了：把表上的答案抄進 result @tts [next] 命中！這一格算過了，直接拿現成的答案，不用再往下走一次
+    if (dp[i][j] != 0) {                         //@ @guide 先查記憶表：從第 i 列第 j 欄出發的答案算過了嗎（0 代表還沒算）\n{dp[i][j]:lightblue} @tts [next] 動手算之前，先查記憶表：從第 {i} 列第 {j} 欄出發的答案算過了嗎 | @2 [next] 先查記憶表：第 {i} 列第 {j} 欄 | @3 [continue] 後面每一格的做法都一模一樣，我們直接快轉，等每個起點都問完 | @4 [continue] 繼續 @layout sidebar:55 open:container,callgraph close:locals
+        result = dp[i][j];                       //@ @guide 查到了：把表上的答案抄進 result\n{dp[i][j]:lime} @tts [next] 命中！這一格算過了，直接拿現成的答案，不用再往下走一次
         return result;                           //@ @guide 把查到的 result 交回上一層 @tts [next] 把查到的答案 {result} 交回上一層
     }
     int best = 1;                                //@ @guide 沒算過，自己算：至少能走 1 格，先把 best 設為 1 @tts [next] 沒算過，只好自己算。最少能走一格，就是站在這一格 | @2 [next] 沒算過，先設最少一格
     for (int d = 0; d < 4; ++d) {                //@ @guide 依序看上、下、左、右四個方向 @tts [next] 依序看上、下、左、右四個方向 | @2 [next] 看下一個方向
         int ni = i + di[d], nj = j + dj[d];      //@ @guide 算出這個方向鄰格的座標 ni、nj @tts [next] 算出這個方向鄰格的座標 | @2 [next] 算出鄰格座標
-        if (ni < 0 || ni >= h || nj < 0 || nj >= w) continue;   //@ @guide 鄰格走出地圖外，這個方向跳過 @tts [next] 這個方向走出地圖外了嗎？出界就跳過 | @2 [next] 出界嗎
-        if (a[ni][nj] <= a[i][j]) continue;      //@ @guide 鄰格不比現在這格大，這個方向跳過（只能走到更大的格子） @tts [next] 鄰格是 {a[ni][nj]}，現在這格是 {a[i][j]}。只能走到更大的格子，不比較大就跳過 | @2 [next] 鄰格 {a[ni][nj]}，現在 {a[i][j]}，比較大嗎
-        int sub = solve(ni, nj);                 //@ @guide 問鄰格：從它出發最多能走幾格，結果存進 sub @tts [step-in] 問問看，從這個更大的鄰格出發，最多能走幾格
-        if (1 + sub > best) best = 1 + sub;      //@ @guide 走過去就是一格加上 sub；比目前最好的大，就更新 best @tts [next] 走過去的話，就是一格加上鄰格的答案 {sub}。比目前最好的大就更新
+        if (ni < 0 || ni >= h || nj < 0 || nj >= w) continue;   //@ @guide 鄰格走出地圖外，這個方向跳過\n{a[i][j]:lightblue} @tts [next] 這個方向走出地圖外了嗎？出界就跳過 | @2 [next] 出界嗎
+        if (a[ni][nj] <= a[i][j]) continue;      //@ @guide 鄰格不比現在這格大，這個方向跳過（只能走到更大的格子）\n{a[ni][nj]}\n{a[i][j]}\n{a[i][j]:lightblue}\n{a[ni][nj]:orange} @tts [next] 鄰格是 {a[ni][nj]}，現在這格是 {a[i][j]}。只能走到更大的格子，不比較大就跳過 | @2 [next] 鄰格 {a[ni][nj]}，現在 {a[i][j]}，比較大嗎
+        int sub = solve(ni, nj);                 //@ @guide 問鄰格：從它出發最多能走幾格，結果存進 sub\n{a[ni][nj]:orange} @tts [step-in] 問問看，從這個更大的鄰格出發，最多能走幾格
+        if (1 + sub > best) best = 1 + sub;      //@ @guide 走過去就是一格加上 sub；比目前最好的大，就更新 best\n{dp} @tts [next] 走過去的話，就是一格加上鄰格的答案 {sub}。比目前最好的大就更新
     }
-    dp[i][j] = best;                             //@ @guide 四個方向都看完，把答案 best 記進記憶表 @tts [next] 四個方向都看完了，把答案 {best} 記進表裡，下次再問到這一格就不用再算
+    dp[i][j] = best;                             //@ @guide 四個方向都看完，把答案 best 記進記憶表\n{dp[i][j]:orange}\n{dp} @tts [next] 四個方向都看完了，把答案 {best} 記進表裡，下次再問到這一格就不用再算
     result = best;                               //@ @guide 這一層的答案設為 best @tts [next] 這一層的答案是 {best}
     return result;                               //@ @guide 把 best 交回上一層（四個方向中最長的一條） @tts [next] 把答案 {best} 交回上一層
 }                                                //@ @tts [next] 這一層結束，沿呼叫樹返回
@@ -46,16 +46,16 @@ int main() {
             std::cin >> a[i][j];
         }
     }
-    dp.assign(h, std::vector<int>(w, 0));        //@ @guide 準備一張一樣大的記憶表，全填 0，代表每格都還沒算過 @tts [next] 再準備一張一樣大的記憶表，全部填零，代表每一格都還沒算過 @layout pair:a,dp
+    dp.assign(h, std::vector<int>(w, 0));        //@ @guide 準備一張一樣大的記憶表，全填 0，代表每格都還沒算過\n{a}\n{dp} @tts [next] 再準備一張一樣大的記憶表，全部填零，代表每一格都還沒算過 @layout pair:a,dp
     int ans = 0;                                 //@ @guide 答案是所有起點裡最長的一條，先設為 0 @tts [next] 起點可以是任何一格，所以答案是所有起點裡最長的一條。先設零
     for (int i = 0; i < h; ++i) {                //@ @guide 外層迴圈：每一列的每一格都當一次起點 @tts [next] 每一格都當一次起點，一列一列來 | @2 [next] 換下一列
         for (int j = 0; j < w; ++j) {            //@ @guide 內層迴圈：由左往右，每一格都當一次起點 @tts [next] 由左往右，每一格當起點 | @2 [next] 換下一格
-            int cur = solve(i, j);               //@ @guide 問：從第 i 列第 j 欄出發最多能走幾格，結果存進 cur @tts [step-in] 問問看：從這一格出發，最多能走幾格 | @2 [next] 這個起點問完了
+            int cur = solve(i, j);               //@ @guide 問：從第 i 列第 j 欄出發最多能走幾格，結果存進 cur\n{dp} @tts [step-in] 問問看：從這一格出發，最多能走幾格 | @2 [next] 這個起點問完了
             if (cur > ans) ans = cur;            //@ @guide 用這個起點的答案 cur 更新目前最長 ans @tts [next] 這個起點的答案是 {cur}，和目前最長的比一比 | @2 [next] 比一比
         }
     }
     std::cout << ans << "\n";                    //@ @guide 課堂題目：每個起點都問完了，這一行先把記憶表藏起來，請大家算\n{dp} @tts [next] 每個起點都問完了，可是我先把 dp 表藏起來。請大家用手機自己算出來 @layout open:live_quiz close:container,callgraph
-    return 0;                                    //@ @guide 結束；所有起點都算完，答案 ans 就是表裡最大的那一格 @tts [continue] 走法不再固定往右下，就沒有現成的填表順序，所以改成用到才算、算過就記住。教案播放完畢 @layout sidebar:58 open:container,callgraph close:live_quiz
+    return 0;                                    //@ @guide 結束；所有起點都算完，答案 ans 就是表裡最大的那一格\n{dp} @tts [continue] 走法不再固定往右下，就沒有現成的填表順序，所以改成用到才算、算過就記住。教案播放完畢 @layout sidebar:58 open:container,callgraph close:live_quiz
 }
 
 // 隨機測資腳本（🎲 按鈕用；放檔尾才不會擠動上面的行號）

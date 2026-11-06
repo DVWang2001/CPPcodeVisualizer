@@ -12,15 +12,15 @@ int fib(int n) {
         result = n;                    //@ @guide 邊界：fib(n) 就是 n @tts [next] 到底了，fib {n} 就是 {n} | @2 [next] fib {n} 就是 {n} | @3 [next] {n}
         return result;                 //@ @guide 把結果交回上一層 @tts [next] 把 {result} 交回上一層 | @2 [next] 交回 {result} | @3 [next] 回傳
     }
-    if (memo[n] >= 0) {                //@ @guide 先查記憶表第 n 格：fib(n) 算過了嗎 @tts [next] 動手算之前，先查記憶表第 {n} 格 | @2 [next] 先查表第 {n} 格 | @4 [next] 查表 | @6 [next] 查
-        result = memo[n];              //@ @guide 查到了：直接抄記憶表的值 @tts [next] 命中！fib {n} 算過了，直接拿現成的答案，整棵子樹不用再展開 | @2 [next] 命中，直接抄 | @3 [next] 命中
+    if (memo[n] >= 0) {                //@ @guide 先查記憶表第 n 格：fib(n) 算過了嗎\n{memo[n]:lightblue} @tts [next] 動手算之前，先查記憶表第 {n} 格 | @2 [next] 先查表第 {n} 格 | @4 [next] 查表 | @6 [next] 查
+        result = memo[n];              //@ @guide 查到了：直接抄記憶表的值\n{memo[n]:lime} @tts [next] 命中！fib {n} 算過了，直接拿現成的答案，整棵子樹不用再展開 | @2 [next] 命中，直接抄 | @3 [next] 命中
         return result;                 //@ @guide 把查到的值交回上一層 @tts [next] 把查到的 {result} 交回上一層 | @2 [next] 交回 {result} | @3 [next] 回傳
     }
     int a = fib(n - 1);                //@ @guide 沒算過，先算左子問題 fib(n−1)，結果存進 a @tts [step-in] 沒算過，只好自己算。先處理左邊的子問題 fib {n} 減 1 | @2 [step-in] 左邊 fib {n} 減 1 | @3 [step-in] 左邊 | @5 [step-in] 左
     int b = fib(n - 2);                //@ @guide 再算右子問題 fib(n−2)，結果存進 b @tts [step-in] 左邊是 {a}，再處理右邊的子問題 fib {n} 減 2 | @2 [step-in] 左邊 {a}，右邊 fib {n} 減 2 | @3 [step-in] 右邊 | @5 [step-in] 右
     result = a + b;                    //@ @guide result 等於 a 加 b @tts [next] 左邊 {a} 加右邊 {b} | @2 [next] {a} 加 {b} | @3 [next] 相加 | @5 [next] 加
-    memo[n] = result;                  //@ @guide 把答案存進記憶表第 n 格 @tts [next] 把答案 {result} 記進表裡。下次再問到 fib {n}，就不用再算一次 | @2 [next] 把 {result} 記進表裡 | @3 [next] 記進表裡 | @5 [next] 記
-    return result;                     //@ @guide 把答案交回上一層 @tts [next] 這一層的答案是 {result}，交回上一層 | @2 [next] 答案 {result}，往上交 | @3 [next] 交回 {result} | @5 [next] 回傳
+    memo[n] = result;                  //@ @guide 把答案存進記憶表第 n 格\n{memo[n]:orange} @tts [next] 把答案 {result} 記進表裡。下次再問到 fib {n}，就不用再算一次 | @2 [next] 把 {result} 記進表裡 | @3 [next] 記進表裡 | @5 [next] 記
+    return result;                     //@ @guide 把答案交回上一層\n{memo[n]:orange} @tts [next] 這一層的答案是 {result}，交回上一層 | @2 [next] 答案 {result}，往上交 | @3 [next] 交回 {result} | @5 [next] 回傳
 }                                      //@ @tts [next] 這一層結束，沿呼叫樹返回 | @2 [next] 這層結束 | @3 [next] 結束 | @5 [next] 返回
 int main() {
     int total = fib(6);                //@ @guide 從 main 呼叫 fib(6)；記憶表一開始全是 -1，代表都還沒算過 @tts [next] 從 main 出發問 fib 六，記憶表現在全是負一，代表都還沒算過 | @2 [next] 全部算完了，回到 main @layout sidebar:50 open:callgraph,container

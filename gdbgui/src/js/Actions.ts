@@ -173,17 +173,15 @@ const Actions = {
       else (global_variable as any).__latest_containers = new Map();
     }
     if (quizMatched) {
-      // 這裡刻意**不**寄放續播指令。曾經試過兩次，兩次都瞄錯時機：
-      //   * store 的 autoplay_pending_command 只有「使用者暫停時」才會被寫入，
-      //     題目觸發的當下是空的；
-      //   * _gdbgui_tts_playing.autoplayCommand 此刻屬於**上一行**的語音，
-      //     收卷時重播它會走錯步。
-      // 指令真正遺失的地方是 gdbgui_execute_autoplay_command：這一行的 TTS 仍會
-      // 照常播完，播完時要執行 [next]，而那個函式看到閘門關著就直接丟掉。寄放已經
-      // 移到那三個丟棄點上。
+      // 題目行的旁白不播（下面 play_tts 有 !quizMatched），所以不會有旁白播完時送出的
+      // [next] 可以被 gdbgui_execute_autoplay_command 寄放——收卷後播放就停在原地。
+      // 直接寄放這一行自己的續播指令。不能用 autoplay_pending_command（只有使用者暫停
+      // 時才寫）或 _gdbgui_tts_playing.autoplayCommand（屬於上一行，會走錯步）。
       Actions.stop_tts();
       store.set("autoplay_pending_command", null);
       (window as any).gdbgui_rerunning_for_quiz = false;
+      // @ts-expect-error VisualizerHelper is plain JS
+      lessonQuizRuntime.stashAutoplay(VisualizerHelper.autoplay_command_for_line(frame.line));
     }
     // 讀取指導，如果存在指導並且當前的frame有line這個資訊
     // @ts-expect-error ts-migrate(2339) FIXME: Property 'line' does not exist on type '{}'.

@@ -490,6 +490,49 @@ class VisualizerHelper {
     return true; // 這一次不播 TTS，落地那一次才播
   }
 
+  /** 多次進入語法（`a | @3 b`）：依這一行目前的進入次數選出要用的那一段。 */
+  static _tts_segment_for_visit(rawTtsContent, lineNum) {
+    if (!rawTtsContent.includes('|')) return rawTtsContent;
+    const parts = rawTtsContent.split('|').map(s => s.trim());
+    const visitCount = (global_variable.__line_visit_count && global_variable.__line_visit_count[lineNum]) || 1;
+
+    // 解析每段的 threshold；沒有 @N 時依序 1, 2, 3…
+    let nextDefault = 1;
+    const segments = parts.map(part => {
+      const atMatch = part.match(/^@(\d+)\s*/);
+      if (atMatch) {
+        const threshold = parseInt(atMatch[1]);
+        nextDefault = threshold + 1;
+        return { threshold, text: part.slice(atMatch[0].length) };
+      }
+      return { threshold: nextDefault++, text: part };
+    });
+
+    // 選取 threshold <= visitCount 的最後一段
+    let selected = segments[0].text;
+    for (const seg of segments) {
+      if (visitCount >= seg.threshold) selected = seg.text;
+    }
+    return selected;
+  }
+
+  /**
+   * 這一行的旁白播完後自動播放會送出的指令（不播旁白）。題目在這一行開出來時
+   * 旁白不播，收卷後就靠這個指令接著往下走。快轉指令一律退化成 next。
+   */
+  static autoplay_command_for_line(frame_line) {
+    const lineNum = parseInt(frame_line);
+    const raw = global_variable.__tts && (global_variable.__tts[lineNum] || global_variable.__tts[String(lineNum)]);
+    if (isNaN(lineNum) || !raw) return null;
+    const CMD = /^\[(next|step-in|step-out|continue)\]/;
+    const segment = VisualizerHelper._tts_segment_for_visit(raw, lineNum).replace(/\[speed:[\d.]+\]/g, '').trimStart();
+    const own = segment.match(CMD);
+    if (own) return own[1];
+    if (parseFastDirective(segment)) return 'next';
+    const global = raw.replace(/\[speed:[\d.]+\]/g, '').trimStart().match(CMD);
+    return global ? global[1] : null;
+  }
+
   static async play_tts(frame_line, funcName) {
     const myTaskId = ++_tts_task_id; // 新任務 ID，舊任務將自動放棄
     _tts_cancel();                   // 立即停止目前播放的音訊
@@ -531,30 +574,7 @@ class VisualizerHelper {
     const globalCmdMatch = rawStripped.match(/^\[(next|step-in|step-out|continue)\]\s*/);
     const globalAutoplayCommand = globalCmdMatch ? globalCmdMatch[1] : null;
 
-    let ttsContent = rawTtsContent;
-    if (rawTtsContent.includes('|')) {
-      const parts = rawTtsContent.split('|').map(s => s.trim());
-      const visitCount = (global_variable.__line_visit_count && global_variable.__line_visit_count[lineNum]) || 1;
-
-      // 解析每段的 threshold
-      let nextDefault = 1;
-      const segments = parts.map(part => {
-        const atMatch = part.match(/^@(\d+)\s*/);
-        if (atMatch) {
-          const threshold = parseInt(atMatch[1]);
-          nextDefault = threshold + 1;
-          return { threshold, text: part.slice(atMatch[0].length) };
-        }
-        return { threshold: nextDefault++, text: part };
-      });
-
-      // 選取 threshold <= visitCount 的最後一段
-      let selected = segments[0].text;
-      for (const seg of segments) {
-        if (visitCount >= seg.threshold) selected = seg.text;
-      }
-      ttsContent = selected;
-    }
+    const ttsContent = VisualizerHelper._tts_segment_for_visit(rawTtsContent, lineNum);
 
     // 解析自動播放指令前綴：先移除 [speed:N]，再抓 [next]/[continue] 等
     const ttsContentNoSpeed = ttsContent.replace(/\[speed:[\d.]+\]/g, '').trimStart();

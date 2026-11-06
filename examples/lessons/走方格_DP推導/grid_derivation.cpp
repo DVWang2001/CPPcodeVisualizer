@@ -27,19 +27,19 @@ int main() {
     }
 
     std::vector<std::vector<int>> dp(h + 1, std::vector<int>(w + 1, 0)); //@ @guide 建立表 dp，大小 (h+1) 乘 (w+1)；墊片列與墊片行全填 0 @tts [next] 這一行先做一張表，不過我們故意讓它比地圖多一列、多一行。多出來的那一圈先全部填 0，等一下就知道它有什麼用
-    dp[1][1] = 1;                                //@ @guide 起點 dp[1][1] 手動填 1，只有一種走法；這是唯一手動填的格子 @tts [next] 起點對應 dp[1][1]，填 1。因為站在起點本身，就算一種走法。這是整張表唯一手動填的格子，其他每一格都要靠推導算出來
-    for (int i = 1; i <= h; ++i) {               //@ @guide 外層迴圈：一列一列往下填 @tts [next] 好，先看第 1 列，也就是地圖的第 0 列 | @2 [next] 換到第 2 列，對應地圖的第 1 列 | @3 [fast @4] 第 3 列的規則一模一樣，我們直接跳到算完，看最後的答案 | @4 [next] 第 3 列也用同樣的規則算完了，整張表都填好了 @layout sidebar:55 open:container
-        for (int j = 1; j <= w; ++j) {           //@ @guide 內層迴圈：第 i 列由左往右走完 @tts [next] 內層迴圈會由左往右，把這一列一格一格走完 | @2 [next] 這一格算完了，看看右邊還有沒有 | @3 [next] 往右一格 | @6 [next] 換第 2 列，一樣由左往右 | @7 [next] 下一格 | @9 [next] 右
-            if (i == 1 && j == 1) continue;      //@ @guide 起點已經填過了，這一格跳過，不要蓋掉 @tts [next] 起點剛才已經填過了，這一格跳過 | @2 [next] 不是起點，繼續 | @4 [next] 不是起點 | @6 [next] 繼續
-            if (g[i - 1][j - 1] == '#') {        //@ @guide 判斷這一格是不是牆 @tts [next] 先問一下，這一格是不是牆 | @2 [next] 是牆嗎 | @4 [next] 牆嗎 | @6 [next] 牆 @layout pair:dp,g
-                dp[i][j] = 0;                    //@ @guide 是牆：走不進來，這一格填 0 @tts [next] 這一格是牆，走不進來，所以走法直接算 0。不管上面或左邊有多少種走法，都不算數 | @2 [next] 又是牆，一樣填 0
+    dp[1][1] = 1;                                //@ @guide 起點 dp[1][1] 手動填 1，只有一種走法；這是唯一手動填的格子\n{dp} @tts [next] 起點對應 dp[1][1]，填 1。因為站在起點本身，就算一種走法。這是整張表唯一手動填的格子，其他每一格都要靠推導算出來
+    for (int i = 1; i <= h; ++i) {               //@ @guide 外層迴圈：一列一列往下填\n{dp} @tts [next] 好，先看第 1 列，也就是地圖的第 0 列 | @2 [next] 換到第 2 列，對應地圖的第 1 列 | @3 [fast @4] 第 3 列的規則一模一樣，我們直接跳到算完，看最後的答案 | @4 [next] 第 3 列也用同樣的規則算完了，整張表都填好了 @layout sidebar:55 open:container
+        for (int j = 1; j <= w; ++j) {           //@ @guide 內層迴圈：第 i 列由左往右走完\n{dp} @tts [next] 內層迴圈會由左往右，把這一列一格一格走完 | @2 [next] 這一格算完了，看看右邊還有沒有 | @3 [next] 往右一格 | @6 [next] 換第 2 列，一樣由左往右 | @7 [next] 下一格 | @9 [next] 右
+            if (i == 1 && j == 1) continue;      //@ @guide 起點已經填過了，這一格跳過，不要蓋掉\n{dp[i][j]:lightblue}\n{g[i - 1][j - 1]:lightblue} @tts [next] 起點剛才已經填過了，這一格跳過 | @2 [next] 不是起點，繼續 | @4 [next] 不是起點 | @6 [next] 繼續
+            if (g[i - 1][j - 1] == '#') {        //@ @guide 判斷這一格是不是牆\n{dp[i][j]:lightblue}\n{g[i - 1][j - 1]:lightblue} @tts [next] 先問一下，這一格是不是牆 | @2 [next] 是牆嗎 | @4 [next] 牆嗎 | @6 [next] 牆 @layout pair:dp,g
+                dp[i][j] = 0;                    //@ @guide 是牆：走不進來，這一格填 0\n{dp[i][j]:pink}\n{g[i - 1][j - 1]:pink} @tts [next] 這一格是牆，走不進來，所以走法直接算 0。不管上面或左邊有多少種走法，都不算數 | @2 [next] 又是牆，一樣填 0
                 continue;                        //@ @guide 牆已經處理完，換下一格 @tts [next] 這一格處理完了，換下一格 | @2 [next] 換下一格
             }
-            int up = dp[i - 1][j];               //@ @guide 讀上面那格的走法數，存進 up @tts [next] 要知道怎麼走到這一格，得先看兩個來源。先看上面：dp[i 減 1][j]，直接把上面那一格算好的走法數抄過來 | @2 [next] 上面是 dp[i 減 1][j]，值是 {dp[i - 1][j]} | @3 [next] 上面 {dp[i - 1][j]} @layout pop:dp:orange
-            int left = dp[i][j - 1];             //@ @guide 讀左邊那格的走法數，存進 left @tts [next] 再看左邊：dp[i][j 減 1]，也是直接把左邊那一格算好的走法數抄過來 | @2 [next] 左邊是 dp[i][j 減 1]，值是 {dp[i][j - 1]} | @3 [next] 左邊 {dp[i][j - 1]} @layout pop:dp:lime
-            dp[i][j] = (up + left) % MOD;        //@ @guide 這一格的走法數 = up 加 left，寫進表裡 @tts [next] 為什麼用加的？因為走到這一格的最後一步，只有兩種可能：從上面下來，或從左邊過來，而且兩種不會重複。所以把兩邊的走法數加起來就是答案：上面 {up} 加左邊 {left} | @2 [next] 上面 {up} 加左邊 {left}，寫進這一格 | @3 [next] {up} 加 {left} | @5 [next] 加起來 @layout pop:dp
+            int up = dp[i - 1][j];               //@ @guide 讀上面那格的走法數，存進 up\n{dp[i - 1][j]:orange}\n{dp[i][j]:lightblue}\n{g[i - 1][j - 1]:lightblue} @tts [next] 要知道怎麼走到這一格，得先看兩個來源。先看上面：dp[i 減 1][j]，直接把上面那一格算好的走法數抄過來 | @2 [next] 上面是 dp[i 減 1][j]，值是 {dp[i - 1][j]} | @3 [next] 上面 {dp[i - 1][j]} @layout pop:dp:orange
+            int left = dp[i][j - 1];             //@ @guide 讀左邊那格的走法數，存進 left\n{dp[i][j - 1]:lime}\n{dp[i][j]:lightblue}\n{g[i - 1][j - 1]:lightblue} @tts [next] 再看左邊：dp[i][j 減 1]，也是直接把左邊那一格算好的走法數抄過來 | @2 [next] 左邊是 dp[i][j 減 1]，值是 {dp[i][j - 1]} | @3 [next] 左邊 {dp[i][j - 1]} @layout pop:dp:lime
+            dp[i][j] = (up + left) % MOD;        //@ @guide 這一格的走法數 = up 加 left，寫進表裡\n{dp[i - 1][j]:orange}\n{dp[i][j - 1]:lime}\n{dp[i][j]:lightblue}\n{g[i - 1][j - 1]:lightblue} @tts [next] 為什麼用加的？因為走到這一格的最後一步，只有兩種可能：從上面下來，或從左邊過來，而且兩種不會重複。所以把兩邊的走法數加起來就是答案：上面 {up} 加左邊 {left} | @2 [next] 上面 {up} 加左邊 {left}，寫進這一格 | @3 [next] {up} 加 {left} | @5 [next] 加起來 @layout pop:dp
         }
     }
-    std::cout << dp[h][w] << "\n";               //@ @guide 整張表填完，印出右下角的走法數 dp[h][w] @tts [next] 表填完了，答案就是右下角那一格。每一格都是上面加左邊推出來的，牆是唯一的例外，直接填 0
+    std::cout << dp[h][w] << "\n";               //@ @guide 整張表填完，印出右下角的走法數 dp[h][w]\n{dp}\n{dp[h][w]:orange} @tts [next] 表填完了，答案就是右下角那一格。每一格都是上面加左邊推出來的，牆是唯一的例外，直接填 0
     return 0;                                    //@ @tts [continue] 教案播放完畢
 }

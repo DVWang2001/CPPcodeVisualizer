@@ -307,6 +307,43 @@ test("a matched pause suppresses narration", () => {
   expect(narration).not.toHaveBeenCalled();
 });
 
+// 實際回報：自動播放中開出題目，按「結束作答並繼續」後播放停在題目行不動。
+// 題目行的旁白不播，所以沒有旁白播完時的 [next] 可寄放；要寄放題目行自己的指令。
+test("收卷後從題目行自己的續播指令接著播", () => {
+  const resumeAutoplay = jest.fn();
+  lessonQuizRuntime.activate(session(), {
+    trigger: jest.fn(() => new Promise<any>(() => undefined)),
+    setGate: jest.fn(),
+    resumeAutoplay
+  });
+  (global_variable as any).__tts = { 3: "[step-in] 進去看看" };
+  const narration = jest.spyOn(VisualizerHelper, "play_tts").mockImplementation(() => Promise.resolve());
+  jest.spyOn(VisualizerHelper, "processing_guide").mockImplementation(() => undefined);
+  jest.spyOn(VisualizerHelper, "detect_container_op").mockImplementation(() => undefined);
+  jest.spyOn(Actions, "refresh_state_for_gdb_pause").mockImplementation(() => undefined);
+  jest.spyOn(require("../SourceCode").default, "make_current_line_visible").mockImplementation(() => true);
+
+  Actions.inferior_program_paused({ fullname: "main.cpp", line: "3", func: "main" });
+  expect(narration).not.toHaveBeenCalled();
+  expect(resumeAutoplay).not.toHaveBeenCalled();
+  lessonQuizRuntime.questionClosed(session());
+
+  expect(resumeAutoplay).toHaveBeenCalledWith("step-in");
+});
+
+test.each([
+  ["[next] 一句話", 1, "next"],
+  ["[next] 第一次 | @2 [continue] 之後", 1, "next"],
+  ["[next] 第一次 | @2 [continue] 之後", 3, "continue"],
+  ["[step-in] 全域 | @2 沒有指令", 2, "step-in"],
+  ["[fast @5] 快轉", 1, "next"],
+  ["沒有指令", 1, null],
+])("autoplay_command_for_line(%s, 第 %d 次) = %s", (tts, visits, expected) => {
+  (global_variable as any).__tts = { 9: tts };
+  (global_variable as any).__line_visit_count = { 9: visits };
+  expect((VisualizerHelper as any).autoplay_command_for_line("9")).toBe(expected);
+});
+
 test("a table pause clears stale containers before current-stop processing", () => {
   lessonQuizRuntime.activate(tableSession(), { trigger: jest.fn(), setGate: jest.fn() });
   (global_variable as any).__latest_containers = new Map([["stale", { values: [[0]] }]]);

@@ -6,13 +6,13 @@
 
 int main() {
     std::vector<std::vector<int>> table(4, std::vector<int>(7, 0));  //@ @guide 這一行做出 4 列 7 行的表，每格先填 0；第 0 列之後不會再動 @tts [next] 這次是一張四列七行的表，先全部填零。第零列留著不動 @layout sidebar:58 open:container close:locals
-    for (int i = 1; i <= 3; ++i) {          //@ @guide 外層迴圈選列，i 從 1 到 3，每一圈處理一列 @tts [next] 外層迴圈負責選列，從第一列開始 | @2 [next] 這一列填完了，看還有沒有下一列 @layout sidebar:58 open:container
-        for (int w = 0; w <= 6; ++w) {      //@ @guide 內層迴圈從左到右走完第 i 列，每一圈處理一格 @tts [next] 現在填第 {i} 列，內層迴圈負責從左到右走完這一列 | @2 [next] 第 {i} 列，看還有沒有下一格
-            int value = i * 10 + w;         //@ @guide 這一行算出第 i 列第 w 行要填的值：i 乘 10 加 w @tts [next] 現在是第 {i} 列第 {w} 行。這一格填的是 i 乘以十再加 w | @2 [next] 由 {i} 和 {w} 算出這一格的值
-            table[i][w] = value;            //@ @guide 把算好的值寫進第 i 列第 w 行（table[i][w] = value） @tts [next] 把 {value} 寫進這一格 | @2 [next] 寫進第 {i} 列第 {w} 行
+    for (int i = 1; i <= 3; ++i) {          //@ @guide 外層迴圈選列，i 從 1 到 3，每一圈處理一列\n{table} @tts [next] 外層迴圈負責選列，從第一列開始 | @2 [next] 這一列填完了，看還有沒有下一列 @layout sidebar:58 open:container
+        for (int w = 0; w <= 6; ++w) {      //@ @guide 內層迴圈從左到右走完第 i 列，每一圈處理一格\n{table} @tts [next] 現在填第 {i} 列，內層迴圈負責從左到右走完這一列 | @2 [next] 第 {i} 列，看還有沒有下一格
+            int value = i * 10 + w;         //@ @guide 這一行算出第 i 列第 w 行要填的值：i 乘 10 加 w\n{table[i][w]:lightblue} @tts [next] 現在是第 {i} 列第 {w} 行。這一格填的是 i 乘以十再加 w | @2 [next] 由 {i} 和 {w} 算出這一格的值
+            table[i][w] = value;            //@ @guide 把算好的值寫進第 i 列第 w 行（table[i][w] = value）\n{table[i][w]:lightblue} @tts [next] 把 {value} 寫進這一格 | @2 [next] 寫進第 {i} 列第 {w} 行
         }
     }
-    int corner = table[3][6];               //@ @guide 整張表填完後，這一行把右下角 table[3][6] 讀進 corner @tts [next] 兩層迴圈走完，整張表就滿了
+    int corner = table[3][6];               //@ @guide 整張表填完後，這一行把右下角 table[3][6] 讀進 corner\n{table}\n{table[3][6]:orange} @tts [next] 兩層迴圈走完，整張表就滿了
     std::cout << corner << "\n";            //@ @guide 印出右下角的值 corner @tts [next] 右下角是 {corner}
     return 0;                               //@ @tts [continue] 記住這個形狀：兩層迴圈，中間那幾行決定每一格填什麼。下一課只換掉中間那幾行。教案播放完畢
 }
