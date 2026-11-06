@@ -25,7 +25,7 @@ int main() {
             dp[i][w] = std::max(skip, take);                                    //@ @guide dp[i][w] 取不拿與拿兩者較大的值 @tts [next] 不拿是 {skip}，拿是 {take}，兩個取大的填進這一格 | @2 [next] 不拿 {skip}、拿 {take}，取大的
         }
     }
-    int best = dp[n][capacity];                                                 //@ @guide 整張表填完後，答案 best 就是右下角 dp[3][6] @tts [next] 表填完了。請在手機上把整張表重建出來
+    int best = dp[n][capacity];                                                 //@ @guide 整張表填完後，答案 best 就是右下角 dp[3][6]\n{dp}\n{dp[3][6]:orange} @tts [next] 表填完了。請在手機上把整張表重建出來
     std::cout << "最大價值：" << best << "\n";                                    //@ @guide 印出最大價值 best；6 單位容量的答案是 9，只用掉 5 單位 @tts [next] 容量六的最大價值是 {best}。注意它只用掉五單位重量，最佳解不一定要把背包塞滿
     return 0;                                                                   //@ @tts [continue] 兩層迴圈的形狀和上一課一樣，只有中間那幾行換了公式。教案播放完畢
 }

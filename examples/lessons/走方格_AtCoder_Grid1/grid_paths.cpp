@@ -33,6 +33,6 @@ int main() {
             dp[i][j] = (up + left) % MOD;        //@ @guide 這一格的走法數 = up 加 left（取餘數 MOD） @tts [next] 兩邊加起來，就是這一格的答案：上面 {up} 加左邊 {left}[anim] | @2 [next] 上面 {up} 加左邊 {left}[anim] | @4 [next] {up} 加 {left}[anim] | @7 [next] 加起來[anim] @layout pull:dp:orange,lime->lightblue
         }
     }
-    std::cout << dp[h][w] << "\n";               //@ @guide 整張表填完，印出右下角的走法數 dp[h][w] @tts [next] 表填完了，答案就是右下角那一格 @layout open:live_quiz close:container
+    std::cout << dp[h][w] << "\n";               //@ @guide 整張表填完，印出右下角的走法數 dp[h][w]\n{dp}\n{dp[h][w]:orange} @tts [next] 表填完了，答案就是右下角那一格 @layout open:live_quiz close:container
     return 0;                                    //@ @tts [continue] 每一格都是「上面加左邊」，牆填 0。教案播放完畢
 }

@@ -54,7 +54,7 @@ int main() {
             if (cur > ans) ans = cur;            //@ @guide 用這個起點的答案 cur 更新目前最長 ans @tts [next] 這個起點的答案是 {cur}，和目前最長的比一比 | @2 [next] 比一比
         }
     }
-    std::cout << ans << "\n";                    //@ @guide 課堂題目：每個起點都問完了，這一行先把記憶表藏起來，請大家算 @tts [next] 每個起點都問完了，可是我先把 dp 表藏起來。請大家用手機自己算出來 @layout open:live_quiz close:container,callgraph
+    std::cout << ans << "\n";                    //@ @guide 課堂題目：每個起點都問完了，這一行先把記憶表藏起來，請大家算\n{dp} @tts [next] 每個起點都問完了，可是我先把 dp 表藏起來。請大家用手機自己算出來 @layout open:live_quiz close:container,callgraph
     return 0;                                    //@ @guide 結束；所有起點都算完，答案 ans 就是表裡最大的那一格 @tts [continue] 走法不再固定往右下，就沒有現成的填表順序，所以改成用到才算、算過就記住。教案播放完畢 @layout sidebar:58 open:container,callgraph close:live_quiz
 }
 

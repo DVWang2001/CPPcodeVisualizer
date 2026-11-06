@@ -48,13 +48,13 @@ int main() {
             dp[i][j] = cost[i][j] + best;        //@ @guide 算出這一格的 dp：自己的成本加上右邊最好的那條路 @tts [next] 這一格的 dp，[anim]等於自己的成本，加上右邊最好的那條路，寫進表裡 | @2 [next] [anim]同樣算出這一格的 dp @layout pull:cost:orange,dp:lime->dp:lightblue
         }
     }
-    int start = 0;                               //@ @guide 課堂題目：兩張表算完了，這一行先把它們藏起來，請大家用手機算 dp 表 @tts [next] 兩張表都算完了，可是我先把它們藏起來。請大家用手機自己算出 dp 表 @layout open:live_quiz close:container
+    int start = 0;                               //@ @guide 課堂題目：兩張表算完了，這一行先把它們藏起來，請大家用手機算 dp 表\n{dp} @tts [next] 兩張表都算完了，可是我先把它們藏起來。請大家用手機自己算出 dp 表 @layout open:live_quiz close:container
     for (int i = 1; i < h; ++i) {                //@ @guide 起點可以是最左欄任何一列；從第 1 列開始逐列比較 @tts [next] 起點可以是最左欄的任何一列，逐列比較，挑成本最小的，同分挑列號小的 | @2 [fast @5] 其他列也是一樣的比法，直接跳到比完 | @5 [next] 比完了
         if (dp[i][0] < dp[start][0]) {           //@ @guide 比較第 i 列與目前起點的 dp：第 i 列更小嗎（同分不換） @tts [next] [anim]第 {i} 列比目前的起點成本更小嗎 | @2 [next] [anim]再比一次 @layout pop:dp
             start = i;                           //@ @guide 第 i 列更小，把起點換成第 i 列 @tts [next] 更小，[anim]起點換成第 {i} 列 | @2 [next] [anim]換成第 {i} 列 @layout pop:dp:lightblue
         }
     }
-    int r = start;                               //@ @guide 課堂題目：請算出 nxt 表；最右欄沒有下一步，填負一 @tts [next] 接著請大家算出 nxt 表。最右欄沒有下一步，填負一 @layout open:live_quiz close:container
+    int r = start;                               //@ @guide 課堂題目：請算出 nxt 表；最右欄沒有下一步，填負一\n{nxt} @tts [next] 接著請大家算出 nxt 表。最右欄沒有下一步，填負一 @layout open:live_quiz close:container
     for (int j = 0; j < w; ++j) {                //@ @guide 揭曉兩張表；從起點開始，每一欄查 nxt 表，就能把路線走出來 @tts [next] 兩張表現在打開了，大家對一下答案。有了 nxt 表，就能從起點一欄一欄把最佳路線走出來 | @2 [next] 下一欄 @layout sidebar:60 open:container close:live_quiz pair:dp,nxt
         std::cout << r + 1 << (j + 1 < w ? " " : "\n");  //@ @guide 印出第 j 欄走的列（輸出從 1 算起，所以印 r 加一） @tts [next] [anim]第 {j} 欄走第 {r} 列，輸出從一開始算，所以印的是 r 加一 | @2 [next] [anim]第 {j} 欄走第 {r} 列 @layout pop:nxt:orange
         r = nxt[r][j];                           //@ @guide 查 nxt 表，把 r 更新成下一欄要走的列 @tts [next] [anim]查 nxt 表，看下一欄要走第幾列 | @2 [next] [anim]再查 nxt 表 @layout pop:nxt:orange
