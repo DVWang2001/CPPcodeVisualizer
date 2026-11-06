@@ -17,6 +17,7 @@ import { CapturedTable, tableFromContainer } from "./tableFromContainer";
 import TableHeatmap from "./TableHeatmap";
 import TableAnswerReview from "./TableAnswerReview";
 import GdbApi from "./GdbApi";
+import { currentStepIndex, engineQuery, engineSourceLine } from "./localEngine";
 
 type Props = {
   lessonId: number;
@@ -349,6 +350,12 @@ export default function LiveQuizPanel({
   const triggerGenerationRef = React.useRef(0);
   const reRunningForTriggerRef = React.useRef<{ questionId: string; varHint: string } | null>(null);
   const [isRerunningForTrigger, setIsRerunningForTrigger] = React.useState(false);
+  /** 每題開題時播放器停在第幾步（引擎的步序）。收卷後「跳到寫入那格的步驟」以它為上界。 */
+  const triggerStepRef = React.useRef<Record<string, number>>({});
+  /** 老師點了熱區圖某格後待確認的跳步；error 代表引擎找不到。 */
+  const [jump, setJump] = React.useState<
+    { varName: string; row: number; col: number; step?: number; line?: number; text?: string; error?: string } | null
+  >(null);
 
   const restoreHiddenContainer = () => {
     restoreQuizContainer(containerClosedRef.current);
@@ -371,6 +378,8 @@ export default function LiveQuizPanel({
       if (capture && capture.ok === true) {
         reRunningForTriggerRef.current = null;
         setIsRerunningForTrigger(false);
+        const stepAtTrigger = currentStepIndex();
+        if (stepAtTrigger !== null) triggerStepRef.current[req.questionId] = stepAtTrigger;
         setQuestionData(
           Array.from(containers.entries())
             .filter(([name, data]) =>
@@ -801,6 +810,19 @@ export default function LiveQuizPanel({
   const correctCount = (stats && stats.correct_count) || (question && question.correct_count) || 0;
   const cellStats = (stats && stats.cell_stats) || (question && question.cell_stats) || [];
 
+  // 收卷後點熱區圖答錯的格子：問引擎哪一步最後寫了這格，確認後才真的跳過去（只動老師端播放器，不送學生）。
+  const askJump = (varName: string, questionId: string, row: number, col: number) => {
+    const before = triggerStepRef.current[questionId];
+    const r = engineQuery(`-vg-cell-last-write ${varName} ${row} ${col}${before === undefined ? "" : " " + before}`);
+    const cell = `${varName}[${row}][${col}]`;
+    if (!r || !r.ok) {
+      setJump({ varName, row, col, error: `找不到 ${cell} 是哪一步寫入的${r ? `（${r.payload.msg}）` : ""}。` });
+      return;
+    }
+    const line = Number(r.payload.line);
+    setJump({ varName, row, col, step: Number(r.payload.step), line, text: engineSourceLine(line).replace(/\s*\/\/.*$/, "") });
+  };
+
   // 題目進行中／閒置兩種畫面各自獨立（題目進行中是全螢幕彈窗，蓋住側欄，
   // 閒置時退回側欄的精簡版），但這兩顆按鈕兩邊都要能按到——閒置時要能
   // 結束課堂／匯出資料，題目進行中也要能結束作答。抽成共用的 JSX，
@@ -1009,7 +1031,36 @@ export default function LiveQuizPanel({
                   colLabels={question.col_labels || []}
                   stats={cellStats}
                   answerCount={answerCount}
+                  varName={question.table_spec?.var_hint}
+                  onCellClick={
+                    question.state === "closed" && question.table_spec?.var_hint
+                      ? (row, col) => askJump(question.table_spec.var_hint, question.id, row, col)
+                      : undefined
+                  }
                 />
+                {question.state === "closed" && jump && (
+                  <div role="alert" data-testid="live-quiz-jump-confirm" style={{ margin: "8px 0", padding: "8px 10px", background: "#fff7df", border: "1px solid #f2d38b", fontSize: "14px" }}>
+                    {jump.error ? (
+                      <span>{jump.error}</span>
+                    ) : (
+                      <span>
+                        跳到第 {jump.step} 步（第 {jump.line} 行：<code>{jump.text}</code>）？
+                      </span>
+                    )}{" "}
+                    {!jump.error && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => { GdbApi.seek_to_step(jump.step as number); setJump(null); }}
+                      >
+                        跳過去
+                      </button>
+                    )}{" "}
+                    <button type="button" className="btn btn-default btn-sm" onClick={() => setJump(null)}>
+                      {jump.error ? "關閉" : "取消"}
+                    </button>
+                  </div>
+                )}
                 {/* 熱區圖只顯示答錯集中在哪，不會透出正確的值本身——老師結束作答
                     後需要另外一份答案卷才看得到正解，不能只靠展開某一位學生的
                     個別作答去猜。只在結束作答（state==="closed"）後才顯示：
@@ -1071,7 +1122,7 @@ export default function LiveQuizPanel({
                   </div>
                 )}
               </React.Fragment>
-            ) : (question.options || []).map((option: any) => {
+            ) : (question.options || []).map((option: any, index: number) => {
               const value = Number(counts[option.id]) || 0;
               const width = answerCount ? Math.round((value / answerCount) * 100) : 0;
               // 題目還開著時不能標正解，會直接洩題給還在作答的學生看。
@@ -1080,7 +1131,7 @@ export default function LiveQuizPanel({
                 <div key={option.id} style={{ marginBottom: "8px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
                     <span style={isCorrect ? { color: "#237a3b", fontWeight: 700 } : undefined}>
-                      {isCorrect && "✓ "}{option.text}
+                      {index + 1}. {isCorrect && "✓ "}{option.text}
                     </span>
                     <span>{value}</span>
                   </div>

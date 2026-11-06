@@ -411,3 +411,63 @@ test("localStorage 裡的暱稱不合規則（舊版寫入或手改）時視為�
   expect(root.querySelector("#quiz-nickname")).not.toBeNull();
   expect((io as any).connect).not.toHaveBeenCalled();
 });
+
+test("填表題有空白格：確認列顯示空白數，確認送出（次要按鈕）照舊送出同樣內容", () => {
+  storeDevice();
+  mount();
+  fire("connect");
+  fire("quiz:student-state", tableBroadcast());
+  const partial = [["0", ""], ["", "2"]];
+  submitTable(partial);
+  expect(emitted("student:answer")).toHaveLength(1);
+  expect(emitted("student:answer")[0]).toMatchObject({ question_key: "table-1", answer: partial });
+
+});
+
+test("填表題空白格確認列：主位置是「繼續填」，點它回到編輯", () => {
+  storeDevice();
+  mount();
+  fire("connect");
+  fire("quiz:student-state", tableBroadcast());
+  const input = root.querySelector('input[name="cell-0-0"]') as HTMLInputElement;
+  input.value = "3";
+  act(() => { input.dispatchEvent(new Event("input", { bubbles: true })); });
+  act(() => { Simulate.click(button("送出答案")); });
+  act(() => {
+    root.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+
+  expect(text()).toContain("還有 3 格空白。要繼續填，還是先送出已填的部分？");
+  const main = root.querySelector(".confirm-actions .primary-action")!;
+  expect(main.textContent).toBe("繼續填");
+  expect(root.querySelector(".confirm-actions .secondary-action")!.textContent).toBe("確認送出");
+  act(() => { Simulate.click(main); });
+  expect(root.querySelector(".confirm-bar")).toBeNull();
+  expect(emitted("student:answer")).toHaveLength(0);
+});
+
+test("填表題沒有空白格：維持原本確認文字與「確認送出」主按鈕", () => {
+  storeDevice();
+  mount();
+  fire("connect");
+  fire("quiz:student-state", tableBroadcast());
+  answer.forEach((line, row) => line.forEach((value, col) => {
+    const input = root.querySelector(`input[name="cell-${row}-${col}"]`) as HTMLInputElement;
+    input.value = value;
+  }));
+  act(() => {
+    root.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  expect(text()).toContain("確定送出這個答案嗎？在老師關題前都還可以再修改。");
+  expect(text()).not.toContain("空白");
+  expect(root.querySelector(".confirm-actions .primary-action")!.textContent).toBe("確認送出");
+});
+
+test("選擇題選項在學生頁編號 1. 2.", () => {
+  storeDevice();
+  mount();
+  fire("connect");
+  fire("quiz:student-state", choiceBroadcast());
+  const labels = Array.from(root.querySelectorAll(".answer-option")).map(l => l.textContent);
+  expect(labels).toEqual(["1. A", "2. B"]);
+});

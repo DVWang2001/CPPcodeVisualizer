@@ -348,6 +348,18 @@ export default function StudentQuizApp({ data }: { data: InitialData }) {
     setSelected(null);
   }, [question?.id]);
 
+  // 送出區釘在視窗底部（見 .quiz-footer）：量它的高度給頁面底部留空，捲到底才不會蓋住表格最後一列。
+  // 每次 render 後量（數字鍵盤出現/收起、確認列開關都會改變高度），視窗旋轉時也重量。
+  React.useLayoutEffect(() => {
+    const measure = () => {
+      const footer = document.querySelector<HTMLElement>(".quiz-footer");
+      document.documentElement.style.setProperty("--quiz-footer-h", `${footer ? footer.offsetHeight : 0}px`);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  });
+
   const nicknameLength = Array.from(nickname.trim()).length;
   const problem = nicknameProblem(nickname);
   // 分頁而不是並排：手機直向的可視高度放不下「題幹＋作答＋一個夠大的畫布」，
@@ -358,6 +370,41 @@ export default function StudentQuizApp({ data }: { data: InitialData }) {
 
   const locked = (question: StudentQuizQuestion) =>
     question.state !== "open" || submitting || pending !== null;
+
+  const blankCount =
+    pending && pending.kind === "table" ? pending.values.flat().filter(cell => cell.trim() === "").length : 0;
+  const confirmBar = pending ? (
+    <div className="confirm-bar" role="alertdialog" aria-label="確認送出答案">
+      <p>
+        {blankCount > 0
+          ? `還有 ${blankCount} 格空白。要繼續填，還是先送出已填的部分？`
+          : state.status === "answered"
+            ? "確定要用新的答案覆蓋掉原本送出的答案嗎？在老師關題前都還可以再修改。"
+            : "確定送出這個答案嗎？在老師關題前都還可以再修改。"}
+      </p>
+      {blankCount > 0 ? (
+        // 安全的「繼續填」佔主按鈕的大小，並由 .stacked 的 column-reverse 壓到最底、也就是原本送出鈕的位置，
+        // 連點兩下也不會送出。
+        <div className="confirm-actions stacked">
+          <button type="button" className="primary-action" onClick={cancelPending} disabled={submitting}>
+            繼續填
+          </button>
+          <button type="button" className="secondary-action" onClick={confirmPending} disabled={submitting}>
+            確認送出
+          </button>
+        </div>
+      ) : (
+        <div className="confirm-actions">
+          <button type="button" className="primary-action" onClick={confirmPending} disabled={submitting}>
+            確認送出
+          </button>
+          <button type="button" className="secondary-action" onClick={cancelPending} disabled={submitting}>
+            再想想
+          </button>
+        </div>
+      )}
+    </div>
+  ) : null;
 
   return (
     <main className="quiz-shell">
@@ -459,7 +506,7 @@ export default function StudentQuizApp({ data }: { data: InitialData }) {
                   <form onSubmit={requestChoiceSubmit}>
                     <fieldset disabled={locked(question)}>
                       <legend className="sr-only">請選擇一個答案</legend>
-                      {question.options.map(option => {
+                      {question.options.map((option, index) => {
                         const chosen = currentSelection === option.id;
                         const correct = state.status === "closed" && question.result?.correct_option_id === option.id;
                         return (
@@ -474,16 +521,18 @@ export default function StudentQuizApp({ data }: { data: InitialData }) {
                               checked={chosen}
                               onChange={() => setSelected(option.id)}
                             />
-                            <span>{option.text}</span>
+                            <span>{index + 1}. {option.text}</span>
                             {correct && <strong className="answer-mark">正解</strong>}
                           </label>
                         );
                       })}
                     </fieldset>
                     {question.state === "open" && !pending && (
-                      <button className="primary-action" disabled={!currentSelection || submitting}>
-                        {state.status === "answered" ? "更新答案" : "送出答案"}
-                      </button>
+                      <div className="quiz-footer">
+                        <button className="primary-action" disabled={!currentSelection || submitting}>
+                          {state.status === "answered" ? "更新答案" : "送出答案"}
+                        </button>
+                      </div>
                     )}
                     {state.status === "closed" && question.result && (
                       <div className={`result-box ${question.result.is_correct ? "is-correct" : "is-wrong"}`}>
@@ -505,6 +554,7 @@ export default function StudentQuizApp({ data }: { data: InitialData }) {
                       question={question}
                       onSubmit={requestTableSubmit}
                       submitted={locked(question)}
+                      footer={pending && pending.kind === "table" ? confirmBar : undefined}
                     />
                     {state.status === "closed" && question.result && (
                       <div className={["result-box", tableResultClass(question.result)].filter(Boolean).join(" ")}>
@@ -519,22 +569,7 @@ export default function StudentQuizApp({ data }: { data: InitialData }) {
                   </>
                 )}
 
-                {pending && (
-                  <div className="confirm-bar" role="alertdialog" aria-label="確認送出答案">
-                    <p>
-                      {state.status === "answered" ? "確定要用新的答案覆蓋掉原本送出的答案嗎？" : "確定送出這個答案嗎？"}
-                      在老師關題前都還可以再修改。
-                    </p>
-                    <div className="confirm-actions">
-                      <button type="button" className="primary-action" onClick={confirmPending} disabled={submitting}>
-                        確認送出
-                      </button>
-                      <button type="button" className="secondary-action" onClick={cancelPending} disabled={submitting}>
-                        再想想
-                      </button>
-                    </div>
-                  </div>
-                )}
+                {pending && pending.kind === "choice" && <div className="quiz-footer">{confirmBar}</div>}
               </div>
             )}
           </div>

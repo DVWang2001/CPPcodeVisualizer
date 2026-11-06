@@ -19,6 +19,8 @@ import { global_variable } from "../global_variable";
 import * as liveQuizClient from "../liveQuizClient";
 import { store } from "statorgfc";
 import initialStoreData from "../InitialStoreData";
+import GdbApi from "../GdbApi";
+import * as localEngine from "../localEngine";
 
 const pending: PendingTable = {
   questionId: "q1",
@@ -624,6 +626,8 @@ test("選擇題彈窗直接在正確選項旁標記，不用另外去猜哪個�
   await mountPanel(closed);
   await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
 
+  expect(root.textContent).toContain("1. 選項 A");
+  expect(root.textContent).toContain("2. ✓ 選項 B");
   expect(root.textContent).toContain("✓ 選項 B");
   expect(root.textContent).not.toContain("✓ 選項 A");
 });
@@ -1118,4 +1122,83 @@ test("中繼拒絕老師連線（onRefused）：收尾成已結束並說明；�
   expect(beforeUnloadBlocked()).toBe(false);
   expect(lessonQuizRuntime.state().active).toBe(false);
   expect(root.querySelector('[data-testid="live-quiz-export"]')).not.toBeNull();
+});
+
+// 老師端：收卷後點答錯的格子 -> 問引擎 -> 確認 -> 跳步（只動播放器）
+describe("closed table question: jump to the step that filled a wrong cell", () => {
+  const closedWith = (state: string) => ({
+    ...panelSession(),
+    questions: [{
+      ...panelSession().questions[0],
+      state,
+      opened_at: "2026-08-20T00:00:00",
+      rows: 1, cols: 2,
+      row_labels: ["0"], col_labels: ["0", "1"],
+      cell_stats: [0, 3],
+      correct_values: [["0", "1"]]
+    }],
+    active_question: null
+  });
+  const jumpButtons = () => Array.from(root.querySelectorAll("[data-heatmap-jump]")) as HTMLButtonElement[];
+  let query: jest.SpyInstance, seek: jest.SpyInstance;
+  beforeEach(() => {
+    (liveQuizClient.fetchQuestionResponses as jest.Mock) = jest.fn().mockResolvedValue({ responses: [] });
+    query = jest.spyOn(localEngine, "engineQuery").mockReturnValue({ ok: true, payload: { step: "37", line: "25", how: "assignment" } });
+    jest.spyOn(localEngine, "engineSourceLine").mockReturnValue("dp[i][w] = std::max(skip, take); //@ fill");
+    seek = jest.spyOn(GdbApi, "seek_to_step").mockImplementation(() => undefined);
+  });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  test("cells are buttons only when closed and wrong > 0", async () => {
+    await mountPanel(closedWith("closed"));
+    await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    expect(jumpButtons()).toHaveLength(1);
+    expect(jumpButtons()[0].getAttribute("aria-label")).toBe("跳到 dp[0][1] 最後被寫入的那一步");
+  });
+
+  test("an open question has no jump buttons", async () => {
+    await mountPanel(closedWith("open"));
+    await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    expect(jumpButtons()).toHaveLength(0);
+  });
+
+  test("click asks the engine and shows the confirmation; cancel sends nothing", async () => {
+    await mountPanel(closedWith("closed"));
+    await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    act(() => { Simulate.click(jumpButtons()[0]); });
+    expect(query).toHaveBeenCalledWith("-vg-cell-last-write dp 0 1");
+    const box = root.querySelector('[data-testid="live-quiz-jump-confirm"]') as HTMLElement;
+    expect(box.textContent).toContain("跳到第 37 步（第 25 行：dp[i][w] = std::max(skip, take);）？");
+    expect(box.querySelector("code")!.textContent).toBe("dp[i][w] = std::max(skip, take);");
+    const cancel = Array.from(box.querySelectorAll("button")).find(b => b.textContent === "取消")!;
+    act(() => { Simulate.click(cancel); });
+    expect(seek).not.toHaveBeenCalled();
+    expect(root.querySelector('[data-testid="live-quiz-jump-confirm"]')).toBeNull();
+  });
+
+  test("confirm seeks to the found step; nothing goes to the server and the question does not re-trigger", async () => {
+    await mountPanel(closedWith("closed"));
+    await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    jest.clearAllMocks();
+    act(() => { Simulate.click(jumpButtons()[0]); });
+    const ok = Array.from(root.querySelectorAll('[data-testid="live-quiz-jump-confirm"] button')).find(b => b.textContent === "跳過去")!;
+    act(() => { Simulate.click(ok); });
+    expect(seek).toHaveBeenCalledWith(37);
+    expect(seek).toHaveBeenCalledTimes(1);
+    expect(liveQuizClient.triggerLiveQuestion).not.toHaveBeenCalled();
+    // the jump lands on the trigger line again: the closed question is not triggered a second time
+    act(() => { lessonQuizRuntime.onGdbPause({ fullname: "main.cpp", line: 3 }); });
+    expect(lessonQuizRuntime.state().pendingTable).toBeNull();
+    expect(root.querySelector('[data-testid="live-quiz-jump-confirm"]')).toBeNull();
+  });
+
+  test("an engine error is shown and nothing can be confirmed", async () => {
+    query.mockReturnValue({ ok: false, payload: { msg: "no step" } });
+    await mountPanel(closedWith("closed"));
+    await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    act(() => { Simulate.click(jumpButtons()[0]); });
+    const box = root.querySelector('[data-testid="live-quiz-jump-confirm"]') as HTMLElement;
+    expect(box.textContent).toContain("找不到 dp[0][1]");
+    expect(Array.from(box.querySelectorAll("button")).some(b => b.textContent === "跳過去")).toBe(false);
+  });
 });

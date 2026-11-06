@@ -391,3 +391,39 @@ button:focus-visible, input:focus-visible, .answer-option:focus-within { outline
 
 /* 縮圖是絕對定位的，這層是它的定位基準（不是 .table-answer-scroll——那在 grid 元件內部） */
 .table-with-scratch { position: relative; }
+
+/* 送出/確認區釘在視窗底部（fixed，不是 sticky）：按下送出後數字鍵盤收起、頁面變短時，sticky 會跟著內容往上跑，
+   第二下就不會落在「繼續填」。fixed 讓最底下那顆按鈕永遠在同一個位置。不透明底、避開 iPhone 底部手勢列。
+   頁面底部用 --quiz-footer-h（studentQuiz.tsx 量出來的高度）留空，捲到底不會蓋住表格最後一列。 */
+.quiz-footer {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(100%, 540px);
+  z-index: 5;
+  padding: 6px 16px calc(8px + env(safe-area-inset-bottom));
+  background: var(--quiz-paper, #fff);
+  box-shadow: 0 -6px 16px rgba(23, 35, 59, .08);
+}
+.quiz-shell { padding-bottom: calc(40px + var(--quiz-footer-h, 0px)); }
+.quiz-footer .primary-action,
+.quiz-footer .secondary-action { margin-top: 6px; }
+.quiz-footer .confirm-bar { margin-top: 0; }
+/* 「繼續填」在 DOM 裡排第一（鍵盤與讀屏先到安全選項），畫面上壓在最底：
+   送出鈕原本就在釘住視窗底部的 footer 最底，連點第二下會落在「繼續填」而不是「確認送出」。 */
+.confirm-actions.stacked { flex-direction: column-reverse; gap: 0; }
+
+.number-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.number-pad button {
+  min-height: 44px;
+  border: 2px solid var(--quiz-line);
+  border-radius: 0;
+  color: var(--quiz-ink);
+  background: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.number-pad button:active { background: #eef5ff; }
+.table-answer-grid input:focus { border-color: var(--quiz-blue); background: #eef5ff; outline: 3px solid var(--quiz-blue); outline-offset: -2px; }

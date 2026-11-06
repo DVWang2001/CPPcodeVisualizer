@@ -128,6 +128,8 @@ const FORWARDED_EVENTS = [
   "program_pty_response",
   "user_pty_response",
   "error_running_gdb_command",
+  // S4 side event: what the line at this stop did; GdbApi re-dispatches it for LineAfterPanel.
+  "vg_line_after",
 ];
 
 /** Minimal shape of what createLocalGdb returns that the facade relies on. */
@@ -137,7 +139,7 @@ export interface LocalGdbLike {
     emit: (ev: string, p: any) => any;
     close: () => any;
   };
-  session?: { pid?: number; model?: any };
+  session?: { pid?: number; model?: any; opts?: any; dispatch?: (cmd: string) => any[]; hasStack?: () => boolean; topStep?: () => number };
   idle: () => Promise<void>;
   setRunToken: (t: string | null) => void;
   close: () => void;
@@ -645,6 +647,36 @@ export function lineVisitCount(line: number): number | null {
     n++;
   }
   return n > 0 ? n : null;
+}
+
+/** Step index (position in the recorded trace) of the stop the player is on now; null when nothing is running. */
+export function currentStepIndex(): number | null {
+  const s = _socket && _socket.currentGdb && _socket.currentGdb.session;
+  return s && s.hasStack && s.topStep && s.hasStack() ? s.topStep() : null;
+}
+
+/** Text of source line `n` (1-based) of the program being debugged, or "". */
+export function engineSourceLine(n: number): string {
+  const s = _socket && _socket.currentGdb && _socket.currentGdb.session;
+  const src = s && s.opts && typeof s.opts.source === "string" ? s.opts.source : "";
+  return (src.split(/\r?\n/)[n - 1] || "").trim();
+}
+
+/**
+ * Ask the engine a READ-ONLY question and get the answer synchronously (the `-vg-cell-last-write` query). It
+ * bypasses the socket on purpose: the answer is not a stop, so it must not run through process_gdb_response (it
+ * would print errors to the console and could race the step-refresh packets). Returns the first `result` item's
+ * `{ ok, payload }` (`payload.msg` on error), or null when there is no session. Never use it for commands that move.
+ */
+export function engineQuery(cmd: string): { ok: boolean; payload: any } | null {
+  const s = _socket && _socket.currentGdb && _socket.currentGdb.session;
+  if (!s || !s.dispatch) return null;
+  try {
+    const r = s.dispatch(cmd).find((x: any) => x && x.type === "result");
+    return r ? { ok: r.message === "done", payload: r.payload } : null;
+  } catch (e) {
+    return { ok: false, payload: { msg: String((e as any) && (e as any).message || e) } };
+  }
 }
 
 /**

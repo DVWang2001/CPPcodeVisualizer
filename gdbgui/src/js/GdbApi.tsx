@@ -789,6 +789,12 @@ const GdbApi = {
       "-exec-step" + (store.get("debug_in_reverse") || reverse ? " --reverse" : "")
     );
   },
+  /** Jump the player to trace step `index` (`-vg-seek-step`); answers like a step, so the usual stop handling refreshes everything. */
+  seek_to_step: function (index: number) {
+    if (!GdbApi.inferior_is_paused()) return;
+    Actions.inferior_program_resuming();
+    GdbApi.run_gdb_command(`-vg-seek-step ${index}`);
+  },
   click_return_button: function () {
     if (isQuizPlaybackBlocked(store)) return;
     // Modified: Previously ran `-exec-return` and `Actions.inferior_program_paused();`

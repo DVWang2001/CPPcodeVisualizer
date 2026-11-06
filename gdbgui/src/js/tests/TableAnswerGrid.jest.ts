@@ -58,10 +58,9 @@ test("grid uses a native number form inside its own sticky scroller", () => {
   const inputs = Array.from(root.querySelectorAll("input"));
   expect(inputs).toHaveLength(4);
   expect(root.querySelector("form.table-answer-form")).not.toBeNull();
-  expect(inputs[0].getAttribute("type")).toBe("number");
-  expect(inputs[0].getAttribute("step")).toBe("any");
+  expect(inputs[0].getAttribute("type")).toBe("text");
   expect(inputs[0].getAttribute("name")).toBe("cell-0-0");
-  expect(inputs[0].getAttribute("inputmode")).toBe("numeric");
+  expect(inputs[0].getAttribute("inputmode")).toBe("none");
   expect(inputs[0].getAttribute("aria-label")).toContain("i=0");
   expect(inputs[0].getAttribute("aria-label")).toContain("j=0");
   expect((root.querySelector(".table-answer-scroll") as HTMLElement).style.overflow).toBe("auto");
@@ -171,4 +170,29 @@ test("closed grid marks each owned answer as correct or wrong with readable hint
   expect(inputs[3].classList.contains("is-wrong")).toBe(true);
   // 已批改：灰階鎖住的樣式讓位給對錯顏色，不能兩個 class 疊在一起。
   expect(inputs.some(input => input.classList.contains("is-pending-lock"))).toBe(false);
+});
+
+const pad = (label: string) =>
+  Array.from(root.querySelectorAll(".number-pad button")).find(b => b.textContent === label) as HTMLButtonElement;
+
+test("number pad writes to the selected cell, deletes, and moves to the next cell", () => {
+  render();
+  const inputs = Array.from(root.querySelectorAll("input")) as HTMLInputElement[];
+  act(() => { inputs[0].focus(); });
+
+  ["-", "1", ".", "5"].forEach(key => act(() => { pad(key).click(); }));
+  expect(inputs[0].value).toBe("-1.5");
+  act(() => { pad("刪除").click(); });
+  expect(inputs[0].value).toBe("-1.");
+  expect(loadDraft("table-1", 2, 2)).toEqual([["-1.", ""], ["", ""]]);
+
+  act(() => { pad("下一格").click(); });
+  expect(document.activeElement).toBe(inputs[1]);
+  act(() => { pad("7").click(); });
+  expect(inputs[1].value).toBe("7");
+});
+
+test("number pad is hidden when answers are locked", () => {
+  render({ submitted: true });
+  expect(root.querySelector(".number-pad")).toBeNull();
 });

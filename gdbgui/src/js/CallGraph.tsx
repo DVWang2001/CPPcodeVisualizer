@@ -37,6 +37,16 @@ type CallGraphState = {
     risingTokens: RisingToken[];
 };
 
+// Returned calls: white card + green outline (green is already the "return value" colour).
+const RETURNED_STYLE: React.CSSProperties = { background: "#fff", border: "1px solid #3AA76D", color: "var(--ink-soft)", fontWeight: 400 };
+
+const LEGEND: { word: string; style: React.CSSProperties }[] = [
+    { word: "現在", style: { background: "#fff", border: "2px solid var(--highlight)" } },
+    { word: "等下一層", style: { background: "var(--accent-soft)", border: "1px solid var(--accent)" } },
+    { word: "回傳", style: RETURNED_STYLE },
+    { word: "還沒發生", style: { background: "transparent", border: "1.5px dashed var(--struct-border)" } },
+];
+
 const RISE_DURATION_MS = 700;
 // 舞台高度在這兩值之間動態調整：側欄剩多少空間就給多少，但不低於 MIN、不高於 MAX。
 const STAGE_MIN_H = 170;
@@ -342,7 +352,18 @@ class CallGraph extends React.Component<{}, CallGraphState> {
 
         return (
             <div style={{ width: "100%", padding: "6px" }}>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "4px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <div data-testid="cg-legend" style={{ display: "flex", gap: "10px", fontSize: "0.78em", color: "var(--ink-soft)" }}>
+                        {LEGEND.map(l => (
+                            <span key={l.word} style={{ whiteSpace: "nowrap" }}>
+                                <span style={{
+                                    display: "inline-block", width: "12px", height: "9px", borderRadius: "3px",
+                                    marginRight: "4px", verticalAlign: "middle", boxSizing: "border-box", ...l.style,
+                                }} />
+                                {l.word}
+                            </span>
+                        ))}
+                    </div>
                     <div className="btn-group" role="group">
                         <button
                             type="button"
@@ -459,7 +480,9 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                         width: `${NODE_W}px`, minHeight: `${NODE_H}px`, boxSizing: "border-box",
                                         borderRadius: "8px", border: "1.5px dashed var(--struct-border)",
                                         opacity: 0.4, background: "transparent", pointerEvents: "none",
-                                    }} />
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        fontSize: "0.7em", color: "var(--ink-soft)",
+                                    }}>還沒發生</div>
                             );
                         })}
 
@@ -471,7 +494,12 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                             const onPath = viewMode === "local"
                                 ? node.parentInvId === activeNodeId && !isCurrent
                                 : activeSet.has(node.invId) && !isCurrent;
-                            const { lines, color, ret } = this.resolveLabel(node, isCurrent);
+                            // Waiting = a caller on the current stack (active path) with a call still
+                            // running below it. Mode-independent: local mode's onPath (direct children)
+                            // is only a highlight and never means "waiting".
+                            const isWaiting = activeSet.has(node.invId) && !isCurrent;
+                            const { lines, color } = this.resolveLabel(node, isCurrent);
+                            const stateWord = isCurrent ? "現在" : isWaiting ? "等下一層" : null;
                             const k = argKey(node);
                             const twins = (keyCounts.get(k) || 0) > 1;
                             const isTwin = this.state.hoverKey === k && twins;
@@ -482,7 +510,11 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                 style = { background: color, border: `1px solid ${color}`, color: "#fff", fontWeight: 600 };
                             } else if (isCurrent) {
                                 style = { background: "#fff", border: "2px solid var(--highlight)", color: "var(--ink)", boxShadow: "0 0 0 1px var(--highlight)", fontWeight: 700 };
-                            } else if (onPath) {
+                            } else if (node.returned && !isWaiting) {
+                                style = RETURNED_STYLE;
+                            } else if (onPath || isWaiting) {
+                                // isWaiting too: in local mode a waiting caller is not onPath, but the legend's
+                                // 「等下一層」 swatch promises this style, so the word and the colour must agree.
                                 style = { background: "var(--accent-soft)", border: "1px solid var(--accent)", color: "var(--ink)", fontWeight: 600 };
                             } else {
                                 style = { background: "#F1F3F5", border: "1px solid #D0D7DE", color: "#99A2AE", fontWeight: 400 };
@@ -523,9 +555,12 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                             opacity: i === 0 ? 1 : 0.8,
                                         }}>{l}</span>
                                     ))}
-                                    {ret && (
-                                        <span style={{ color: "#3AA76D", fontWeight: 700, fontSize: "0.9em", whiteSpace: "nowrap" }}>
-                                            {ret}
+                                    {stateWord && (
+                                        <span data-role="state" style={{ fontSize: "0.82em", whiteSpace: "nowrap" }}>{stateWord}</span>
+                                    )}
+                                    {!stateWord && node.returned && (
+                                        <span data-role="state" style={{ color: "#3AA76D", fontWeight: 700, fontSize: "0.9em", whiteSpace: "nowrap" }}>
+                                            {node.retValue !== undefined ? `回傳 ${node.retValue}` : "回傳"}
                                         </span>
                                     )}
                                     {twins && (

@@ -11,6 +11,7 @@ import { isSimple } from "./types.js";
 import { parseFastForward, pyJson } from "./fastforward.js";
 import { chainAt } from "./scopes.js";
 import { afterStates } from "./afterState.js";
+import { findCellLastWrite } from "./cellWrite.js";
 
 /** Features of the golden sample's GDB 16.3 plus "reverse" (spec §12 N3: enables the reverse UI). */
 export const FEATURES = [
@@ -192,6 +193,8 @@ export class LocalGdbSession {
       case "-exec-next": return this.execMove(c, "next");
       case "-exec-step": return this.execMove(c, "step");
       case "-exec-finish": return this.execMove(c, "finish");
+      case "-vg-seek-step": return this.vgSeekStep(c);
+      case "-vg-cell-last-write": return this.vgCellLastWrite(c);
       case "-exec-interrupt": return [errorItem("Current thread is not running.", t)];
       case "-thread-info": return [resultItem(this.threadInfo(), t)];
       case "-thread-select": return splitArgs(c.rest)[0] && splitArgs(c.rest)[0].value === "1" ? [resultItem({ "new-thread-id": "1", frame: this.frameRec(this.exec.selectedLevel, "scalars", true) }, t)] : [errorItem("Invalid thread id: " + c.rest, t)];
@@ -473,6 +476,30 @@ export class LocalGdbSession {
     const ch = this.frames();
     const f = ch[Math.min(this.exec.selectedLevel, ch.length - 1)];
     return `${reverse ? "Run back to call of" : "Run till exit from"} #${f ? f.level : 0}  ${f ? `${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}` : ""}\n`;
+  }
+
+  /** `-vg-seek-step INDEX`: jump to trace step INDEX; answers like a step stop (live-quiz "jump to the step that filled this cell"). @param {ReturnType<typeof parseCommand>} c */
+  vgSeekStep(c) {
+    if (!this.exec.running) return [errorItem("The program is not being run.", c.token)];
+    const a = splitArgs(c.rest);
+    const idx = a.length === 1 && /^\d+$/.test(a[0].value) ? Number(a[0].value) : -1;
+    if (idx < 0 || idx >= this.model.steps.length) return [errorItem(`-vg-seek-step: step index out of range (0..${this.model.steps.length - 1}): ${c.rest}`, c.token)];
+    this.exec.signalPending = false;
+    return this.stopItems(this.exec._stopAt(idx, "step"), "step");
+  }
+
+  /** `-vg-cell-last-write VAR ROW COL [BEFORE]` -> `^done,step,line,how` (see cellWrite.js). @param {ReturnType<typeof parseCommand>} c */
+  vgCellLastWrite(c) {
+    const usage = "-vg-cell-last-write: Usage: VAR ROW COL [BEFORE-STEP]";
+    if (!this.hasStack()) return [errorItem("The program is not being run.", c.token)];
+    const a = splitArgs(c.rest).map((x) => x.value);
+    if (a.length < 3 || a.length > 4 || !/^[A-Za-z_]\w*$/.test(a[0]) || !a.slice(1).every((x) => /^\d+$/.test(x))) return [errorItem(usage, c.token)];
+    const [row, col] = [Number(a[1]), Number(a[2])];
+    const before = a[3] === undefined ? this.topStep() : Number(a[3]);
+    const g = this.model.steps[Math.min(before, this.model.steps.length - 1)].vars[a[0]];
+    if (!Array.isArray(g) || !Array.isArray(g[0])) return [errorItem(`${a[0]} is not a visible 2-D container at step ${before}`, c.token)];
+    const r = findCellLastWrite(this, a[0], row, col, before);
+    return [r ? resultItem({ step: String(r.step), line: String(r.line), how: r.how }, c.token) : errorItem(`no step before ${before} wrote ${a[0]}[${row}][${col}]`, c.token)];
   }
 
   /** @param {number} stepIdx */

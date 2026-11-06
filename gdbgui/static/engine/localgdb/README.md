@@ -22,6 +22,7 @@ Tests: `tests/engine/localgdb/` (see "Tests" below). Layer B (UI wiring) is **no
 | `varobj.js` | variable objects (`-var-*`, S4 minimal set, expressions, `&(name)` pointers) |
 | `expr.js` | typed C++ expression evaluator (arithmetic, comparisons, subscripts) |
 | `types.js` | clang `qualType` -> libstdc++/GDB type spelling, classification, GDB value formatting |
+| `cellWrite.js` | `-vg-cell-last-write` search (assignment line + index evaluation, value-change fallback) |
 | `fastforward.js` | parser of the `python exec("...")` fast-forward command + Python-compatible JSON writer |
 | `mi.js` | command-line parsing and the MI item constructors |
 
@@ -93,6 +94,8 @@ the golden sample (a numeric token stays in the raw text: `"4^done\r"`).
 | `python exec("...@@FF@@...")` | supported | only the `[fast @N]` jump script of `fastForwardJump.ts`; any other `python` -> explicit error |
 | `-data-list-register-*`, `-data-read-memory*`, `-data-disassemble`, `-target-*`, `-break-watch`, `-catch-*`, `-var-assign`, `-var-set-*` ... | explicit error `... is not supported by the browser engine` | never fake data |
 | unknown MI command | `^error,msg="Undefined MI command: NAME",code="undefined-command"` | |
+| `-vg-seek-step INDEX` | supported (vg extension) | move to trace step INDEX (integer, `0..steps-1`, program running) and answer exactly like a step stop: `^running`, `*running`, `*stopped,reason="end-stepping-range"` + frame (and the `vg_line_after` side event). Errors: `The program is not being run.`, `-vg-seek-step: step index out of range (0..N): X`. Used by the live-quiz heatmap jump |
+| `-vg-cell-last-write VAR ROW COL [BEFORE]` | supported (vg extension) | `^done,step="J",line="L",how="assignment"\|"value-change"`: the last step J < BEFORE (default: current step) that wrote `VAR[ROW][COL]` of a visible 2-D container. `assignment` = a source line `VAR[a][b] op= ...` whose indices evaluate to ROW, COL in that stop's frame (also finds writes of an unchanged value); `value-change` = fallback for cells filled by the declaration. Errors: usage, not running, `VAR is not a visible 2-D container at step N`, `no step before N wrote VAR[R][C]`. Does not move the position. Module `cellWrite.js` |
 | `kill` (also `-interpreter-exec console "kill"`) | supported | live inferior: console `[Inferior 1 (process N) killed]`, `=thread-exited`, `=thread-group-exited`, `^done`; afterwards the "no process" state (`-exec-*` -> `The program is not being run.`, `-thread-info` -> `{threads:[]}`) and `-exec-run` starts again. No process: `The program is not being run.` (GDB's own text). Not in the golden sample; shape from GDB knowledge |
 | other CLI commands (`backtrace`, ...) | explicit error | |
 
@@ -307,6 +310,7 @@ node --test --test-concurrency=1 tests/engine/localgdb      # from the repositor
 | `compare.test.mjs` | the comparator and the golden segmentation (what the allow list lets through and what it must not) |
 | `commands.test.mjs` | every supported command and error path on a real engine run of `programs/types_recursion.cpp` (recursion, ref params, nested vectors, string/double/bool/char/long long, unsupported types) |
 | `protocol.test.mjs` | handshake, socket surface, FIFO, packet fields, tokens, run_token, pty, exit/signal paths, error payloads (hand-made trace, no compiler) |
+| `cell_jump.test.mjs` | `-vg-seek-step` (equals stepping there, errors) and `-vg-cell-last-write` on the knapsack and memoised-recursion lessons |
 | `fastforward_template.test.mjs` | D11 lock on `fastForwardJump.ts` |
 | `types_scopes.test.mjs` | type expansion (incl. `using namespace std`), value formatting, block analysis |
 | `arrays.test.mjs` | C arrays on a real engine run of `programs/arrays.cpp`: listing, varobjs, children, updates, expressions, `&(array)`, print format |

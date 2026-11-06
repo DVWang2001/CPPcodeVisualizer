@@ -8,6 +8,10 @@ type Props = {
   colLabels: string[];
   stats: number[];
   answerCount: number;
+  /** 給了才會讓答錯的格子變成按鈕（收卷後跳到寫入該格的那一步）。 */
+  onCellClick?: (row: number, col: number) => void;
+  /** 按鈕的無障礙名稱用，例如 dp。 */
+  varName?: string;
 };
 
 export default function TableHeatmap({
@@ -16,7 +20,9 @@ export default function TableHeatmap({
   rowLabels,
   colLabels,
   stats,
-  answerCount
+  answerCount,
+  onCellClick,
+  varName
 }: Props) {
   return (
     <div style={{ overflow: "auto", maxHeight: "46vh" }}>
@@ -58,7 +64,23 @@ export default function TableHeatmap({
                         opacity: ratio
                       }}
                     />
-                    <span style={{ position: "relative" }}>{wrong}</span>
+                    {onCellClick && varName && wrong > 0 ? (
+                      <button
+                        type="button"
+                        data-heatmap-jump
+                        aria-label={`跳到 ${varName}[${row}][${col}] 最後被寫入的那一步`}
+                        onClick={() => onCellClick(row, col)}
+                        style={{
+                          position: "relative", minWidth: "44px", minHeight: "44px", width: "100%",
+                          background: "transparent", border: "none", font: "inherit", color: "inherit",
+                          cursor: "pointer", textDecoration: "underline"
+                        }}
+                      >
+                        {wrong}
+                      </button>
+                    ) : (
+                      <span style={{ position: "relative" }}>{wrong}</span>
+                    )}
                   </td>
                 );
               })}
