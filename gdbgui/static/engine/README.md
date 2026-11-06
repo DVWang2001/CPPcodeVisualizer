@@ -308,7 +308,11 @@ their frame). At every stop it looks each pointer's target and each reference's 
 - varobj: `-var-create - * a` (type `int *`, one child `*a`), `*a` (unary `*` in expr.js), `&(a)` (`int **`), `&(*a)`;
   `-data-evaluate-expression a` / `*a`; `-stack-list-variables` print the address.
 
-Only arithmetic variables (`int`, `bool`, `double`, ...) are ever registered as targets, so a pointer or reference to the first
+STL containers whose elements live elsewhere (`vector`, `deque`, `map`, `string`, ...; not `std::array`) are registered in a second
+table that only references look up: `void f(std::vector<int>& v)` gets `v.ref()`, so the caller's `v` shows what `f` wrote while only
+`f` runs (bubble sort lesson). A pointer to a container is still `"<ptr>"`.
+
+Only arithmetic variables (`int`, `bool`, `double`, ...) are ever registered as pointer targets, so a pointer or reference to the first
 element of an array or the first member of a struct is NOT matched (its value stays `"<ptr>"`; the caller's array/struct keeps its
 last traced value until the callee returns, it is never replaced by the scalar). A global is registered under frame 0, so
 `&G` and a pointer to `G` agree.

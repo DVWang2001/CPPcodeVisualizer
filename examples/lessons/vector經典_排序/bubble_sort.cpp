@@ -17,7 +17,7 @@ void bubbleSort(vector<int>& arr) {
             }
         }
     }
-}
+}                                                 //@ @tts [next] 這個陣列排好了，回到 main
 
 int main() {
     vector<int> arr = {3, 1, 2};                 //@ @tts [next] 準備一個還沒排序的陣列，3、1、2

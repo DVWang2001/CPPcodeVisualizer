@@ -55,6 +55,7 @@ struct Var {
   int kind = 0;  // 0 plain, 1 object pointer
   bool ref = false;   // declared as a reference (vd): the trace says which traced variable it aliases
   bool reg = false;   // an arithmetic variable: the only kind a pointer / reference can be matched to (an array or struct shares its first element's / member's address)
+  bool creg = false;  // an STL container whose elements live elsewhere (not at its own address): a reference can be matched to it
   bool glob = false;  // a global: registered under frame 0, not under whichever frame happened to run the probe
   std::string (*rd)(const void*) = nullptr;  // pointer to an arithmetic type: serialises the pointee found at `tgt` (only called for a registered, live target)
 };
@@ -177,6 +178,14 @@ template <class T> Var v(const char* name, const T& x) {
   r.addr = (const void*)std::addressof(x);  // C-style: also accepts a volatile variable
   // arithmetic variables and object pointers (a reference to a pointer, `int*& r`, writes the caller's pointer)
   r.reg = std::is_arithmetic_v<std::remove_cv_t<T>> || (std::is_pointer_v<T> && std::is_object_v<std::remove_pointer_t<T>>);
+  // A container is a reference target unless its first element sits at its own address (std::array): then `int& e = a[0]`
+  // would be taken for the whole array. Proxy iterators (vector<bool>) have no element address and always store elsewhere.
+  if constexpr (std::is_class_v<T> && has_iter<T>::value) {
+    if constexpr (std::is_lvalue_reference_v<decltype(*x.begin())>)
+      r.creg = x.begin() == x.end() || (const void*)std::addressof(*x.begin()) != r.addr;
+    else
+      r.creg = true;
+  }
   if constexpr (std::is_pointer_v<T> && std::is_object_v<std::remove_pointer_t<T>>) {
     r.kind = 1;
     r.tgt = (const void*)x;  // C-style: also drops a `volatile` pointee
@@ -215,8 +224,10 @@ inline long long curFrame() { auto& s = frames().stk; return s.empty() ? 0 : s.b
 // Address registry of the traced variables of the live frames: address -> (frame serial, name). A pointer variable's
 // target and a reference's referent are looked up here, so the trace can say "p points to x of frame 1" instead of an
 // opaque placeholder. Entries die with their frame (the address may be reused by the next call).
+// `cont` holds STL containers (Var::creg): only a reference is matched against it (`vector<int>& arr` writes the caller's
+// arr), never a pointer, so pointers behave exactly as before.
 struct Registry {
-  std::map<const void*, std::pair<long long, std::string>> by;
+  std::map<const void*, std::pair<long long, std::string>> by, cont;
   std::map<long long, std::vector<const void*>> mine;
 };
 inline Registry& registry() { static Registry r; return r; }
@@ -225,7 +236,12 @@ inline void popFrame() {
   FrameState& f = frames();
   Registry& r = registry();
   auto it = r.mine.find(f.stk.back());
-  if (it != r.mine.end()) { for (const void* a : it->second) { auto b = r.by.find(a); if (b != r.by.end() && b->second.first == f.stk.back()) r.by.erase(b); } r.mine.erase(it); }
+  if (it != r.mine.end()) {
+    for (const void* a : it->second) {
+      for (auto* m : {&r.by, &r.cont}) { auto b = m->find(a); if (b != m->end() && b->second.first == f.stk.back()) m->erase(b); }
+    }
+    r.mine.erase(it);
+  }
   f.stk.pop_back();
   --f.depth;
 }
@@ -309,9 +325,9 @@ inline void step(int probe, int line, const char* fn, std::initializer_list<Var>
     Registry& rg = registry();
     const long long cf = curFrame();
     for (const auto& x : vars) {
-      if (!x.addr || x.ref || !x.reg) continue;  // a reference shares its referent's address (the referent owns it); non-arithmetic variables are never targets
+      if (!x.addr || x.ref || !(x.reg || x.creg)) continue;  // a reference shares its referent's address (the referent owns it); other variables are never targets
       const long long fr = x.glob ? 0 : cf;
-      auto ins = rg.by.emplace(x.addr, std::make_pair(fr, std::string(x.name)));
+      auto ins = (x.reg ? rg.by : rg.cont).emplace(x.addr, std::make_pair(fr, std::string(x.name)));
       if (ins.second) rg.mine[fr].push_back(x.addr);
       else if (ins.first->second.first == fr) ins.first->second.second = x.name;  // same frame, new block variable at that address
     }
@@ -329,8 +345,11 @@ inline void step(int probe, int line, const char* fn, std::initializer_list<Var>
     }
     if (x.cap >= 0) add(std::string(x.name) + ".capacity()", std::to_string(x.cap));  // pseudo variable
     if (x.ref && x.addr) {
-      auto f = registry().by.find(x.addr);
-      if (f != registry().by.end()) add(std::string(x.name) + ".ref()", quote(std::to_string(f->second.first) + ":" + f->second.second));
+      auto& rg = registry();
+      const std::pair<long long, std::string>* t = nullptr;
+      if (auto f = rg.by.find(x.addr); f != rg.by.end()) t = &f->second;
+      else if (auto c = rg.cont.find(x.addr); c != rg.cont.end()) t = &c->second;
+      if (t) add(std::string(x.name) + ".ref()", quote(std::to_string(t->first) + ":" + t->second));
     }
   }
   std::string o = "{\"p\":" + std::to_string(probe) + ",\"line\":" + std::to_string(line) + ",\"fn\":" + qfn +
