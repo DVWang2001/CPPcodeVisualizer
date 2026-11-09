@@ -5,6 +5,8 @@ import { ContainerPlugin, ContainerData } from "./ContainerPlugin";
 import { PluginOp } from "./AnimScheduler";
 import { delay } from "./anim";
 import { popCellKey, effectivePopGen, prefersReducedMotion } from "./cellPopKey";
+import { highlightStyle } from "./highlightColors";
+import type { HighlightPaint } from "./highlightColors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -75,15 +77,14 @@ export function uniformCellWidth(displayValues: string[], chromePx: number): str
 
 type HighlightEntry = { index: number; color: string };
 
-function getHighlight(idx: number, highlights: HighlightEntry[] | undefined, len?: number): { bg: string; border: string } | null {
+function getHighlight(idx: number, highlights: HighlightEntry[] | undefined, len?: number): HighlightPaint | null {
     if (!highlights) return null;
     const h = highlights.find(e => {
         const resolved = (e.index < 0 && len !== undefined) ? len + e.index : e.index;
         return resolved === idx;
     });
     if (!h) return null;
-    if (h.color === 'default') return { bg: 'var(--highlight-soft)', border: 'var(--highlight)' };
-    return { bg: h.color, border: h.color };
+    return highlightStyle(h.color);
 }
 
 // ── LinearPlugin ──────────────────────────────────────────────────────────────
@@ -431,7 +432,7 @@ class LinearPluginImpl implements ContainerPlugin {
             const bg = isHighlighted ? 'var(--highlight-soft)'
                      : extHL ? extHL.bg
                      : 'var(--surface)';
-            const border = isHighlighted ? '1px solid var(--highlight)'
+            const border = isHighlighted ? '1px solid var(--highlight-strong)'
                          : extHL ? `1px solid ${extHL.border}`
                          : '1px solid var(--struct-border)';
 
@@ -443,13 +444,13 @@ class LinearPluginImpl implements ContainerPlugin {
                 boxSizing: 'border-box', background: bg, border, borderRadius: '6px',
                 fontWeight: (isHighlighted || extHL) ? 700 : 500,
                 opacity, transform, transition,
-                ...(isHighlighted ? { boxShadow: '0 0 0 1px var(--highlight)' } : {}),
+                ...(isHighlighted ? { boxShadow: '0 0 0 1px var(--highlight-strong)' } : {}),
             };
 
             if (type === 'list') style.borderRadius = '999px';
 
             const displayValue = display(cell.value);
-            const pop = popCellKey(cell.id, effectivePopGen(popGenMap, containerName, extHL?.bg), extHL);
+            const pop = popCellKey(cell.id, effectivePopGen(popGenMap, containerName, extHL?.name), extHL);
             // valueChange（覆蓋/變更為某數）跟 swap（交換）自動偵測，動作要看得出差別：
             // value 沿用 cell-pop（放大再縮小，class 觸發的 keyframe）；swap 是上面算好的
             // translateX 位移本身就是動作，不需要另外掛 class——class 開/關是靠

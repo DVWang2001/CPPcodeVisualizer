@@ -9,6 +9,8 @@ import { mazePlugin } from "./MazePlugin";
 import { splitForPairing } from "./containerPairing";
 import { resolveChildValues } from "./containerParsers/index";
 import { popCellKey, popGenKey, effectivePopGen, prefersReducedMotion } from "./cellPopKey";
+import { highlightStyle } from "./highlightColors";
+import type { HighlightPaint } from "./highlightColors";
 import { computePullOffsets, formatPullPreview, resolveCrossPull, CrossPullToken } from "./pullAnim";
 import { delay } from "./anim";
 
@@ -23,17 +25,16 @@ registerPlugin(bstPlugin);
 type ColorRule = { value: string; color: string };
 type HighlightEntry = { index: number; color: string };
 
-function getHighlight(idx: number, highlights: HighlightEntry[] | undefined, len?: number): { bg: string; border: string } | null {
+function getHighlight(idx: number, highlights: HighlightEntry[] | undefined, len?: number): HighlightPaint | null {
     if (!highlights) return null;
     const h = highlights.find(e => {
         const resolved = (e.index < 0 && len !== undefined) ? len + e.index : e.index;
         return resolved === idx;
     });
     if (!h) return null;
-    // 'default' = the animation's focus state → amber (compare/swap).
-    // Explicit colors (maze rules, custom highlights) pass through unchanged.
-    if (h.color === 'default') return { bg: 'var(--highlight-soft)', border: 'var(--highlight)' };
-    return { bg: h.color, border: h.color };
+    // 'default' = the animation's focus state (compare/swap); named colours go through
+    // the design-A table (highlightColors.ts). Paint with bg/border; key pop:/pull: on .name.
+    return highlightStyle(h.color);
 }
 
 type State = {
@@ -616,7 +617,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                             values.flat().map((v: any) => (type === "string" && v !== "" ? `'${v}'` : String(v))),
                             26
                         );
-                        const hlPosMap2D = new Map<string, { bg: string; border: string }>();
+                        const hlPosMap2D = new Map<string, HighlightPaint>();
                         if (highlights && cols > 0) {
                             for (const h of highlights) {
                                 const hl = getHighlight(h.index, highlights);
@@ -630,7 +631,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                         {(row as any[]).map((colVal: string, colIdx: number) => {
                                             const cellKey = `${rowIdx},${colIdx}`;
                                             const hl2D = hlPosMap2D.get(cellKey) || null;
-                                            const pop = popCellKey(`col-${rowIdx}-${colIdx}`, effectivePopGen(popGen, name, hl2D?.bg), hl2D);
+                                            const pop = popCellKey(`col-${rowIdx}-${colIdx}`, effectivePopGen(popGen, name, hl2D?.name), hl2D);
                                             const pull = pullMap?.get(cellKey);
                                             // 只有數字飛出去，格子本身（外框、底色）留在原地不動。
                                             const numberStyle: React.CSSProperties = pull ? {
@@ -720,7 +721,7 @@ class ContainerVisualizer extends React.Component<{}, State> {
                                             <td style={{ padding: "5px 14px", borderTop: "1px solid var(--line)", borderRight: "2px solid var(--accent-soft)", fontWeight: hlInfo ? 700 : 600, color: "var(--accent)" }}>{pair.key}</td>
                                             <td key={`v-${gen}`} className={changed ? "cell-pop" : undefined}
                                                 style={{ padding: "5px 14px", borderTop: "1px solid var(--line)", fontWeight: (hlInfo || changed) ? 700 : 400, color: "var(--ink)",
-                                                    ...(changed ? { backgroundColor: "var(--highlight-soft)", boxShadow: "inset 0 0 0 1px var(--highlight)" } : {}) }}>{pair.value}</td>
+                                                    ...(changed ? { backgroundColor: "var(--highlight-soft)", boxShadow: "inset 0 0 0 1px var(--highlight-strong)" } : {}) }}>{pair.value}</td>
                                         </tr>
                                     );
                                 })}

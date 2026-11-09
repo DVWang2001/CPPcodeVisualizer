@@ -4,13 +4,7 @@ import type { CallNode, CallEdge } from "./callTree";
 import { layoutTree, Placed, NODE_W, NODE_H } from "./callGraphLayout";
 import { cameraTransform, ViewMode } from "./cameraTransform";
 import { resolveGuideSegments } from "./guideText";
-
-// Desaturated custom-label colors, harmonized with the design tokens.
-const CUSTOM_COLORS: Record<string, string> = {
-    green: "#3AA76D",
-    red: "#DC5B5B",
-    blue: "#4F46E5",
-};
+import { highlightStyle } from "./highlightColors";
 
 // Same function + same argument values = the same subproblem.
 function argKey(node: CallNode): string {
@@ -234,7 +228,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                 else extra.push(`${varName} = ${value}`);
             });
             lines = [`[${labelName}]`, ...extra];
-            if (data.color) color = CUSTOM_COLORS[String(data.color).toLowerCase()] || data.color;
+            if (data.color) color = String(data.color);
         }
         const ret = node.returned && node.retValue !== undefined ? `⇒ ${node.retValue}` : null;
         return { lines, color, ret };
@@ -507,7 +501,9 @@ class CallGraph extends React.Component<{}, CallGraphState> {
 
                             let style: React.CSSProperties;
                             if (color) {
-                                style = { background: color, border: `1px solid ${color}`, color: "#fff", fontWeight: 600 };
+                                // 表裡的顏色是淡底，字用 --ink；表外的自訂色維持白字（可能是深色）。
+                                const paint = highlightStyle(color);
+                                style = { background: paint.bg, border: `1px solid ${paint.border}`, color: paint.known ? "var(--ink)" : "#fff", fontWeight: 600 };
                             } else if (isCurrent) {
                                 style = { background: "var(--highlight)", border: "2px solid var(--highlight-strong)", color: "var(--ink)", fontWeight: 700 };
                             } else if (node.returned && !isWaiting) {

@@ -2,6 +2,7 @@ import React from "react";
 import { ContainerData } from "./ContainerPlugin";
 import { PluginOp } from "./AnimScheduler";
 import { delay } from "./anim";
+import { highlightStyle } from "./highlightColors";
 
 type ColorRule = { value: string; color: string };
 type HighlightEntry = { index: number; color: string };
@@ -77,12 +78,17 @@ class MazePluginImpl {
             if (!isNaN(n) && n !== 0 && n !== 1) customColorMap.set(n, rule.color);
         }
 
-        const mazePosMap = new Map<string, string>();
+        // 迷宮格是 20px 實心方塊、旁邊是米白通道，淡底色單獨看不出來，所以一律「填色＋2px 內框」：
+        // 'default'（目前位置）= 訊號黃＋深金框，同呼叫歷史圖的「現在」；老師指定色 = 表裡的底色＋框色。
+        const mazePosMap = new Map<string, { fill: string; ring: string }>();
         if (highlights && cols > 0) {
             for (const h of highlights) {
                 const r = Math.floor(h.index / cols);
                 const c = h.index % cols;
-                mazePosMap.set(`${r},${c}`, h.color === 'default' ? '#f59e0b' : h.color);
+                const paint = highlightStyle(h.color);
+                mazePosMap.set(`${r},${c}`, h.color === 'default'
+                    ? { fill: 'var(--highlight)', ring: 'var(--highlight-strong)' }
+                    : { fill: paint.bg, ring: paint.border });
             }
         }
 
@@ -98,7 +104,7 @@ class MazePluginImpl {
                         const mazeHL = mazePosMap.get(`${rowIdx},${colIdx}`);
                         const isTransitioning = transSet.has(`${rowIdx},${colIdx}`);
                         let bg: string;
-                        if (mazeHL) bg = mazeHL;
+                        if (mazeHL) bg = mazeHL.fill;
                         else if (cellNum === 0) bg = '#f5f0e8';
                         else if (cellNum === 1) bg = '#2c2c2c';
                         else if (customColorMap.has(cellNum)) bg = customColorMap.get(cellNum)!;
@@ -112,6 +118,7 @@ class MazePluginImpl {
                                 boxSizing: 'border-box' as const,
                                 border: cellNum === 1 ? 'none' : '1px solid rgba(180,160,120,0.25)',
                                 transition: isTransitioning ? 'background-color 200ms ease' : 'none',
+                                ...(mazeHL ? { boxShadow: `inset 0 0 0 2px ${mazeHL.ring}` } : {}),
                             },
                         });
                     })
