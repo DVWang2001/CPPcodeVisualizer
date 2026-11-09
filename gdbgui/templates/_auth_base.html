@@ -1,12 +1,14 @@
 {# 登入／註冊／登出／個人檔案／教案庫共用的外框。
 
-   刻意不引入任何前端框架或外部字型：這幾頁是未登入者唯一看得到的東西，越少
-   東西越好。字型只宣告堆疊、靠系統 fallback——Space Grotesk / Inter /
-   JetBrains Mono 有裝就用，沒裝就退到 system-ui 與系統等寬，不發外部請求。
+   刻意不引入任何前端框架：這幾頁是未登入者唯一看得到的東西，越少東西越好。
+   字型是例外：和 gdbgui.html 載入同一組 Google Fonts（Noto Sans TC、Space
+   Grotesk、JetBrains Mono；display=swap 不擋渲染）。這幾頁是學生和評審第一眼
+   看到的畫面，字型要和進到 IDE 之後一致；以前只宣告字型名稱、不載入，多數電腦
+   上標誌和程式字都退成系統字型。連不到 Google 時一樣退回系統字型。
 
-   顏色與字型全部取自 gdbgui.css 的 :root。先前這幾頁用的是硬寫的近似值
-   （#2b6cb0 而不是 --accent #4f46e5、#1f2933 而不是 --ink #1b1f24），所以看
-   起來像另一個產品——不是因為它們有自己的設計，是因為沒對準同一套。 #}
+   顏色與字型全部取自 gdbgui.css 的 :root（設計方向 A「鳶尾」），下面是同值
+   副本，改一邊要改另一邊。先前這幾頁用的是硬寫的近似值，看起來像另一個產品：
+   不是因為它們有自己的設計，是因為沒對準同一套。 #}
 <!DOCTYPE html>
 <html lang="zh-Hant">
   <head>
@@ -15,35 +17,50 @@
     <title>{% block title %}IRIS{% endblock %}</title>
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" />
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
     <style>
       :root {
         color-scheme: light;
-        /* 與 gdbgui.css 的 :root 同源 */
-        --paper: #f7f8fa;
-        --surface: #ffffff;
-        --ink: #1b1f24;
-        --ink-soft: #5a6472;
-        --ink-faint: #99a2ae;
-        --line: #e3e7ec;
-        --struct-border: #cbd2da;
-        --accent: #4f46e5;
-        --accent-soft: #eef0fe;
-        --highlight: #f59e0b;
-        --danger: #b42318;
+        /* 與 gdbgui.css 的 :root 同值（設計方向 A「鳶尾」） */
+        --paper: #f4f3f9; /* app background */
+        --surface: #ffffff; /* cards, cells */
+        --ink: #1e1b2e; /* primary text */
+        --ink-soft: #5c5873; /* labels, captions */
+        --ink-faint: #6c6885; /* placeholders, line numbers (4.8:1 on --paper) */
+        --line: #e5e2ef; /* hairline dividers */
+        --struct-border: #c9c4dc; /* resting node border */
+        --accent: #4a3aa0; /* iris violet: brand, actionable, 「等下一層」 */
+        --accent-soft: #ece9f8; /* iris tint background */
+        --highlight: #f2be0f; /* signal yellow: 「現在」 fills and thick bars only */
+        --highlight-soft: #fff5cc; /* paused-line tint */
+        --highlight-strong: #b38600; /* thin edges of yellow things (3.3:1 on white) */
+        --ok: #2d7a4e; /* returned / correct */
+        --ok-soft: #e5f3ea; /* green tint background */
+        --danger: #b42318; /* errors */
+        --visited: #a6a2bc; /* already processed */
+        --empty-bg: #f1eff7; /* empty slots / unused capacity */
+        --directive-comment: #6f64b0; /* //@ teaching-directive comments in Monaco */
 
-        /* 與 ide-theme.css／tutorial.css 同源的卡片語彙 */
-        --ide-line: #e6e9fb;
-        --ide-title: #f4f5ff;
-        --ide-ink: #3a46d8;
-        --ide-shadow: 0 10px 28px rgba(58, 70, 216, 0.1), 0 2px 6px rgba(28, 32, 51, 0.05);
-        --ide-grad: linear-gradient(135deg, #5b6bff, #3a46d8);
+        /* 卡片語彙：ide-theme.css、tutorial.css、_auth_base.html 共用 */
+        --ide-line: #e3dff3;
+        --ide-title: #f7f5fc;
+        --ide-ink: #4a3aa0;
+        --ide-ink-rgb: 74, 58, 160; /* 陰影用：rgba(var(--ide-ink-rgb), α) */
+        --ide-shadow: 0 10px 28px rgba(74, 58, 160, 0.1), 0 2px 6px rgba(30, 27, 46, 0.05);
+        --ide-grad: linear-gradient(135deg, #6656c4, #4a3aa0);
+        --ide-page-bg: #e8e5f3;
+        --ide-page-grad: linear-gradient(180deg, #f3f1fa 0%, #e8e5f3 100%);
 
         --font-display: "Space Grotesk", system-ui, sans-serif;
-        --font-body: "Inter", system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+        --font-body: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
         --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
       }
 
       * { box-sizing: border-box; }
+      /* 不要程式字型連字（<= 不能畫成 ≤）；!important 才擋得住後面的 font: 簡寫 */
+      *, *::before, *::after { font-variant-ligatures: none !important; }
       html { background: #e6e9f6; }
 
       body {
@@ -101,7 +118,7 @@
 
       /* ── 品牌 wordmark：角標游標 ▸ 呼應 (gdb) 的 prompt，閃爍節奏跟終端機
          游標一樣——這是整個品牌唯一的動態元素，其餘一律安靜。 ──────────── */
-      @keyframes vgdb-blink { 0%, 45% { opacity: 1; } 50%, 95% { opacity: 0; } 100% { opacity: 1; } }
+      @keyframes iris-blink { 0%, 45% { opacity: 1; } 50%, 95% { opacity: 0; } 100% { opacity: 1; } }
       .wordmark {
         display: inline-flex; align-items: baseline; gap: 2px;
         font-family: var(--font-display); font-weight: 700; font-size: 1.3rem;
@@ -113,7 +130,7 @@
       }
       .wordmark-caret {
         font-family: var(--font-mono); font-weight: 600; color: var(--accent);
-        animation: vgdb-blink 1.1s steps(1) infinite;
+        animation: iris-blink 1.1s steps(1) infinite;
       }
 
       .auth-shell {
@@ -181,7 +198,7 @@
         background: var(--surface); border: 1px solid var(--struct-border); border-radius: 6px;
       }
       .demo-cell.is-current {
-        font-weight: 700; background: #fef3c7; border-color: var(--highlight);
+        font-weight: 700; background: #fef3c7; border-color: var(--highlight-strong);
       }
       .demo-tag {
         display: flex; align-items: center; padding: 0 8px; color: var(--accent);
@@ -337,7 +354,8 @@
       }
       .bp {
         width: 7px; height: 7px; border-radius: 50%;
-        background: var(--highlight);
+        /* 7px 小點：亮黃在白底上只有 1.7:1，用深金色（仍是圖例說的琥珀色） */
+        background: var(--highlight-strong);
         flex: none;
       }
       .row-main { padding: 0.8rem 0 0.8rem 0.9rem; min-width: 0; }

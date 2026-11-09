@@ -3,23 +3,44 @@
 @import "tailwindcss/utilities";
 
 /* ── Design tokens ─────────────────────────────────────────────────────────
-   "Whiteboard / textbook" direction. Color encodes STATE, not container type.
-   The data-structure animation is the hero; everything else stays quiet. */
+   設計方向 A「鳶尾」(Iris)。Color encodes STATE, not container type; the
+   data-structure animation is the hero, everything else stays quiet.
+   - 鳶尾紫 --accent：品牌，以及「可以操作、正在等」（按鈕、連結、焦點框、等下一層）。
+   - 訊號黃 --highlight：只標「現在」（停住的那一行、呼叫圖的現在節點）。
+     填色和 4px 色條用 --highlight；2px 以下的細框線、外框、底線一律用
+     --highlight-strong：亮黃細線在白底上只有 1.7:1，投影時看不到。
+   - 綠 --ok：回傳、答對。紅 --danger：錯誤、答錯。
+   色碼只寫在這裡，元件一律引用變數。templates/_auth_base.html 有一份同值副本，
+   改這裡要一起改。 */
 :root {
-  --paper: #f7f8fa; /* app background */
+  --paper: #f4f3f9; /* app background */
   --surface: #ffffff; /* cards, cells */
-  --ink: #1b1f24; /* primary text */
-  --ink-soft: #5a6472; /* labels, captions */
-  --ink-faint: #99a2ae; /* placeholders, line numbers */
-  --line: #e3e7ec; /* hairline dividers */
-  --struct-border: #cbd2da; /* resting node border */
-  --accent: #4f46e5; /* indigo — active pointer / structural connectors */
-  --accent-soft: #eef0fe; /* indigo tint background */
-  --highlight: #f59e0b; /* amber — animation focus (compare/swap) */
-  --highlight-soft: #fef3c7; /* amber tint background */
-  --visited: #94a3b8; /* already processed */
-  --empty-bg: #f1f3f5; /* empty slots / unused capacity */
-  --directive-comment: #8b5cf6; /* violet — //@ teaching-directive comments in Monaco */
+  --ink: #1e1b2e; /* primary text */
+  --ink-soft: #5c5873; /* labels, captions */
+  --ink-faint: #6c6885; /* placeholders, line numbers (4.8:1 on --paper) */
+  --line: #e5e2ef; /* hairline dividers */
+  --struct-border: #c9c4dc; /* resting node border */
+  --accent: #4a3aa0; /* iris violet: brand, actionable, 「等下一層」 */
+  --accent-soft: #ece9f8; /* iris tint background */
+  --highlight: #f2be0f; /* signal yellow: 「現在」 fills and thick bars only */
+  --highlight-soft: #fff5cc; /* paused-line tint */
+  --highlight-strong: #b38600; /* thin edges of yellow things (3.3:1 on white) */
+  --ok: #2d7a4e; /* returned / correct */
+  --ok-soft: #e5f3ea; /* green tint background */
+  --danger: #b42318; /* errors */
+  --visited: #a6a2bc; /* already processed */
+  --empty-bg: #f1eff7; /* empty slots / unused capacity */
+  --directive-comment: #6f64b0; /* //@ teaching-directive comments in Monaco */
+
+  /* 卡片語彙：ide-theme.css、tutorial.css、_auth_base.html 共用 */
+  --ide-line: #e3dff3;
+  --ide-title: #f7f5fc;
+  --ide-ink: #4a3aa0;
+  --ide-ink-rgb: 74, 58, 160; /* 陰影用：rgba(var(--ide-ink-rgb), α) */
+  --ide-shadow: 0 10px 28px rgba(74, 58, 160, 0.1), 0 2px 6px rgba(30, 27, 46, 0.05);
+  --ide-grad: linear-gradient(135deg, #6656c4, #4a3aa0);
+  --ide-page-bg: #e8e5f3;
+  --ide-page-grad: linear-gradient(180deg, #f3f1fa 0%, #e8e5f3 100%);
 
   --anim-base:     400ms;
   --anim-fast:     200ms;
@@ -29,9 +50,13 @@
   --anim-ease-in:  cubic-bezier(0.4, 0, 1, 1);
 
   --font-display: "Space Grotesk", system-ui, sans-serif;
-  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
 }
+
+/* 程式碼要顯示學生實際要打的字：JetBrains Mono 預設把 <= != << 畫成 ≤ ≠ ≪。
+   用 * 加 !important，因為之後任何一條 font: 簡寫都會把這個屬性重設回 normal。 */
+*, *::before, *::after { font-variant-ligatures: none !important; }
 
 /* styling for all html tags */
 body {
@@ -300,19 +325,21 @@ td.line_num {
   height: 19px;
   padding-left: 6px;
 }
-/* 當前暫停行：與 Monaco 的高亮行同感（amber = 執行焦點）*/
+/* 當前暫停行：淡黃底＋左側 4px 訊號黃色條（訊號黃 = 執行焦點「現在」）*/
 .paused_on_line {
   background-color: var(--highlight-soft) !important;
+  box-shadow: inset 4px 0 0 var(--highlight);
 }
 .paused_on_line td {
   background-color: var(--highlight-soft) !important;
 }
 /* for 迴圈三段式單步：在整行高亮之上，再標出目前執行的 A / B / C 那一段。
-   用實心 amber（--highlight）壓過整行的 amber tint，兩層才分得出來。*/
+   用實心訊號黃（--highlight）壓過整行的淡黃底，兩層才分得出來；底線是細線，
+   所以用 --highlight-strong。*/
 .for_seg_active {
   background-color: var(--highlight) !important;
   border-radius: 2px;
-  box-shadow: 0 1px 0 var(--highlight);
+  box-shadow: 0 1px 0 var(--highlight-strong);
 }
 /* CallGraph active-node operation area: flashes amber when the current
    line's @guide changes (spec: docs/superpowers/specs/2026-07-21-node-operation-focus-design.md). */
@@ -612,7 +639,7 @@ button:focus {
   cursor: pointer; opacity: 0.8; font-size: 12px; line-height: 1;
   padding: 0 3px; user-select: none; white-space: nowrap;
   transform: translateX(-100%);
-  color: var(--directive-comment, #8b5cf6);
+  color: var(--directive-comment, #6f64b0);
 }
 .gdbgui-annot-edit-glyph::before { content: "\270E"; }
 .gdbgui-annot-edit-glyph:hover { opacity: 1; }
@@ -637,7 +664,7 @@ button:focus {
 
 /* //@ teaching-directive comments (guide/tts/layout) in Monaco editor */
 .gdbgui-directive-comment {
-  color: var(--directive-comment, #b36ae2) !important;
+  color: var(--directive-comment, #6f64b0) !important;
   font-style: italic;
 }
 
