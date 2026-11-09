@@ -12,7 +12,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{% block title %}VGDB{% endblock %}</title>
+    <title>{% block title %}IRIS{% endblock %}</title>
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" />
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}" />
     <style>
@@ -501,7 +501,7 @@
   <body class="{% if navigation_user %}app-shell{% endif %}{% block body_class %}{% endblock %}">
     <header class="site-header"{% if navigation_user %} data-testid="site-header"{% endif %}>
       <nav class="site-nav" aria-label="主要導覽">
-        <a class="wordmark nav-capsule" href="{{ url_for('http_routes.lesson_library') if navigation_user else url_for('http_routes.gdbgui') }}"><span class="wordmark-caret">&#9656;</span>VGDB</a>
+        <a class="wordmark nav-capsule" href="{{ url_for('http_routes.lesson_library') if navigation_user else url_for('http_routes.gdbgui') }}"><span class="wordmark-caret">&#9656;</span>IRIS</a>
         {% if navigation_user %}
           <span class="site-nav-spacer"></span>
           <div class="nav-capsule nav-group">

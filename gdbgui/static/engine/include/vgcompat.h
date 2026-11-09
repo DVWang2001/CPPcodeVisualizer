@@ -7,18 +7,18 @@
 //   * __int64     — MSVC/MinGW spelling used by CC-2602B.
 // Keep this header tiny and dependency-free: it is part of the PCH key (headers.tar sha256).
 #pragma once
-#ifndef VGDB_COMPAT_H
-#define VGDB_COMPAT_H
+#ifndef IRIS_COMPAT_H
+#define IRIS_COMPAT_H
 
 typedef long long __int64;
 
 namespace std {
-#define VGDB_GCD_(T) \
+#define IRIS_GCD_(T) \
   inline constexpr T __gcd(T __m, T __n) { while (__n != 0) { T __t = __m % __n; __m = __n; __n = __t; } return __m; }
-VGDB_GCD_(int) VGDB_GCD_(long) VGDB_GCD_(long long) VGDB_GCD_(short) VGDB_GCD_(signed char)
-VGDB_GCD_(unsigned int) VGDB_GCD_(unsigned long) VGDB_GCD_(unsigned long long) VGDB_GCD_(unsigned short)
-VGDB_GCD_(unsigned char)
-#undef VGDB_GCD_
+IRIS_GCD_(int) IRIS_GCD_(long) IRIS_GCD_(long long) IRIS_GCD_(short) IRIS_GCD_(signed char)
+IRIS_GCD_(unsigned int) IRIS_GCD_(unsigned long) IRIS_GCD_(unsigned long long) IRIS_GCD_(unsigned short)
+IRIS_GCD_(unsigned char)
+#undef IRIS_GCD_
 }  // namespace std
 
 #endif
