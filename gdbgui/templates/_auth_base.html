@@ -89,14 +89,12 @@
         width: min(74rem, calc(100% - 2rem)); margin: 0 auto;
       }
       .site-nav-spacer { flex: 1; }
-      .site-nav .wordmark { font-size: 1.2rem; }
-      /* 頂欄跟正式 IDE 的頂欄同一種做法：白底細框的圓角膠囊。一顆放品牌，一顆放帳號與登出。 */
+      /* 頂欄的框只給可以按的東西：帳號與登出放在白底細框的圓角膠囊裡，和 IDE 頂欄那排白框按鈕同一個規則。
+         品牌字標不加框：圖示本身已經是一個紫色方塊，再包一層框會像一顆按鈕。 */
       .nav-capsule {
         display: inline-flex; align-items: center; height: 2.5rem; box-sizing: border-box;
         border: 1px solid #dcdff0; border-radius: 12px; background: var(--surface);
       }
-      /* 圖示前留 0.5rem，和膠囊上下的空隙一樣寬（40px 高的膠囊、24px 的圖示），圖示看起來置中。 */
-      .site-nav .wordmark.nav-capsule { padding: 0 1rem 0 0.5rem; }
       .nav-group { gap: 2px; padding: 3px; }
       .nav-item {
         display: inline-flex; align-items: center; gap: 0.5rem; height: 2rem; padding: 0 0.75rem;
@@ -118,18 +116,21 @@
       .nav-sep { width: 1px; height: 20px; background: #dcdff0; }
       main.card { margin: 1.5rem auto 0; }
 
-      /* ── 品牌 wordmark：鳶尾圖示＋IRIS。圖示就是 favicon.svg（同一個檔，瀏覽器只抓一次）：
-         紫底白花，垂瓣上的黃色斑紋對應介面裡「黃色只標現在」的規則。 ──────────── */
+      /* ── 品牌 wordmark：鳶尾圖示＋IRIS，直接放在頂欄上，不加框。圖示就是 favicon.svg（同一個檔，瀏覽器只抓一次）：
+         紫底白花，垂瓣上的黃色斑紋對應介面裡「黃色只標現在」的規則。
+         min-height 保留原本膠囊 40px 高的點擊範圍；圓角讓鍵盤焦點的外框不是直角。 ──────────── */
       .wordmark {
-        display: inline-flex; align-items: center; gap: 0.5rem;
+        display: inline-flex; align-items: center; gap: 0.625rem; min-height: 2.5rem; border-radius: 8px;
         font-family: var(--font-display); font-weight: 700; font-size: 1.3rem;
         color: var(--ink); text-decoration: none; letter-spacing: -0.02em;
       }
+      /* 字標是 logo，滑過時不加全站連結的底線 */
+      .wordmark:hover { text-decoration: none; }
       .slogan {
         margin: 0; font-family: var(--font-display); font-weight: 600;
         font-size: 2.6rem; line-height: 1.15; letter-spacing: -0.02em; color: var(--ink);
       }
-      .wordmark-mark { width: 1.25em; height: 1.25em; flex: none; display: block; }
+      .wordmark-mark { width: 1.75rem; height: 1.75rem; flex: none; display: block; }
 
       .auth-shell {
         display: flex; align-items: center; justify-content: center;
@@ -500,8 +501,7 @@
       @media (max-width: 640px) {
         .site-nav { flex-wrap: wrap; gap: 0.5rem; }
         .site-nav .wordmark { order: -1; }
-        /* 手機寬度：膠囊收小，頭像與「登出」二字讓位，頂欄才塞得進一行 */
-        .site-nav .wordmark.nav-capsule { padding: 0 0.8rem 0 0.5rem; }
+        /* 手機寬度：頭像與「登出」二字讓位，頂欄才塞得進一行 */
         .nav-avatar, .nav-label { display: none; }
         .nav-item { padding: 0 0.6rem; }
         .site-account { padding-left: 0.6rem; }
@@ -516,7 +516,7 @@
   <body class="{% if navigation_user %}app-shell{% endif %}{% block body_class %}{% endblock %}">
     <header class="site-header"{% if navigation_user %} data-testid="site-header"{% endif %}>
       <nav class="site-nav" aria-label="主要導覽">
-        <a class="wordmark nav-capsule" href="{{ url_for('http_routes.lesson_library') if navigation_user else url_for('http_routes.gdbgui') }}"><img class="wordmark-mark" src="{{ url_for('static', filename='favicon.svg') }}" alt="" width="24" height="24" />IRIS</a>
+        <a class="wordmark" href="{{ url_for('http_routes.lesson_library') if navigation_user else url_for('http_routes.gdbgui') }}"><img class="wordmark-mark" src="{{ url_for('static', filename='favicon.svg') }}" alt="" width="28" height="28" />IRIS</a>
         {% if navigation_user %}
           <span class="site-nav-spacer"></span>
           <div class="nav-capsule nav-group">
