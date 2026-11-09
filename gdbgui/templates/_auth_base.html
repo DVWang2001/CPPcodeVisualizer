@@ -61,14 +61,14 @@
       * { box-sizing: border-box; }
       /* 不要程式字型連字（<= 不能畫成 ≤）；!important 才擋得住後面的 font: 簡寫 */
       *, *::before, *::after { font-variant-ligatures: none !important; }
-      html { background: #e6e9f6; }
+      html { background: var(--ide-page-bg); }
 
       body {
         margin: 0;
         min-height: 100vh;
         padding: 0 1rem 2rem;
-        /* 與正式 IDE（ide-theme.css）同一層底：薰衣草藍灰漸層，卡片浮在上面。 */
-        background: linear-gradient(180deg, #f1f2fb 0%, #e6e9f6 100%) fixed;
+        /* 與正式 IDE（ide-theme.css）同一層底（--ide-page-grad）：淡紫灰漸層，卡片浮在上面。 */
+        background: var(--ide-page-grad) fixed;
         color: var(--ink);
         font-family: var(--font-body);
         line-height: 1.6;
@@ -198,7 +198,7 @@
         background: var(--surface); border: 1px solid var(--struct-border); border-radius: 6px;
       }
       .demo-cell.is-current {
-        font-weight: 700; background: #fef3c7; border-color: var(--highlight-strong);
+        font-weight: 700; background: var(--highlight-soft); border-color: var(--highlight-strong);
       }
       .demo-tag {
         display: flex; align-items: center; padding: 0 8px; color: var(--accent);
@@ -276,7 +276,7 @@
         border: 0;
         border-radius: 12px;
         background: var(--ide-grad);
-        box-shadow: 0 8px 20px rgba(58, 70, 216, 0.28);
+        box-shadow: 0 8px 20px rgba(var(--ide-ink-rgb), 0.28);
         color: #fff;
         font: inherit;
         font-weight: 600;

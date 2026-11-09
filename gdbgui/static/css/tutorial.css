@@ -340,7 +340,7 @@ body.tutorial #folders_view {
 #tutorial_doc code {
   font: 0.92em "JetBrains Mono", Consolas, monospace;
   background: #eef1ff;
-  color: #3a46d8;
+  color: var(--ide-ink, #4a3aa0);
   padding: 1px 7px;
   border-radius: 7px;
 }
@@ -361,7 +361,7 @@ body.tutorial #folders_view {
   background: #fff;
   font-size: 13px;
   font-weight: 700;
-  color: #3a46d8;
+  color: var(--ide-ink, #4a3aa0);
   cursor: pointer;
 }
 #tutorial_doc .tut-count {
@@ -381,7 +381,7 @@ body.tutorial #folders_view {
   border: 1px solid #dcdff0;
   border-radius: 20px;
   padding: 14px 16px 16px;
-  box-shadow: 0 14px 30px rgba(58, 70, 216, 0.1);
+  box-shadow: 0 14px 30px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.1);
 }
 #tutorial_doc .tut-menu-head {
   font-size: 14px;
@@ -409,7 +409,7 @@ body.tutorial #folders_view {
   transform: none;
   background: #fff;
   border-color: #dfe3ff;
-  box-shadow: 0 14px 30px rgba(58, 70, 216, 0.22), 0 2px 6px rgba(28, 32, 51, 0.06);
+  box-shadow: 0 14px 30px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.22), 0 2px 6px rgba(30, 27, 46, 0.06);
 }
 #tutorial_doc .tut-chap-head {
   display: flex;
@@ -425,7 +425,7 @@ body.tutorial #folders_view {
   cursor: pointer;
 }
 #tutorial_doc .tut-chap.open .tut-chap-head {
-  color: #3a46d8;
+  color: var(--ide-ink, #4a3aa0);
 }
 #tutorial_doc .tut-chap-num {
   flex: none;
@@ -446,7 +446,7 @@ body.tutorial #folders_view {
   color: #fff;
 }
 #tutorial_doc .tut-chap.open .tut-chap-num {
-  background: linear-gradient(135deg, #5b6bff, #3a46d8);
+  background: var(--ide-grad, linear-gradient(135deg, #6656c4, #4a3aa0));
   color: #fff;
 }
 #tutorial_doc .tut-chap-title {
@@ -461,7 +461,7 @@ body.tutorial #folders_view {
   color: #7b819f;
 }
 #tutorial_doc .tut-chap.open .tut-chap-prog {
-  color: #3a46d8;
+  color: var(--ide-ink, #4a3aa0);
 }
 #tutorial_doc .tut-chap-chev {
   font-size: 11px;
@@ -512,7 +512,7 @@ body.tutorial #folders_view {
 #tutorial_doc .tut-menu a.tut-now {
   background: #e7eaff;
   font-weight: 800;
-  color: #3a46d8;
+  color: var(--ide-ink, #4a3aa0);
 }
 
 /* 步驟進度點 */
@@ -528,7 +528,7 @@ body.tutorial #folders_view {
   background: #cfd3ea;
 }
 #tutorial_doc .tut-dot.on {
-  background: #3a46d8;
+  background: var(--ide-ink, #4a3aa0);
 }
 #tutorial_doc .tut-dots-text {
   font-size: 12px;
@@ -604,8 +604,8 @@ body.tutorial #folders_view {
   padding: 26px 26px 22px;
   border-radius: 26px;
   background: #fff;
-  border: 1px solid #e6e9fb;
-  box-shadow: 0 18px 40px rgba(58, 70, 216, 0.16), 0 2px 6px rgba(28, 32, 51, 0.06);
+  border: 1px solid var(--ide-line, #e3dff3);
+  box-shadow: 0 18px 40px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.16), 0 2px 6px rgba(30, 27, 46, 0.06);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -619,7 +619,7 @@ body.tutorial #folders_view {
   width: 44px;
   height: 44px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #5b6bff, #3a46d8);
+  background: var(--ide-grad, linear-gradient(135deg, #6656c4, #4a3aa0));
   color: #fff;
   display: flex;
   align-items: center;
@@ -631,7 +631,7 @@ body.tutorial #folders_view {
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.12em;
-  color: #3a46d8;
+  color: var(--ide-ink, #4a3aa0);
 }
 #tutorial_doc .tut-now-text {
   font-size: 21px;
@@ -662,11 +662,11 @@ body.tutorial #folders_view {
 #tutorial_doc .tut-btn.primary {
   flex: 1;
   border: none;
-  background: linear-gradient(135deg, #5b6bff, #3a46d8);
+  background: var(--ide-grad, linear-gradient(135deg, #6656c4, #4a3aa0));
   color: #fff;
   font-size: 15px;
   font-weight: 800;
-  box-shadow: 0 8px 18px rgba(58, 70, 216, 0.35);
+  box-shadow: 0 8px 18px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.35);
 }
 #tutorial_doc .tut-btn:disabled {
   opacity: 0.5;
@@ -721,7 +721,7 @@ body.tutorial #folders_view {
   text-align: left;
 }
 #tutorial_doc .tut-link:hover:not(:disabled) {
-  color: #3a46d8;
+  color: var(--ide-ink, #4a3aa0);
 }
 #tutorial_doc .tut-link:disabled {
   color: #c4c8dd;
@@ -731,7 +731,7 @@ body.tutorial #folders_view {
 /* ── 整頁統一成「專注步進」的風格：薰衣草藍灰底、白色大圓角卡片、靛藍強調色 ── */
 body.tutorial,
 body.tutorial .splitjs_container {
-  background: linear-gradient(180deg, #f1f2fb 0%, #e6e9f6 100%) !important;
+  background: var(--ide-page-grad, linear-gradient(180deg, #f3f1fa 0%, #e8e5f3 100%)) !important;
 }
 
 /* 頂欄：半透明白、淡靛藍分隔，取代原本的米色 */
@@ -761,8 +761,8 @@ body.cardui #top .btn.toolbar-btn:focus-visible {
   border-color: #d3d7ee;
 }
 body.cardui #top #autoplay_button.active {
-  background: linear-gradient(135deg, #5b6bff, #3a46d8);
-  box-shadow: 0 4px 12px rgba(58, 70, 216, 0.35);
+  background: var(--ide-grad, linear-gradient(135deg, #6656c4, #4a3aa0));
+  box-shadow: 0 4px 12px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.35);
 }
 body.cardui #top #autoplay_pause_button.active {
   background: #eaf0ff;
@@ -773,9 +773,9 @@ body.cardui #top .tut-seg-btn {
 }
 body.cardui #top .tut-seg-btn.on {
   background: #fff;
-  color: #3a46d8;
+  color: var(--ide-ink, #4a3aa0);
   border-color: #d3d7ee;
-  box-shadow: 0 2px 6px rgba(58, 70, 216, 0.15);
+  box-shadow: 0 2px 6px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.15);
 }
 body.cardui #top .tut-iconbtn,
 body.cardui #top #menudropdown > a.dropdown-toggle {
@@ -787,7 +787,7 @@ body.cardui #top .tut-voice-pop {
   background: #fff;
   border-color: #d3d7ee;
   border-radius: 16px;
-  box-shadow: 0 14px 30px rgba(58, 70, 216, 0.16);
+  box-shadow: 0 14px 30px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.16);
 }
 
 /* 三個窗格變成「卡片」：中間留出邊距，編輯器與面板各自是白色大圓角卡片 */
@@ -802,24 +802,24 @@ body.tutorial #controls_sidebar {
   background: #fff !important;
   border-radius: 24px;
   overflow: hidden;
-  box-shadow: 0 10px 28px rgba(58, 70, 216, 0.1), 0 2px 6px rgba(28, 32, 51, 0.05);
-  border: 1px solid #e6e9fb;
+  box-shadow: 0 10px 28px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.1), 0 2px 6px rgba(30, 27, 46, 0.05);
+  border: 1px solid var(--ide-line, #e3dff3);
 }
 body.tutorial #folders_view {
   border-radius: 24px;
-  border: 1px solid #e6e9fb;
-  box-shadow: 0 10px 28px rgba(58, 70, 216, 0.08);
+  border: 1px solid var(--ide-line, #e3dff3);
+  box-shadow: 0 10px 28px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.08);
   overflow: auto;
 }
 
 /* 編輯器標題列（main.cpp）與右欄面板標題列：淡靛藍 */
 body.tutorial #source_code_view > div > div:first-child,
 body.tutorial .collapser .titlebar {
-  background: #f4f5ff !important;
-  color: #3a46d8;
+  background: var(--ide-title, #f7f5fc) !important;
+  color: var(--ide-ink, #4a3aa0);
 }
 body.tutorial .collapser .titlebar .lighttext {
-  color: #3a46d8 !important;
+  color: var(--ide-ink, #4a3aa0) !important;
   font-weight: 700;
 }
 body.tutorial .collapser {
@@ -834,7 +834,7 @@ body.tutorial .collapser {
   color: #9aa4ff !important;
 }
 .tut-caption .tut-cap-visit {
-  background: linear-gradient(135deg, #5b6bff, #3a46d8) !important;
+  background: var(--ide-grad, linear-gradient(135deg, #6656c4, #4a3aa0)) !important;
 }
 
 /* 字幕帶也變成浮起的大圓角卡片，跟三個窗格的間距一致（左右、下方各留 14px） */
@@ -843,7 +843,7 @@ body.tutorial .collapser {
   right: 14px !important;
   bottom: 14px !important;
   border-radius: 24px;
-  box-shadow: 0 14px 30px rgba(28, 32, 51, 0.28);
+  box-shadow: 0 14px 30px rgba(30, 27, 46, 0.28);
 }
 body.tutorial.tut-caption-on #middle {
   height: calc(100% - 138px) !important;
@@ -874,6 +874,6 @@ body.tut-doc-collapsed #folders_view #tutorial_doc { opacity: 0; }
   width: 22px; height: 56px; padding: 0;
   border: 1px solid #c9cde4; border-left: 0; border-radius: 0 10px 10px 0;
   background: #fff; color: #1c2033; font-size: 18px; line-height: 1; cursor: pointer;
-  box-shadow: 2px 2px 8px rgba(28, 32, 51, .15);
+  box-shadow: 2px 2px 8px rgba(30, 27, 46, .15);
 }
 .tut-doc-expand:hover { background: #eceef8; }

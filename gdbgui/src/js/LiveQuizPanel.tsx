@@ -27,21 +27,21 @@ type Props = {
   onClose: () => void;
 };
 
-const ink = "#17233b";
-const muted = "#667085";
-const amber = "#e9a319";
+const ink = "var(--ink, #1e1b2e)";
+const muted = "var(--ink-soft, #5c5873)";
+const amber = "var(--highlight, #f2be0f)";
 
 const answerKeyHead: React.CSSProperties = {
   padding: "2px",
-  color: "#4676b8",
-  background: "#eef5ff",
+  color: "var(--accent, #4a3aa0)",
+  background: "var(--accent-soft, #ece9f8)",
   font: "700 10px/1.2 ui-monospace, Menlo, Consolas, monospace",
   textAlign: "center",
-  border: "1px solid #d8dee9"
+  border: "1px solid var(--line, #e5e2ef)"
 };
 const answerKeyCell: React.CSSProperties = {
   padding: "3px 2px",
-  border: "1px solid #d8dee9",
+  border: "1px solid var(--line, #e5e2ef)",
   font: "700 11px/1.2 ui-monospace, Menlo, Consolas, monospace",
   textAlign: "center",
   color: "#237a3b"
@@ -98,7 +98,7 @@ export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) 
           <button
             type="button"
             className="btn btn-default btn-xs text-blue-600"
-            style={{ fontSize: "11px", padding: "1px 6px", color: "#0284c7" }}
+            style={{ fontSize: "11px", padding: "1px 6px", color: "var(--accent, #4a3aa0)" }}
             onClick={handleRandomize}
             title="換一組隨機測資"
           >
@@ -107,12 +107,12 @@ export function TestInputPreview({ onRandomize }: { onRandomize?: () => void }) 
         )}
       </div>
       {justRandomized && (
-        <div style={{ fontSize: "11px", color: "#0284c7", marginBottom: "4px", background: "#e0f2fe", padding: "3px 6px", borderRadius: "3px" }}>
+        <div style={{ fontSize: "11px", color: "var(--accent, #4a3aa0)", marginBottom: "4px", background: "var(--accent-soft, #ece9f8)", padding: "3px 6px", borderRadius: "3px" }}>
           💡 已更新測資！請點擊上方 <strong>Run (↻)</strong> 重跑程式，停在題目行時點擊「確認出題」即可。
         </div>
       )}
       {lines.length === 0 || !lines[0] ? (
-        <div style={{ color: "#94a3b8", fontSize: "12px" }}>(無設定測資)</div>
+        <div style={{ color: "var(--ink-faint, #6c6885)", fontSize: "12px" }}>(無設定測資)</div>
       ) : (
         <pre style={{ margin: 0, padding: "4px 8px", background: "#fff", border: "1px solid #e2e8f0", fontSize: "12px", fontFamily: "monospace", color: "#0f172a", borderRadius: "3px", overflow: "auto", maxHeight: "180px" }}>
           {lines.join("\n")}
@@ -200,7 +200,7 @@ export function TableTriggerConfirm({
           padding: "26px 30px"
         }}
       >
-        <div style={{ color: "#1e40af", fontWeight: 700, fontSize: "20px", marginBottom: "16px" }}>
+        <div style={{ color: "var(--accent, #4a3aa0)", fontWeight: 700, fontSize: "20px", marginBottom: "16px" }}>
           🎯 即將觸發題目（請確認測資）
         </div>
 
@@ -258,12 +258,12 @@ export function TableTriggerConfirm({
         <TestInputPreview />
 
         {inputStale ? (
-          <div style={{ fontSize: "13px", color: "#0284c7", margin: "10px 0 14px", background: "#eff6ff", padding: "8px 10px", borderRadius: "4px" }}>
+          <div style={{ fontSize: "13px", color: "var(--accent, #4a3aa0)", margin: "10px 0 14px", background: "var(--accent-soft, #ece9f8)", padding: "8px 10px", borderRadius: "4px" }}>
             💡 測資已更新。按下面的按鈕會自動帶入新測資重新執行程式，停在題目行後直接擷取新的
             DP 表格出題——不用自己手動按 Run。
           </div>
         ) : (
-          <div style={{ fontSize: "13px", color: "#475569", margin: "10px 0 14px", background: "#eff6ff", padding: "8px 10px", borderRadius: "4px" }}>
+          <div style={{ fontSize: "13px", color: "#475569", margin: "10px 0 14px", background: "var(--accent-soft, #ece9f8)", padding: "8px 10px", borderRadius: "4px" }}>
             💡 上面的表格是<strong>目前這次執行</strong>算出來的結果。按下面的<strong>「確認出題」</strong>就會用它出題。
           </div>
         )}
@@ -771,7 +771,7 @@ export default function LiveQuizPanel({
   if (!session) {
     if (!error) return null;
     return (
-      <section style={{ padding: "14px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc" }}>
+      <section style={{ padding: "14px 18px", borderBottom: "1px solid var(--line, #e5e2ef)", background: "var(--paper, #f4f3f9)" }}>
         <div role="alert" style={{ color: "#a61b1b" }}>{error}</div>
       </section>
     );
@@ -779,7 +779,7 @@ export default function LiveQuizPanel({
 
   if (session.state === "ended") {
     return (
-      <section style={{ padding: "14px 18px", borderBottom: "1px solid #d8dee9", background: "#f7f9fc" }}>
+      <section style={{ padding: "14px 18px", borderBottom: "1px solid var(--line, #e5e2ef)", background: "var(--paper, #f4f3f9)" }}>
         <strong style={{ color: ink }}>本次課堂已結束</strong>
         <span style={{ color: muted, marginLeft: "10px" }}>
           {endedNotice || `匿名題目統計已保留，學生資料已清除。${endedNote ? endedNote : ""}`}
@@ -875,7 +875,7 @@ export default function LiveQuizPanel({
   return (
     <section
       aria-label="即時課堂控制"
-      style={{ padding: "12px 14px", background: "#f7f9fc", color: ink }}
+      style={{ padding: "12px 14px", background: "var(--paper, #f4f3f9)", color: ink }}
     >
       {showQr && (
         <div
@@ -1000,7 +1000,7 @@ export default function LiveQuizPanel({
                               <tr key={r}>
                                 {row.map((cell, c) => (
                                   <td key={c} style={{
-                                    border: "1px solid #d8dee9", padding: "4px 10px",
+                                    border: "1px solid var(--line, #e5e2ef)", padding: "4px 10px",
                                     font: "600 14px/1.3 ui-monospace, Menlo, Consolas, monospace",
                                     textAlign: "center", background: "#fff", color: ink
                                   }}>{cell}</td>
@@ -1136,7 +1136,7 @@ export default function LiveQuizPanel({
                     <span>{value}</span>
                   </div>
                   <div style={{ height: "8px", background: "#e6eaf0" }}>
-                    <div style={{ width: `${width}%`, height: "100%", background: isCorrect ? "#237a3b" : "#4676b8" }} />
+                    <div style={{ width: `${width}%`, height: "100%", background: isCorrect ? "#237a3b" : "var(--accent, #4a3aa0)" }} />
                   </div>
                 </div>
               );

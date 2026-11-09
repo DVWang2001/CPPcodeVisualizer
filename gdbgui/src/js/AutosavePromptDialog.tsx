@@ -13,9 +13,9 @@ import React from "react";
  */
 
 const colors = {
-  ink: "#17233b",
-  muted: "#667085",
-  line: "#d8dee9",
+  ink: "var(--ink, #1e1b2e)",
+  muted: "var(--ink-soft, #5c5873)",
+  line: "var(--line, #e5e2ef)",
 };
 
 type Props = {

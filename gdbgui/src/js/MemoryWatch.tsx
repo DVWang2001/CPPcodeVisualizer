@@ -12,8 +12,8 @@ const ROW_H = 68;
 const HEADER_H = 24;
 const PAD = 6;
 const GAP_X = 56;
-const SCOPE_COLORS = ["#4F46E5", "#3AA76D", "#DC5B5B", "#E67E22", "#9B59B6"];
-const REF_COLORS = ["#3AA76D", "#E67E22", "#9B59B6", "#E74C3C"];
+const SCOPE_COLORS = ["var(--accent, #4a3aa0)", "var(--ok, #2d7a4e)", "#DC5B5B", "#E67E22", "#9B59B6"];
+const REF_COLORS = ["var(--ok, #2d7a4e)", "#E67E22", "#9B59B6", "#E74C3C"];
 
 class MemoryWatch extends React.Component<any, { trackedVars: TrackedVar[] }> {
   intervalId: any;
@@ -157,7 +157,7 @@ class MemoryWatch extends React.Component<any, { trackedVars: TrackedVar[] }> {
           style={{ display: "block", maxHeight: "300px" }}
         >
           <defs>
-            <marker id="mw-ptr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--accent, #4F46E5)" /></marker>
+            <marker id="mw-ptr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--accent, #4a3aa0)" /></marker>
             {REF_COLORS.map((c, i) => <marker key={i} id={`mw-ref${i}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill={c} /></marker>)}
           </defs>
 
@@ -167,7 +167,7 @@ class MemoryWatch extends React.Component<any, { trackedVars: TrackedVar[] }> {
             const col = SCOPE_COLORS[fi % SCOPE_COLORS.length];
             return (
               <g key={fi}>
-                <rect x={x} y={0} width={FRAME_W} height={svgH} rx={8} fill="var(--paper, #fff)" stroke="var(--struct-border, #D0D7DE)" strokeWidth={1.5} />
+                <rect x={x} y={0} width={FRAME_W} height={svgH} rx={8} fill="var(--paper, #fff)" stroke="var(--struct-border, #c9c4dc)" strokeWidth={1.5} />
                 <clipPath id={`fc${fi}`}><rect x={x} y={0} width={FRAME_W} height={svgH} rx={8} /></clipPath>
                 <rect x={x} y={0} width={FRAME_W} height={HEADER_H} fill={col} clipPath={`url(#fc${fi})`} />
                 <text x={x + 8} y={HEADER_H - 7} fill="#fff" fontSize="10" fontWeight="700" fontFamily="var(--font-mono, monospace)">{frame.scope ? `${frame.scope}()` : "(global)"}</text>
@@ -178,12 +178,12 @@ class MemoryWatch extends React.Component<any, { trackedVars: TrackedVar[] }> {
                   const isPtr = ptrSrc.has(k);
                   const rc = refColor.get(k);
                   const alias = aliasSet.has(k);
-                  const strokeC = rc || (isPtr ? "var(--accent, #4F46E5)" : "#999");
+                  const strokeC = rc || (isPtr ? "var(--accent, #4a3aa0)" : "#999");
                   return (
                     <g key={vi}>
                       <circle cx={p.cx} cy={p.cy} r={R} fill={alias ? "none" : "var(--paper, #fff)"} stroke={strokeC} strokeWidth={2} strokeDasharray={alias ? "5,3" : "none"} />
                       <text x={p.cx} y={p.cy - R - 4} textAnchor="middle" fontSize="10" fontWeight="600" fontFamily="var(--font-mono, monospace)" fill={rc || "var(--ink, #1a1a2e)"}>{v.varName}</text>
-                      <text x={p.cx} y={p.cy + 4} textAnchor="middle" fontSize="10" fontFamily="var(--font-mono, monospace)" fill={isPtr ? "var(--accent, #4F46E5)" : "var(--ink, #1a1a2e)"} fontWeight={isPtr ? 700 : 400}>{isPtr ? "●" : this.truncVal(v.value)}</text>
+                      <text x={p.cx} y={p.cy + 4} textAnchor="middle" fontSize="10" fontFamily="var(--font-mono, monospace)" fill={isPtr ? "var(--accent, #4a3aa0)" : "var(--ink, #1a1a2e)"} fontWeight={isPtr ? 700 : 400}>{isPtr ? "●" : this.truncVal(v.value)}</text>
                       <text x={p.cx} y={p.cy + R + 10} textAnchor="middle" fontSize="7" fontFamily="var(--font-mono, monospace)" fill="var(--ink-soft, #6b7280)" opacity={0.45}>{this.shortAddr(v.address)}</text>
                     </g>
                   );
@@ -199,7 +199,7 @@ class MemoryWatch extends React.Component<any, { trackedVars: TrackedVar[] }> {
             const x1 = a.cx + (goRight ? R : -R), y1 = a.cy;
             const x2 = b.cx + (goRight ? -R - 3 : R + 3), y2 = b.cy;
             const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2 - 12 - i * 8;
-            return <path key={`p${i}`} d={`M${x1} ${y1} Q${midX} ${midY} ${x2} ${y2}`} fill="none" stroke="var(--accent, #4F46E5)" strokeWidth={2} markerEnd="url(#mw-ptr)" opacity={0.8} />;
+            return <path key={`p${i}`} d={`M${x1} ${y1} Q${midX} ${midY} ${x2} ${y2}`} fill="none" stroke="var(--accent, #4a3aa0)" strokeWidth={2} markerEnd="url(#mw-ptr)" opacity={0.8} />;
           })}
 
           {/* Reference lines — dashed */}

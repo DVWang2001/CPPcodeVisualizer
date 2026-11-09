@@ -38,10 +38,10 @@ type CallGraphState = {
 };
 
 // Returned calls: white card + green outline (green is already the "return value" colour).
-const RETURNED_STYLE: React.CSSProperties = { background: "#fff", border: "1px solid #3AA76D", color: "var(--ink-soft)", fontWeight: 400 };
+const RETURNED_STYLE: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--ok)", color: "var(--ink-soft)", fontWeight: 400 };
 
 const LEGEND: { word: string; style: React.CSSProperties }[] = [
-    { word: "現在", style: { background: "#fff", border: "2px solid var(--highlight)" } },
+    { word: "現在", style: { background: "var(--highlight)", border: "2px solid var(--highlight-strong)" } },
     { word: "等下一層", style: { background: "var(--accent-soft)", border: "1px solid var(--accent)" } },
     { word: "回傳", style: RETURNED_STYLE },
     { word: "還沒發生", style: { background: "transparent", border: "1.5px dashed var(--struct-border)" } },
@@ -463,7 +463,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                 const mx = (n.x + p.x) / 2 + NODE_W / 2 + 6;
                                 const my = (n.y + p.y + NODE_H) / 2 + 4;
                                 return (
-                                    <text key={`ret-${id}`} x={mx} y={my} fill="#3AA76D"
+                                    <text key={`ret-${id}`} x={mx} y={my} fill="var(--ok)"
                                         fontWeight={700} fontSize={12} fontFamily="var(--font-mono)">
                                         {`↑${n.retValue}`}
                                     </text>
@@ -509,7 +509,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                             if (color) {
                                 style = { background: color, border: `1px solid ${color}`, color: "#fff", fontWeight: 600 };
                             } else if (isCurrent) {
-                                style = { background: "#fff", border: "2px solid var(--highlight)", color: "var(--ink)", boxShadow: "0 0 0 1px var(--highlight)", fontWeight: 700 };
+                                style = { background: "var(--highlight)", border: "2px solid var(--highlight-strong)", color: "var(--ink)", fontWeight: 700 };
                             } else if (node.returned && !isWaiting) {
                                 style = RETURNED_STYLE;
                             } else if (onPath || isWaiting) {
@@ -517,7 +517,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                 // 「等下一層」 swatch promises this style, so the word and the colour must agree.
                                 style = { background: "var(--accent-soft)", border: "1px solid var(--accent)", color: "var(--ink)", fontWeight: 600 };
                             } else {
-                                style = { background: "#F1F3F5", border: "1px solid #D0D7DE", color: "#99A2AE", fontWeight: 400 };
+                                style = { background: "var(--empty-bg)", border: "1px solid var(--struct-border)", color: "var(--ink-faint)", fontWeight: 400 };
                             }
 
                             return (
@@ -544,8 +544,8 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                         overflow: "hidden", transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
                                         cursor: "pointer",
                                         ...style,
-                                        ...(isTwin ? { outline: "2px dashed var(--highlight)", outlineOffset: 2 } : {}),
-                                        ...(isRepeatHit ? { outline: "2px solid #DC5B5B", outlineOffset: 2, boxShadow: "0 0 6px rgba(220,91,91,0.5)" } : {}),
+                                        ...(isTwin ? { outline: "2px dashed var(--highlight-strong)", outlineOffset: 2 } : {}),
+                                        ...(isRepeatHit ? { outline: "2px solid var(--danger)", outlineOffset: 2, boxShadow: "0 0 6px rgba(180, 35, 24, 0.45)" } : {}),
                                     }}
                                 >
                                     {lines.map((l, i) => (
@@ -559,13 +559,13 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                         <span data-role="state" style={{ fontSize: "0.82em", whiteSpace: "nowrap" }}>{stateWord}</span>
                                     )}
                                     {!stateWord && node.returned && (
-                                        <span data-role="state" style={{ color: "#3AA76D", fontWeight: 700, fontSize: "0.9em", whiteSpace: "nowrap" }}>
+                                        <span data-role="state" style={{ color: "var(--ok)", fontWeight: 700, fontSize: "0.9em", whiteSpace: "nowrap" }}>
                                             {node.retValue !== undefined ? `回傳 ${node.retValue}` : "回傳"}
                                         </span>
                                     )}
                                     {twins && (
                                         <span style={{
-                                            position: "absolute", top: 1, right: 3, background: "#DC5B5B",
+                                            position: "absolute", top: 1, right: 3, background: "var(--danger)",
                                             color: "#fff", fontSize: 10, fontWeight: 700,
                                             borderRadius: 8, padding: "0 5px", lineHeight: "15px",
                                         }}>
@@ -573,7 +573,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                         </span>
                                     )}
                                     {isCurrent && recDepth > 1 && (
-                                        <span style={{ fontSize: "0.78em", color: "var(--ink-soft)" }}>
+                                        <span style={{ fontSize: "0.78em", color: "var(--ink)" }}>
                                             第 {recDepth} 層
                                         </span>
                                     )}
@@ -582,12 +582,12 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                             key={`op-${opLine}`}
                                             className={opChanged && !prefersReducedMotion() ? "cg-op-flash" : undefined}
                                             style={{
-                                                borderTop: "1px dashed var(--line)", marginTop: "4px", paddingTop: "4px",
+                                                borderTop: "1px dashed var(--highlight-strong)", marginTop: "4px", paddingTop: "4px",
                                                 fontSize: "0.85em", lineHeight: 1.4, textAlign: "left", whiteSpace: "normal",
                                             }}
                                         >
                                             {resolveGuideSegments(opRaw, undefined, opOverrides).map((seg, i) => (
-                                                <span key={i} style={seg.isValue ? { color: "#3AA76D", fontWeight: 700 } : undefined}>
+                                                <span key={i} style={seg.isValue ? { color: "var(--ok)", fontWeight: 700, background: "var(--surface)", borderRadius: 3, padding: "0 3px" } : undefined}>
                                                     {seg.text}
                                                 </span>
                                             ))}
@@ -607,7 +607,7 @@ class CallGraph extends React.Component<{}, CallGraphState> {
                                         top: `${atEnd ? tok.parentY : tok.childY}px`,
                                         transform: "translate(-50%, -100%)",
                                         opacity: atEnd ? 0 : 1,
-                                        color: "#3AA76D", fontWeight: 700, fontSize: "12px",
+                                        color: "var(--ok)", fontWeight: 700, fontSize: "12px",
                                         fontFamily: "var(--font-mono)", whiteSpace: "nowrap",
                                         pointerEvents: "none", zIndex: 5,
                                         transition: "top 0.7s ease-out, left 0.7s ease-out, opacity 0.7s ease-out",

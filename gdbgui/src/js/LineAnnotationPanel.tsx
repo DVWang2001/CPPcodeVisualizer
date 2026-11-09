@@ -61,10 +61,10 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
     const { mode, draft, candidates } = this.props;
     const box: React.CSSProperties = { width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 13, border: "1px solid #ccc", borderRadius: 4, padding: "6px" };
     return (
-      <div ref={this.root} data-testid="line-annot-panel" style={{ border: "1px solid #8b5cf6", borderRadius: 6, background: "var(--paper,#1e1e1e)", padding: 8, margin: "2px 8px" }}
+      <div ref={this.root} data-testid="line-annot-panel" style={{ border: "1px solid var(--directive-comment, #6f64b0)", borderRadius: 6, background: "var(--paper,#1e1e1e)", padding: 8, margin: "2px 8px" }}
         onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); this.props.onClose(); } }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <strong style={{ fontSize: 12, color: "#8b5cf6" }}>第 {this.props.lineNum} 行</strong>
+          <strong style={{ fontSize: 12, color: "var(--directive-comment, #6f64b0)" }}>第 {this.props.lineNum} 行</strong>
           <div>
             <button data-testid="annot-mode-toggle" onClick={this.props.onToggleMode} style={{ marginRight: 8 }}>
               {mode === "simple" ? "詳細指導 ▸" : "◂ 簡單"}
@@ -75,10 +75,10 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
 
         {mode === "advanced" && candidates.length > 0 && (
           <div style={{ marginBottom: 4 }}>
-            <span style={{ fontSize: 11, color: "#8b5cf6" }}>插入變數：</span>
+            <span style={{ fontSize: 11, color: "var(--directive-comment, #6f64b0)" }}>插入變數：</span>
             {candidates.map(c => (
               <button key={c} data-testid={`annot-chip-${c}`} onClick={() => this.insertVariable(c)}
-                style={{ margin: "0 3px", padding: "1px 8px", borderRadius: 999, border: "1px solid #8b5cf6", background: "transparent", color: "#8b5cf6", cursor: "pointer", fontSize: 12 }}>
+                style={{ margin: "0 3px", padding: "1px 8px", borderRadius: 999, border: "1px solid var(--directive-comment, #6f64b0)", background: "transparent", color: "var(--directive-comment, #6f64b0)", cursor: "pointer", fontSize: 12 }}>
                 {c}
               </button>
             ))}
@@ -89,7 +89,7 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
           <textarea ref={this.guideRef} data-testid="annot-guide" value={draft.guide} onChange={this.onGuideChange}
             rows={mode === "simple" ? 2 : 3} placeholder="指導文字（可用 {變數}）" style={box} />
           {this.state.sugg.length > 0 && (
-            <div style={{ position: "absolute", zIndex: 5, background: "#222", border: "1px solid #8b5cf6", borderRadius: 4 }}>
+            <div style={{ position: "absolute", zIndex: 5, background: "#222", border: "1px solid var(--directive-comment, #6f64b0)", borderRadius: 4 }}>
               {this.state.sugg.map(s => (
                 <div key={s} data-testid={`annot-sugg-${s}`} onMouseDown={(e) => { e.preventDefault(); this.insertVariable(s); }}
                   style={{ padding: "2px 10px", cursor: "pointer", color: "#cbd0d8", fontSize: 12 }}>{s}</div>
@@ -101,7 +101,7 @@ export default class LineAnnotationPanel extends React.Component<Props, { sugg: 
         {mode === "advanced" && (
           <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: "#8b5cf6" }}>🔊</span>
+              <span style={{ fontSize: 11, color: "var(--directive-comment, #6f64b0)" }}>🔊</span>
               <input type="number" step="0.1" min="0.5" max="4" placeholder="1.0" value={draft.ttsSpeed}
                 onChange={e => this.props.onDraftChange({ ttsSpeed: e.target.value })} style={{ width: 70 }} />
               <label style={{ fontSize: 12 }}>

@@ -200,7 +200,7 @@ td {
 .sidebar-hint {
   margin-left: 8px;
   font-size: 12px;
-  color: #5a6472;
+  color: var(--ink-soft);
 }
 .pointer {
   cursor: pointer;

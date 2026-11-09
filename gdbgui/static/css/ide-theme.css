@@ -3,7 +3,7 @@
    只動外觀，不動版面結構，所以 body.tutorial 不套用（教學頁在 tutorial.css 有自己的版本）。 */
 body:not(.tutorial),
 body:not(.tutorial) .splitjs_container {
-  background: linear-gradient(180deg, #f1f2fb 0%, #e6e9f6 100%) !important;
+  background: var(--ide-page-grad, linear-gradient(180deg, #f3f1fa 0%, #e8e5f3 100%)) !important;
 }
 
 /* 頂欄 */
@@ -29,23 +29,23 @@ body:not(.tutorial) #controls_sidebar {
   background: #fff !important;
   border-radius: 20px;
   overflow: hidden;
-  border: 1px solid #e6e9fb;
-  box-shadow: 0 10px 28px rgba(58, 70, 216, 0.1), 0 2px 6px rgba(28, 32, 51, 0.05);
+  border: 1px solid var(--ide-line, #e3dff3);
+  box-shadow: 0 10px 28px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.1), 0 2px 6px rgba(30, 27, 46, 0.05);
 }
 body:not(.tutorial) #folders_view {
   border-radius: 20px;
   overflow: auto;
-  border: 1px solid #e6e9fb;
-  box-shadow: 0 10px 28px rgba(58, 70, 216, 0.08);
+  border: 1px solid var(--ide-line, #e3dff3);
+  box-shadow: 0 10px 28px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.08);
 }
 
 /* 右欄面板標題列：淡靛藍 */
 body:not(.tutorial) .collapser .titlebar {
-  background: #f4f5ff !important;
-  color: #3a46d8;
+  background: var(--ide-title, #f7f5fc) !important;
+  color: var(--ide-ink, #4a3aa0);
 }
 body:not(.tutorial) .collapser .titlebar .lighttext {
-  color: #3a46d8 !important;
+  color: var(--ide-ink, #4a3aa0) !important;
   font-weight: 700;
 }
 body:not(.tutorial) .collapser {
@@ -62,12 +62,12 @@ body:not(.tutorial) #bottom_content {
   border-radius: 20px;
   overflow: hidden;
   background: #fff;
-  border: 1px solid #e6e9fb;
-  box-shadow: 0 10px 28px rgba(58, 70, 216, 0.1), 0 2px 6px rgba(28, 32, 51, 0.05);
+  border: 1px solid var(--ide-line, #e3dff3);
+  box-shadow: 0 10px 28px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.1), 0 2px 6px rgba(30, 27, 46, 0.05);
 }
 body:not(.tutorial) #bottom_content .bg-gray-100 {
-  background: #f4f5ff;
-  color: #3a46d8;
+  background: var(--ide-title, #f7f5fc);
+  color: var(--ide-ink, #4a3aa0);
 }
 
 /* ── 頂欄 1：單列整合（設計稿「頂欄 1」）──
@@ -89,7 +89,7 @@ body:not(.tutorial) #top .tut-pill {
 }
 body:not(.tutorial) #top .tut-pill:hover {
   border-color: #8e97ff;
-  color: #3a46d8;
+  color: var(--ide-ink, #4a3aa0);
 }
 body:not(.tutorial) #top .file-menu-wrap {
   position: relative;
@@ -106,7 +106,7 @@ body:not(.tutorial) #top .file-menu-pop {
   background: #fff;
   border: 1px solid #d3d7ee;
   border-radius: 16px;
-  box-shadow: 0 14px 30px rgba(58, 70, 216, 0.16);
+  box-shadow: 0 14px 30px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.16);
 }
 body:not(.tutorial) #top .file-menu-pop.open {
   display: block;
@@ -126,9 +126,9 @@ body:not(.tutorial) #top .file-menu-pop .btn.toolbar-btn {
 }
 /* 「存到我的帳號」是頂欄上唯一的主要動作 */
 body:not(.tutorial) #top [data-testid="save-lesson-to-account"] {
-  background: linear-gradient(135deg, #5b6bff, #3a46d8);
+  background: var(--ide-grad, linear-gradient(135deg, #6656c4, #4a3aa0));
   color: #fff;
-  box-shadow: 0 4px 12px rgba(58, 70, 216, 0.35);
+  box-shadow: 0 4px 12px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.35);
 }
 body:not(.tutorial) #top [data-testid="save-lesson-to-account"]:disabled {
   opacity: 0.5;
@@ -155,11 +155,11 @@ body:not(.tutorial) .sidebar-collapsers {
 }
 body:not(.tutorial) .collapser {
   margin: 0 0 6px;
-  border: 1px solid #e6e9fb !important;
+  border: 1px solid var(--ide-line, #e3dff3) !important;
   border-radius: 14px;
   overflow: hidden;
   background: #fff;
-  box-shadow: 0 2px 8px rgba(58, 70, 216, 0.06);
+  box-shadow: 0 2px 8px rgba(var(--ide-ink-rgb, 74, 58, 160), 0.06);
 }
 body:not(.tutorial) .collapser .titlebar {
   height: auto !important; /* 行內樣式把高度綁成編輯器行高，太窄 */
@@ -169,8 +169,8 @@ body:not(.tutorial) .collapser .titlebar {
   letter-spacing: 0;
   text-transform: none;
   border-bottom: 0;
-  background: #f4f5ff !important;
-  color: #3a46d8;
+  background: var(--ide-title, #f7f5fc) !important;
+  color: var(--ide-ink, #4a3aa0);
 }
 body:not(.tutorial) .collapser .titlebar:hover {
   background: #eceeff !important;
@@ -181,12 +181,12 @@ body:not(.tutorial) .collapser .titlebar .glyphicon {
 }
 body:not(.tutorial) .collapser .titlebar .lighttext {
   font-weight: 700;
-  color: #3a46d8 !important;
+  color: var(--ide-ink, #4a3aa0) !important;
 }
 body:not(.tutorial) .collapser .titlebar--primary {
   background: #e9ecff !important;
   border-left: 0;
-  box-shadow: inset 4px 0 0 #3a46d8;
+  box-shadow: inset 4px 0 0 var(--ide-ink, #4a3aa0);
 }
 
 /* 右欄最上面的「即時課堂」預留位置：沒有即時課堂面板（槽是空的）時不佔高度，

@@ -27,7 +27,7 @@ export default function ScratchCanvas({ questionKey, readOnly, onTap }: Props) {
     if (!ctx) return;
     const { width, height } = canvas;
     ctx.clearRect(0, 0, width, height);
-    ctx.strokeStyle = "#17233b";
+    ctx.strokeStyle = "#1e1b2e"; // = --ink；canvas 的 strokeStyle 不吃 var()
     ctx.lineWidth = readOnly ? 1 : 2.5;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";

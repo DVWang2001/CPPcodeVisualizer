@@ -21,7 +21,7 @@ export default function TableAnswerReview({
   colLabels
 }: Props) {
   const answer = response.answer;
-  if (!answer) return <div style={{ color: "#667085" }}>這位學生沒有送出作答。</div>;
+  if (!answer) return <div style={{ color: "var(--ink-soft, #5c5873)" }}>這位學生沒有送出作答。</div>;
 
   return (
     <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: "100%" }}>
@@ -61,16 +61,16 @@ export default function TableAnswerReview({
 
 const head: React.CSSProperties = {
   padding: "2px",
-  color: "#4676b8",
-  background: "#eef5ff",
+  color: "var(--accent, #4a3aa0)",
+  background: "var(--accent-soft, #ece9f8)",
   font: "700 10px/1.2 ui-monospace, Menlo, Consolas, monospace",
   textAlign: "center",
-  border: "1px solid #d8dee9"
+  border: "1px solid var(--line, #e5e2ef)"
 };
 
 const cell: React.CSSProperties = {
   padding: "3px 2px",
-  border: "1px solid #d8dee9",
+  border: "1px solid var(--line, #e5e2ef)",
   font: "700 11px/1.2 ui-monospace, Menlo, Consolas, monospace",
   textAlign: "center"
 };

@@ -50,7 +50,7 @@ export default function TableHeatmap({
                       position: "relative",
                       padding: "8px",
                       textAlign: "center",
-                      border: "1px solid #d8dee9",
+                      border: "1px solid var(--line, #e5e2ef)",
                       fontVariantNumeric: "tabular-nums"
                     }}
                   >

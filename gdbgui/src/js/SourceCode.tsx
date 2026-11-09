@@ -2277,11 +2277,11 @@ class SourceCode extends React.Component<{}, State> {
                 cursor: "pointer",
                 whiteSpace: "pre-wrap",
                 fontSize: "13px",
-                color: "#17233b",
+                color: "var(--ink, #1e1b2e)",
                 background: "#fff",
-                border: "1px solid #d8dee9",
+                border: "1px solid var(--line, #e5e2ef)",
                 borderLeft: `3px solid ${
-                  (this.state as any).lessonSaveNotice.ok ? "#2e7d32" : "#c0392b"
+                  (this.state as any).lessonSaveNotice.ok ? "var(--ok, #2d7a4e)" : "var(--danger, #b42318)"
                 }`,
                 boxShadow: "0 10px 30px rgba(16,24,40,.18)",
               }}

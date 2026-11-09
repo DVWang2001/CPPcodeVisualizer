@@ -33,12 +33,12 @@ type Props = {
 };
 
 const colors = {
-  ink: "#17233b",
-  muted: "#667085",
-  paper: "#f7f9fc",
-  line: "#d8dee9",
-  amber: "#e9a319",
-  error: "#a61b1b"
+  ink: "var(--ink, #1e1b2e)",
+  muted: "var(--ink-soft, #5c5873)",
+  paper: "var(--paper, #f4f3f9)",
+  line: "var(--line, #e5e2ef)",
+  amber: "var(--highlight, #f2be0f)",
+  error: "var(--danger, #b42318)"
 };
 
 const overlay: React.CSSProperties = {
