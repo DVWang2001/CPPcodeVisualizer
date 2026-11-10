@@ -10,6 +10,7 @@ jest.mock("../liveQuizClient", () => ({
   // 匯出改成按鈕：在瀏覽器內由引擎產生檔案，不再是 render 期間取用的網址。
   downloadLiveSessionExport: jest.fn(),
   fetchQuestionResponses: jest.fn(),
+  unsavedStats: jest.fn(() => null),
   triggerLiveQuestion: jest.fn()
 }));
 
@@ -1201,4 +1202,105 @@ describe("closed table question: jump to the step that filled a wrong cell", () 
     expect(box.textContent).toContain("找不到 dp[0][1]");
     expect(Array.from(box.querySelectorAll("button")).some(b => b.textContent === "跳過去")).toBe(false);
   });
+});
+
+// ── 統計保存：上一堂的統計還沒保存到伺服器時，按執行不開新堂、也不執行程式 ──────────
+
+test("按執行時上一堂統計上傳失敗：不開新堂、程式不執行，面板展開並顯示匯出提示", async () => {
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockRejectedValue(new Error("網路中斷"));
+  (liveQuizClient.unsavedStats as jest.Mock)
+    .mockReturnValueOnce(null) // 開課前的檢查：還沒有未保存的統計
+    .mockReturnValue({ sessionId: 7, reason: "end-failed" }); // 結束失敗之後
+  (liveQuizClient.createLiveSession as jest.Mock).mockClear();
+  const runNow = jest.fn();
+  try {
+    await act(async () => {
+      (window as any).gdbgui_live_quiz_gate_run(runNow);
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+    });
+
+    expect(liveQuizClient.endLiveSession).toHaveBeenCalledWith(7);
+    expect(liveQuizClient.createLiveSession).not.toHaveBeenCalled();
+    expect(runNow).not.toHaveBeenCalled();
+    expect(root.querySelector('[data-testid="live-quiz-qr-overlay"]')).toBeNull();
+    expect(root.querySelector('[data-testid="live-quiz-export"]')).not.toBeNull();
+    expect(root.textContent).toContain("匯出");
+  } finally {
+    (liveQuizClient.unsavedStats as jest.Mock).mockReset();
+    (liveQuizClient.unsavedStats as jest.Mock).mockReturnValue(null);
+    (liveQuizClient.endLiveSession as jest.Mock).mockReset();
+  }
+});
+
+test("統計匯出後按執行：舊堂不重複結束，新堂開出 QR，程式在 QR 關掉後才執行", async () => {
+  await mountPanel();
+  (liveQuizClient.endLiveSession as jest.Mock).mockRejectedValue(new Error("網路中斷"));
+  (liveQuizClient.unsavedStats as jest.Mock)
+    .mockReturnValueOnce(null)
+    .mockReturnValue({ sessionId: 7, reason: "end-failed" });
+  try {
+    await act(async () => {
+      (window as any).gdbgui_live_quiz_gate_run(jest.fn());
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+    });
+
+    // 老師按「匯出作答」：統計存到本機，未保存標記解除
+    (liveQuizClient.unsavedStats as jest.Mock).mockReturnValue(null);
+    act(() => { Simulate.click(root.querySelector('[data-testid="live-quiz-export"]') as HTMLElement); });
+    expect(liveQuizClient.downloadLiveSessionExport).toHaveBeenCalledTimes(1);
+
+    (liveQuizClient.endLiveSession as jest.Mock).mockClear();
+    (liveQuizClient.createLiveSession as jest.Mock).mockClear();
+    (liveQuizClient.createLiveSession as jest.Mock).mockResolvedValue({ ...panelSession(), id: 8 });
+    const runNow = jest.fn();
+    await act(async () => {
+      (window as any).gdbgui_live_quiz_gate_run(runNow);
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+    });
+
+    expect(liveQuizClient.endLiveSession).not.toHaveBeenCalled(); // 舊堂已在面板結束，不再重送結束
+    expect(liveQuizClient.createLiveSession).toHaveBeenCalledWith(2);
+    const overlay = root.querySelector('[data-testid="live-quiz-qr-overlay"]');
+    expect(overlay).not.toBeNull();
+    expect(runNow).not.toHaveBeenCalled();
+    act(() => { Simulate.click(overlay!.querySelector("button")!); });
+    expect(runNow).toHaveBeenCalledTimes(1);
+  } finally {
+    (liveQuizClient.unsavedStats as jest.Mock).mockReset();
+    (liveQuizClient.unsavedStats as jest.Mock).mockReturnValue(null);
+    (liveQuizClient.endLiveSession as jest.Mock).mockReset();
+  }
+});
+
+// ── 目前這題：沒有題目開放時，個別作答與統計指向同一題（opened_at 最新），不看陣列順序 ──
+
+test("沒有題目開放時，個別作答抓的是 opened_at 最新的那題（與統計同一題），不是陣列最後一題", async () => {
+  (liveQuizClient.fetchQuestionResponses as jest.Mock).mockResolvedValue({ responses: [] });
+  const closedTable = (id: string, position: number, openedAt: string) => ({
+    ...panelSession().questions[0],
+    id,
+    position,
+    state: "closed",
+    opened_at: openedAt,
+    rows: 1,
+    cols: 2,
+    row_labels: ["0"],
+    col_labels: ["0", "1"],
+    cell_stats: [0, 1],
+    correct_values: [["0", "1"]]
+  });
+  const session = {
+    ...panelSession(),
+    questions: [
+      closedTable("qa", 0, "2026-08-20T10:00:00"), // 陣列第一題，但開得最晚
+      closedTable("qb", 1, "2026-08-20T09:00:00") // 陣列最後一題，開得最早
+    ],
+    active_question: null
+  };
+  await mountPanel(session);
+  await act(async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); });
+
+  expect(liveQuizClient.fetchQuestionResponses).toHaveBeenCalledWith(7, "qa");
+  expect(liveQuizClient.fetchQuestionResponses).not.toHaveBeenCalledWith(7, "qb");
 });

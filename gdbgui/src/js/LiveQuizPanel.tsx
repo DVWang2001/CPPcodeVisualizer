@@ -9,8 +9,10 @@ import {
   LiveQuizStats,
   triggerLiveQuestion,
   fetchQuestionResponses,
-  StudentTableResponse
+  StudentTableResponse,
+  unsavedStats
 } from "./liveQuizClient";
+import { focusQuestion } from "./liveQuizEngine";
 import { lessonQuizRuntime, LiveQuizSession, RuntimeState } from "./lessonQuizRuntime";
 import { global_variable } from "./global_variable";
 import { CapturedTable, tableFromContainer } from "./tableFromContainer";
@@ -292,11 +294,18 @@ export function TableTriggerConfirm({
   );
 }
 
+/** 統計還沒保存到伺服器時的說明：結束畫面與被阻擋的「重新執行」都用這段。 */
+const UNSAVED_NOTICE =
+  "匿名題目統計還沒有保存到伺服器，這堂的資料只在這個分頁裡。請先按「匯出作答」存到本機；匯出後才能開新堂。";
+const EXPORTED_NOTICE = "統計已匯出到本機。現在可以按「重新執行」開新堂。";
+/** restartSession 的結果：shown＝新堂已開、QR 已跳出；skipped＝沒有開新堂，程式照常執行；blocked＝統計未保存，程式不執行。 */
+type RestartOutcome = "shown" | "skipped" | "blocked";
+
+/** 老師端「目前這題」：進行中的題（active_question，與引擎的 open 題相同）優先，否則與統計同一條規則（見 focusQuestion）。 */
 function latestQuestion(session: LiveQuizSession | null): any {
   if (!session) return null;
   if (session.active_question) return session.active_question;
-  const opened = session.questions.filter(question => question.opened_at);
-  return opened.length ? opened[opened.length - 1] : null;
+  return focusQuestion(session.questions) || null;
 }
 
 export default function LiveQuizPanel({
@@ -440,7 +449,7 @@ export default function LiveQuizPanel({
     return restoration;
   };
 
-  const finishEnded = (ended: LiveQuizSession): Promise<void> => {
+  const finishEnded = (ended: LiveQuizSession, options?: { restore?: boolean }): Promise<void> => {
     // 換課時舊課堂的 ended 事件會晚一步從 socket 回來。照常收尾就會 deactivate 掉
     // 剛為**新**課堂啟用的 runtime——播放到綁定行時不再開題，而畫面上一切看起來正常。
     // 用「這個 ended 屬於哪一堂」判斷而不是靠旗標：事件早到或晚到都判得對。
@@ -456,6 +465,8 @@ export default function LiveQuizPanel({
     setConnected(false);
     setSession(ended);
     setStats(null);
+    // 統計未保存的阻擋不還原教案：老師正要執行的程式不能在這時被換掉。
+    if (options && options.restore === false) return Promise.resolve();
     return startRestore();
   };
 
@@ -589,41 +600,66 @@ export default function LiveQuizPanel({
   // 「這份教案沒有題目」就跳錯誤打斷它。
   // 回傳值表示「這次有沒有真的跳出 QR」——gateRun 要知道這件事，才能決定
   // 遞延的 runNow 該死等 handleCloseQr，還是在這裡就直接兜底送出。
-  const restartSession = React.useCallback((): Promise<boolean> => {
-    if (startError()) return Promise.resolve(false);
+  /** 統計還沒保存：這一堂切到已結束畫面（有匯出鈕與原因），面板展開好讓老師看得到。 */
+  const blockForUnsaved = (): RestartOutcome => {
+    const current = sessionRef.current;
+    setError(null);
+    setPanelCollapsed(false);
+    setEndedNotice(UNSAVED_NOTICE);
+    if (current && !endedRef.current) {
+      finishEnded({ ...current, state: "ended", active_question: null }, { restore: false });
+    }
+    return "blocked";
+  };
+
+  /** 結束畫面的匯出：存到本機之後，統計未保存的阻擋就解除。 */
+  const exportThisSession = () => {
+    const waiting = unsavedStats() !== null;
+    downloadLiveSessionExport();
+    if (waiting && unsavedStats() === null) setEndedNotice(EXPORTED_NOTICE);
+  };
+
+  const restartSession = React.useCallback((): Promise<RestartOutcome> => {
+    if (startError()) return Promise.resolve("skipped");
+    // 上一堂的統計還沒保存：不開新堂，也不讓程式執行（新堂會沖掉那份統計）。
+    if (unsavedStats()) return Promise.resolve(blockForUnsaved());
     restartingRef.current = true;
     setBusy(true);
     setError(null);
     const previous = sessionRef.current;
-    const ended = previous
+    // 已在面板結束的那一堂不再送出結束：伺服器那邊已經是 ended。
+    const ending = previous && !endedRef.current
       ? Promise.resolve(endLiveSession(previous.id)).then(() => undefined, () => undefined)
       : Promise.resolve();
-    return ended
-      .then(() => {
-        return createLiveSession(lessonId); // 不沿用舊 session，這裡要的就是一堂新的
+    return ending
+      .then((): RestartOutcome | Promise<RestartOutcome> => {
+        // 這一堂結束時統計沒有保存（上傳被拒或兩次都失敗）：停在這裡，等老師匯出。
+        if (unsavedStats()) return blockForUnsaved();
+        return createLiveSession(lessonId) // 不沿用舊 session，這裡要的就是一堂新的
+          .then(connect)
+          .then((): RestartOutcome => {
+            if ((window as any).gdbgui_rerunning_for_quiz) {
+              return "skipped";
+            }
+            setShowQr(true);
+            // 暫停播放，把「學生掃碼」的空檔交給老師控制。不暫停的話播放會直接往前跑，
+            // 到達綁定行時題目就開了——而學生此刻連 QR 都還沒掃到。
+            // 沿用既有的 autoplay_paused：老師掃完按原本的播放鍵繼續，不必新學一個操作。
+            store.set("autoplay_paused", true);
+            return "shown";
+          });
       })
-      .then(connect)
-      .then(() => {
-        if ((window as any).gdbgui_rerunning_for_quiz) {
-          return false;
-        }
-        setShowQr(true);
-        // 暫停播放，把「學生掃碼」的空檔交給老師控制。不暫停的話播放會直接往前跑，
-        // 到達綁定行時題目就開了——而學生此刻連 QR 都還沒掃到。
-        // 沿用既有的 autoplay_paused：老師掃完按原本的播放鍵繼續，不必新學一個操作。
-        store.set("autoplay_paused", true);
-        return true;
-      })
-      .catch(reason => {
+      .catch((reason): RestartOutcome => {
         setError(reason.message || "無法開始課堂。");
-        return false;
+        return "skipped";
       })
-      .then(shown => {
+      .then(outcome => {
         restartingRef.current = false;
         setBusy(false);
-        return shown;
+        return outcome;
       });
   }, [lessonId]);
+
 
   React.useEffect(() => {
     (window as any).gdbgui_live_quiz_restart = restartSession;
@@ -650,13 +686,19 @@ export default function LiveQuizPanel({
       return;
     }
     pendingRunRef.current = runNow;
-    restartSession().then(shown => {
-      if (!shown && pendingRunRef.current === runNow) {
+    restartSession().then(outcome => {
+      if (outcome === "blocked") {
+        // 上一堂的統計還沒匯出：這次不執行程式，等老師匯出後再按一次。
+        if (pendingRunRef.current === runNow) pendingRunRef.current = null;
+        return;
+      }
+      if (outcome !== "shown" && pendingRunRef.current === runNow) {
         pendingRunRef.current = null;
         runNow();
       }
     });
   }, [restartSession]);
+
 
   React.useEffect(() => {
     (window as any).gdbgui_live_quiz_gate_run = gateRun;
@@ -738,7 +780,7 @@ export default function LiveQuizPanel({
   const finishServerEnded = (reason: string) => {
     const current = sessionRef.current;
     if (!current || endedRef.current) return;
-    setEndedNotice(reason);
+    setEndedNotice(unsavedStats() ? `${reason}${UNSAVED_NOTICE}` : reason);
     finishEnded({ ...current, state: "ended", active_question: null });
   };
 
@@ -748,7 +790,7 @@ export default function LiveQuizPanel({
     endLiveSession(session.id)
       .then(ended => {
         if (ended.aggregatesSaved === false) {
-          setEndedNotice("匿名題目統計沒有保存（伺服器拒絕了上傳）。請按「匯出作答」把這堂的資料存到本機。");
+          setEndedNotice("匿名題目統計沒有保存（伺服器拒絕了上傳）。請按「匯出作答」把這堂的資料存到本機；匯出後才能開新堂。");
         } else if (ended.hint_saved === false) {
           setEndedNote("變數提示未保存。");
         }
@@ -769,10 +811,17 @@ export default function LiveQuizPanel({
   // 自動開課並跳出全螢幕 QR（見 restartSession），這張卡片本來就多餘。
   // 只有自動開課失敗時才需要露出錯誤，讓老師知道發生了什麼事。
   if (!session) {
-    if (!error) return null;
+    const pending = unsavedStats();
+    if (!error && !pending) return null;
     return (
       <section style={{ padding: "14px 18px", borderBottom: "1px solid var(--line, #e5e2ef)", background: "var(--paper, #f4f3f9)" }}>
-        <div role="alert" style={{ color: "#a61b1b" }}>{error}</div>
+        {pending && <span style={{ color: muted }}>{endedNotice || UNSAVED_NOTICE}</span>}
+        {pending && (
+          <button type="button" className="btn btn-default btn-sm" data-testid="live-quiz-export" onClick={exportThisSession} style={{ marginLeft: "10px" }}>
+            匯出作答
+          </button>
+        )}
+        {error && <div role="alert" style={{ color: "#a61b1b" }}>{error}</div>}
       </section>
     );
   }
@@ -790,7 +839,7 @@ export default function LiveQuizPanel({
               type="button"
               className="btn btn-default btn-sm"
               data-testid="live-quiz-export"
-              onClick={downloadLiveSessionExport}
+              onClick={exportThisSession}
               title="這堂的作答還在這個分頁裡，關閉前可以下載。"
             >
               匯出作答

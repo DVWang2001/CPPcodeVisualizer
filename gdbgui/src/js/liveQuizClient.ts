@@ -72,6 +72,12 @@ let seed: LiveQuizSession | null = null;
 let socket: any = null;
 let handlers: Handlers | null = null;
 let ended = false;
+/**
+ * 上一堂的匿名統計還沒有保存到伺服器（上傳被拒、結束請求兩次都失敗、或伺服器先結束了這堂）。
+ * 引擎的資料只在這個分頁的記憶體裡；匯出之前面板不開新堂（見 LiveQuizPanel.restartSession）。
+ */
+export type UnsavedReason = "upload-rejected" | "end-failed" | "server-ended";
+let unsaved: { sessionId: number; reason: UnsavedReason } | null = null;
 /** sid 對應的 device_id：只來自伺服器釘住的 roster 或該 sid 自己送的 hello。全部用 Map，鍵是學生給的字串。 */
 const deviceBySid = new Map<string, string>();
 const connectedSids = new Set<string>();
@@ -245,6 +251,7 @@ export const createLiveSession = async (lessonId: number): Promise<LiveQuizSessi
   engine = createEngine(created);
   seed = created;
   ended = false;
+  unsaved = null; // 新的一堂：前一堂的未保存標記已由面板確認過（面板未匯出時不會呼叫這裡）
   deviceBySid.clear();
   connectedSids.clear();
   return created;
@@ -293,6 +300,18 @@ export const fetchQuestionResponses = async (
  * 逐筆作答的匯出。結束課堂後伺服器不會有這些資料（本來就沒存），所以由瀏覽器內的
  * 引擎產生 JSON 直接下載；這是研究資料唯一的出口。
  */
+/** 統計還沒保存時回傳原因；保存（完整上傳）或匯出之後為 null。 */
+export function unsavedStats(): { sessionId: number; reason: UnsavedReason } | null {
+  return unsaved;
+}
+
+/** 只有真的有作答時才會有東西遺失；沒有作答就不標記。 */
+function markUnsaved(sessionId: number, reason: UnsavedReason): void {
+  if (!engine || !seed || seed.id !== sessionId) return;
+  if (!engine.teacherSession().questions.some(q => q.answer_count > 0)) return;
+  unsaved = { sessionId, reason };
+}
+
 export function downloadLiveSessionExport(): void {
   if (!engine) return;
   const payload = engine.exportSession() as any;
@@ -306,6 +325,7 @@ export function downloadLiveSessionExport(): void {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+  unsaved = null; // 匯出就是把統計存到本機：未保存的阻擋解除
 }
 
 /**
@@ -320,10 +340,21 @@ export const endLiveSession = async (sessionId: number): Promise<LiveQuizSession
   try {
     result = await request("POST", path, summary);
   } catch (_) {
-    result = await request("POST", path);
+    try {
+      result = await request("POST", path);
+    } catch (error) {
+      // 兩次都失敗：伺服器狀態不明，統計只在這個分頁的記憶體裡，匯出前不能開新堂。
+      markUnsaved(sessionId, "end-failed");
+      throw error;
+    }
     aggregatesSaved = false;
   }
   ended = true;
+  if (!aggregatesSaved) {
+    markUnsaved(sessionId, "upload-rejected");
+  } else if (unsaved && unsaved.sessionId === sessionId) {
+    unsaved = null; // 這次完整上傳成功：之前失敗留下的標記不再成立
+  }
   return { ...result, aggregatesSaved };
 };
 
@@ -346,6 +377,7 @@ export function connectTeacherQuizSocket(sessionId: number, callbacks: Handlers)
     // 那段時間伺服器有 30 秒寬限期，不能當成課堂已結束。
     const transport = error && error.type === "TransportError";
     if (!transport && current.active !== true && socket === current && callbacks.onRefused) {
+      markUnsaved(sessionId, "server-ended");
       callbacks.onRefused();
     }
   });

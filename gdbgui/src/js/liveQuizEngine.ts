@@ -242,6 +242,21 @@ function adjustCellStats(stats: number[], answer: string[][], correct: string[][
   );
 }
 
+/**
+ * 老師端「目前這題」的唯一規則：進行中的題優先；沒有的話取 opened_at 最新的題，
+ * 時間相同取先出現的（與 Python max 相同）。只看狀態與開題時間，不看陣列順序。
+ * 統計（stats）與面板的個別作答共用這一個函式，不各自挑題。
+ */
+export function focusQuestion<T extends { state: string; opened_at?: string | null }>(questions: T[]): T | undefined {
+  const open = questions.find(q => q.state === "open");
+  if (open) return open;
+  let best: T | undefined;
+  for (const q of questions) {
+    if (q.opened_at && (!best || q.opened_at > best.opened_at!)) best = q;
+  }
+  return best;
+}
+
 export function createEngine(
   session: LiveQuizSession,
   now: () => string = () => new Date().toISOString()
@@ -278,14 +293,6 @@ export function createEngine(
 
   const findQuestion = (id: string): Question | undefined => questions.find(q => q.id === id);
   const openQuestion = (): Question | undefined => questions.find(q => q.state === "open");
-  /** _latest_question：opened_at 最大者；時間相同取先出現的（與 Python max 相同）。 */
-  const latestQuestion = (): Question | undefined => {
-    let best: Question | undefined;
-    for (const q of questions) {
-      if (q.opened_at && (!best || q.opened_at > best.opened_at!)) best = q;
-    }
-    return best;
-  };
 
   // _question_payload
   function questionPayload(q: Question) {
@@ -594,9 +601,9 @@ export function createEngine(
 
     teacherSession,
 
-    // 進行中的題；沒有就取最近開過的（含已收卷）——與伺服器 emit_teacher_state 相同。
+    // 目前這題（進行中的題，否則 opened_at 最新的，含已收卷）：與面板共用 focusQuestion。
     stats() {
-      const q = openQuestion() || latestQuestion();
+      const q = focusQuestion(questions);
       if (!q) return null;
       const stats: LiveQuizStats = {
         joined_count: participants.size,

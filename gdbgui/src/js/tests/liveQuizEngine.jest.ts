@@ -1,4 +1,4 @@
-import { createEngine, LiveQuizEngine } from "../liveQuizEngine";
+import { createEngine, focusQuestion, LiveQuizEngine } from "../liveQuizEngine";
 
 const OPTIONS = [
   { id: "a", text: "A" },
@@ -685,5 +685,29 @@ describe("liveQuizEngine 填表題", () => {
     expect(fresh.var_hint).toBe("dp");
     expect(fresh.rows).toBeUndefined();
     expect(fresh.cell_stats).toBeUndefined();
+  });
+});
+
+describe("目前這題（focusQuestion，面板與統計共用）", () => {
+  it("進行中的題優先；沒有進行中的題時取 opened_at 最新的題，不看陣列順序", () => {
+    const questions = [
+      { id: "q1", state: "closed", opened_at: "2026-11-10T10:00:00.000Z" },
+      { id: "q2", state: "closed", opened_at: "2026-11-10T09:00:00.000Z" },
+      { id: "q3", state: "ready", opened_at: null }
+    ];
+    expect(focusQuestion(questions)!.id).toBe("q1");
+    expect(
+      focusQuestion([...questions, { id: "q4", state: "open", opened_at: "2026-11-10T08:00:00.000Z" }])!.id
+    ).toBe("q4");
+    expect(focusQuestion([{ id: "q3", state: "ready", opened_at: null }])).toBeUndefined();
+  });
+
+  it("stats() 指向的題與 focusQuestion 相同：陣列最後一題不一定是最近開的那題", () => {
+    const engine = newEngine();
+    engine.trigger("q2", "main.cpp", 20);
+    engine.close("q2");
+    engine.trigger("q1", "main.cpp", 10);
+    engine.close("q1");
+    expect(engine.stats()!.question_id).toBe("q1");
   });
 });

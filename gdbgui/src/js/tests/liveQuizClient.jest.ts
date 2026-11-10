@@ -19,7 +19,8 @@ import {
   downloadLiveSessionExport,
   endLiveSession,
   fetchQuestionResponses,
-  triggerLiveQuestion
+  triggerLiveQuestion,
+  unsavedStats
 } from "../liveQuizClient";
 
 const OPTIONS = [
@@ -468,4 +469,82 @@ test("開新一堂後，舊一堂 socket 的事件不會套到新的引擎上", 
 
   expect(mockSocket.emit).not.toHaveBeenCalled();
   expect(handlers.onState).not.toHaveBeenCalled();
+});
+
+// ── 統計保存：上傳失敗時，有作答的統計只在這個分頁裡，匯出前不能被新的一堂沖掉 ──────
+
+function stubDownload() {
+  (URL as any).createObjectURL = jest.fn(() => "blob:x");
+  (URL as any).revokeObjectURL = jest.fn();
+  jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+}
+
+async function startClassWithAnswer() {
+  await startClass();
+  await triggerLiveQuestion(7, "q1", "main.cpp", 3);
+  hello("S1", "dev-1");
+  answer("S1", "dev-1", "q1", "b");
+}
+
+test("上傳被拒（400）後空 body 重試成功：有作答的統計標為 upload-rejected；匯出後清除", async () => {
+  await startClassWithAnswer();
+  endResponses = [() => Promise.resolve(jsonResponse(400, { error: "上傳不合法" }))];
+
+  const ended = await endLiveSession(7);
+
+  expect(ended.aggregatesSaved).toBe(false);
+  expect(unsavedStats()).toEqual({ sessionId: 7, reason: "upload-rejected" });
+  stubDownload();
+  downloadLiveSessionExport();
+  expect(unsavedStats()).toBeNull();
+});
+
+test("結束請求兩次都失敗：標為 end-failed，錯誤照常拋出", async () => {
+  await startClassWithAnswer();
+  endResponses = [
+    () => Promise.reject(new TypeError("Failed to fetch")),
+    () => Promise.reject(new TypeError("Failed to fetch"))
+  ];
+
+  await expect(endLiveSession(7)).rejects.toBeDefined();
+  expect(unsavedStats()).toEqual({ sessionId: 7, reason: "end-failed" });
+});
+
+test("沒有任何作答時上傳失敗不標記：沒有東西會遺失", async () => {
+  await startClass();
+  endResponses = [() => Promise.resolve(jsonResponse(400, { error: "上傳不合法" }))];
+
+  await endLiveSession(7);
+
+  expect(unsavedStats()).toBeNull();
+});
+
+test("先失敗、老師重按結束後完整上傳成功：未保存標記清除", async () => {
+  await startClassWithAnswer();
+  endResponses = [
+    () => Promise.reject(new TypeError("Failed to fetch")),
+    () => Promise.reject(new TypeError("Failed to fetch"))
+  ];
+  await expect(endLiveSession(7)).rejects.toBeDefined();
+  expect(unsavedStats()).not.toBeNull();
+
+  endResponses = [];
+  const ended = await endLiveSession(7);
+
+  expect(ended.aggregatesSaved).toBe(true);
+  expect(unsavedStats()).toBeNull();
+});
+
+test("伺服器拒絕老師連線時，有作答的統計標為 server-ended", async () => {
+  await startClassWithAnswer();
+  handlers.onRefused = jest.fn();
+  disconnect!();
+  disconnect = connectTeacherQuizSocket(7, handlers);
+  (mockSocket as any).active = false; // 伺服器 handshake 拒絕：socket.io 不會自動重連
+
+  mockSocket.handlers["connect_error"](new Error("Connection rejected by server"));
+
+  expect(handlers.onRefused).toHaveBeenCalledTimes(1);
+  expect(unsavedStats()).toEqual({ sessionId: 7, reason: "server-ended" });
+  delete (mockSocket as any).active;
 });

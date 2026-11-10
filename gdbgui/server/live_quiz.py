@@ -372,6 +372,7 @@ def _session_payload(conn, row):
             (row["id"],),
         )
     ]
+    # open 只會出現在舊流程（伺服器端出題）遺留的列；新流程的題目開放狀態只存在老師端引擎裡。
     active = next((question for question in questions if question["state"] == "open"), None)
     joined_count = int(
         conn.execute(
@@ -827,6 +828,8 @@ def end_session(session_id: int, owner_id: int, upload: Optional[dict] = None) -
                 "UPDATE live_quiz_sessions SET state='ended', ended_at=? WHERE id=?",
                 (now, session_id),
             )
+            # 舊流程（伺服器端出題）遺留的 open 列：新流程不再寫入 open，這條只在收場舊場次時
+            # 把它們關掉。部署當下仍在 lobby 的舊場次可能還留著這些列，所以不能刪。
             conn.execute(
                 "UPDATE live_quiz_questions SET state='closed', closed_at=? "
                 "WHERE session_id=? AND state='open'",
