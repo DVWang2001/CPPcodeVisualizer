@@ -50,3 +50,14 @@ body,
   height: 100%;
   float: left;
 }
+
+/* 中間一列（檔案總管／程式碼／右側欄）用 flex 排，不讓它換行。
+   原本三欄靠上面的 float: left 並排；教案 sidebar:99 這類寬度讓三欄加兩條分隔線
+   超過一列的寬度（寬度 0 的窗格仍有 1px 邊框，分隔線各 8px），右側欄就被擠到
+   下一列，連帶把底部的字幕欄推出畫面。flex 不換行，放不下時由右側欄縮一點。 */
+#middle {
+  display: flex;
+}
+#middle > .gutter {
+  flex-shrink: 0;
+}
