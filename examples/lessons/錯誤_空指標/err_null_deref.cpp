@@ -12,7 +12,7 @@ int main() {                             //@ @tts [next] 程式開始，我們�
   Node* cur = &a;                        //@ @tts [next] cur 從 a 開始走
   while (cur != nullptr) {               //@ @tts [next] 只要 cur 不是空指標，就印出它
     std::cout << "值：" << cur->val << std::endl;  //@ @tts [next] 印出目前節點的值
-    std::cout << "下一個值：" << cur->next->val << std::endl;  //@ @bug 走到最後一個節點時，next 是空指標。這裡讀 cur->next->val，等於解參考空指標。原生 Linux 會崩潰；本環境讀到 0，不會崩潰 @tts [next] 讀下一個節點的值，但最後一個節點沒有下一個
+    std::cout << "下一個值：" << cur->next->val << std::endl;  //@ @bug 走到最後一個節點時，next 是空指標。這裡讀 cur->next->val，等於解參考空指標。原生 Linux 會在這裡崩潰 @tts [next] 讀下一個節點的值，但最後一個節點沒有下一個
     cur = cur->next;                     //@ @tts [next] cur 前進到下一個節點
   }                                      //@ @tts [next] 迴圈結束
   return 0;                              //@ @tts [next] 回傳 0，main 即將結束
