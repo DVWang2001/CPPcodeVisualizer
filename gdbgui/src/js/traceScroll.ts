@@ -13,3 +13,19 @@ export function nextScrollLeft(
   if (steps <= prevSteps) return null;
   return Math.max(0, scrollWidth - clientWidth);
 }
+
+// 步驟欄的寬度跟著該欄最長的數值走以後，同一輪後面的行填進較長的數值會讓最新一欄
+// 變寬、右半邊被面板切掉（步數沒變，nextScrollLeft 不會捲）。原本停在最右邊、正在
+// 看最新一欄的話，表格變寬時跟著貼齊新的右邊；使用者往左翻回去看舊欄位時不動。
+// 容許 1px 的誤差：縮放（例如 125%）下 scrollLeft 會是小數。
+export function keepRightEdge(
+  prevScrollWidth: number,
+  prevClientWidth: number,
+  scrollLeft: number,
+  scrollWidth: number,
+  clientWidth: number
+): number | null {
+  if (scrollWidth <= prevScrollWidth) return null;
+  if (scrollLeft < prevScrollWidth - prevClientWidth - 1) return null;
+  return Math.max(0, scrollWidth - clientWidth);
+}

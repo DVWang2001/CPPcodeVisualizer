@@ -9,7 +9,7 @@ import constants from "./constants";
 import { stripDirective } from "./sourceAnnotations";
 import { resolveGuideText } from "./guideText";
 import { resolveSourceText } from "./sourceText";
-import { nextScrollLeft } from "./traceScroll";
+import { nextScrollLeft, keepRightEdge } from "./traceScroll";
 
 type State = any;
 
@@ -19,6 +19,9 @@ class Visualizer extends React.Component<{}, State> {
   // 上一次 render 時的步驟欄數；componentDidUpdate 用它判斷「有沒有新的一欄」
   renderedSteps = 0;
   scrolledSteps = 0;
+  // 上一次 componentDidUpdate 量到的捲動區寬度；keepRightEdge 用它判斷表格有沒有變寬
+  lastScrollWidth = 0;
+  lastClientWidth = 0;
 
   constructor() {
     // @ts-expect-error ts-migrate(2554) FIXME: Expected 1-2 arguments, but got 0.
@@ -106,7 +109,11 @@ class Visualizer extends React.Component<{}, State> {
     // CSS Grid with max-content code column: the browser uses its own rendering
     // engine to size the column to the widest line, so no JS font measurement is
     // needed and the separator is guaranteed to start at the same x for every row.
-    const gridTemplateColumns = `32px max-content ${Array(stepColCount).fill("minmax(60px, 200px)").join(" ")}`;
+    // 步驟欄也用 max-content：每欄只跟該欄最長的數值一樣寬，整張表放得進面板就不必
+    // 橫向捲動，數值真的放不下時表格才變寬、才要捲動。原本的 minmax(60px, 200px) 在
+    // width: max-content 的格線裡每欄都會撐到 200px（「n=6」也佔 200px），走幾輪就
+    // 超出面板；超過 200px 的長數值則被截成「…」。
+    const gridTemplateColumns = `32px max-content ${Array(stepColCount).fill("max-content").join(" ")}`;
 
     const cells: React.ReactNode[] = [];
 
@@ -222,14 +229,20 @@ class Visualizer extends React.Component<{}, State> {
   componentDidUpdate() {
     const el = this.scrollContainerRef.current;
     if (!el) return;
-    const target = nextScrollLeft(
+    let target = nextScrollLeft(
       this.scrolledSteps,
       this.renderedSteps,
       el.scrollWidth,
       el.clientWidth
     );
+    // 步數沒變、但最新一欄填進較長的數值而變寬：原本看著最右邊就繼續貼齊（見 traceScroll.ts）
+    if (target === null) {
+      target = keepRightEdge(this.lastScrollWidth, this.lastClientWidth, el.scrollLeft, el.scrollWidth, el.clientWidth);
+    }
     this.scrolledSteps = this.renderedSteps;
     if (target !== null) el.scrollLeft = target;
+    this.lastScrollWidth = el.scrollWidth;
+    this.lastClientWidth = el.clientWidth;
   }
 
   componentWillUnmount() {
