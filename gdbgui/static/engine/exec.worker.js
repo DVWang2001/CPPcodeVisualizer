@@ -285,7 +285,10 @@ function classify(e, instance) {
       if (stackOverflowed(instance)) return { reason: "stack-overflow", code: null, message: "wasm stack pointer ran past its 8 MiB budget (recursion too deep)" };
       return { reason: "trap", code: null, trap: "memory", message: "invalid memory access (a bad pointer/index)" };
     }
-    if (/divide by zero|division by zero/.test(m)) return { reason: "trap", code: null, trap: "div-zero", message: "integer division by zero" };
+    // V8 names x / 0 "divide by zero", x % 0 "remainder by zero" and INT_MIN / -1 "divide result unrepresentable":
+    // all three are SIGFPE on Linux (normally vgerr.h reports them first; this is the path without CHECK_FLAGS)
+    if (/divide by zero|division by zero|remainder by zero/.test(m)) return { reason: "trap", code: null, trap: "div-zero", message: "integer division by zero" };
+    if (/divide result unrepresentable/.test(m)) return { reason: "trap", code: null, trap: "div-zero", message: "integer division overflow (INT_MIN / -1)" };
     if (/call stack|stack overflow/i.test(m)) return { reason: "stack-overflow", code: null, message: "call stack exhausted (recursion too deep)" };
     return { reason: "trap", code: null, trap: "other", message: m };
   }

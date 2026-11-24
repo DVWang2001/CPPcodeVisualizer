@@ -1,4 +1,4 @@
-import { createCallTree, ingestStack, Frame, recordResultLocal, resolveSelectedInvId } from "../callTree";
+import { createCallTree, ingestStack, Frame, recordResultLocal, resolveSelectedInvId, CALL_TREE_MAX_DEPTH } from "../callTree";
 
 // Stacks are top-first: stack[0] = innermost frame, last = main.
 const f = (func: string, addr: string, line: number, args: any[] = []): Frame => ({ func, addr, line, args });
@@ -257,5 +257,40 @@ describe("call-site fields", () => {
         ingestStack(tree, [f("g", "0x30", 5), f("main", "0x10", 16)]);
         const r = ingestStack(tree, [f("g", "0x30", 6), f("main", "0x10", 16)]);
         expect(r.nodes.find(n => n.func === "g")!.callSiteLine).toBe(16);
+    });
+});
+
+// Runaway recursion that ran the engine's stack out stops with tens of thousands of frames (62128 for
+// `int f(int n) { return f(n - 1) + 1; }` on lab-david). Folding such a stack would take seconds and the chain could
+// not be drawn, so ingestStack leaves the tree alone and reports the depth instead.
+describe("ingestStack — stacks deeper than CALL_TREE_MAX_DEPTH (runaway recursion)", () => {
+    // top-first: n - 1 frames of f(), then main
+    const chain = (n: number): Frame[] => {
+        const s: Frame[] = [];
+        for (let i = 0; i < n - 1; i++) s.push(f("f", "0x40", 4, [{ name: "n", value: String(3 - (n - 2 - i)) }]));
+        s.push(f("main", "0x10", 8));
+        return s;
+    };
+
+    test("a stack deeper than the cap is not folded: the tree stays as it was and tooDeep reports the depth", () => {
+        const tree = createCallTree();
+        ingestStack(tree, chain(3));
+        const before = [...tree.bySig.keys()];
+        const r = ingestStack(tree, chain(62128));
+        expect(r.tooDeep).toBe(62128);
+        expect([...tree.bySig.keys()]).toEqual(before);
+        expect([...tree.bySig.values()].map(n => n.returned)).toEqual([false, false, false]);
+        expect(r.nodes).toHaveLength(before.length);
+        expect(r.activeNodeId).toBeNull();
+        expect(r.activePath).toEqual([]);
+        expect(r.justReturned).toEqual([]);
+    });
+
+    test("a stack exactly at the cap is still folded into the tree", () => {
+        const tree = createCallTree();
+        const r = ingestStack(tree, chain(CALL_TREE_MAX_DEPTH));
+        expect(r.tooDeep).toBeUndefined();
+        expect(tree.bySig.size).toBe(CALL_TREE_MAX_DEPTH);
+        expect(r.activePath).toHaveLength(CALL_TREE_MAX_DEPTH);
     });
 });

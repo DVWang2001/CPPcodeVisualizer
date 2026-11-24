@@ -13,6 +13,7 @@ jest.mock("../CallGraph", () => ({ __esModule: true, default: () => null }));
 jest.mock("../WatchTable", () => ({ __esModule: true, default: () => null }));
 jest.mock("../MemoryWatch", () => ({ __esModule: true, default: () => null }));
 jest.mock("../CompileErrors", () => ({ __esModule: true, default: () => null }));
+jest.mock("../RuntimeErrorPanel", () => ({ __esModule: true, default: () => null }));
 jest.mock("../Locals", () => ({ __esModule: true, default: () => null }));
 jest.mock("../Breakpoints", () => ({ __esModule: true, default: () => null }));
 jest.mock("../GdbMiOutput", () => ({ __esModule: true, default: () => null }));
@@ -243,5 +244,38 @@ describe("RightSidebar：系統預設開啟的「執行這行的結果」面板"
     store.set("sidebar_selection", { line_after: false, visualizer: true });
     const play = mount(false);
     expect(isVisible(play, "line_after")).toBe(false);
+  });
+});
+
+describe("RightSidebar：編輯模式也看得到執行錯誤的圖解", () => {
+  const bodyHidden = (root: HTMLElement, key: string) => (panel(root, key).children[1] as HTMLElement).classList.contains("hidden");
+  const openPanel = (key: string) => act(() => { (window as any).gdbgui_collapser_registry[key].open(); });
+  afterEach(() => { store.set("runtime_error", null); });
+
+  test("有執行錯誤的圖解時，編輯模式的「執行錯誤」面板可以展開；其他面板照舊只能勾選", () => {
+    store.set("sidebar_selection", { runtime_errors: true, container: true });
+    store.set("runtime_error", { which: 0, diag: { kind: "array-bounds" }, here: false, stepNow: null, ended: true });
+    const edit = mount(true);
+    openPanel("runtime_errors");
+    openPanel("container");
+    expect(bodyHidden(edit, "runtime_errors")).toBe(false);
+    expect(bodyHidden(edit, "container")).toBe(true);
+  });
+
+  test("沒有執行錯誤時，編輯模式的「執行錯誤」面板跟其他面板一樣只能勾選", () => {
+    store.set("sidebar_selection", { runtime_errors: true });
+    const edit = mount(true);
+    openPanel("runtime_errors");
+    expect(bodyHidden(edit, "runtime_errors")).toBe(true);
+  });
+
+  test("執行時停在錯誤，程式跑完回到編輯模式：「執行錯誤」面板維持展開", () => {
+    store.set("sidebar_selection", { runtime_errors: true });
+    const root = mount(false);
+    act(() => { store.set("runtime_error", { which: 0, diag: { kind: "array-bounds" }, here: true, stepNow: 11 }); });
+    openPanel("runtime_errors");
+    expect(bodyHidden(root, "runtime_errors")).toBe(false);
+    act(() => { store.set("edit_mode", true); });
+    expect(bodyHidden(root, "runtime_errors")).toBe(false);
   });
 });

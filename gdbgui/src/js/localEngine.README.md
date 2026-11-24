@@ -30,9 +30,11 @@ wasm 瀏覽器引擎是**唯一**引擎：已沒有伺服器 GDB，也沒有 `?e
 
 stdin：與 UI 的 PTY 注入一致——`program_input`（空則 localStorage `gdbgui_program_input`）＋`"\n"`，在 `runProgram` 時一次給；之後 UI 的 `pty_interaction write` 只被 LocalGdb 確認。
 
-錯誤對映（`mapRunError`）：`compile`（stderr 的 `main.cpp:` 換成 `/workspace/main.cpp:`）、`unsupported`（「瀏覽器引擎不支援此語法（X，第 N 行）」＋一行 `file:N:1: error:` 讓 CompileErrors 標行）、`compile-timeout`、`link`、`forbidden-import`、`instrumentation-failed`、其他內部錯誤；另外 `exit.reason` 為 `stack-overflow`、`step-limit`、`trace-limit` 也走錯誤路徑（無法完整重現 GDB 的執行）。`timeout`、`output-limit`、`nosys`、`trace-truncated` 只進 `sandbox_warnings`。
+錯誤對映（`mapRunError`）：`compile`（stderr 的 `main.cpp:` 換成 `/workspace/main.cpp:`）、`unsupported`（「瀏覽器引擎不支援此語法（X，第 N 行）」＋一行 `file:N:1: error:` 讓 CompileErrors 標行）、`compile-timeout`、`link`、`forbidden-import`、`instrumentation-failed`、其他內部錯誤。`exit.reason` 為 `stack-overflow`、`step-limit`、`trace-limit` 時可以回放到停止前的最後一步（2026-11-23 起，執行時期錯誤 P1），停止原因進 `sandbox_warnings`；致命的執行時期錯誤（`runtimeErrors`）以 trap 結束，LocalGdb 在最後一步顯示訊號停點。`timeout`、`output-limit`、`nosys`、`trace-truncated` 只進 `sandbox_warnings`。
 
-進度：`click_run_button` 原有的「正在編譯並上傳程式碼……」之外，加兩行主控台訊息（載入編譯器／編譯執行中）並在期間設 `waiting_for_response`。
+進度：`click_run_button` 原有的「正在編譯並上傳程式碼……」之外，加主控台訊息（編譯器還沒載入好時「正在載入編譯器」，再來「正在編譯並執行」）並在期間設 `waiting_for_response`。
+
+無感加載（2026-11-23）：`GdbApi.init()` 呼叫 `prewarm()`。頁面載入完成、瀏覽器閒下來時（`requestIdleCallback`，沒有就下一個事件迴圈），先載入引擎（第一次從網路下載並驗證，之後從 IndexedDB 讀），再 `engine.warmUp({ source: 編輯器的程式, preludes: [["iostream","vector"]] })`：用同樣的 `#include` 先建 PCH、先編譯一次小程式，讓第一次 Run 不必下載、不必建 PCH、也沒有冷啟動。Run 沿用這個引擎（`_enginePromise`）；暖機還在載入時按 Run，照常提示「正在載入編譯器」，Run 排在正在暖機的那一個小程式之後，其餘暖機程式略過。開啟省流量（Save-Data）時不暖機；暖機失敗不影響 Run（Run 重新載入）。進度寫在 `<html data-vgdb-warmup>`（loading、warming、ready、failed、skipped），程式本身不讀它，給 e2e 測試與量測等暖機真正結束用。其他頁面（`_auth_base.html`：登入、註冊、教案庫、個人頁、登出）由 `static/engine/prewarm.js` 預先下載並建 PCH，見 engine README「Warm-up」。
 
 ## 資安
 

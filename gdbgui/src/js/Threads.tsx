@@ -255,6 +255,7 @@ class Threads extends React.Component<{}, ThreadsState> {
         global_variable.__call_tree = createCallTree();
       }
       const result = ingestStack(global_variable.__call_tree, stack);
+      global_variable.__call_graph_too_deep = result.tooDeep || 0;
       global_variable.__call_graph_nodes = result.nodes;
       global_variable.__call_graph_edges = result.edges;
       global_variable.__active_node_id = result.activeNodeId;

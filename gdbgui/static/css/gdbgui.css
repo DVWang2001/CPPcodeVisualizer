@@ -657,6 +657,17 @@ button:focus {
   background-color: rgba(211, 47, 47, 0.12) !important;
   border-left: 3px solid #d32f2f;
 }
+/* Runtime error (P2): the line the program failed on, and the failing span (runtimeDiag's `bad`).
+   Shown only while paused on the failing step, so it sits over the paused-line highlight (decoration zIndex 1) and is
+   opaque like that highlight. */
+.monaco-runtime-error-line {
+  background-color: #fdecea !important;
+  border-left: 3px solid #b42318;
+}
+.monaco-runtime-error-span {
+  text-decoration: underline wavy #b42318;
+  text-underline-offset: 3px;
+}
 .monaco-compile-warning-line {
   background-color: rgba(245, 124, 0, 0.10) !important;
   border-left: 3px solid #f57c00;

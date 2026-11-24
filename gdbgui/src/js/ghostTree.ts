@@ -1,4 +1,4 @@
-import { createCallTree, ingestStack } from "./callTree";
+import { createCallTree, ingestStack, CALL_TREE_MAX_DEPTH } from "./callTree";
 import type { CallNode, Frame } from "./callTree";
 import { layoutTree } from "./callGraphLayout";
 
@@ -12,6 +12,8 @@ export type Ghost = {
 
 export function buildGhostFromSnapshots(snapshots: Frame[][] | null | undefined): Ghost | null {
     if (!snapshots || !Array.isArray(snapshots) || snapshots.length === 0) return null;
+    // Runaway recursion: a chain this deep cannot be drawn, and folding every snapshot up to it is slow (callTree.ts).
+    if (snapshots.some(s => Array.isArray(s) && s.length > CALL_TREE_MAX_DEPTH)) return null;
     const tree = createCallTree();
     let last: ReturnType<typeof ingestStack> | null = null;
     for (const snap of snapshots) {

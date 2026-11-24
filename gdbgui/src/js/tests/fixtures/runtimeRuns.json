@@ -1,0 +1,10377 @@
+{
+"_source": "experiments/runtime-error-p1/results-20261123/log-p2fix.txt (lab-david, P1 engine)",
+"runs": {
+"div0_input": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int a, b;\n  cin >> a >> b;\n  int c = a / b;\n  cout << c << endl;\n  return 0;\n}",
+"stdin": "7 0",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "div-zero",
+"message": "division by zero",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "div-by-zero",
+"fatal": true,
+"step": 1,
+"line": 6,
+"col": 13,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"lhs": 7,
+"rhs": 0,
+"type": "int"
+},
+"message": "division by zero"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 9,
+"params": [],
+"vars": [
+"a",
+"b",
+"c"
+]
+}
+},
+"decls": {
+"main": {
+"a": "int",
+"b": "int",
+"c": "int"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": 0,
+"b": 0
+},
+"uninit": [
+"a",
+"b"
+]
+}
+],
+[
+1,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": 7,
+"b": 0
+}
+}
+]
+]
+},
+"div0_const": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int a = 7, b = 0;\n  int c = a / b;\n  cout << c << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "div-zero",
+"message": "division by zero",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "div-by-zero",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": 13,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"lhs": 7,
+"rhs": 0,
+"type": "int"
+},
+"message": "division by zero"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"a",
+"b",
+"c"
+]
+}
+},
+"decls": {
+"main": {
+"a": "int",
+"b": "int",
+"c": "int"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": 7,
+"b": 0
+}
+}
+]
+]
+},
+"div0_unused": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int a = 7, b = 0;\n  int c = a / b;\n  cout << \"done\" << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "div-zero",
+"message": "division by zero",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "div-by-zero",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": 13,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"lhs": 7,
+"rhs": 0,
+"type": "int"
+},
+"message": "division by zero"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"a",
+"b",
+"c"
+]
+}
+},
+"decls": {
+"main": {
+"a": "int",
+"b": "int",
+"c": "int"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": 7,
+"b": 0
+}
+}
+]
+]
+},
+"mod0_loop": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  for (int i = 0; i < 3; i++) {\n    cout << 10 % i << endl;\n  }\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "div-zero",
+"message": "division by zero",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "div-by-zero",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": 16,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"lhs": 10,
+"rhs": 0,
+"type": "int"
+},
+"message": "division by zero"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"i"
+]
+}
+},
+"decls": {
+"main": {
+"i": "int"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"i": 0
+}
+}
+]
+]
+},
+"intmin_div": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int a, b;\n  cin >> a >> b;\n  cout << a / b << endl;\n  return 0;\n}",
+"stdin": "-2147483648 -1",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "div-zero",
+"message": "division of -2147483648 by -1 cannot be represented in type 'int'",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "div-overflow",
+"fatal": true,
+"step": 1,
+"line": 6,
+"col": 13,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"lhs": -2147483648,
+"rhs": -1,
+"type": "int"
+},
+"message": "division of -2147483648 by -1 cannot be represented in type 'int'"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"a",
+"b"
+]
+}
+},
+"decls": {
+"main": {
+"a": "int",
+"b": "int"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": 0,
+"b": 0
+},
+"uninit": [
+"a",
+"b"
+]
+}
+],
+[
+1,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": -2147483648,
+"b": -1
+}
+}
+]
+]
+},
+"ovf_add": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int x = 2147483647;\n  x = x + 1;\n  cout << x << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "signed-overflow",
+"fatal": false,
+"step": 1,
+"line": 5,
+"col": 9,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"op": "+",
+"lhs": 2147483647,
+"rhs": 1,
+"type": "int"
+},
+"message": "signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'"
+}
+],
+"stdout": "-2147483648\n",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"x"
+]
+}
+},
+"decls": {
+"main": {
+"x": "int"
+}
+},
+"classes": {},
+"nSteps": 5,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"x": 2147483647
+}
+}
+],
+[
+2,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"x": -2147483648
+}
+}
+],
+[
+3,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"x": -2147483648
+}
+}
+],
+[
+4,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"x": -2147483648
+}
+}
+]
+]
+},
+"ovf_fact": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int f = 1;\n  for (int i = 1; i <= 20; i++) {\n    f = f * i;\n  }\n  cout << f << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "signed-overflow",
+"fatal": false,
+"step": 26,
+"line": 6,
+"col": 11,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"op": "*",
+"lhs": 479001600,
+"rhs": 13,
+"type": "int"
+},
+"message": "signed integer overflow: 479001600 * 13 cannot be represented in type 'int'"
+}
+],
+"stdout": "-2102132736\n",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 10,
+"params": [],
+"vars": [
+"f",
+"i"
+]
+}
+},
+"decls": {
+"main": {
+"f": "int",
+"i": "int"
+}
+},
+"classes": {},
+"nSteps": 45,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 1
+}
+}
+],
+[
+2,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 1,
+"i": 1
+}
+}
+],
+[
+3,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 1,
+"i": 1
+}
+}
+],
+[
+4,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 1,
+"i": 2
+}
+}
+],
+[
+5,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 2,
+"i": 2
+}
+}
+],
+[
+6,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 2,
+"i": 3
+}
+}
+],
+[
+7,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 6,
+"i": 3
+}
+}
+],
+[
+8,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 6,
+"i": 4
+}
+}
+],
+[
+9,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 24,
+"i": 4
+}
+}
+],
+[
+10,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 24,
+"i": 5
+}
+}
+],
+[
+11,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 120,
+"i": 5
+}
+}
+],
+[
+12,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 120,
+"i": 6
+}
+}
+],
+[
+13,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 720,
+"i": 6
+}
+}
+],
+[
+14,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 720,
+"i": 7
+}
+}
+],
+[
+15,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 5040,
+"i": 7
+}
+}
+],
+[
+16,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 5040,
+"i": 8
+}
+}
+],
+[
+17,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 40320,
+"i": 8
+}
+}
+],
+[
+18,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 40320,
+"i": 9
+}
+}
+],
+[
+19,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 362880,
+"i": 9
+}
+}
+],
+[
+20,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 362880,
+"i": 10
+}
+}
+],
+[
+21,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 3628800,
+"i": 10
+}
+}
+],
+[
+22,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 3628800,
+"i": 11
+}
+}
+],
+[
+23,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 39916800,
+"i": 11
+}
+}
+],
+[
+24,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 39916800,
+"i": 12
+}
+}
+],
+[
+25,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 479001600,
+"i": 12
+}
+}
+],
+[
+26,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 479001600,
+"i": 13
+}
+}
+],
+[
+27,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 1932053504,
+"i": 13
+}
+}
+],
+[
+28,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 1932053504,
+"i": 14
+}
+}
+],
+[
+29,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 1278945280,
+"i": 14
+}
+}
+],
+[
+30,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 1278945280,
+"i": 15
+}
+}
+],
+[
+31,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 2004310016,
+"i": 15
+}
+}
+],
+[
+32,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 2004310016,
+"i": 16
+}
+}
+],
+[
+33,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 2004189184,
+"i": 16
+}
+}
+],
+[
+34,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 2004189184,
+"i": 17
+}
+}
+],
+[
+35,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": -288522240,
+"i": 17
+}
+}
+],
+[
+36,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": -288522240,
+"i": 18
+}
+}
+],
+[
+37,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": -898433024,
+"i": 18
+}
+}
+],
+[
+38,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": -898433024,
+"i": 19
+}
+}
+],
+[
+39,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 109641728,
+"i": 19
+}
+}
+],
+[
+40,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": 109641728,
+"i": 20
+}
+}
+],
+[
+41,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": -2102132736,
+"i": 20
+}
+}
+],
+[
+42,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": -2102132736
+}
+}
+],
+[
+43,
+{
+"line": 9,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": -2102132736
+}
+}
+],
+[
+44,
+{
+"line": 10,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"f": -2102132736
+}
+}
+]
+]
+},
+"ovf_loop": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int cnt = 0;\n  for (int i = 1; i > 0; i = i * 2) {\n    cnt++;\n  }\n  cout << cnt << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "signed-overflow",
+"fatal": false,
+"step": 63,
+"line": 5,
+"col": 32,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"op": "*",
+"lhs": 1073741824,
+"rhs": 2,
+"type": "int"
+},
+"message": "signed integer overflow: 1073741824 * 2 cannot be represented in type 'int'"
+}
+],
+"stdout": "31\n",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 10,
+"params": [],
+"vars": [
+"cnt",
+"i"
+]
+}
+},
+"decls": {
+"main": {
+"cnt": "int",
+"i": "int"
+}
+},
+"classes": {},
+"nSteps": 67,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 0
+}
+}
+],
+[
+2,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 0,
+"i": 1
+}
+}
+],
+[
+3,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 1,
+"i": 1
+}
+}
+],
+[
+4,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 1,
+"i": 2
+}
+}
+],
+[
+5,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 2,
+"i": 2
+}
+}
+],
+[
+6,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 2,
+"i": 4
+}
+}
+],
+[
+7,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 3,
+"i": 4
+}
+}
+],
+[
+8,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 3,
+"i": 8
+}
+}
+],
+[
+9,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 4,
+"i": 8
+}
+}
+],
+[
+10,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 4,
+"i": 16
+}
+}
+],
+[
+11,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 5,
+"i": 16
+}
+}
+],
+[
+12,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 5,
+"i": 32
+}
+}
+],
+[
+13,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 6,
+"i": 32
+}
+}
+],
+[
+14,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 6,
+"i": 64
+}
+}
+],
+[
+15,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 7,
+"i": 64
+}
+}
+],
+[
+16,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 7,
+"i": 128
+}
+}
+],
+[
+17,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 8,
+"i": 128
+}
+}
+],
+[
+18,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 8,
+"i": 256
+}
+}
+],
+[
+19,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 9,
+"i": 256
+}
+}
+],
+[
+20,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 9,
+"i": 512
+}
+}
+],
+[
+21,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 10,
+"i": 512
+}
+}
+],
+[
+22,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 10,
+"i": 1024
+}
+}
+],
+[
+23,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 11,
+"i": 1024
+}
+}
+],
+[
+24,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 11,
+"i": 2048
+}
+}
+],
+[
+25,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 12,
+"i": 2048
+}
+}
+],
+[
+26,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 12,
+"i": 4096
+}
+}
+],
+[
+27,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 13,
+"i": 4096
+}
+}
+],
+[
+28,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 13,
+"i": 8192
+}
+}
+],
+[
+29,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 14,
+"i": 8192
+}
+}
+],
+[
+30,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 14,
+"i": 16384
+}
+}
+],
+[
+31,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 15,
+"i": 16384
+}
+}
+],
+[
+32,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 15,
+"i": 32768
+}
+}
+],
+[
+33,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 16,
+"i": 32768
+}
+}
+],
+[
+34,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 16,
+"i": 65536
+}
+}
+],
+[
+35,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 17,
+"i": 65536
+}
+}
+],
+[
+36,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 17,
+"i": 131072
+}
+}
+],
+[
+37,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 18,
+"i": 131072
+}
+}
+],
+[
+38,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 18,
+"i": 262144
+}
+}
+],
+[
+39,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 19,
+"i": 262144
+}
+}
+],
+[
+40,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 19,
+"i": 524288
+}
+}
+],
+[
+41,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 20,
+"i": 524288
+}
+}
+],
+[
+42,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 20,
+"i": 1048576
+}
+}
+],
+[
+43,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 21,
+"i": 1048576
+}
+}
+],
+[
+44,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 21,
+"i": 2097152
+}
+}
+],
+[
+45,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 22,
+"i": 2097152
+}
+}
+],
+[
+46,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 22,
+"i": 4194304
+}
+}
+],
+[
+47,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 23,
+"i": 4194304
+}
+}
+],
+[
+48,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 23,
+"i": 8388608
+}
+}
+],
+[
+49,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 24,
+"i": 8388608
+}
+}
+],
+[
+50,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 24,
+"i": 16777216
+}
+}
+],
+[
+51,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 25,
+"i": 16777216
+}
+}
+],
+[
+52,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 25,
+"i": 33554432
+}
+}
+],
+[
+53,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 26,
+"i": 33554432
+}
+}
+],
+[
+54,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 26,
+"i": 67108864
+}
+}
+],
+[
+55,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 27,
+"i": 67108864
+}
+}
+],
+[
+56,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 27,
+"i": 134217728
+}
+}
+],
+[
+57,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 28,
+"i": 134217728
+}
+}
+],
+[
+58,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 28,
+"i": 268435456
+}
+}
+],
+[
+59,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 29,
+"i": 268435456
+}
+}
+],
+[
+60,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 29,
+"i": 536870912
+}
+}
+],
+[
+61,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 30,
+"i": 536870912
+}
+}
+],
+[
+62,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 30,
+"i": 1073741824
+}
+}
+],
+[
+63,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 31,
+"i": 1073741824
+}
+}
+],
+[
+64,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 31
+}
+}
+],
+[
+65,
+{
+"line": 9,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 31
+}
+}
+],
+[
+66,
+{
+"line": 10,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"cnt": 31
+}
+}
+]
+]
+},
+"arr_oob_write": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int a[5];\n  int total = 100;\n  for (int i = 0; i <= 5; i++) {\n    a[i] = i * 10;\n  }\n  cout << a[0] << \" \" << total << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "array-bounds",
+"fatal": false,
+"step": 12,
+"line": 7,
+"col": 5,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"index": 5,
+"array": "int[5]"
+},
+"message": "index 5 out of bounds for type 'int[5]'"
+}
+],
+"stdout": "0 100\n",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 11,
+"params": [],
+"vars": [
+"a",
+"total",
+"i"
+]
+}
+},
+"decls": {
+"main": {
+"a": "int[5]",
+"total": "int",
+"i": "int"
+}
+},
+"classes": {},
+"nSteps": 17,
+"steps": [
+[
+0,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+0,
+0,
+0,
+0
+]
+},
+"uninit": [
+"a"
+]
+}
+],
+[
+1,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+0,
+0,
+0,
+0
+],
+"total": 100
+},
+"uninit": [
+"a"
+]
+}
+],
+[
+2,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+0,
+0,
+0,
+0
+],
+"total": 100,
+"i": 0
+},
+"uninit": [
+"a"
+]
+}
+],
+[
+3,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+8414472,
+8388588,
+8388580,
+0
+],
+"total": 100,
+"i": 0
+}
+}
+],
+[
+4,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+8414472,
+8388588,
+8388580,
+0
+],
+"total": 100,
+"i": 1
+}
+}
+],
+[
+5,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+8388588,
+8388580,
+0
+],
+"total": 100,
+"i": 1
+}
+}
+],
+[
+6,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+8388588,
+8388580,
+0
+],
+"total": 100,
+"i": 2
+}
+}
+],
+[
+7,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+20,
+8388580,
+0
+],
+"total": 100,
+"i": 2
+}
+}
+],
+[
+8,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+20,
+8388580,
+0
+],
+"total": 100,
+"i": 3
+}
+}
+],
+[
+9,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+20,
+30,
+0
+],
+"total": 100,
+"i": 3
+}
+}
+],
+[
+10,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+20,
+30,
+0
+],
+"total": 100,
+"i": 4
+}
+}
+],
+[
+11,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+20,
+30,
+40
+],
+"total": 100,
+"i": 4
+}
+}
+],
+[
+12,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+20,
+30,
+40
+],
+"total": 100,
+"i": 5
+}
+}
+],
+[
+13,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+20,
+30,
+40
+],
+"total": 100,
+"i": 5
+}
+}
+],
+[
+14,
+{
+"line": 9,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+20,
+30,
+40
+],
+"total": 100
+}
+}
+],
+[
+15,
+{
+"line": 10,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+20,
+30,
+40
+],
+"total": 100
+}
+}
+],
+[
+16,
+{
+"line": 11,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+10,
+20,
+30,
+40
+],
+"total": 100
+}
+}
+]
+]
+},
+"arr_oob_read": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int a[5] = {1, 2, 3, 4, 5};\n  int i;\n  cin >> i;\n  cout << a[i] << endl;\n  return 0;\n}",
+"stdin": "7",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "array-bounds",
+"fatal": false,
+"step": 2,
+"line": 7,
+"col": 11,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"index": 7,
+"array": "int[5]"
+},
+"message": "index 7 out of bounds for type 'int[5]'"
+}
+],
+"stdout": "0\n",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 9,
+"params": [],
+"vars": [
+"a",
+"i"
+]
+}
+},
+"decls": {
+"main": {
+"a": "int[5]",
+"i": "int"
+}
+},
+"classes": {},
+"nSteps": 5,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+1,
+2,
+3,
+4,
+5
+],
+"i": 0
+},
+"uninit": [
+"i"
+]
+}
+],
+[
+2,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+1,
+2,
+3,
+4,
+5
+],
+"i": 7
+}
+}
+],
+[
+3,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+1,
+2,
+3,
+4,
+5
+],
+"i": 7
+}
+}
+],
+[
+4,
+{
+"line": 9,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+1,
+2,
+3,
+4,
+5
+],
+"i": 7
+}
+}
+]
+]
+},
+"arr2d_oob": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int g[3][3] = {};\n  int r = 1, c = 3;\n  g[r][c] = 9;\n  cout << g[2][0] << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "array-bounds",
+"fatal": false,
+"step": 2,
+"line": 6,
+"col": 3,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"index": 3,
+"array": "int[3]"
+},
+"message": "index 3 out of bounds for type 'int[3]'"
+}
+],
+"stdout": "9\n",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 9,
+"params": [],
+"vars": [
+"g",
+"r",
+"c"
+]
+}
+},
+"decls": {
+"main": {
+"g": "int[3][3]",
+"r": "int",
+"c": "int"
+}
+},
+"classes": {},
+"nSteps": 6,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"g": [
+[
+0,
+0,
+0
+],
+[
+0,
+0,
+0
+],
+[
+0,
+0,
+0
+]
+]
+}
+}
+],
+[
+2,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"g": [
+[
+0,
+0,
+0
+],
+[
+0,
+0,
+0
+],
+[
+0,
+0,
+0
+]
+],
+"r": 1,
+"c": 3
+}
+}
+],
+[
+3,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"g": [
+[
+0,
+0,
+0
+],
+[
+0,
+0,
+0
+],
+[
+9,
+0,
+0
+]
+],
+"r": 1,
+"c": 3
+}
+}
+],
+[
+4,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"g": [
+[
+0,
+0,
+0
+],
+[
+0,
+0,
+0
+],
+[
+9,
+0,
+0
+]
+],
+"r": 1,
+"c": 3
+}
+}
+],
+[
+5,
+{
+"line": 9,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"g": [
+[
+0,
+0,
+0
+],
+[
+0,
+0,
+0
+],
+[
+9,
+0,
+0
+]
+],
+"r": 1,
+"c": 3
+}
+}
+]
+]
+},
+"vec_oob": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v(5);\n  for (int i = 0; i <= 5; i++) {\n    v[i] = i;\n  }\n  cout << v.size() << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "abort",
+"message": "vector[] index out of bounds",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "libcxx",
+"fatal": true,
+"step": 12,
+"line": 6,
+"col": null,
+"inUser": false,
+"file": null,
+"values": {},
+"message": "vector[] index out of bounds",
+"libcxxMessage": "vector[] index out of bounds"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 10,
+"params": [],
+"vars": [
+"v",
+"i"
+]
+}
+},
+"decls": {
+"main": {
+"v": "vector<int>",
+"i": "int"
+}
+},
+"classes": {},
+"nSteps": 13,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+0,
+0,
+0,
+0
+],
+"v.capacity()": 5
+}
+}
+],
+[
+2,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+0,
+0,
+0,
+0
+],
+"v.capacity()": 5,
+"i": 0
+}
+}
+],
+[
+3,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+0,
+0,
+0,
+0
+],
+"v.capacity()": 5,
+"i": 0
+}
+}
+],
+[
+4,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+0,
+0,
+0,
+0
+],
+"v.capacity()": 5,
+"i": 1
+}
+}
+],
+[
+5,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+1,
+0,
+0,
+0
+],
+"v.capacity()": 5,
+"i": 1
+}
+}
+],
+[
+6,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+1,
+0,
+0,
+0
+],
+"v.capacity()": 5,
+"i": 2
+}
+}
+],
+[
+7,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+1,
+2,
+0,
+0
+],
+"v.capacity()": 5,
+"i": 2
+}
+}
+],
+[
+8,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+1,
+2,
+0,
+0
+],
+"v.capacity()": 5,
+"i": 3
+}
+}
+],
+[
+9,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+1,
+2,
+3,
+0
+],
+"v.capacity()": 5,
+"i": 3
+}
+}
+],
+[
+10,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+1,
+2,
+3,
+0
+],
+"v.capacity()": 5,
+"i": 4
+}
+}
+],
+[
+11,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+1,
+2,
+3,
+4
+],
+"v.capacity()": 5,
+"i": 4
+}
+}
+],
+[
+12,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+1,
+2,
+3,
+4
+],
+"v.capacity()": 5,
+"i": 5
+}
+}
+]
+]
+},
+"vec_at": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v(3);\n  cout << v.at(5) << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "abort",
+"message": "out_of_range was thrown in -fno-exceptions mode with message \"vector\"",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "libcxx",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": null,
+"inUser": false,
+"file": null,
+"values": {},
+"message": "out_of_range was thrown in -fno-exceptions mode with message \"vector\"",
+"libcxxMessage": "out_of_range was thrown in -fno-exceptions mode with message \"vector\""
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 7,
+"params": [],
+"vars": [
+"v"
+]
+}
+},
+"decls": {
+"main": {
+"v": "vector<int>"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [
+0,
+0,
+0
+],
+"v.capacity()": 3
+}
+}
+]
+]
+},
+"vec_empty_back": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v;\n  cout << v.back() << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "abort",
+"message": "back() called on an empty vector",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "libcxx",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": null,
+"inUser": false,
+"file": null,
+"values": {},
+"message": "back() called on an empty vector",
+"libcxxMessage": "back() called on an empty vector"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 7,
+"params": [],
+"vars": [
+"v"
+]
+}
+},
+"decls": {
+"main": {
+"v": "vector<int>"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [],
+"v.capacity()": 0
+}
+}
+]
+]
+},
+"vec_pop_empty": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v;\n  v.pop_back();\n  cout << v.size() << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "abort",
+"message": "vector::pop_back called on an empty vector",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "libcxx",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": null,
+"inUser": false,
+"file": null,
+"values": {},
+"message": "vector::pop_back called on an empty vector",
+"libcxxMessage": "vector::pop_back called on an empty vector"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"v"
+]
+}
+},
+"decls": {
+"main": {
+"v": "vector<int>"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"v": [],
+"v.capacity()": 0
+}
+}
+]
+]
+},
+"stack_empty_top": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  stack<int> s;\n  s.push(1);\n  s.pop();\n  cout << s.top() << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "abort",
+"message": "deque::back called on an empty deque",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "libcxx",
+"fatal": true,
+"step": 3,
+"line": 7,
+"col": null,
+"inUser": false,
+"file": null,
+"values": {},
+"message": "deque::back called on an empty deque",
+"libcxxMessage": "deque::back called on an empty deque"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 9,
+"params": [],
+"vars": [
+"s"
+]
+}
+},
+"decls": {
+"main": {
+"s": "stack<int>"
+}
+},
+"classes": {},
+"nSteps": 4,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"s": []
+}
+}
+],
+[
+2,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"s": [
+1
+]
+}
+}
+],
+[
+3,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"s": []
+}
+}
+]
+]
+},
+"queue_empty_front": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  queue<int> q;\n  cout << q.front() << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "abort",
+"message": "deque::front called on an empty deque",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "libcxx",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": null,
+"inUser": false,
+"file": null,
+"values": {},
+"message": "deque::front called on an empty deque",
+"libcxxMessage": "deque::front called on an empty deque"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 7,
+"params": [],
+"vars": [
+"q"
+]
+}
+},
+"decls": {
+"main": {
+"q": "queue<int>"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"q": []
+}
+}
+]
+]
+},
+"str_oob": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  string s = \"abc\";\n  cout << s[10] << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "abort",
+"message": "string index out of bounds",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "libcxx",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": null,
+"inUser": false,
+"file": null,
+"values": {},
+"message": "string index out of bounds",
+"libcxxMessage": "string index out of bounds"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 7,
+"params": [],
+"vars": [
+"s"
+]
+}
+},
+"decls": {
+"main": {
+"s": "string"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"s": "abc"
+}
+}
+]
+]
+},
+"null_write": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int* p = nullptr;\n  *p = 5;\n  cout << \"after\" << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "memory",
+"message": "store to null pointer of type 'int'",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "null-deref",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": 3,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"type": "int",
+"ptr": 0,
+"tck": 1,
+"align": 2
+},
+"message": "store to null pointer of type 'int'"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"p"
+]
+}
+},
+"decls": {
+"main": {
+"p": "int *"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"p": 0
+}
+}
+]
+]
+},
+"null_read": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int* p = nullptr;\n  int x = *p;\n  cout << x << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "memory",
+"message": "load of null pointer of type 'int'",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "null-deref",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": 11,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"type": "int",
+"ptr": 0,
+"tck": 0,
+"align": 2
+},
+"message": "load of null pointer of type 'int'"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"p",
+"x"
+]
+}
+},
+"decls": {
+"main": {
+"p": "int *",
+"x": "int"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"p": 0
+}
+}
+]
+]
+},
+"missing_return": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint sign(int x) {\n  if (x > 0) return 1;\n  if (x < 0) return -1;\n}\nint main() {\n  cout << sign(0) << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "illegal",
+"message": "execution reached the end of a value-returning function without returning a value",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "missing-return",
+"fatal": true,
+"step": 3,
+"line": 3,
+"col": 5,
+"inUser": true,
+"file": "main.cpp",
+"values": {},
+"message": "execution reached the end of a value-returning function without returning a value"
+}
+],
+"stdout": "",
+"functions": {
+"sign": {
+"line": 3,
+"closeLine": 6,
+"params": [
+"x"
+],
+"vars": [
+"x"
+]
+},
+"main": {
+"line": 7,
+"closeLine": 10,
+"params": [],
+"vars": []
+}
+},
+"decls": {
+"sign": {
+"x": "int"
+},
+"main": {}
+},
+"classes": {},
+"nSteps": 4,
+"steps": [
+[
+0,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 4,
+"fn": "sign",
+"depth": 2,
+"frame": 2,
+"vars": {
+"x": 0
+}
+}
+],
+[
+2,
+{
+"line": 5,
+"fn": "sign",
+"depth": 2,
+"frame": 2,
+"vars": {
+"x": 0
+}
+}
+],
+[
+3,
+{
+"line": 6,
+"fn": "sign",
+"depth": 2,
+"frame": 2,
+"vars": {
+"x": 0
+}
+}
+]
+]
+},
+"inf_recursion": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint f(int n) {\n  return f(n - 1) + 1;\n}\nint main() {\n  cout << f(3) << endl;\n  return 0;\n}",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "stack-overflow",
+"code": null,
+"message": "host call stack exhausted (recursion too deep)"
+},
+"runtimeErrors": [],
+"stdout": "",
+"functions": {
+"f": {
+"line": 3,
+"closeLine": 5,
+"params": [
+"n"
+],
+"vars": [
+"n"
+]
+},
+"main": {
+"line": 6,
+"closeLine": 9,
+"params": [],
+"vars": []
+}
+},
+"decls": {
+"f": {
+"n": "int"
+},
+"main": {}
+},
+"classes": {},
+"nSteps": 62128,
+"steps": [
+[
+0,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 4,
+"fn": "f",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 3
+}
+}
+],
+[
+2,
+{
+"line": 4,
+"fn": "f",
+"depth": 3,
+"frame": 3,
+"vars": {
+"n": 2
+}
+}
+],
+[
+3,
+{
+"line": 4,
+"fn": "f",
+"depth": 4,
+"frame": 4,
+"vars": {
+"n": 1
+}
+}
+],
+[
+4,
+{
+"line": 4,
+"fn": "f",
+"depth": 5,
+"frame": 5,
+"vars": {
+"n": 0
+}
+}
+],
+[
+5,
+{
+"line": 4,
+"fn": "f",
+"depth": 6,
+"frame": 6,
+"vars": {
+"n": -1
+}
+}
+],
+[
+6,
+{
+"line": 4,
+"fn": "f",
+"depth": 7,
+"frame": 7,
+"vars": {
+"n": -2
+}
+}
+],
+[
+7,
+{
+"line": 4,
+"fn": "f",
+"depth": 8,
+"frame": 8,
+"vars": {
+"n": -3
+}
+}
+],
+[
+8,
+{
+"line": 4,
+"fn": "f",
+"depth": 9,
+"frame": 9,
+"vars": {
+"n": -4
+}
+}
+],
+[
+9,
+{
+"line": 4,
+"fn": "f",
+"depth": 10,
+"frame": 10,
+"vars": {
+"n": -5
+}
+}
+],
+[
+10,
+{
+"line": 4,
+"fn": "f",
+"depth": 11,
+"frame": 11,
+"vars": {
+"n": -6
+}
+}
+],
+[
+11,
+{
+"line": 4,
+"fn": "f",
+"depth": 12,
+"frame": 12,
+"vars": {
+"n": -7
+}
+}
+],
+[
+12,
+{
+"line": 4,
+"fn": "f",
+"depth": 13,
+"frame": 13,
+"vars": {
+"n": -8
+}
+}
+],
+[
+13,
+{
+"line": 4,
+"fn": "f",
+"depth": 14,
+"frame": 14,
+"vars": {
+"n": -9
+}
+}
+],
+[
+14,
+{
+"line": 4,
+"fn": "f",
+"depth": 15,
+"frame": 15,
+"vars": {
+"n": -10
+}
+}
+],
+[
+15,
+{
+"line": 4,
+"fn": "f",
+"depth": 16,
+"frame": 16,
+"vars": {
+"n": -11
+}
+}
+],
+[
+16,
+{
+"line": 4,
+"fn": "f",
+"depth": 17,
+"frame": 17,
+"vars": {
+"n": -12
+}
+}
+],
+[
+17,
+{
+"line": 4,
+"fn": "f",
+"depth": 18,
+"frame": 18,
+"vars": {
+"n": -13
+}
+}
+],
+[
+18,
+{
+"line": 4,
+"fn": "f",
+"depth": 19,
+"frame": 19,
+"vars": {
+"n": -14
+}
+}
+],
+[
+19,
+{
+"line": 4,
+"fn": "f",
+"depth": 20,
+"frame": 20,
+"vars": {
+"n": -15
+}
+}
+],
+[
+20,
+{
+"line": 4,
+"fn": "f",
+"depth": 21,
+"frame": 21,
+"vars": {
+"n": -16
+}
+}
+],
+[
+21,
+{
+"line": 4,
+"fn": "f",
+"depth": 22,
+"frame": 22,
+"vars": {
+"n": -17
+}
+}
+],
+[
+22,
+{
+"line": 4,
+"fn": "f",
+"depth": 23,
+"frame": 23,
+"vars": {
+"n": -18
+}
+}
+],
+[
+23,
+{
+"line": 4,
+"fn": "f",
+"depth": 24,
+"frame": 24,
+"vars": {
+"n": -19
+}
+}
+],
+[
+24,
+{
+"line": 4,
+"fn": "f",
+"depth": 25,
+"frame": 25,
+"vars": {
+"n": -20
+}
+}
+],
+[
+25,
+{
+"line": 4,
+"fn": "f",
+"depth": 26,
+"frame": 26,
+"vars": {
+"n": -21
+}
+}
+],
+[
+26,
+{
+"line": 4,
+"fn": "f",
+"depth": 27,
+"frame": 27,
+"vars": {
+"n": -22
+}
+}
+],
+[
+27,
+{
+"line": 4,
+"fn": "f",
+"depth": 28,
+"frame": 28,
+"vars": {
+"n": -23
+}
+}
+],
+[
+28,
+{
+"line": 4,
+"fn": "f",
+"depth": 29,
+"frame": 29,
+"vars": {
+"n": -24
+}
+}
+],
+[
+29,
+{
+"line": 4,
+"fn": "f",
+"depth": 30,
+"frame": 30,
+"vars": {
+"n": -25
+}
+}
+],
+[
+30,
+{
+"line": 4,
+"fn": "f",
+"depth": 31,
+"frame": 31,
+"vars": {
+"n": -26
+}
+}
+],
+[
+31,
+{
+"line": 4,
+"fn": "f",
+"depth": 32,
+"frame": 32,
+"vars": {
+"n": -27
+}
+}
+],
+[
+32,
+{
+"line": 4,
+"fn": "f",
+"depth": 33,
+"frame": 33,
+"vars": {
+"n": -28
+}
+}
+],
+[
+33,
+{
+"line": 4,
+"fn": "f",
+"depth": 34,
+"frame": 34,
+"vars": {
+"n": -29
+}
+}
+],
+[
+34,
+{
+"line": 4,
+"fn": "f",
+"depth": 35,
+"frame": 35,
+"vars": {
+"n": -30
+}
+}
+],
+[
+35,
+{
+"line": 4,
+"fn": "f",
+"depth": 36,
+"frame": 36,
+"vars": {
+"n": -31
+}
+}
+],
+[
+36,
+{
+"line": 4,
+"fn": "f",
+"depth": 37,
+"frame": 37,
+"vars": {
+"n": -32
+}
+}
+],
+[
+37,
+{
+"line": 4,
+"fn": "f",
+"depth": 38,
+"frame": 38,
+"vars": {
+"n": -33
+}
+}
+],
+[
+38,
+{
+"line": 4,
+"fn": "f",
+"depth": 39,
+"frame": 39,
+"vars": {
+"n": -34
+}
+}
+],
+[
+39,
+{
+"line": 4,
+"fn": "f",
+"depth": 40,
+"frame": 40,
+"vars": {
+"n": -35
+}
+}
+],
+[
+40,
+{
+"line": 4,
+"fn": "f",
+"depth": 41,
+"frame": 41,
+"vars": {
+"n": -36
+}
+}
+],
+[
+41,
+{
+"line": 4,
+"fn": "f",
+"depth": 42,
+"frame": 42,
+"vars": {
+"n": -37
+}
+}
+],
+[
+42,
+{
+"line": 4,
+"fn": "f",
+"depth": 43,
+"frame": 43,
+"vars": {
+"n": -38
+}
+}
+],
+[
+43,
+{
+"line": 4,
+"fn": "f",
+"depth": 44,
+"frame": 44,
+"vars": {
+"n": -39
+}
+}
+],
+[
+44,
+{
+"line": 4,
+"fn": "f",
+"depth": 45,
+"frame": 45,
+"vars": {
+"n": -40
+}
+}
+],
+[
+45,
+{
+"line": 4,
+"fn": "f",
+"depth": 46,
+"frame": 46,
+"vars": {
+"n": -41
+}
+}
+],
+[
+46,
+{
+"line": 4,
+"fn": "f",
+"depth": 47,
+"frame": 47,
+"vars": {
+"n": -42
+}
+}
+],
+[
+47,
+{
+"line": 4,
+"fn": "f",
+"depth": 48,
+"frame": 48,
+"vars": {
+"n": -43
+}
+}
+],
+[
+48,
+{
+"line": 4,
+"fn": "f",
+"depth": 49,
+"frame": 49,
+"vars": {
+"n": -44
+}
+}
+],
+[
+49,
+{
+"line": 4,
+"fn": "f",
+"depth": 50,
+"frame": 50,
+"vars": {
+"n": -45
+}
+}
+],
+[
+50,
+{
+"line": 4,
+"fn": "f",
+"depth": 51,
+"frame": 51,
+"vars": {
+"n": -46
+}
+}
+],
+[
+51,
+{
+"line": 4,
+"fn": "f",
+"depth": 52,
+"frame": 52,
+"vars": {
+"n": -47
+}
+}
+],
+[
+52,
+{
+"line": 4,
+"fn": "f",
+"depth": 53,
+"frame": 53,
+"vars": {
+"n": -48
+}
+}
+],
+[
+53,
+{
+"line": 4,
+"fn": "f",
+"depth": 54,
+"frame": 54,
+"vars": {
+"n": -49
+}
+}
+],
+[
+54,
+{
+"line": 4,
+"fn": "f",
+"depth": 55,
+"frame": 55,
+"vars": {
+"n": -50
+}
+}
+],
+[
+55,
+{
+"line": 4,
+"fn": "f",
+"depth": 56,
+"frame": 56,
+"vars": {
+"n": -51
+}
+}
+],
+[
+56,
+{
+"line": 4,
+"fn": "f",
+"depth": 57,
+"frame": 57,
+"vars": {
+"n": -52
+}
+}
+],
+[
+57,
+{
+"line": 4,
+"fn": "f",
+"depth": 58,
+"frame": 58,
+"vars": {
+"n": -53
+}
+}
+],
+[
+58,
+{
+"line": 4,
+"fn": "f",
+"depth": 59,
+"frame": 59,
+"vars": {
+"n": -54
+}
+}
+],
+[
+59,
+{
+"line": 4,
+"fn": "f",
+"depth": 60,
+"frame": 60,
+"vars": {
+"n": -55
+}
+}
+],
+[
+62068,
+{
+"line": 4,
+"fn": "f",
+"depth": 62069,
+"frame": 62069,
+"vars": {
+"n": -62064
+}
+}
+],
+[
+62069,
+{
+"line": 4,
+"fn": "f",
+"depth": 62070,
+"frame": 62070,
+"vars": {
+"n": -62065
+}
+}
+],
+[
+62070,
+{
+"line": 4,
+"fn": "f",
+"depth": 62071,
+"frame": 62071,
+"vars": {
+"n": -62066
+}
+}
+],
+[
+62071,
+{
+"line": 4,
+"fn": "f",
+"depth": 62072,
+"frame": 62072,
+"vars": {
+"n": -62067
+}
+}
+],
+[
+62072,
+{
+"line": 4,
+"fn": "f",
+"depth": 62073,
+"frame": 62073,
+"vars": {
+"n": -62068
+}
+}
+],
+[
+62073,
+{
+"line": 4,
+"fn": "f",
+"depth": 62074,
+"frame": 62074,
+"vars": {
+"n": -62069
+}
+}
+],
+[
+62074,
+{
+"line": 4,
+"fn": "f",
+"depth": 62075,
+"frame": 62075,
+"vars": {
+"n": -62070
+}
+}
+],
+[
+62075,
+{
+"line": 4,
+"fn": "f",
+"depth": 62076,
+"frame": 62076,
+"vars": {
+"n": -62071
+}
+}
+],
+[
+62076,
+{
+"line": 4,
+"fn": "f",
+"depth": 62077,
+"frame": 62077,
+"vars": {
+"n": -62072
+}
+}
+],
+[
+62077,
+{
+"line": 4,
+"fn": "f",
+"depth": 62078,
+"frame": 62078,
+"vars": {
+"n": -62073
+}
+}
+],
+[
+62078,
+{
+"line": 4,
+"fn": "f",
+"depth": 62079,
+"frame": 62079,
+"vars": {
+"n": -62074
+}
+}
+],
+[
+62079,
+{
+"line": 4,
+"fn": "f",
+"depth": 62080,
+"frame": 62080,
+"vars": {
+"n": -62075
+}
+}
+],
+[
+62080,
+{
+"line": 4,
+"fn": "f",
+"depth": 62081,
+"frame": 62081,
+"vars": {
+"n": -62076
+}
+}
+],
+[
+62081,
+{
+"line": 4,
+"fn": "f",
+"depth": 62082,
+"frame": 62082,
+"vars": {
+"n": -62077
+}
+}
+],
+[
+62082,
+{
+"line": 4,
+"fn": "f",
+"depth": 62083,
+"frame": 62083,
+"vars": {
+"n": -62078
+}
+}
+],
+[
+62083,
+{
+"line": 4,
+"fn": "f",
+"depth": 62084,
+"frame": 62084,
+"vars": {
+"n": -62079
+}
+}
+],
+[
+62084,
+{
+"line": 4,
+"fn": "f",
+"depth": 62085,
+"frame": 62085,
+"vars": {
+"n": -62080
+}
+}
+],
+[
+62085,
+{
+"line": 4,
+"fn": "f",
+"depth": 62086,
+"frame": 62086,
+"vars": {
+"n": -62081
+}
+}
+],
+[
+62086,
+{
+"line": 4,
+"fn": "f",
+"depth": 62087,
+"frame": 62087,
+"vars": {
+"n": -62082
+}
+}
+],
+[
+62087,
+{
+"line": 4,
+"fn": "f",
+"depth": 62088,
+"frame": 62088,
+"vars": {
+"n": -62083
+}
+}
+],
+[
+62088,
+{
+"line": 4,
+"fn": "f",
+"depth": 62089,
+"frame": 62089,
+"vars": {
+"n": -62084
+}
+}
+],
+[
+62089,
+{
+"line": 4,
+"fn": "f",
+"depth": 62090,
+"frame": 62090,
+"vars": {
+"n": -62085
+}
+}
+],
+[
+62090,
+{
+"line": 4,
+"fn": "f",
+"depth": 62091,
+"frame": 62091,
+"vars": {
+"n": -62086
+}
+}
+],
+[
+62091,
+{
+"line": 4,
+"fn": "f",
+"depth": 62092,
+"frame": 62092,
+"vars": {
+"n": -62087
+}
+}
+],
+[
+62092,
+{
+"line": 4,
+"fn": "f",
+"depth": 62093,
+"frame": 62093,
+"vars": {
+"n": -62088
+}
+}
+],
+[
+62093,
+{
+"line": 4,
+"fn": "f",
+"depth": 62094,
+"frame": 62094,
+"vars": {
+"n": -62089
+}
+}
+],
+[
+62094,
+{
+"line": 4,
+"fn": "f",
+"depth": 62095,
+"frame": 62095,
+"vars": {
+"n": -62090
+}
+}
+],
+[
+62095,
+{
+"line": 4,
+"fn": "f",
+"depth": 62096,
+"frame": 62096,
+"vars": {
+"n": -62091
+}
+}
+],
+[
+62096,
+{
+"line": 4,
+"fn": "f",
+"depth": 62097,
+"frame": 62097,
+"vars": {
+"n": -62092
+}
+}
+],
+[
+62097,
+{
+"line": 4,
+"fn": "f",
+"depth": 62098,
+"frame": 62098,
+"vars": {
+"n": -62093
+}
+}
+],
+[
+62098,
+{
+"line": 4,
+"fn": "f",
+"depth": 62099,
+"frame": 62099,
+"vars": {
+"n": -62094
+}
+}
+],
+[
+62099,
+{
+"line": 4,
+"fn": "f",
+"depth": 62100,
+"frame": 62100,
+"vars": {
+"n": -62095
+}
+}
+],
+[
+62100,
+{
+"line": 4,
+"fn": "f",
+"depth": 62101,
+"frame": 62101,
+"vars": {
+"n": -62096
+}
+}
+],
+[
+62101,
+{
+"line": 4,
+"fn": "f",
+"depth": 62102,
+"frame": 62102,
+"vars": {
+"n": -62097
+}
+}
+],
+[
+62102,
+{
+"line": 4,
+"fn": "f",
+"depth": 62103,
+"frame": 62103,
+"vars": {
+"n": -62098
+}
+}
+],
+[
+62103,
+{
+"line": 4,
+"fn": "f",
+"depth": 62104,
+"frame": 62104,
+"vars": {
+"n": -62099
+}
+}
+],
+[
+62104,
+{
+"line": 4,
+"fn": "f",
+"depth": 62105,
+"frame": 62105,
+"vars": {
+"n": -62100
+}
+}
+],
+[
+62105,
+{
+"line": 4,
+"fn": "f",
+"depth": 62106,
+"frame": 62106,
+"vars": {
+"n": -62101
+}
+}
+],
+[
+62106,
+{
+"line": 4,
+"fn": "f",
+"depth": 62107,
+"frame": 62107,
+"vars": {
+"n": -62102
+}
+}
+],
+[
+62107,
+{
+"line": 4,
+"fn": "f",
+"depth": 62108,
+"frame": 62108,
+"vars": {
+"n": -62103
+}
+}
+],
+[
+62108,
+{
+"line": 4,
+"fn": "f",
+"depth": 62109,
+"frame": 62109,
+"vars": {
+"n": -62104
+}
+}
+],
+[
+62109,
+{
+"line": 4,
+"fn": "f",
+"depth": 62110,
+"frame": 62110,
+"vars": {
+"n": -62105
+}
+}
+],
+[
+62110,
+{
+"line": 4,
+"fn": "f",
+"depth": 62111,
+"frame": 62111,
+"vars": {
+"n": -62106
+}
+}
+],
+[
+62111,
+{
+"line": 4,
+"fn": "f",
+"depth": 62112,
+"frame": 62112,
+"vars": {
+"n": -62107
+}
+}
+],
+[
+62112,
+{
+"line": 4,
+"fn": "f",
+"depth": 62113,
+"frame": 62113,
+"vars": {
+"n": -62108
+}
+}
+],
+[
+62113,
+{
+"line": 4,
+"fn": "f",
+"depth": 62114,
+"frame": 62114,
+"vars": {
+"n": -62109
+}
+}
+],
+[
+62114,
+{
+"line": 4,
+"fn": "f",
+"depth": 62115,
+"frame": 62115,
+"vars": {
+"n": -62110
+}
+}
+],
+[
+62115,
+{
+"line": 4,
+"fn": "f",
+"depth": 62116,
+"frame": 62116,
+"vars": {
+"n": -62111
+}
+}
+],
+[
+62116,
+{
+"line": 4,
+"fn": "f",
+"depth": 62117,
+"frame": 62117,
+"vars": {
+"n": -62112
+}
+}
+],
+[
+62117,
+{
+"line": 4,
+"fn": "f",
+"depth": 62118,
+"frame": 62118,
+"vars": {
+"n": -62113
+}
+}
+],
+[
+62118,
+{
+"line": 4,
+"fn": "f",
+"depth": 62119,
+"frame": 62119,
+"vars": {
+"n": -62114
+}
+}
+],
+[
+62119,
+{
+"line": 4,
+"fn": "f",
+"depth": 62120,
+"frame": 62120,
+"vars": {
+"n": -62115
+}
+}
+],
+[
+62120,
+{
+"line": 4,
+"fn": "f",
+"depth": 62121,
+"frame": 62121,
+"vars": {
+"n": -62116
+}
+}
+],
+[
+62121,
+{
+"line": 4,
+"fn": "f",
+"depth": 62122,
+"frame": 62122,
+"vars": {
+"n": -62117
+}
+}
+],
+[
+62122,
+{
+"line": 4,
+"fn": "f",
+"depth": 62123,
+"frame": 62123,
+"vars": {
+"n": -62118
+}
+}
+],
+[
+62123,
+{
+"line": 4,
+"fn": "f",
+"depth": 62124,
+"frame": 62124,
+"vars": {
+"n": -62119
+}
+}
+],
+[
+62124,
+{
+"line": 4,
+"fn": "f",
+"depth": 62125,
+"frame": 62125,
+"vars": {
+"n": -62120
+}
+}
+],
+[
+62125,
+{
+"line": 4,
+"fn": "f",
+"depth": 62126,
+"frame": 62126,
+"vars": {
+"n": -62121
+}
+}
+],
+[
+62126,
+{
+"line": 4,
+"fn": "f",
+"depth": 62127,
+"frame": 62127,
+"vars": {
+"n": -62122
+}
+}
+],
+[
+62127,
+{
+"line": 4,
+"fn": "f",
+"depth": 62128,
+"frame": 62128,
+"vars": {
+"n": -62123
+}
+}
+]
+]
+},
+"deep_recursion": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint f(int n) {\n  if (n == 0) return 0;\n  return f(n - 1) + 1;\n}\nint main() {\n  int n;\n  cin >> n;\n  cout << f(n) << endl;\n  return 0;\n}",
+"stdin": "5000",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [],
+"stdout": "5000\n",
+"functions": {
+"f": {
+"line": 3,
+"closeLine": 6,
+"params": [
+"n"
+],
+"vars": [
+"n"
+]
+},
+"main": {
+"line": 7,
+"closeLine": 12,
+"params": [],
+"vars": [
+"n"
+]
+}
+},
+"decls": {
+"f": {
+"n": "int"
+},
+"main": {
+"n": "int"
+}
+},
+"classes": {},
+"nSteps": 15006,
+"steps": [
+[
+0,
+{
+"line": 9,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"n": 0
+},
+"uninit": [
+"n"
+]
+}
+],
+[
+1,
+{
+"line": 10,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"n": 5000
+}
+}
+],
+[
+2,
+{
+"line": 4,
+"fn": "f",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 5000
+}
+}
+],
+[
+3,
+{
+"line": 5,
+"fn": "f",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 5000
+}
+}
+],
+[
+4,
+{
+"line": 4,
+"fn": "f",
+"depth": 3,
+"frame": 3,
+"vars": {
+"n": 4999
+}
+}
+],
+[
+5,
+{
+"line": 5,
+"fn": "f",
+"depth": 3,
+"frame": 3,
+"vars": {
+"n": 4999
+}
+}
+],
+[
+6,
+{
+"line": 4,
+"fn": "f",
+"depth": 4,
+"frame": 4,
+"vars": {
+"n": 4998
+}
+}
+],
+[
+7,
+{
+"line": 5,
+"fn": "f",
+"depth": 4,
+"frame": 4,
+"vars": {
+"n": 4998
+}
+}
+],
+[
+8,
+{
+"line": 4,
+"fn": "f",
+"depth": 5,
+"frame": 5,
+"vars": {
+"n": 4997
+}
+}
+],
+[
+9,
+{
+"line": 5,
+"fn": "f",
+"depth": 5,
+"frame": 5,
+"vars": {
+"n": 4997
+}
+}
+],
+[
+10,
+{
+"line": 4,
+"fn": "f",
+"depth": 6,
+"frame": 6,
+"vars": {
+"n": 4996
+}
+}
+],
+[
+11,
+{
+"line": 5,
+"fn": "f",
+"depth": 6,
+"frame": 6,
+"vars": {
+"n": 4996
+}
+}
+],
+[
+12,
+{
+"line": 4,
+"fn": "f",
+"depth": 7,
+"frame": 7,
+"vars": {
+"n": 4995
+}
+}
+],
+[
+13,
+{
+"line": 5,
+"fn": "f",
+"depth": 7,
+"frame": 7,
+"vars": {
+"n": 4995
+}
+}
+],
+[
+14,
+{
+"line": 4,
+"fn": "f",
+"depth": 8,
+"frame": 8,
+"vars": {
+"n": 4994
+}
+}
+],
+[
+15,
+{
+"line": 5,
+"fn": "f",
+"depth": 8,
+"frame": 8,
+"vars": {
+"n": 4994
+}
+}
+],
+[
+16,
+{
+"line": 4,
+"fn": "f",
+"depth": 9,
+"frame": 9,
+"vars": {
+"n": 4993
+}
+}
+],
+[
+17,
+{
+"line": 5,
+"fn": "f",
+"depth": 9,
+"frame": 9,
+"vars": {
+"n": 4993
+}
+}
+],
+[
+18,
+{
+"line": 4,
+"fn": "f",
+"depth": 10,
+"frame": 10,
+"vars": {
+"n": 4992
+}
+}
+],
+[
+19,
+{
+"line": 5,
+"fn": "f",
+"depth": 10,
+"frame": 10,
+"vars": {
+"n": 4992
+}
+}
+],
+[
+20,
+{
+"line": 4,
+"fn": "f",
+"depth": 11,
+"frame": 11,
+"vars": {
+"n": 4991
+}
+}
+],
+[
+21,
+{
+"line": 5,
+"fn": "f",
+"depth": 11,
+"frame": 11,
+"vars": {
+"n": 4991
+}
+}
+],
+[
+22,
+{
+"line": 4,
+"fn": "f",
+"depth": 12,
+"frame": 12,
+"vars": {
+"n": 4990
+}
+}
+],
+[
+23,
+{
+"line": 5,
+"fn": "f",
+"depth": 12,
+"frame": 12,
+"vars": {
+"n": 4990
+}
+}
+],
+[
+24,
+{
+"line": 4,
+"fn": "f",
+"depth": 13,
+"frame": 13,
+"vars": {
+"n": 4989
+}
+}
+],
+[
+25,
+{
+"line": 5,
+"fn": "f",
+"depth": 13,
+"frame": 13,
+"vars": {
+"n": 4989
+}
+}
+],
+[
+26,
+{
+"line": 4,
+"fn": "f",
+"depth": 14,
+"frame": 14,
+"vars": {
+"n": 4988
+}
+}
+],
+[
+27,
+{
+"line": 5,
+"fn": "f",
+"depth": 14,
+"frame": 14,
+"vars": {
+"n": 4988
+}
+}
+],
+[
+28,
+{
+"line": 4,
+"fn": "f",
+"depth": 15,
+"frame": 15,
+"vars": {
+"n": 4987
+}
+}
+],
+[
+29,
+{
+"line": 5,
+"fn": "f",
+"depth": 15,
+"frame": 15,
+"vars": {
+"n": 4987
+}
+}
+],
+[
+30,
+{
+"line": 4,
+"fn": "f",
+"depth": 16,
+"frame": 16,
+"vars": {
+"n": 4986
+}
+}
+],
+[
+31,
+{
+"line": 5,
+"fn": "f",
+"depth": 16,
+"frame": 16,
+"vars": {
+"n": 4986
+}
+}
+],
+[
+32,
+{
+"line": 4,
+"fn": "f",
+"depth": 17,
+"frame": 17,
+"vars": {
+"n": 4985
+}
+}
+],
+[
+33,
+{
+"line": 5,
+"fn": "f",
+"depth": 17,
+"frame": 17,
+"vars": {
+"n": 4985
+}
+}
+],
+[
+34,
+{
+"line": 4,
+"fn": "f",
+"depth": 18,
+"frame": 18,
+"vars": {
+"n": 4984
+}
+}
+],
+[
+35,
+{
+"line": 5,
+"fn": "f",
+"depth": 18,
+"frame": 18,
+"vars": {
+"n": 4984
+}
+}
+],
+[
+36,
+{
+"line": 4,
+"fn": "f",
+"depth": 19,
+"frame": 19,
+"vars": {
+"n": 4983
+}
+}
+],
+[
+37,
+{
+"line": 5,
+"fn": "f",
+"depth": 19,
+"frame": 19,
+"vars": {
+"n": 4983
+}
+}
+],
+[
+38,
+{
+"line": 4,
+"fn": "f",
+"depth": 20,
+"frame": 20,
+"vars": {
+"n": 4982
+}
+}
+],
+[
+39,
+{
+"line": 5,
+"fn": "f",
+"depth": 20,
+"frame": 20,
+"vars": {
+"n": 4982
+}
+}
+],
+[
+40,
+{
+"line": 4,
+"fn": "f",
+"depth": 21,
+"frame": 21,
+"vars": {
+"n": 4981
+}
+}
+],
+[
+41,
+{
+"line": 5,
+"fn": "f",
+"depth": 21,
+"frame": 21,
+"vars": {
+"n": 4981
+}
+}
+],
+[
+42,
+{
+"line": 4,
+"fn": "f",
+"depth": 22,
+"frame": 22,
+"vars": {
+"n": 4980
+}
+}
+],
+[
+43,
+{
+"line": 5,
+"fn": "f",
+"depth": 22,
+"frame": 22,
+"vars": {
+"n": 4980
+}
+}
+],
+[
+44,
+{
+"line": 4,
+"fn": "f",
+"depth": 23,
+"frame": 23,
+"vars": {
+"n": 4979
+}
+}
+],
+[
+45,
+{
+"line": 5,
+"fn": "f",
+"depth": 23,
+"frame": 23,
+"vars": {
+"n": 4979
+}
+}
+],
+[
+46,
+{
+"line": 4,
+"fn": "f",
+"depth": 24,
+"frame": 24,
+"vars": {
+"n": 4978
+}
+}
+],
+[
+47,
+{
+"line": 5,
+"fn": "f",
+"depth": 24,
+"frame": 24,
+"vars": {
+"n": 4978
+}
+}
+],
+[
+48,
+{
+"line": 4,
+"fn": "f",
+"depth": 25,
+"frame": 25,
+"vars": {
+"n": 4977
+}
+}
+],
+[
+49,
+{
+"line": 5,
+"fn": "f",
+"depth": 25,
+"frame": 25,
+"vars": {
+"n": 4977
+}
+}
+],
+[
+50,
+{
+"line": 4,
+"fn": "f",
+"depth": 26,
+"frame": 26,
+"vars": {
+"n": 4976
+}
+}
+],
+[
+51,
+{
+"line": 5,
+"fn": "f",
+"depth": 26,
+"frame": 26,
+"vars": {
+"n": 4976
+}
+}
+],
+[
+52,
+{
+"line": 4,
+"fn": "f",
+"depth": 27,
+"frame": 27,
+"vars": {
+"n": 4975
+}
+}
+],
+[
+53,
+{
+"line": 5,
+"fn": "f",
+"depth": 27,
+"frame": 27,
+"vars": {
+"n": 4975
+}
+}
+],
+[
+54,
+{
+"line": 4,
+"fn": "f",
+"depth": 28,
+"frame": 28,
+"vars": {
+"n": 4974
+}
+}
+],
+[
+55,
+{
+"line": 5,
+"fn": "f",
+"depth": 28,
+"frame": 28,
+"vars": {
+"n": 4974
+}
+}
+],
+[
+56,
+{
+"line": 4,
+"fn": "f",
+"depth": 29,
+"frame": 29,
+"vars": {
+"n": 4973
+}
+}
+],
+[
+57,
+{
+"line": 5,
+"fn": "f",
+"depth": 29,
+"frame": 29,
+"vars": {
+"n": 4973
+}
+}
+],
+[
+58,
+{
+"line": 4,
+"fn": "f",
+"depth": 30,
+"frame": 30,
+"vars": {
+"n": 4972
+}
+}
+],
+[
+59,
+{
+"line": 5,
+"fn": "f",
+"depth": 30,
+"frame": 30,
+"vars": {
+"n": 4972
+}
+}
+],
+[
+14946,
+{
+"line": 6,
+"fn": "f",
+"depth": 59,
+"frame": 59,
+"vars": {
+"n": 4943
+}
+}
+],
+[
+14947,
+{
+"line": 6,
+"fn": "f",
+"depth": 58,
+"frame": 58,
+"vars": {
+"n": 4944
+}
+}
+],
+[
+14948,
+{
+"line": 6,
+"fn": "f",
+"depth": 57,
+"frame": 57,
+"vars": {
+"n": 4945
+}
+}
+],
+[
+14949,
+{
+"line": 6,
+"fn": "f",
+"depth": 56,
+"frame": 56,
+"vars": {
+"n": 4946
+}
+}
+],
+[
+14950,
+{
+"line": 6,
+"fn": "f",
+"depth": 55,
+"frame": 55,
+"vars": {
+"n": 4947
+}
+}
+],
+[
+14951,
+{
+"line": 6,
+"fn": "f",
+"depth": 54,
+"frame": 54,
+"vars": {
+"n": 4948
+}
+}
+],
+[
+14952,
+{
+"line": 6,
+"fn": "f",
+"depth": 53,
+"frame": 53,
+"vars": {
+"n": 4949
+}
+}
+],
+[
+14953,
+{
+"line": 6,
+"fn": "f",
+"depth": 52,
+"frame": 52,
+"vars": {
+"n": 4950
+}
+}
+],
+[
+14954,
+{
+"line": 6,
+"fn": "f",
+"depth": 51,
+"frame": 51,
+"vars": {
+"n": 4951
+}
+}
+],
+[
+14955,
+{
+"line": 6,
+"fn": "f",
+"depth": 50,
+"frame": 50,
+"vars": {
+"n": 4952
+}
+}
+],
+[
+14956,
+{
+"line": 6,
+"fn": "f",
+"depth": 49,
+"frame": 49,
+"vars": {
+"n": 4953
+}
+}
+],
+[
+14957,
+{
+"line": 6,
+"fn": "f",
+"depth": 48,
+"frame": 48,
+"vars": {
+"n": 4954
+}
+}
+],
+[
+14958,
+{
+"line": 6,
+"fn": "f",
+"depth": 47,
+"frame": 47,
+"vars": {
+"n": 4955
+}
+}
+],
+[
+14959,
+{
+"line": 6,
+"fn": "f",
+"depth": 46,
+"frame": 46,
+"vars": {
+"n": 4956
+}
+}
+],
+[
+14960,
+{
+"line": 6,
+"fn": "f",
+"depth": 45,
+"frame": 45,
+"vars": {
+"n": 4957
+}
+}
+],
+[
+14961,
+{
+"line": 6,
+"fn": "f",
+"depth": 44,
+"frame": 44,
+"vars": {
+"n": 4958
+}
+}
+],
+[
+14962,
+{
+"line": 6,
+"fn": "f",
+"depth": 43,
+"frame": 43,
+"vars": {
+"n": 4959
+}
+}
+],
+[
+14963,
+{
+"line": 6,
+"fn": "f",
+"depth": 42,
+"frame": 42,
+"vars": {
+"n": 4960
+}
+}
+],
+[
+14964,
+{
+"line": 6,
+"fn": "f",
+"depth": 41,
+"frame": 41,
+"vars": {
+"n": 4961
+}
+}
+],
+[
+14965,
+{
+"line": 6,
+"fn": "f",
+"depth": 40,
+"frame": 40,
+"vars": {
+"n": 4962
+}
+}
+],
+[
+14966,
+{
+"line": 6,
+"fn": "f",
+"depth": 39,
+"frame": 39,
+"vars": {
+"n": 4963
+}
+}
+],
+[
+14967,
+{
+"line": 6,
+"fn": "f",
+"depth": 38,
+"frame": 38,
+"vars": {
+"n": 4964
+}
+}
+],
+[
+14968,
+{
+"line": 6,
+"fn": "f",
+"depth": 37,
+"frame": 37,
+"vars": {
+"n": 4965
+}
+}
+],
+[
+14969,
+{
+"line": 6,
+"fn": "f",
+"depth": 36,
+"frame": 36,
+"vars": {
+"n": 4966
+}
+}
+],
+[
+14970,
+{
+"line": 6,
+"fn": "f",
+"depth": 35,
+"frame": 35,
+"vars": {
+"n": 4967
+}
+}
+],
+[
+14971,
+{
+"line": 6,
+"fn": "f",
+"depth": 34,
+"frame": 34,
+"vars": {
+"n": 4968
+}
+}
+],
+[
+14972,
+{
+"line": 6,
+"fn": "f",
+"depth": 33,
+"frame": 33,
+"vars": {
+"n": 4969
+}
+}
+],
+[
+14973,
+{
+"line": 6,
+"fn": "f",
+"depth": 32,
+"frame": 32,
+"vars": {
+"n": 4970
+}
+}
+],
+[
+14974,
+{
+"line": 6,
+"fn": "f",
+"depth": 31,
+"frame": 31,
+"vars": {
+"n": 4971
+}
+}
+],
+[
+14975,
+{
+"line": 6,
+"fn": "f",
+"depth": 30,
+"frame": 30,
+"vars": {
+"n": 4972
+}
+}
+],
+[
+14976,
+{
+"line": 6,
+"fn": "f",
+"depth": 29,
+"frame": 29,
+"vars": {
+"n": 4973
+}
+}
+],
+[
+14977,
+{
+"line": 6,
+"fn": "f",
+"depth": 28,
+"frame": 28,
+"vars": {
+"n": 4974
+}
+}
+],
+[
+14978,
+{
+"line": 6,
+"fn": "f",
+"depth": 27,
+"frame": 27,
+"vars": {
+"n": 4975
+}
+}
+],
+[
+14979,
+{
+"line": 6,
+"fn": "f",
+"depth": 26,
+"frame": 26,
+"vars": {
+"n": 4976
+}
+}
+],
+[
+14980,
+{
+"line": 6,
+"fn": "f",
+"depth": 25,
+"frame": 25,
+"vars": {
+"n": 4977
+}
+}
+],
+[
+14981,
+{
+"line": 6,
+"fn": "f",
+"depth": 24,
+"frame": 24,
+"vars": {
+"n": 4978
+}
+}
+],
+[
+14982,
+{
+"line": 6,
+"fn": "f",
+"depth": 23,
+"frame": 23,
+"vars": {
+"n": 4979
+}
+}
+],
+[
+14983,
+{
+"line": 6,
+"fn": "f",
+"depth": 22,
+"frame": 22,
+"vars": {
+"n": 4980
+}
+}
+],
+[
+14984,
+{
+"line": 6,
+"fn": "f",
+"depth": 21,
+"frame": 21,
+"vars": {
+"n": 4981
+}
+}
+],
+[
+14985,
+{
+"line": 6,
+"fn": "f",
+"depth": 20,
+"frame": 20,
+"vars": {
+"n": 4982
+}
+}
+],
+[
+14986,
+{
+"line": 6,
+"fn": "f",
+"depth": 19,
+"frame": 19,
+"vars": {
+"n": 4983
+}
+}
+],
+[
+14987,
+{
+"line": 6,
+"fn": "f",
+"depth": 18,
+"frame": 18,
+"vars": {
+"n": 4984
+}
+}
+],
+[
+14988,
+{
+"line": 6,
+"fn": "f",
+"depth": 17,
+"frame": 17,
+"vars": {
+"n": 4985
+}
+}
+],
+[
+14989,
+{
+"line": 6,
+"fn": "f",
+"depth": 16,
+"frame": 16,
+"vars": {
+"n": 4986
+}
+}
+],
+[
+14990,
+{
+"line": 6,
+"fn": "f",
+"depth": 15,
+"frame": 15,
+"vars": {
+"n": 4987
+}
+}
+],
+[
+14991,
+{
+"line": 6,
+"fn": "f",
+"depth": 14,
+"frame": 14,
+"vars": {
+"n": 4988
+}
+}
+],
+[
+14992,
+{
+"line": 6,
+"fn": "f",
+"depth": 13,
+"frame": 13,
+"vars": {
+"n": 4989
+}
+}
+],
+[
+14993,
+{
+"line": 6,
+"fn": "f",
+"depth": 12,
+"frame": 12,
+"vars": {
+"n": 4990
+}
+}
+],
+[
+14994,
+{
+"line": 6,
+"fn": "f",
+"depth": 11,
+"frame": 11,
+"vars": {
+"n": 4991
+}
+}
+],
+[
+14995,
+{
+"line": 6,
+"fn": "f",
+"depth": 10,
+"frame": 10,
+"vars": {
+"n": 4992
+}
+}
+],
+[
+14996,
+{
+"line": 6,
+"fn": "f",
+"depth": 9,
+"frame": 9,
+"vars": {
+"n": 4993
+}
+}
+],
+[
+14997,
+{
+"line": 6,
+"fn": "f",
+"depth": 8,
+"frame": 8,
+"vars": {
+"n": 4994
+}
+}
+],
+[
+14998,
+{
+"line": 6,
+"fn": "f",
+"depth": 7,
+"frame": 7,
+"vars": {
+"n": 4995
+}
+}
+],
+[
+14999,
+{
+"line": 6,
+"fn": "f",
+"depth": 6,
+"frame": 6,
+"vars": {
+"n": 4996
+}
+}
+],
+[
+15000,
+{
+"line": 6,
+"fn": "f",
+"depth": 5,
+"frame": 5,
+"vars": {
+"n": 4997
+}
+}
+],
+[
+15001,
+{
+"line": 6,
+"fn": "f",
+"depth": 4,
+"frame": 4,
+"vars": {
+"n": 4998
+}
+}
+],
+[
+15002,
+{
+"line": 6,
+"fn": "f",
+"depth": 3,
+"frame": 3,
+"vars": {
+"n": 4999
+}
+}
+],
+[
+15003,
+{
+"line": 6,
+"fn": "f",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 5000
+}
+}
+],
+[
+15004,
+{
+"line": 11,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"n": 5000
+}
+}
+],
+[
+15005,
+{
+"line": 12,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"n": 5000
+}
+}
+]
+]
+},
+"shift_big": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int s;\n  cin >> s;\n  cout << (1 << s) << endl;\n  return 0;\n}",
+"stdin": "33",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "shift",
+"fatal": false,
+"step": 1,
+"line": 6,
+"col": 14,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"lhs": 1,
+"rhs": 33,
+"type": "int",
+"bits": 32
+},
+"message": "shift exponent 33 is too large for 32-bit type 'int'"
+}
+],
+"stdout": "2\n",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"s"
+]
+}
+},
+"decls": {
+"main": {
+"s": "int"
+}
+},
+"classes": {},
+"nSteps": 4,
+"steps": [
+[
+0,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"s": 0
+},
+"uninit": [
+"s"
+]
+}
+],
+[
+1,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"s": 33
+}
+}
+],
+[
+2,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"s": 33
+}
+}
+],
+[
+3,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"s": 33
+}
+}
+]
+]
+},
+"ex_err_int_overflow": {
+"src": "// 錯誤教案 #1：整數溢位\n// BUG：int 只能表示到 2147483647（INT_MAX），13! = 6227020800 超出範圍，溢位後數字變成怪值。\n// 學生常見想法：「階乘就是一直乘，結果一定是正的」。\n// 修正：改用 long long（或 unsigned long long，但 unsigned 不會變負，仍會繞回）。\n#include <iostream>\n\nint factorial(int n) {\n    int result = 1;\n    for (int i = 2; i <= n; i++) {\n        result = result * i;   // 溢位發生在這一行\n    }\n    return result;\n}\n\nint main() {\n    std::cout << \"10! = \" << factorial(10) << std::endl;   // 正確：3628800\n    std::cout << \"13! = \" << factorial(13) << std::endl;   // 錯誤：應為 6227020800，實際溢位\n    return 0;\n}\n",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "signed-overflow",
+"fatal": false,
+"step": 48,
+"line": 10,
+"col": 25,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"op": "*",
+"lhs": 479001600,
+"rhs": 13,
+"type": "int"
+},
+"message": "signed integer overflow: 479001600 * 13 cannot be represented in type 'int'"
+}
+],
+"stdout": "10! = 3628800\n13! = 1932053504\n",
+"functions": {
+"factorial": {
+"line": 7,
+"closeLine": 13,
+"params": [
+"n"
+],
+"vars": [
+"n",
+"result",
+"i"
+]
+},
+"main": {
+"line": 15,
+"closeLine": 19,
+"params": [],
+"vars": []
+}
+},
+"decls": {
+"factorial": {
+"n": "int",
+"result": "int",
+"i": "int"
+},
+"main": {}
+},
+"classes": {},
+"nSteps": 54,
+"steps": [
+[
+0,
+{
+"line": 16,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 8,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10
+}
+}
+],
+[
+2,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 1
+}
+}
+],
+[
+3,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 1,
+"i": 2
+}
+}
+],
+[
+4,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 2,
+"i": 2
+}
+}
+],
+[
+5,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 2,
+"i": 3
+}
+}
+],
+[
+6,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 6,
+"i": 3
+}
+}
+],
+[
+7,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 6,
+"i": 4
+}
+}
+],
+[
+8,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 24,
+"i": 4
+}
+}
+],
+[
+9,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 24,
+"i": 5
+}
+}
+],
+[
+10,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 120,
+"i": 5
+}
+}
+],
+[
+11,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 120,
+"i": 6
+}
+}
+],
+[
+12,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 720,
+"i": 6
+}
+}
+],
+[
+13,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 720,
+"i": 7
+}
+}
+],
+[
+14,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 5040,
+"i": 7
+}
+}
+],
+[
+15,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 5040,
+"i": 8
+}
+}
+],
+[
+16,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 40320,
+"i": 8
+}
+}
+],
+[
+17,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 40320,
+"i": 9
+}
+}
+],
+[
+18,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 362880,
+"i": 9
+}
+}
+],
+[
+19,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 362880,
+"i": 10
+}
+}
+],
+[
+20,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 3628800,
+"i": 10
+}
+}
+],
+[
+21,
+{
+"line": 12,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 3628800
+}
+}
+],
+[
+22,
+{
+"line": 13,
+"fn": "factorial",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 10,
+"result": 3628800
+}
+}
+],
+[
+23,
+{
+"line": 17,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+24,
+{
+"line": 8,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13
+}
+}
+],
+[
+25,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 1
+}
+}
+],
+[
+26,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 1,
+"i": 2
+}
+}
+],
+[
+27,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 2,
+"i": 2
+}
+}
+],
+[
+28,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 2,
+"i": 3
+}
+}
+],
+[
+29,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 6,
+"i": 3
+}
+}
+],
+[
+30,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 6,
+"i": 4
+}
+}
+],
+[
+31,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 24,
+"i": 4
+}
+}
+],
+[
+32,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 24,
+"i": 5
+}
+}
+],
+[
+33,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 120,
+"i": 5
+}
+}
+],
+[
+34,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 120,
+"i": 6
+}
+}
+],
+[
+35,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 720,
+"i": 6
+}
+}
+],
+[
+36,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 720,
+"i": 7
+}
+}
+],
+[
+37,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 5040,
+"i": 7
+}
+}
+],
+[
+38,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 5040,
+"i": 8
+}
+}
+],
+[
+39,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 40320,
+"i": 8
+}
+}
+],
+[
+40,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 40320,
+"i": 9
+}
+}
+],
+[
+41,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 362880,
+"i": 9
+}
+}
+],
+[
+42,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 362880,
+"i": 10
+}
+}
+],
+[
+43,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 3628800,
+"i": 10
+}
+}
+],
+[
+44,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 3628800,
+"i": 11
+}
+}
+],
+[
+45,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 39916800,
+"i": 11
+}
+}
+],
+[
+46,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 39916800,
+"i": 12
+}
+}
+],
+[
+47,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 479001600,
+"i": 12
+}
+}
+],
+[
+48,
+{
+"line": 10,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 479001600,
+"i": 13
+}
+}
+],
+[
+49,
+{
+"line": 9,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 1932053504,
+"i": 13
+}
+}
+],
+[
+50,
+{
+"line": 12,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 1932053504
+}
+}
+],
+[
+51,
+{
+"line": 13,
+"fn": "factorial",
+"depth": 2,
+"frame": 3,
+"vars": {
+"n": 13,
+"result": 1932053504
+}
+}
+],
+[
+52,
+{
+"line": 18,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+53,
+{
+"line": 19,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+]
+]
+},
+"ex_err_array_oob": {
+"src": "// 錯誤教案 #2：陣列越界（寫到相鄰的欄位）\n// BUG：data 只有 4 格（索引 0~3），迴圈卻寫到 i <= 4，data[4] 實際落在 guard 上，guard 被蓋掉。\n// 學生常見想法：「for (i = 0; i <= n) 才會跑完 n+1 次」。\n// 修正：把條件改成 i < 4，或改用 std::array 並用 .size() 當邊界。\n// 註：struct 內的成員記憶體連續排列，data[4] 必定與 guard 重疊（同一編譯器下可重現）。\n#include <iostream>\n\nstruct Block {\n    int data[4];\n    int guard;     // 本來應該永遠是 42\n};\n\nint main() {\n    Block b;\n    b.guard = 42;\n    for (int i = 0; i <= 4; i++) {   // BUG：應為 i < 4\n        b.data[i] = i * 10;          // i == 4 時寫進 guard\n    }\n    std::cout << \"guard = \" << b.guard << \"（應為 42）\" << std::endl;\n    return 0;\n}\n",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "array-bounds",
+"fatal": false,
+"step": 11,
+"line": 17,
+"col": 9,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"index": 4,
+"array": "int[4]"
+},
+"message": "index 4 out of bounds for type 'int[4]'"
+}
+],
+"stdout": "guard = 40（應為 42）\n",
+"functions": {
+"main": {
+"line": 13,
+"closeLine": 21,
+"params": [],
+"vars": [
+"b",
+"i"
+]
+}
+},
+"decls": {
+"main": {
+"b": "Block",
+"i": "int"
+}
+},
+"classes": {
+"Block": {
+"tagUsed": "struct",
+"fields": [
+{
+"name": "data",
+"qualType": "int[4]",
+"access": "public"
+},
+{
+"name": "guard",
+"qualType": "int",
+"access": "public"
+}
+],
+"bases": []
+}
+},
+"nSteps": 16,
+"steps": [
+[
+0,
+{
+"line": 14,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 15,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+0,
+8414504,
+8388588
+],
+"guard": 8388580
+}
+}
+}
+],
+[
+2,
+{
+"line": 16,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+0,
+8414504,
+8388588
+],
+"guard": 42
+}
+}
+}
+],
+[
+3,
+{
+"line": 17,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+0,
+8414504,
+8388588
+],
+"guard": 42
+},
+"i": 0
+}
+}
+],
+[
+4,
+{
+"line": 16,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+0,
+8414504,
+8388588
+],
+"guard": 42
+},
+"i": 0
+}
+}
+],
+[
+5,
+{
+"line": 17,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+0,
+8414504,
+8388588
+],
+"guard": 42
+},
+"i": 1
+}
+}
+],
+[
+6,
+{
+"line": 16,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+10,
+8414504,
+8388588
+],
+"guard": 42
+},
+"i": 1
+}
+}
+],
+[
+7,
+{
+"line": 17,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+10,
+8414504,
+8388588
+],
+"guard": 42
+},
+"i": 2
+}
+}
+],
+[
+8,
+{
+"line": 16,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+10,
+20,
+8388588
+],
+"guard": 42
+},
+"i": 2
+}
+}
+],
+[
+9,
+{
+"line": 17,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+10,
+20,
+8388588
+],
+"guard": 42
+},
+"i": 3
+}
+}
+],
+[
+10,
+{
+"line": 16,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+10,
+20,
+30
+],
+"guard": 42
+},
+"i": 3
+}
+}
+],
+[
+11,
+{
+"line": 17,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+10,
+20,
+30
+],
+"guard": 42
+},
+"i": 4
+}
+}
+],
+[
+12,
+{
+"line": 16,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+10,
+20,
+30
+],
+"guard": 40
+},
+"i": 4
+}
+}
+],
+[
+13,
+{
+"line": 19,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+10,
+20,
+30
+],
+"guard": 40
+}
+}
+}
+],
+[
+14,
+{
+"line": 20,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+10,
+20,
+30
+],
+"guard": 40
+}
+}
+}
+],
+[
+15,
+{
+"line": 21,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"data": [
+0,
+10,
+20,
+30
+],
+"guard": 40
+}
+}
+}
+]
+]
+},
+"ex_err_null_deref": {
+"src": "// 錯誤教案 #5：空指標解參考（走訪鏈結串列時超過最後一個節點）\n// BUG：迴圈內同時讀 cur->next->val，但最後一個節點的 next 是 nullptr，\n//      解參考 nullptr 在原生 Linux 會 SIGSEGV 崩潰。\n// 註：本專案的 wasm 引擎不會崩潰，而是讀到位址 0x00000000 的值（0）。這是環境差異，\n//     右側欄要說明，不改寫程式來追求崩潰。\n// 學生常見想法：「while (cur) 跑完就結束，印 next 的值沒問題」。\n// 修正：只在 cur->next != nullptr 時才讀 cur->next->val。\n#include <iostream>\n\nstruct Node {\n    int val;\n    Node* next;\n};\n\nint main() {\n    Node b{20, nullptr};\n    Node a{10, &b};\n    Node* cur = &a;\n    while (cur != nullptr) {\n        // BUG：最後一輪 cur->next 是 nullptr，cur->next->val 解參考空指標\n        std::cout << \"值：\" << cur->val << \"，下一個值：\" << cur->next->val << std::endl;\n        cur = cur->next;\n    }\n    return 0;\n}\n",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "memory",
+"message": "member access within null pointer of type 'Node'",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "null-deref",
+"fatal": true,
+"step": 7,
+"line": 21,
+"col": 81,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"type": "Node",
+"ptr": 0,
+"tck": 3,
+"align": 2
+},
+"message": "member access within null pointer of type 'Node'"
+}
+],
+"stdout": "值：10，下一個值：20\n值：20，下一個值：",
+"functions": {
+"main": {
+"line": 15,
+"closeLine": 25,
+"params": [],
+"vars": [
+"b",
+"a",
+"cur"
+]
+}
+},
+"decls": {
+"main": {
+"b": "Node",
+"a": "Node",
+"cur": "Node *"
+}
+},
+"classes": {
+"Node": {
+"tagUsed": "struct",
+"fields": [
+{
+"name": "val",
+"qualType": "int",
+"access": "public"
+},
+{
+"name": "next",
+"qualType": "Node *",
+"access": "public"
+}
+],
+"bases": []
+}
+},
+"nSteps": 8,
+"steps": [
+[
+0,
+{
+"line": 16,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 17,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"val": 20,
+"next": 0
+}
+}
+}
+],
+[
+2,
+{
+"line": 18,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"val": 20,
+"next": 0
+},
+"a": {
+"val": 10,
+"next": "<ptr>"
+}
+}
+}
+],
+[
+3,
+{
+"line": 19,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"val": 20,
+"next": 0
+},
+"a": {
+"val": 10,
+"next": "<ptr>"
+},
+"cur": "<ptr>"
+}
+}
+],
+[
+4,
+{
+"line": 21,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"val": 20,
+"next": 0
+},
+"a": {
+"val": 10,
+"next": "<ptr>"
+},
+"cur": "<ptr>"
+}
+}
+],
+[
+5,
+{
+"line": 22,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"val": 20,
+"next": 0
+},
+"a": {
+"val": 10,
+"next": "<ptr>"
+},
+"cur": "<ptr>"
+}
+}
+],
+[
+6,
+{
+"line": 19,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"val": 20,
+"next": 0
+},
+"a": {
+"val": 10,
+"next": "<ptr>"
+},
+"cur": "<ptr>"
+}
+}
+],
+[
+7,
+{
+"line": 21,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"b": {
+"val": 20,
+"next": 0
+},
+"a": {
+"val": 10,
+"next": "<ptr>"
+},
+"cur": "<ptr>"
+}
+}
+]
+]
+},
+"rec_cond": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint f(int n) {\n  if (n == 0) return 0;\n  return f(n - 2) + 1;\n}\nint main() {\n  cout << f(3) << endl;\n  return 0;\n}\n",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "stack-overflow",
+"code": null,
+"message": "host call stack exhausted (recursion too deep)"
+},
+"runtimeErrors": [],
+"stdout": "",
+"functions": {
+"f": {
+"line": 3,
+"closeLine": 6,
+"params": [
+"n"
+],
+"vars": [
+"n"
+]
+},
+"main": {
+"line": 7,
+"closeLine": 10,
+"params": [],
+"vars": []
+}
+},
+"decls": {
+"f": {
+"n": "int"
+},
+"main": {}
+},
+"classes": {},
+"nSteps": 110449,
+"steps": [
+[
+0,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 4,
+"fn": "f",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 3
+}
+}
+],
+[
+2,
+{
+"line": 5,
+"fn": "f",
+"depth": 2,
+"frame": 2,
+"vars": {
+"n": 3
+}
+}
+],
+[
+3,
+{
+"line": 4,
+"fn": "f",
+"depth": 3,
+"frame": 3,
+"vars": {
+"n": 1
+}
+}
+],
+[
+4,
+{
+"line": 5,
+"fn": "f",
+"depth": 3,
+"frame": 3,
+"vars": {
+"n": 1
+}
+}
+],
+[
+5,
+{
+"line": 4,
+"fn": "f",
+"depth": 4,
+"frame": 4,
+"vars": {
+"n": -1
+}
+}
+],
+[
+6,
+{
+"line": 5,
+"fn": "f",
+"depth": 4,
+"frame": 4,
+"vars": {
+"n": -1
+}
+}
+],
+[
+7,
+{
+"line": 4,
+"fn": "f",
+"depth": 5,
+"frame": 5,
+"vars": {
+"n": -3
+}
+}
+],
+[
+8,
+{
+"line": 5,
+"fn": "f",
+"depth": 5,
+"frame": 5,
+"vars": {
+"n": -3
+}
+}
+],
+[
+9,
+{
+"line": 4,
+"fn": "f",
+"depth": 6,
+"frame": 6,
+"vars": {
+"n": -5
+}
+}
+],
+[
+10,
+{
+"line": 5,
+"fn": "f",
+"depth": 6,
+"frame": 6,
+"vars": {
+"n": -5
+}
+}
+],
+[
+11,
+{
+"line": 4,
+"fn": "f",
+"depth": 7,
+"frame": 7,
+"vars": {
+"n": -7
+}
+}
+],
+[
+12,
+{
+"line": 5,
+"fn": "f",
+"depth": 7,
+"frame": 7,
+"vars": {
+"n": -7
+}
+}
+],
+[
+13,
+{
+"line": 4,
+"fn": "f",
+"depth": 8,
+"frame": 8,
+"vars": {
+"n": -9
+}
+}
+],
+[
+14,
+{
+"line": 5,
+"fn": "f",
+"depth": 8,
+"frame": 8,
+"vars": {
+"n": -9
+}
+}
+],
+[
+15,
+{
+"line": 4,
+"fn": "f",
+"depth": 9,
+"frame": 9,
+"vars": {
+"n": -11
+}
+}
+],
+[
+16,
+{
+"line": 5,
+"fn": "f",
+"depth": 9,
+"frame": 9,
+"vars": {
+"n": -11
+}
+}
+],
+[
+17,
+{
+"line": 4,
+"fn": "f",
+"depth": 10,
+"frame": 10,
+"vars": {
+"n": -13
+}
+}
+],
+[
+18,
+{
+"line": 5,
+"fn": "f",
+"depth": 10,
+"frame": 10,
+"vars": {
+"n": -13
+}
+}
+],
+[
+19,
+{
+"line": 4,
+"fn": "f",
+"depth": 11,
+"frame": 11,
+"vars": {
+"n": -15
+}
+}
+],
+[
+20,
+{
+"line": 5,
+"fn": "f",
+"depth": 11,
+"frame": 11,
+"vars": {
+"n": -15
+}
+}
+],
+[
+21,
+{
+"line": 4,
+"fn": "f",
+"depth": 12,
+"frame": 12,
+"vars": {
+"n": -17
+}
+}
+],
+[
+22,
+{
+"line": 5,
+"fn": "f",
+"depth": 12,
+"frame": 12,
+"vars": {
+"n": -17
+}
+}
+],
+[
+23,
+{
+"line": 4,
+"fn": "f",
+"depth": 13,
+"frame": 13,
+"vars": {
+"n": -19
+}
+}
+],
+[
+24,
+{
+"line": 5,
+"fn": "f",
+"depth": 13,
+"frame": 13,
+"vars": {
+"n": -19
+}
+}
+],
+[
+25,
+{
+"line": 4,
+"fn": "f",
+"depth": 14,
+"frame": 14,
+"vars": {
+"n": -21
+}
+}
+],
+[
+26,
+{
+"line": 5,
+"fn": "f",
+"depth": 14,
+"frame": 14,
+"vars": {
+"n": -21
+}
+}
+],
+[
+27,
+{
+"line": 4,
+"fn": "f",
+"depth": 15,
+"frame": 15,
+"vars": {
+"n": -23
+}
+}
+],
+[
+28,
+{
+"line": 5,
+"fn": "f",
+"depth": 15,
+"frame": 15,
+"vars": {
+"n": -23
+}
+}
+],
+[
+29,
+{
+"line": 4,
+"fn": "f",
+"depth": 16,
+"frame": 16,
+"vars": {
+"n": -25
+}
+}
+],
+[
+30,
+{
+"line": 5,
+"fn": "f",
+"depth": 16,
+"frame": 16,
+"vars": {
+"n": -25
+}
+}
+],
+[
+31,
+{
+"line": 4,
+"fn": "f",
+"depth": 17,
+"frame": 17,
+"vars": {
+"n": -27
+}
+}
+],
+[
+32,
+{
+"line": 5,
+"fn": "f",
+"depth": 17,
+"frame": 17,
+"vars": {
+"n": -27
+}
+}
+],
+[
+33,
+{
+"line": 4,
+"fn": "f",
+"depth": 18,
+"frame": 18,
+"vars": {
+"n": -29
+}
+}
+],
+[
+34,
+{
+"line": 5,
+"fn": "f",
+"depth": 18,
+"frame": 18,
+"vars": {
+"n": -29
+}
+}
+],
+[
+35,
+{
+"line": 4,
+"fn": "f",
+"depth": 19,
+"frame": 19,
+"vars": {
+"n": -31
+}
+}
+],
+[
+36,
+{
+"line": 5,
+"fn": "f",
+"depth": 19,
+"frame": 19,
+"vars": {
+"n": -31
+}
+}
+],
+[
+37,
+{
+"line": 4,
+"fn": "f",
+"depth": 20,
+"frame": 20,
+"vars": {
+"n": -33
+}
+}
+],
+[
+38,
+{
+"line": 5,
+"fn": "f",
+"depth": 20,
+"frame": 20,
+"vars": {
+"n": -33
+}
+}
+],
+[
+39,
+{
+"line": 4,
+"fn": "f",
+"depth": 21,
+"frame": 21,
+"vars": {
+"n": -35
+}
+}
+],
+[
+40,
+{
+"line": 5,
+"fn": "f",
+"depth": 21,
+"frame": 21,
+"vars": {
+"n": -35
+}
+}
+],
+[
+41,
+{
+"line": 4,
+"fn": "f",
+"depth": 22,
+"frame": 22,
+"vars": {
+"n": -37
+}
+}
+],
+[
+42,
+{
+"line": 5,
+"fn": "f",
+"depth": 22,
+"frame": 22,
+"vars": {
+"n": -37
+}
+}
+],
+[
+43,
+{
+"line": 4,
+"fn": "f",
+"depth": 23,
+"frame": 23,
+"vars": {
+"n": -39
+}
+}
+],
+[
+44,
+{
+"line": 5,
+"fn": "f",
+"depth": 23,
+"frame": 23,
+"vars": {
+"n": -39
+}
+}
+],
+[
+45,
+{
+"line": 4,
+"fn": "f",
+"depth": 24,
+"frame": 24,
+"vars": {
+"n": -41
+}
+}
+],
+[
+46,
+{
+"line": 5,
+"fn": "f",
+"depth": 24,
+"frame": 24,
+"vars": {
+"n": -41
+}
+}
+],
+[
+47,
+{
+"line": 4,
+"fn": "f",
+"depth": 25,
+"frame": 25,
+"vars": {
+"n": -43
+}
+}
+],
+[
+48,
+{
+"line": 5,
+"fn": "f",
+"depth": 25,
+"frame": 25,
+"vars": {
+"n": -43
+}
+}
+],
+[
+49,
+{
+"line": 4,
+"fn": "f",
+"depth": 26,
+"frame": 26,
+"vars": {
+"n": -45
+}
+}
+],
+[
+50,
+{
+"line": 5,
+"fn": "f",
+"depth": 26,
+"frame": 26,
+"vars": {
+"n": -45
+}
+}
+],
+[
+51,
+{
+"line": 4,
+"fn": "f",
+"depth": 27,
+"frame": 27,
+"vars": {
+"n": -47
+}
+}
+],
+[
+52,
+{
+"line": 5,
+"fn": "f",
+"depth": 27,
+"frame": 27,
+"vars": {
+"n": -47
+}
+}
+],
+[
+53,
+{
+"line": 4,
+"fn": "f",
+"depth": 28,
+"frame": 28,
+"vars": {
+"n": -49
+}
+}
+],
+[
+54,
+{
+"line": 5,
+"fn": "f",
+"depth": 28,
+"frame": 28,
+"vars": {
+"n": -49
+}
+}
+],
+[
+55,
+{
+"line": 4,
+"fn": "f",
+"depth": 29,
+"frame": 29,
+"vars": {
+"n": -51
+}
+}
+],
+[
+56,
+{
+"line": 5,
+"fn": "f",
+"depth": 29,
+"frame": 29,
+"vars": {
+"n": -51
+}
+}
+],
+[
+57,
+{
+"line": 4,
+"fn": "f",
+"depth": 30,
+"frame": 30,
+"vars": {
+"n": -53
+}
+}
+],
+[
+58,
+{
+"line": 5,
+"fn": "f",
+"depth": 30,
+"frame": 30,
+"vars": {
+"n": -53
+}
+}
+],
+[
+59,
+{
+"line": 4,
+"fn": "f",
+"depth": 31,
+"frame": 31,
+"vars": {
+"n": -55
+}
+}
+],
+[
+110389,
+{
+"line": 4,
+"fn": "f",
+"depth": 55196,
+"frame": 55196,
+"vars": {
+"n": -110385
+}
+}
+],
+[
+110390,
+{
+"line": 5,
+"fn": "f",
+"depth": 55196,
+"frame": 55196,
+"vars": {
+"n": -110385
+}
+}
+],
+[
+110391,
+{
+"line": 4,
+"fn": "f",
+"depth": 55197,
+"frame": 55197,
+"vars": {
+"n": -110387
+}
+}
+],
+[
+110392,
+{
+"line": 5,
+"fn": "f",
+"depth": 55197,
+"frame": 55197,
+"vars": {
+"n": -110387
+}
+}
+],
+[
+110393,
+{
+"line": 4,
+"fn": "f",
+"depth": 55198,
+"frame": 55198,
+"vars": {
+"n": -110389
+}
+}
+],
+[
+110394,
+{
+"line": 5,
+"fn": "f",
+"depth": 55198,
+"frame": 55198,
+"vars": {
+"n": -110389
+}
+}
+],
+[
+110395,
+{
+"line": 4,
+"fn": "f",
+"depth": 55199,
+"frame": 55199,
+"vars": {
+"n": -110391
+}
+}
+],
+[
+110396,
+{
+"line": 5,
+"fn": "f",
+"depth": 55199,
+"frame": 55199,
+"vars": {
+"n": -110391
+}
+}
+],
+[
+110397,
+{
+"line": 4,
+"fn": "f",
+"depth": 55200,
+"frame": 55200,
+"vars": {
+"n": -110393
+}
+}
+],
+[
+110398,
+{
+"line": 5,
+"fn": "f",
+"depth": 55200,
+"frame": 55200,
+"vars": {
+"n": -110393
+}
+}
+],
+[
+110399,
+{
+"line": 4,
+"fn": "f",
+"depth": 55201,
+"frame": 55201,
+"vars": {
+"n": -110395
+}
+}
+],
+[
+110400,
+{
+"line": 5,
+"fn": "f",
+"depth": 55201,
+"frame": 55201,
+"vars": {
+"n": -110395
+}
+}
+],
+[
+110401,
+{
+"line": 4,
+"fn": "f",
+"depth": 55202,
+"frame": 55202,
+"vars": {
+"n": -110397
+}
+}
+],
+[
+110402,
+{
+"line": 5,
+"fn": "f",
+"depth": 55202,
+"frame": 55202,
+"vars": {
+"n": -110397
+}
+}
+],
+[
+110403,
+{
+"line": 4,
+"fn": "f",
+"depth": 55203,
+"frame": 55203,
+"vars": {
+"n": -110399
+}
+}
+],
+[
+110404,
+{
+"line": 5,
+"fn": "f",
+"depth": 55203,
+"frame": 55203,
+"vars": {
+"n": -110399
+}
+}
+],
+[
+110405,
+{
+"line": 4,
+"fn": "f",
+"depth": 55204,
+"frame": 55204,
+"vars": {
+"n": -110401
+}
+}
+],
+[
+110406,
+{
+"line": 5,
+"fn": "f",
+"depth": 55204,
+"frame": 55204,
+"vars": {
+"n": -110401
+}
+}
+],
+[
+110407,
+{
+"line": 4,
+"fn": "f",
+"depth": 55205,
+"frame": 55205,
+"vars": {
+"n": -110403
+}
+}
+],
+[
+110408,
+{
+"line": 5,
+"fn": "f",
+"depth": 55205,
+"frame": 55205,
+"vars": {
+"n": -110403
+}
+}
+],
+[
+110409,
+{
+"line": 4,
+"fn": "f",
+"depth": 55206,
+"frame": 55206,
+"vars": {
+"n": -110405
+}
+}
+],
+[
+110410,
+{
+"line": 5,
+"fn": "f",
+"depth": 55206,
+"frame": 55206,
+"vars": {
+"n": -110405
+}
+}
+],
+[
+110411,
+{
+"line": 4,
+"fn": "f",
+"depth": 55207,
+"frame": 55207,
+"vars": {
+"n": -110407
+}
+}
+],
+[
+110412,
+{
+"line": 5,
+"fn": "f",
+"depth": 55207,
+"frame": 55207,
+"vars": {
+"n": -110407
+}
+}
+],
+[
+110413,
+{
+"line": 4,
+"fn": "f",
+"depth": 55208,
+"frame": 55208,
+"vars": {
+"n": -110409
+}
+}
+],
+[
+110414,
+{
+"line": 5,
+"fn": "f",
+"depth": 55208,
+"frame": 55208,
+"vars": {
+"n": -110409
+}
+}
+],
+[
+110415,
+{
+"line": 4,
+"fn": "f",
+"depth": 55209,
+"frame": 55209,
+"vars": {
+"n": -110411
+}
+}
+],
+[
+110416,
+{
+"line": 5,
+"fn": "f",
+"depth": 55209,
+"frame": 55209,
+"vars": {
+"n": -110411
+}
+}
+],
+[
+110417,
+{
+"line": 4,
+"fn": "f",
+"depth": 55210,
+"frame": 55210,
+"vars": {
+"n": -110413
+}
+}
+],
+[
+110418,
+{
+"line": 5,
+"fn": "f",
+"depth": 55210,
+"frame": 55210,
+"vars": {
+"n": -110413
+}
+}
+],
+[
+110419,
+{
+"line": 4,
+"fn": "f",
+"depth": 55211,
+"frame": 55211,
+"vars": {
+"n": -110415
+}
+}
+],
+[
+110420,
+{
+"line": 5,
+"fn": "f",
+"depth": 55211,
+"frame": 55211,
+"vars": {
+"n": -110415
+}
+}
+],
+[
+110421,
+{
+"line": 4,
+"fn": "f",
+"depth": 55212,
+"frame": 55212,
+"vars": {
+"n": -110417
+}
+}
+],
+[
+110422,
+{
+"line": 5,
+"fn": "f",
+"depth": 55212,
+"frame": 55212,
+"vars": {
+"n": -110417
+}
+}
+],
+[
+110423,
+{
+"line": 4,
+"fn": "f",
+"depth": 55213,
+"frame": 55213,
+"vars": {
+"n": -110419
+}
+}
+],
+[
+110424,
+{
+"line": 5,
+"fn": "f",
+"depth": 55213,
+"frame": 55213,
+"vars": {
+"n": -110419
+}
+}
+],
+[
+110425,
+{
+"line": 4,
+"fn": "f",
+"depth": 55214,
+"frame": 55214,
+"vars": {
+"n": -110421
+}
+}
+],
+[
+110426,
+{
+"line": 5,
+"fn": "f",
+"depth": 55214,
+"frame": 55214,
+"vars": {
+"n": -110421
+}
+}
+],
+[
+110427,
+{
+"line": 4,
+"fn": "f",
+"depth": 55215,
+"frame": 55215,
+"vars": {
+"n": -110423
+}
+}
+],
+[
+110428,
+{
+"line": 5,
+"fn": "f",
+"depth": 55215,
+"frame": 55215,
+"vars": {
+"n": -110423
+}
+}
+],
+[
+110429,
+{
+"line": 4,
+"fn": "f",
+"depth": 55216,
+"frame": 55216,
+"vars": {
+"n": -110425
+}
+}
+],
+[
+110430,
+{
+"line": 5,
+"fn": "f",
+"depth": 55216,
+"frame": 55216,
+"vars": {
+"n": -110425
+}
+}
+],
+[
+110431,
+{
+"line": 4,
+"fn": "f",
+"depth": 55217,
+"frame": 55217,
+"vars": {
+"n": -110427
+}
+}
+],
+[
+110432,
+{
+"line": 5,
+"fn": "f",
+"depth": 55217,
+"frame": 55217,
+"vars": {
+"n": -110427
+}
+}
+],
+[
+110433,
+{
+"line": 4,
+"fn": "f",
+"depth": 55218,
+"frame": 55218,
+"vars": {
+"n": -110429
+}
+}
+],
+[
+110434,
+{
+"line": 5,
+"fn": "f",
+"depth": 55218,
+"frame": 55218,
+"vars": {
+"n": -110429
+}
+}
+],
+[
+110435,
+{
+"line": 4,
+"fn": "f",
+"depth": 55219,
+"frame": 55219,
+"vars": {
+"n": -110431
+}
+}
+],
+[
+110436,
+{
+"line": 5,
+"fn": "f",
+"depth": 55219,
+"frame": 55219,
+"vars": {
+"n": -110431
+}
+}
+],
+[
+110437,
+{
+"line": 4,
+"fn": "f",
+"depth": 55220,
+"frame": 55220,
+"vars": {
+"n": -110433
+}
+}
+],
+[
+110438,
+{
+"line": 5,
+"fn": "f",
+"depth": 55220,
+"frame": 55220,
+"vars": {
+"n": -110433
+}
+}
+],
+[
+110439,
+{
+"line": 4,
+"fn": "f",
+"depth": 55221,
+"frame": 55221,
+"vars": {
+"n": -110435
+}
+}
+],
+[
+110440,
+{
+"line": 5,
+"fn": "f",
+"depth": 55221,
+"frame": 55221,
+"vars": {
+"n": -110435
+}
+}
+],
+[
+110441,
+{
+"line": 4,
+"fn": "f",
+"depth": 55222,
+"frame": 55222,
+"vars": {
+"n": -110437
+}
+}
+],
+[
+110442,
+{
+"line": 5,
+"fn": "f",
+"depth": 55222,
+"frame": 55222,
+"vars": {
+"n": -110437
+}
+}
+],
+[
+110443,
+{
+"line": 4,
+"fn": "f",
+"depth": 55223,
+"frame": 55223,
+"vars": {
+"n": -110439
+}
+}
+],
+[
+110444,
+{
+"line": 5,
+"fn": "f",
+"depth": 55223,
+"frame": 55223,
+"vars": {
+"n": -110439
+}
+}
+],
+[
+110445,
+{
+"line": 4,
+"fn": "f",
+"depth": 55224,
+"frame": 55224,
+"vars": {
+"n": -110441
+}
+}
+],
+[
+110446,
+{
+"line": 5,
+"fn": "f",
+"depth": 55224,
+"frame": 55224,
+"vars": {
+"n": -110441
+}
+}
+],
+[
+110447,
+{
+"line": 4,
+"fn": "f",
+"depth": 55225,
+"frame": 55225,
+"vars": {
+"n": -110443
+}
+}
+],
+[
+110448,
+{
+"line": 5,
+"fn": "f",
+"depth": 55225,
+"frame": 55225,
+"vars": {
+"n": -110443
+}
+}
+]
+]
+},
+"arr_local": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int a[3] = {1, 2, 3};\n  int x = 5;\n  for (int i = 0; i <= 3; i++) a[i] = 0;\n  cout << x << endl;\n  return 0;\n}\n",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "array-bounds",
+"fatal": false,
+"step": 2,
+"line": 6,
+"col": 32,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"index": 3,
+"array": "int[3]"
+},
+"message": "index 3 out of bounds for type 'int[3]'"
+}
+],
+"stdout": "5\n",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 9,
+"params": [],
+"vars": [
+"a",
+"x",
+"i"
+]
+}
+},
+"decls": {
+"main": {
+"a": "int[3]",
+"x": "int",
+"i": "int"
+}
+},
+"classes": {},
+"nSteps": 6,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+1,
+2,
+3
+]
+}
+}
+],
+[
+2,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+1,
+2,
+3
+],
+"x": 5
+}
+}
+],
+[
+3,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+0,
+0
+],
+"x": 5
+}
+}
+],
+[
+4,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+0,
+0
+],
+"x": 5
+}
+}
+],
+[
+5,
+{
+"line": 9,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": [
+0,
+0,
+0
+],
+"x": 5
+}
+}
+]
+]
+},
+"div_expr": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int a = 7, b = 3;\n  int c = a / (b - 3);\n  cout << c << endl;\n  return 0;\n}\n",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "div-zero",
+"message": "division by zero",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "div-by-zero",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": 13,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"lhs": 7,
+"rhs": 0,
+"type": "int"
+},
+"message": "division by zero"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"a",
+"b",
+"c"
+]
+}
+},
+"decls": {
+"main": {
+"a": "int",
+"b": "int",
+"c": "int"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"a": 7,
+"b": 3
+}
+}
+]
+]
+},
+"null_heap": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nstruct Node {\n  int val;\n  Node* next;\n};\nint main() {\n  Node* head = new Node{1, nullptr};\n  head->next = new Node{2, nullptr};\n  Node* p = head;\n  while (p != nullptr) {\n    p = p->next;\n  }\n  cout << p->val << endl;\n  return 0;\n}\n",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "memory",
+"message": "member access within null pointer of type 'Node'",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "null-deref",
+"fatal": true,
+"step": 8,
+"line": 14,
+"col": 14,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"type": "Node",
+"ptr": 0,
+"tck": 3,
+"align": 2
+},
+"message": "member access within null pointer of type 'Node'"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 7,
+"closeLine": 16,
+"params": [],
+"vars": [
+"head",
+"p"
+]
+}
+},
+"decls": {
+"main": {
+"head": "Node *",
+"p": "Node *"
+}
+},
+"classes": {
+"Node": {
+"tagUsed": "struct",
+"fields": [
+{
+"name": "val",
+"qualType": "int",
+"access": "public"
+},
+{
+"name": "next",
+"qualType": "Node *",
+"access": "public"
+}
+],
+"bases": []
+}
+},
+"nSteps": 9,
+"steps": [
+[
+0,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 9,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"head": "<ptr>"
+}
+}
+],
+[
+2,
+{
+"line": 10,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"head": "<ptr>"
+}
+}
+],
+[
+3,
+{
+"line": 11,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"head": "<ptr>",
+"p": "<ptr>"
+}
+}
+],
+[
+4,
+{
+"line": 12,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"head": "<ptr>",
+"p": "<ptr>"
+}
+}
+],
+[
+5,
+{
+"line": 11,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"head": "<ptr>",
+"p": "<ptr>"
+}
+}
+],
+[
+6,
+{
+"line": 12,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"head": "<ptr>",
+"p": "<ptr>"
+}
+}
+],
+[
+7,
+{
+"line": 11,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"head": "<ptr>",
+"p": 0
+}
+}
+],
+[
+8,
+{
+"line": 14,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"head": "<ptr>",
+"p": 0
+}
+}
+]
+]
+},
+"pq_empty_top": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  priority_queue<int> pq;\n  pq.push(3);\n  pq.pop();\n  cout << pq.top() << endl;\n  return 0;\n}\n",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "abort",
+"message": "front() called on an empty vector",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "libcxx",
+"fatal": true,
+"step": 3,
+"line": 7,
+"col": null,
+"inUser": false,
+"file": null,
+"values": {},
+"message": "front() called on an empty vector",
+"libcxxMessage": "front() called on an empty vector"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 9,
+"params": [],
+"vars": [
+"pq"
+]
+}
+},
+"decls": {
+"main": {
+"pq": "priority_queue<int>"
+}
+},
+"classes": {},
+"nSteps": 4,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"pq": []
+}
+}
+],
+[
+2,
+{
+"line": 6,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"pq": [
+3
+]
+}
+}
+],
+[
+3,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"pq": []
+}
+}
+]
+]
+},
+"stack_pop_empty": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  stack<int> s;\n  s.pop();\n  cout << s.size() << endl;\n  return 0;\n}\n",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "trap",
+"code": null,
+"trap": "abort",
+"message": "deque::pop_back called on an empty deque",
+"runtimeError": 0
+},
+"runtimeErrors": [
+{
+"kind": "libcxx",
+"fatal": true,
+"step": 1,
+"line": 5,
+"col": null,
+"inUser": false,
+"file": null,
+"values": {},
+"message": "deque::pop_back called on an empty deque",
+"libcxxMessage": "deque::pop_back called on an empty deque"
+}
+],
+"stdout": "",
+"functions": {
+"main": {
+"line": 3,
+"closeLine": 8,
+"params": [],
+"vars": [
+"s"
+]
+}
+},
+"decls": {
+"main": {
+"s": "stack<int>"
+}
+},
+"classes": {},
+"nSteps": 2,
+"steps": [
+[
+0,
+{
+"line": 4,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 5,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"s": []
+}
+}
+]
+]
+},
+"ovf_fn": {
+"src": "#include <bits/stdc++.h>\nusing namespace std;\nint twice(int x) {\n  return x * 2;\n}\nint main() {\n  int big = 1500000000;\n  cout << twice(big) << endl;\n  return 0;\n}\n",
+"stdin": "",
+"ok": true,
+"exit": {
+"reason": "exit",
+"code": 0
+},
+"runtimeErrors": [
+{
+"kind": "signed-overflow",
+"fatal": false,
+"step": 2,
+"line": 4,
+"col": 12,
+"inUser": true,
+"file": "main.cpp",
+"values": {
+"op": "*",
+"lhs": 1500000000,
+"rhs": 2,
+"type": "int"
+},
+"message": "signed integer overflow: 1500000000 * 2 cannot be represented in type 'int'"
+}
+],
+"stdout": "-1294967296\n",
+"functions": {
+"twice": {
+"line": 3,
+"closeLine": 5,
+"params": [
+"x"
+],
+"vars": [
+"x"
+]
+},
+"main": {
+"line": 6,
+"closeLine": 10,
+"params": [],
+"vars": [
+"big"
+]
+}
+},
+"decls": {
+"twice": {
+"x": "int"
+},
+"main": {
+"big": "int"
+}
+},
+"classes": {},
+"nSteps": 6,
+"steps": [
+[
+0,
+{
+"line": 7,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {}
+}
+],
+[
+1,
+{
+"line": 8,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"big": 1500000000
+}
+}
+],
+[
+2,
+{
+"line": 4,
+"fn": "twice",
+"depth": 2,
+"frame": 2,
+"vars": {
+"x": 1500000000
+}
+}
+],
+[
+3,
+{
+"line": 5,
+"fn": "twice",
+"depth": 2,
+"frame": 2,
+"vars": {
+"x": 1500000000
+}
+}
+],
+[
+4,
+{
+"line": 9,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"big": 1500000000
+}
+}
+],
+[
+5,
+{
+"line": 10,
+"fn": "main",
+"depth": 1,
+"frame": 1,
+"vars": {
+"big": 1500000000
+}
+}
+]
+]
+}
+}
+}

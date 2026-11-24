@@ -344,9 +344,13 @@ describe("模擬 /create_and_upload", () => {
     expect(r.stderr).toMatch(/^\/workspace\/main\.cpp:12:1: error: /);
   });
 
-  test("堆疊溢位 / 步數上限 → 錯誤路徑；timeout 只是警告", () => {
-    expect(mapRunError(okRun({ exit: { reason: "stack-overflow", code: null } }))!.message).toMatch(/堆疊溢位/);
-    expect(mapRunError(okRun({ exit: { reason: "step-limit", code: null } }))!.message).toMatch(/上限/);
+  test("堆疊溢位 / 步數上限：可以回放（不走錯誤路徑），主控台提示原因；timeout 只是警告", () => {
+    for (const reason of ["stack-overflow", "step-limit", "trace-limit"]) {
+      expect(mapRunError(okRun({ exit: { reason, code: null } }))).toBeNull();
+    }
+    expect(runWarnings(okRun({ exit: { reason: "stack-overflow", code: null } })).join("\n")).toMatch(/遞迴太深.*堆疊/);
+    expect(runWarnings(okRun({ exit: { reason: "step-limit", code: null } })).join("\n")).toMatch(/步數超過上限/);
+    expect(runWarnings(okRun({ exit: { reason: "trace-limit", code: null } })).join("\n")).toMatch(/上限/);
     expect(mapRunError(okRun({ exit: { reason: "timeout", code: null } }))).toBeNull();
     expect(mapRunError(okRun({ errors: [{ kind: "trace-truncated" }] }))).toBeNull();
     expect(mapRunError({ ...emptyRunResult(), ok: false, errors: [{ kind: "compile-timeout" }] })!.message).toMatch(/逾時/);

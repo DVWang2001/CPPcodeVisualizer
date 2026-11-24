@@ -40,6 +40,13 @@ export class TraceModel {
       try { this.classByType.set(gdbType(parseType(k)), k); } catch { this.classByType.set(k, k); }
     }
     this.exit = run.exit || { reason: "exit", code: 0 };
+    /** Runtime errors of the run (trace.js RuntimeError[]); `errorAt`: stop index -> index of the first error that happened there. */
+    this.runtimeErrors = Array.isArray(run.runtimeErrors) ? run.runtimeErrors : [];
+    /** @type {Map<number, number>} */
+    this.errorAt = new Map();
+    this.runtimeErrors.forEach((e, i) => {
+      if (e && Number.isInteger(e.step) && e.step >= 0 && e.step < this.steps.length && !this.errorAt.has(e.step)) this.errorAt.set(e.step, i);
+    });
     this.source = run.source || "";
     this.fnNames = Object.keys(this.functions);
     /** @type {Map<string, import("./scopes.js").FnScopes>} */
@@ -109,6 +116,12 @@ export class TraceModel {
     this._classCache = new Map();
     // lines that hold code (GDB can place a breakpoint there)
     this.codeLines = [...new Set(this.steps.map((s) => s.line))].sort((a, b) => a - b);
+  }
+
+  /** Index of the recoverable runtime error that happened on stop `idx` (the program stops there like on a breakpoint), or -1. @param {number} idx */
+  recoverableErrorAt(idx) {
+    const i = this.errorAt.get(idx);
+    return i !== undefined && !this.runtimeErrors[i].fatal ? i : -1;
   }
 
   /** @param {number} frameId @param {number} idx  latest step of that frame at or before idx, or -1 */

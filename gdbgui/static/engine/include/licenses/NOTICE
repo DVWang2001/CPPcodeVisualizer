@@ -11,7 +11,12 @@ Third-party headers in gdbgui/static/engine/include/
 
 2. vgdb's own compatibility layer (part of this repository, GPL-3.0-or-later like gdbgui):
    bits/stdc++.h, bits/extc++.h, bits/c++config.h, debug/debug.h, tr1/functional, tr1/type_traits,
-   vgcompat.h (from experiments/frontend-only/e1/mine, plus vgcompat.h added in S1).
+   vgcompat.h (from experiments/frontend-only/e1/mine, plus vgcompat.h added in S1), and vgerr.h
+   (runtime-error reports, added in the runtime-error work P1).
+
+3. c++/v1/__assertion_handler: replaces the vendor file of the same name in the sysroot's libc++ 19.1.5
+   (LLVM project, Apache-2.0 WITH LLVM-exception). Modified: failed hardening checks call vgerr.h's
+   __vg_libcxx_assert instead of a silent trap; the DEBUG-mode branch is libc++'s own.
 
 The wasm toolchain (clang/lld/sysroot, LLVM Apache-2.0 with LLVM exception; wasi-libc MIT/BSD;
 browsercc MIT) is not stored in the repository: it is installed by `npm ci` and copied into the

@@ -128,6 +128,7 @@ const Actions = {
     (global_variable as any).__for_line_min_addr = {};
     // 重置呼叫樹，避免上一次執行的節點殘留
     delete (global_variable as any).__call_tree;
+    (global_variable as any).__call_graph_too_deep = 0;
     (global_variable as any).__call_graph_nodes = [];
     (global_variable as any).__call_graph_edges = [];
     (global_variable as any).__active_node_id = null;

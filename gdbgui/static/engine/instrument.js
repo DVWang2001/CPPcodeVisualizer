@@ -1230,13 +1230,35 @@ export function instrumentAst(source, top) {
   }
 
   edits.sort((a, b) => a.at - b.at || a.seq - b.seq);
+  // cols: for every line an edit touches, the runs of original text it still contains, as [instrumented col, original
+  // col, length] (1-based bytes, what clang reports). trace.js maps a runtime error's column back through it; lines
+  // without an edit keep their columns.
+  /** @type {Record<string, Array<[number, number, number]>>} */
+  const cols = {};
+  const edited = new Set();
+  for (const e of edits) { edited.add(lineAt(e.at)); if (e.del) edited.add(lineAt(e.at + e.del)); }
+  let oLine = 1, oCol = 1;
+  const verbatim = (/** @type {number} */ a, /** @type {number} */ b) => {
+    let i = a;
+    while (i < b) {
+      let j = i;
+      while (j < b && buf[j] !== 10) j++;
+      if (j > i && edited.has(oLine) && lineAt(i) === oLine) (cols[oLine] || (cols[oLine] = [])).push([oCol, i - lineStarts[oLine - 1] + 1, j - i]);
+      oCol += j - i;
+      if (j < b) { oLine++; oCol = 1; i = j + 1; } else i = j;
+    }
+  };
+  const enc = new TextEncoder();
   let out = "", prev = 0;
   for (const e of edits) {
     if (e.at < prev) throw new Unsupported("overlapping instrumentation edits", lineAt(e.at));
     out += text(prev, e.at) + e.text;
+    verbatim(prev, e.at);
+    for (const c of enc.encode(e.text)) { if (c === 10) { oLine++; oCol = 1; } else oCol++; }
     prev = e.at + e.del;
   }
   out += text(prev, buf.length);
+  verbatim(prev, buf.length);
   if (out.split("\n").length !== lineCount) throw new Error("instrumenter changed the line count (internal error)");
-  return { text: out, meta: { lineCount, functions: fnMeta, probes, decls, globals: globalTypes, uninitDecls, classes, widthWarnings } };
+  return { text: out, meta: { lineCount, functions: fnMeta, probes, decls, globals: globalTypes, uninitDecls, classes, widthWarnings, cols } };
 }

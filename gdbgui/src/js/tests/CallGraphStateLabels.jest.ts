@@ -104,3 +104,18 @@ describe("CallGraph state labels", () => {
     expect(stateOf(host, 3)).toBe("回傳 7");
   });
 });
+
+describe("CallGraph — a call stack too deep to draw", () => {
+  test("says how deep the stack is instead of drawing it (Threads sets __call_graph_too_deep)", () => {
+    const gv = (window as any).gdbgui_global_variable;
+    gv.__call_graph_too_deep = 62128;
+    try {
+      const host = mount({ path: [1], active: 1, nodes: [node(1, null)] });
+      expect(host.querySelector("[data-invid]")).toBeNull();
+      expect(host.textContent).toContain("62128 層");
+      expect(host.textContent).toContain("呼叫歷史圖畫不下");
+    } finally {
+      gv.__call_graph_too_deep = 0;
+    }
+  });
+});

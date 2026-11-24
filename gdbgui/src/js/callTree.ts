@@ -59,7 +59,15 @@ export type IngestResult = {
     activeNodeId: number | null;
     activePath: number[];       // live stack, root → top
     justReturned: number[];     // invIds that flipped to returned in this snapshot
+    tooDeep?: number;           // set (to the stack depth) when the snapshot was too deep to fold; the tree is unchanged
 };
+
+/**
+ * Deepest stack folded into the call tree. A signature repeats every frame below it, so folding costs grow with the
+ * square of the depth, and a chain deeper than this is far too tall to draw anyway (each level is one row of the
+ * call graph). Runaway recursion that ran the engine's stack out stops with tens of thousands of frames.
+ */
+export const CALL_TREE_MAX_DEPTH = 1000;
 
 export function createCallTree(): CallTree {
     return { bySig: new Map(), nextInvId: 1 };
@@ -73,6 +81,10 @@ export function ingestStack(tree: CallTree, stack: Frame[]): IngestResult {
     const L = stack.length;
     if (L === 0) {
         return { nodes: [...tree.bySig.values()], edges: buildEdges(tree), activeNodeId: null, activePath: [], justReturned: [] };
+    }
+    if (L > CALL_TREE_MAX_DEPTH) {
+        // Too deep to fold or to draw (see CALL_TREE_MAX_DEPTH): leave the tree as it is and report the depth.
+        return { nodes: [...tree.bySig.values()], edges: buildEdges(tree), activeNodeId: null, activePath: [], justReturned: [], tooDeep: L };
     }
 
     // Signatures, computed bottom-up so each frame can reference its parent's.

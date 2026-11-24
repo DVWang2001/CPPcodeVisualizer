@@ -557,5 +557,7 @@
           String(d.getMinutes()).padStart(2, "0");
       }
     </script>
+    {# 無感加載：瀏覽器閒下來時在背景下載並暖機 C++ 編譯器（engine/prewarm.js），進 IDE 後第一次 Run 不必等 #}
+    <script type="module" src="{{ url_for('static', filename='engine/prewarm.js') }}"></script>
   </body>
 </html>

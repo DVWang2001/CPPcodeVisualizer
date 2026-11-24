@@ -40,9 +40,10 @@ harness passes one); `pchLimits = { maxEntries, maxBytes }`.
 | `std` | `"c++17"` | `"c++17"`, `"c++20"` or `"c++23"` |
 | `instrument` | `true` | `false` = compile and run WITHOUT instrumentation (e.g. class-based examples); `steps` is empty |
 | `pch` | `true` | use the precompiled-header cache |
-| `compileTimeoutMs` | 8000 | budget for the student-controlled stages (AST, compile, link); clamped to 9500 |
+| `compileTimeoutMs` | 9500 | budget for the student-controlled stages (AST, compile, link); clamped to 9500 |
 | `execTimeoutMs` | 5000 | wall-clock limit of the execution worker; clamped to 30000 |
 | `returnWasm` | `false` | include the linked `wasm` bytes (tests) |
+| `checks` | `true` | runtime checks of instrumented builds (`CHECK_FLAGS`, see "Runtime-error records"); `false` builds without them |
 
 Result:
 
@@ -58,13 +59,15 @@ Result:
   stdout, stderr,
   exit: { reason, code, message?, stream?, trap? },
   limits: { ...applied limits }, errors: [{ kind, message, ... }],
-  compileLog, timings, pchFrom: "built" | "memory" | "cache" | null, nosys?: { wasiName: calls }
+  compileLog, timings, pchFrom: "built" | "memory" | "cache" | null, nosys?: { wasiName: calls },
+  runtimeErrors: [{ kind, fatal, step, line, col, inUser, file, values, message, libcxxMessage? }]  // see "Runtime-error records"
 }
 ```
 
 `exit.reason`: `exit` (normal, `code` = exit status) · `timeout` · `output-limit` (`stream` =
 stdout/stderr) · `step-limit` (200 000 probe records or 20 MB of trace) · `trace-limit` (host cap) ·
-`trap` (`trap` = `abort` | `memory` | `div-zero` | `other`) · `stack-overflow` (host call stack) ·
+`trap` (`trap` = `abort` | `memory` | `div-zero` | `illegal` | `other`; `runtimeError` = index into `runtimeErrors`
+when a fatal runtime error ended the run) · `stack-overflow` (host call stack) ·
 `forbidden-import` · `internal-error`.
 
 `errors[].kind`: `compile` (clang diagnostics of the **original** source) · `unsupported`
@@ -114,6 +117,28 @@ Compile support (also with `instrument: false`): `<bits/stdc++.h>`, `<bits/extc+
 headers + a thin libstdc++ compat layer in `include/`), and `include/vgcompat.h`, force-included
 into every compile: `std::__gcd` overloads and `typedef long long __int64` (spec finding F8).
 C++ exceptions are unavailable (`-fno-exceptions`; WASI has none).
+
+### Warm-up (`engine.warmUp`, `prewarm.js`)
+
+`engine.warmUp({ source?, preludes? })` compiles small programs in the background before the first Run and resolves
+with `[{ includes, ok, pchFrom, ms }]`; it never rejects for a compile failure. `warmSources(source, preludes)` lists
+them: one with exactly the system `#include` lines of `source` (the program in the editor), then one per entry of
+`preludes` (default `WARM_PRELUDES`: iostream + vector, and iostream alone, the two most common lesson preludes) whose
+list differs, at most 4. Each warm program goes through the normal compile request (PCH, AST + instrument, compile,
+link; not run), so its PCH is built or loaded (the PCH cache key is the ordered include list) and V8 optimises
+clang's and lld's hot code: the first compile of a fresh engine is about 3 s slower than the later ones (lab-david,
+2026-11-23). Warm compiles are queued like `runProgram`; a Run requested meanwhile waits for the program being warmed
+and the remaining ones are skipped. Each has its own budget (`LIMITS.warmTimeoutMs`, 60 s), so a slow first compile
+never restarts the pipeline worker and loses the warm state.
+
+The IDE page calls it through `localEngine.prewarm()` (see `gdbgui/src/js/localEngine.README.md`); the engine it loads
+is the one the Run uses. `prewarm.js`, loaded by every page built on `templates/_auth_base.html` (login, register,
+lesson library, profile, logout), loads the engine when the browser is idle, which downloads and verifies the assets
+into IndexedDB on the first visit, runs `warmUp()` to build the preludes' PCH into the shared IndexedDB PCH cache, and
+disposes the engine. It is skipped with Save-Data and on touch-only devices (`any-pointer: fine` false: the phone quiz
+pages never compile), runs in one tab at a time (Web Locks `vgdb-prewarm`), and ignores every error. Both mark their
+progress on `<html data-vgdb-warmup>` (IDE: loading, warming, ready, failed, skipped; other pages: loading, warming,
+done, busy, failed, skipped) so e2e tests and measurements can wait for the real end of the warm-up.
 
 ## Architecture
 
@@ -176,6 +201,36 @@ the import allowlist beyond pure WASI and is just as reachable through `__attrib
 wrong values at a real probe site). It cannot inject structure (validated schema), unknown lines,
 functions or variable names, prototype keys, or unbounded data (caps). The trace is the program's
 own claim about itself.
+
+### Runtime-error records (`include/vgerr.h`)
+
+Instrumented builds are compiled with `CHECK_FLAGS` (`pipeline.worker.js`): UBSan
+(`-fsanitize=undefined` minus vptr, function, alignment, object-size, pointer-overflow and the nonnull
+attribute checks, which cost the most compile time) and libc++'s EXTENSIVE hardening. The toolchain
+has no compiler-rt, so `include/vgerr.h` (included at the end of `vg.h`, hence also in the PCH)
+implements the `__ubsan_handle_*` ABI, libc++'s assertion hook (through the replacement
+`include/c++/v1/__assertion_handler`, which `headers.tar` mounts over the sysroot's),
+`std::__libcpp_verbose_abort` (the `-fno-exceptions` "throw" of `at()`, `substr()`, `stoi`, ...) and
+`__assert_fail`. A failed check writes one record to fd 3, after the stop records:
+
+```
+{"err":"div-by-zero","fatal":1,"file":"main.cpp","line":6,"col":13,"v":{"lhs":7,"rhs":0,"type":"'int'"}}
+{"err":"libcxx","fatal":1,"line":0,"col":0,"msg":"/include/c++/v1/vector:1436: assertion __n < size() failed: vector[] index out of bounds\n"}
+```
+
+A fatal error (division by zero, null pointer, library checks, missing return, assert, ...) ends the
+program with exit code 134 after its record; `runProgram` turns that exit into a trap
+(`exit.runtimeError` = index into `runtimeErrors`), so LocalGdb shows the usual signal stop on the last
+step (SIGFPE, SIGSEGV, SIGABRT or SIGILL). Signed overflow, shifts, C array bounds and float-to-int
+are recoverable: reported once per source location (at most 64) and the program goes
+on; LocalGdb stops on that step like on a breakpoint (`reason: "runtime-error"`). Validation
+(`trace.js`): fields `err fatal file line col v msg` only, `err` from a fixed kind list, value names
+from a fixed list with numbers or strings of at most 256 characters, `msg` at most 600, a fatal record
+only as the last record, at most 64 recoverable records. Each record becomes a `runtimeErrors` entry
+`{kind, fatal, step, line, col, inUser, file, values, message, libcxxMessage?}` attached to the stop
+that was running; `col` is mapped back to the original source through `meta.cols`. An error located
+outside the student's file (a libc++ check, or UBSan inside a header) takes the line of that stop and
+`inUser: false`. The same residual risk applies: a program can forge error records about itself.
 
 ## Limits
 

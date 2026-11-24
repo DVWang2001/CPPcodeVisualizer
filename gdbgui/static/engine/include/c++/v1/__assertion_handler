@@ -1,0 +1,28 @@
+// -*- C++ -*-
+// vgdb replacement for libc++'s vendor file include/c++/v1/__assertion_handler (libc++ 19.1.5, Apache-2.0 WITH
+// LLVM-exception, see include/licenses/NOTICE). Packed into headers.tar, which is mounted over the sysroot, so it replaces
+// the stock file. The stock file turns a failed FAST/EXTENSIVE hardening check into a silent __builtin_verbose_trap
+// (the message only survives in debug info); this one hands the message to __vg_libcxx_assert (include/vgerr.h),
+// which writes it to the trace as a runtime-error record and ends the program. DEBUG mode keeps libc++'s own route
+// (_LIBCPP_VERBOSE_ABORT), exactly like the stock file. Without a hardening mode no check calls it.
+#ifndef _LIBCPP___ASSERTION_HANDLER
+#define _LIBCPP___ASSERTION_HANDLER
+
+#include <__config>
+#include <__verbose_abort>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#  pragma GCC system_header
+#endif
+
+extern "C" {
+[[__noreturn__]] void __vg_libcxx_assert(const char* __message);
+}
+
+#if _LIBCPP_HARDENING_MODE == _LIBCPP_HARDENING_MODE_DEBUG
+#  define _LIBCPP_ASSERTION_HANDLER(message) _LIBCPP_VERBOSE_ABORT("%s", message)
+#else
+#  define _LIBCPP_ASSERTION_HANDLER(message) ::__vg_libcxx_assert(message)
+#endif
+
+#endif // _LIBCPP___ASSERTION_HANDLER

@@ -22,6 +22,7 @@ import CallGraph from "./CallGraph";
 import WatchTable from "./WatchTable";
 import MemoryWatch from "./MemoryWatch";
 import CompileErrors from "./CompileErrors";
+import RuntimeErrorPanel from "./RuntimeErrorPanel";
 import LineAfterPanel from "./LineAfterPanel";
 
 /** Panels that are on by default (no lesson has to ask for them): the line-after explanation. */
@@ -207,7 +208,7 @@ class RightSidebar extends React.Component<any, any> {
   constructor(props: any) {
     super(props);
     this.state = { total_px: 0, weights: {}, open_map: {}, fixed_px: {} };
-    (store as any).connectComponentState(this, ["edit_mode", "sidebar_selection", "sidebar_forced", "monaco_line_height"]);
+    (store as any).connectComponentState(this, ["edit_mode", "sidebar_selection", "sidebar_forced", "monaco_line_height", "runtime_error"]);
     this.measure = this.measure.bind(this);
   }
 
@@ -247,6 +248,7 @@ class RightSidebar extends React.Component<any, any> {
   panelDefs(): PanelDef[] {
     const defs: PanelDef[] = [
       { key: "compile_errors", id: "compile_errors", title: "編譯錯誤", collapsed: true, content: <CompileErrors /> },
+      { key: "runtime_errors", id: "runtime_errors", title: "執行錯誤", collapsed: true, content: <RuntimeErrorPanel /> },
       { key: "line_after", id: "line_after", title: "執行這行的結果", collapsed: false, content: <LineAfterPanel /> },
       { key: "memory_watch", id: "memory_watch", title: "記憶體與指標追蹤", content: <MemoryWatch /> },
       { key: "callgraph", id: "callgraph", title: "呼叫歷史圖", content: <CallGraph /> },
@@ -341,6 +343,9 @@ class RightSidebar extends React.Component<any, any> {
     const play_mode = !this.state.edit_mode;
     const defs = this.panelDefs();
     const legacy = !this.state.sidebar_selection;
+    // 有執行錯誤的圖解時，「執行錯誤」面板在編輯模式也能展開：程式跑完回到編輯模式，學生照著圖解改程式
+    const rtShown = !!(this.state.runtime_error && this.state.runtime_error.diag);
+    const locked = (d: PanelDef) => !play_mode && !(d.key === "runtime_errors" && rtShown);
 
     // 真正佔高度的面板：沒被隱藏的那些。
     const shown = defs.filter(d => !this.isHidden(d, play_mode));
@@ -385,7 +390,7 @@ class RightSidebar extends React.Component<any, any> {
                 play_mode={play_mode}
                 hidden={this.isHidden(d, play_mode)}
                 forced_collapsed={dropped}
-                edit_locked={!play_mode}
+                edit_locked={locked(d)}
                 open_on_play={!legacy && this.isChecked(d.key, true) && !(window as any).initial_data?.tutorial}
                 height_px={height_px}
                 content={d.content}

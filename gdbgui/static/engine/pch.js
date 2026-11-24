@@ -16,7 +16,7 @@
 import { sha256Hex } from "./sha256.js";
 
 /** Bump when the PCH build/consume flags change. */
-export const PCH_FLAGS_VERSION = "pch-v1:-fno-pch-timestamp;content+system-validate";
+export const PCH_FLAGS_VERSION = "pch-v2:-fno-pch-timestamp;content+system-validate;runtime-checks";
 
 /**
  * @param {{ std: string, includes: string[], vgSha256: string, headersSha256: string, clangSha256: string, sysrootSha256: string }} k

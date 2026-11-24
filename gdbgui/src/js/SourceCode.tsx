@@ -134,6 +134,7 @@ class SourceCode extends React.Component<{}, State> {
       "edit_mode",
       "inferior_program",
       "compile_errors",
+      "runtime_error",
       "user_source_fullname",
       "monaco_font_size",
       "for_sub_step",
@@ -854,6 +855,25 @@ class SourceCode extends React.Component<{}, State> {
         });
       }
     });
+
+    // Runtime error (P2): while stopped on the step that failed, mark the line and underline the failing span
+    // (only when the editor shows the same source line — another file, or code edited since the run, is left alone)
+    const rt: any = store.get("runtime_error");
+    if (rt && rt.here && rt.diag && model && rt.diag.line >= 1 && rt.diag.line <= totalLines && model.getLineContent(rt.diag.line) === rt.diag.code) {
+      const ln = rt.diag.line;
+      newDecorations.push({
+        range: new this.monaco.Range(ln, 1, ln, 1),
+        // zIndex: drawn over the paused-line highlight (Monaco stacks whole-line decorations by zIndex, then by class name)
+        options: { isWholeLine: true, className: "monaco-runtime-error-line", zIndex: 1 },
+      });
+      const bad = rt.diag.bad;
+      if (bad && bad[1] > bad[0]) {
+        newDecorations.push({
+          range: new this.monaco.Range(ln, bad[0] + 1, ln, bad[1] + 1),
+          options: { inlineClassName: "monaco-runtime-error-span" },
+        });
+      }
+    }
 
     this.decorations = this.editorInstance.deltaDecorations(this.decorations, newDecorations);
 

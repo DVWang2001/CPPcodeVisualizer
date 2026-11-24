@@ -315,6 +315,9 @@ function retire(gdb: LocalGdbLike) {
 
 let _socket: LocalSocket | null = null;
 let _enginePromise: Promise<any> | null = null;
+/** `_enginePromise` has resolved: the compiler is loaded (a Run then says nothing about loading it). */
+let _engineReady = false;
+let _prewarmStarted = false;
 let _generation = 0;
 let _inFlight = false;
 let _abortCurrent: (() => void) | null = null;
@@ -381,6 +384,104 @@ function errText(e: any): string {
   return e && e.message ? String(e.message) : String(e);
 }
 
+/** Load the compiler (assets + pipeline worker) once; a Run and the background warm-up share the engine. */
+function startEngine(mods: EngineModules): Promise<any> {
+  const p = mods.engine.loadEngine();
+  _enginePromise = p;
+  _engineReady = false;
+  p.then(
+    () => {
+      if (_enginePromise === p) _engineReady = true;
+    },
+    () => {
+      if (_enginePromise === p) {
+        _enginePromise = null;
+        _engineReady = false;
+      }
+    }
+  );
+  return p;
+}
+
+// ---------------------------------------------------------------------------------------------
+// background warm-up of the IDE page (無感加載)
+// ---------------------------------------------------------------------------------------------
+
+/** The browser's data saver (Save-Data) is on: no background download. */
+function saveData(): boolean {
+  try {
+    const c = (navigator as any).connection;
+    return !!(c && c.saveData);
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Warm-up state on <html data-vgdb-warmup>: loading, warming, ready, failed or skipped. Nothing reads it in the app;
+ * it lets e2e tests and measurements wait for the real end of the warm-up instead of a guessed delay.
+ */
+function markWarmup(state: string): void {
+  try {
+    document.documentElement.setAttribute("data-vgdb-warmup", state);
+  } catch (e) {
+    /* no DOM */
+  }
+}
+
+/** Call `fn` once the page has finished loading and the browser is idle (no fixed delay). */
+function whenIdle(fn: () => void): void {
+  const w = window as any;
+  const idle = () => {
+    if (typeof w.requestIdleCallback === "function") w.requestIdleCallback(fn, { timeout: 10000 });
+    else setTimeout(fn, 0);
+  };
+  if (document.readyState === "complete") idle();
+  else window.addEventListener("load", idle, { once: true });
+}
+
+/**
+ * Load and warm the compiler in the background as soon as the IDE page is idle, so the first Run downloads nothing,
+ * finds the PCH of the editor program's #include lines ready and compiles on a warm compiler (a fresh one is ~3 s
+ * slower on its first compile). The engine it loads is the one the Run uses. Skipped with Save-Data or when a Run has
+ * already started; failures are ignored (the Run reports its own). Called once by GdbApi.init().
+ */
+export function prewarm(): void {
+  if (_prewarmStarted) return;
+  _prewarmStarted = true;
+  if (saveData()) {
+    markWarmup("skipped");
+    return;
+  }
+  whenIdle(() => {
+    const skip = () => !!(_enginePromise || _inFlight); // a Run got there first and does the same work itself
+    if (skip()) return markWarmup("skipped");
+    markWarmup("loading");
+    loadModules().then(
+      (mods) => {
+        if (skip()) return markWarmup("skipped");
+        const p = startEngine(mods);
+        p.then((engine: any) => {
+          if (_enginePromise !== p || !engine || typeof engine.warmUp !== "function") return markWarmup("skipped");
+          let source = "";
+          try {
+            const get = (window as any).gdbgui_get_editor_value;
+            source = typeof get === "function" ? String(get() || "") : "";
+          } catch (e) {
+            source = "";
+          }
+          markWarmup("warming");
+          return Promise.resolve(engine.warmUp({ source, preludes: [["iostream", "vector"]] })).then((res: any) => {
+            console.info("[IRIS] 瀏覽器引擎暖機完成", res); // includes, ok, pchFrom, ms of each warm-up program
+            markWarmup("ready");
+          });
+        }).catch(() => markWarmup("failed"));
+      },
+      () => markWarmup("failed")
+    );
+  });
+}
+
 function randomToken(): string {
   const bytes: number[] = [];
   const c: any = (window as any).crypto;
@@ -443,13 +544,8 @@ export function mapRunError(r: any): { message: string; stderr?: string } | null
         return { message: `瀏覽器引擎內部錯誤（${e.kind}）` };
     }
   }
-  const reason = r.exit && r.exit.reason;
-  if (reason === "stack-overflow") {
-    return { message: "瀏覽器引擎的遞迴深度不足（堆疊溢位），無法完整記錄這次執行" };
-  }
-  if (reason === "step-limit" || reason === "trace-limit") {
-    return { message: "程式執行步數超過瀏覽器引擎的記錄上限；請縮小輸入" };
-  }
+  // stack overflow and the step / trace limits are replayable up to the last recorded stop (runWarnings says why it
+  // stopped); a fatal runtime error arrives as a trap exit and is replayable as well
   return null;
 }
 
@@ -474,6 +570,15 @@ export function runWarnings(r: any): string[] {
     );
   }
   const reason = r.exit && r.exit.reason;
+  if (reason === "stack-overflow") {
+    out.push("[瀏覽器引擎] 遞迴太深，堆疊（stack）用完了，程式在最後一步停止（可能是無窮遞迴）；可以回放到停止前的最後一步");
+  }
+  if (reason === "step-limit") {
+    out.push("[瀏覽器引擎] 執行步數超過上限，程式已被停止（可能是無窮迴圈）；可以回放到停止前的最後一步");
+  }
+  if (reason === "trace-limit") {
+    out.push("[瀏覽器引擎] 執行紀錄超過大小上限，程式已被停止；可以回放到停止前的最後一步");
+  }
   if (reason === "timeout") out.push("[瀏覽器引擎] 程式執行超過時間上限，已被終止");
   if (reason === "output-limit") out.push("[瀏覽器引擎] 程式輸出超過上限，已被終止");
   return out;
@@ -535,14 +640,10 @@ export function createAndUpload(
   const work = loadModules()
     .then((mods) => {
       if (gen !== _generation) return cancelled();
-      if (!_enginePromise) {
-        progress("瀏覽器引擎：正在載入編譯器（第一次需要下載，約數十秒；之後會快取）……");
-        _enginePromise = mods.engine.loadEngine();
-        _enginePromise.catch(() => {
-          _enginePromise = null;
-        });
-      }
-      return _enginePromise.then((engine: any) => {
+      // the background warm-up (prewarm) may already be loading it: say so until it is ready
+      if (!_enginePromise) startEngine(mods);
+      if (!_engineReady) progress("瀏覽器引擎：正在載入編譯器（第一次需要下載，約數十秒；之後會快取）……");
+      return (_enginePromise as Promise<any>).then((engine: any) => {
         if (gen !== _generation) return cancelled();
         progress("瀏覽器引擎：正在編譯並執行程式……");
         return engine.runProgram(code, stdin).then((r: any) => {
@@ -662,6 +763,31 @@ export function engineSourceLine(n: number): string {
   return (src.split(/\r?\n/)[n - 1] || "").trim();
 }
 
+/** runtimeErrorRun() hands the same object back for the same model, so the panel computes each diagram once per run. */
+let _rtRunCache: { model: any; run: any } | null = null;
+
+/**
+ * The current run, shaped for runtimeDiag (P2 runtime-error panel): the LocalGdb TraceModel's runtime errors, exit,
+ * steps, source, functions, decls and classes — the same fields the jest fixtures (suite-p2fix.sh) were built from.
+ * null when nothing has run yet.
+ */
+export function runtimeErrorRun(): any {
+  const model = _socket && _socket.currentGdb && _socket.currentGdb.session && _socket.currentGdb.session.model;
+  if (!model || !Array.isArray(model.steps)) return null;
+  if (_rtRunCache && _rtRunCache.model === model) return _rtRunCache.run;
+  const run = {
+    errors: model.runtimeErrors || [],
+    exit: model.exit,
+    steps: model.steps,
+    source: model.source || "",
+    functions: model.functions,
+    decls: model.decls,
+    classes: model.classes,
+  };
+  _rtRunCache = { model, run };
+  return run;
+}
+
 /**
  * Ask the engine a READ-ONLY question and get the answer synchronously (the `-vg-cell-last-write` query). It
  * bypasses the socket on purpose: the answer is not a stop, so it must not run through process_gdb_response (it
@@ -716,6 +842,7 @@ export function sendSignal(signalName: string, target: string): Promise<string> 
     if (abort) abort();
     const p = _enginePromise;
     _enginePromise = null;
+    _engineReady = false;
     if (p) {
       p.then(
         (engine: any) => {
@@ -805,6 +932,8 @@ export const _test = {
     _modules = null;
     _socket = null;
     _enginePromise = null;
+    _engineReady = false;
+    _prewarmStarted = false;
     _generation = 0;
     _inFlight = false;
     _abortCurrent = null;
@@ -821,6 +950,7 @@ export const _test = {
 
 export default {
   getSocket,
+  prewarm,
   ajax,
   createAndUpload,
   readFile,

@@ -154,6 +154,7 @@ export function applyJumpBlob(blob: JumpBlob): Frame | null {
     }
   }
   if (result) {
+    gv.__call_graph_too_deep = result.tooDeep || 0;
     gv.__call_graph_nodes = result.nodes;
     gv.__call_graph_edges = result.edges;
     gv.__active_node_id = result.activeNodeId;

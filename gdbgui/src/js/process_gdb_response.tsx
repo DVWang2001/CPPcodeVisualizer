@@ -21,6 +21,7 @@ import { processFeatures } from "./processFeatures";
 import { extractJumpBlob, applyJumpBlob } from "./fastForwardJump";
 import { disarmFastForward } from "./fastForward";
 import { recordInsertedNumber, noteStopBkptno } from "./silentPassRunner";
+import { noteRuntimeStop } from "./runtimeErrorState";
 
 const process_gdb_response = function (response_array: any) {
   /**
@@ -346,13 +347,21 @@ const process_gdb_response = function (response_array: any) {
 
     if (r.message && r.message === "stopped") {
       noteStopBkptno(r.payload && r.payload.bkptno ? String(r.payload.bkptno) : null);
+      // 執行錯誤圖解：在 UI 暫停（與自動播放的 TTS）之前記下這個停點有沒有錯誤
+      try {
+        noteRuntimeStop(r.payload || {});
+      } catch (e) {
+        console.warn("[runtime-error] noteRuntimeStop failed:", e);
+      }
       if (r.payload && r.payload.reason) {
         if (r.payload.reason.includes("exited")) {
           Actions.inferior_program_exited();
         } else if (
           r.payload.reason.includes("breakpoint-hit") ||
           r.payload.reason.includes("end-stepping-range") ||
-          r.payload.reason.includes("function-finished")
+          r.payload.reason.includes("function-finished") ||
+          // a recoverable runtime error (LocalGdb, payload["runtime-error"]): pause like on a breakpoint
+          r.payload.reason === "runtime-error"
         ) {
           if (r.payload["new-thread-id"]) {
             // @ts-expect-error ts-migrate(2339) FIXME: Property 'set_thread_id' does not exist on type 't... Remove this comment to see the full error message

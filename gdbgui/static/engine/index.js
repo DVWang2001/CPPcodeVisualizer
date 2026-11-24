@@ -10,18 +10,23 @@
 // objects and hands them to the pipeline worker; the compiled student program comes back as a
 // Module and runs in a fresh execution worker. Both workers are static same-origin files (never
 // blob:), so each can get its own CSP. Watchdogs here terminate a stuck worker:
-//   * compile budget (AST+compile+link, default 8 s, max 9.5 s): terminate + respawn the pipeline worker,
+//   * compile budget (AST+compile+link, default and max 9.5 s): terminate + respawn the pipeline worker,
 //     return {errors:[{kind:"compile-timeout"}]} within 10 s;
 //   * execution wall clock (default 5 s, max 30 s): terminate the execution worker.
+// `engine.warmUp()` compiles small programs in the background before the first Run (see WARM_PRELUDES).
 
 import { sha256Hex } from "./sha256.js";
+import { runtimeExit } from "./trace.js";
 
 export const VERSION = "s1-0.1.0";
 
 /** Defaults and hard bounds. Callers may lower budgets; raising is clamped to the max values. */
 export const LIMITS = Object.freeze({
-  compileTimeoutMs: 8000, maxCompileTimeoutMs: 9500,
+  // 9.5 s since the runtime checks (runtime-error plan P1): they add ~11% to AST+compile+link, and the first compile of a
+  // fresh engine is ~3 s slower than later ones (lab-david, 2026-11-23); warmUp() takes that first compile off the Run
+  compileTimeoutMs: 9500, maxCompileTimeoutMs: 9500,
   pchTimeoutMs: 30000,
+  warmTimeoutMs: 60000, // a warm-up compile is our own small program: a generous budget, never a restart that loses the warm state
   execTimeoutMs: 5000, maxExecTimeoutMs: 30000,
   decodeTimeoutMs: 10000,
   maxSourceBytes: 256 * 1024,
@@ -144,7 +149,7 @@ export function normalizeRequest(source, stdin, opts) {
   if (src.length > LIMITS.maxSourceBytes) throw new RangeError(`source larger than ${LIMITS.maxSourceBytes} bytes`);
   if (inp.length > LIMITS.maxStdinBytes) throw new RangeError(`stdin larger than ${LIMITS.maxStdinBytes} bytes`);
   const o = opts && typeof opts === "object" ? opts : {};
-  const allowed = new Set(["std", "instrument", "pch", "opt", "compileTimeoutMs", "execTimeoutMs", "returnWasm"]);
+  const allowed = new Set(["std", "instrument", "pch", "opt", "compileTimeoutMs", "execTimeoutMs", "returnWasm", "checks"]);
   for (const k of Object.keys(o)) if (!allowed.has(k)) throw new TypeError("unknown option " + k);
   const std = o.std === undefined ? "c++17" : o.std;
   if (!["c++17", "c++20", "c++23"].includes(std)) throw new RangeError("std must be c++17, c++20 or c++23");
@@ -152,13 +157,63 @@ export function normalizeRequest(source, stdin, opts) {
   if (!["O0", "O1", "O2"].includes(opt)) throw new RangeError("opt must be O0, O1 or O2");
   return {
     source, stdin: inp,
-    opts: { std, opt, instrument: o.instrument !== false, pch: o.pch !== false, returnWasm: o.returnWasm === true },
+    opts: { std, opt, instrument: o.instrument !== false, pch: o.pch !== false, returnWasm: o.returnWasm === true, checks: o.checks !== false },
     compileTimeoutMs: clampMs(o.compileTimeoutMs, LIMITS.compileTimeoutMs, LIMITS.maxCompileTimeoutMs),
     execTimeoutMs: clampMs(o.execTimeoutMs, LIMITS.execTimeoutMs, LIMITS.maxExecTimeoutMs),
   };
 }
 
 const STUDENT_STAGES = new Set(["ast", "compile", "link", "syntax"]);
+
+/**
+ * #include lists warmed by default: the two most common lesson preludes (iostream + vector in 26 and iostream alone in
+ * 22 of the 99 lesson bundles in examples/, 2026-11-23). The PCH cache is keyed on the ordered include list, so a
+ * warm-up only saves the PCH build of a program with exactly the same #include lines.
+ */
+export const WARM_PRELUDES = Object.freeze([Object.freeze(["iostream", "vector"]), Object.freeze(["iostream"])]);
+
+/** The system #include list of `source` as pipeline.worker.js's pchIncludes reads it; null when an include is not <...>. @param {string} source */
+function includeList(source) {
+  /** @type {string[]} */
+  const out = [];
+  for (const l of source.split("\n").map((x) => x.replace(/\r$/, ""))) {
+    const m = /^\s*#\s*include\s*<([\w./+-]+)>\s*(\/\/.*)?$/.exec(l);
+    if (m) { if (!out.includes(m[1])) out.push(m[1]); }
+    else if (/^\s*#\s*include\b/.test(l)) return null;
+  }
+  return out;
+}
+
+/** A small program with exactly these #include lines; it uses vector / cout only when they are included. @param {string[]} includes */
+function warmProgram(includes) {
+  const has = (/** @type {string} */ h) => includes.includes(h) || includes.includes("bits/stdc++.h");
+  const l = includes.map((i) => `#include <${i}>`);
+  l.push("using namespace std;", "int warmSquares(int n) {", "  int s = 0;", "  for (int i = 1; i <= n; i++) {", "    s += i * i;", "  }", "  return s;", "}", "int main() {");
+  if (has("vector")) l.push("  vector<int> a = {5, 3, 8, 1, 4};", "  int n = (int)a.size();");
+  else l.push("  int a[5] = {5, 3, 8, 1, 4};", "  int n = 5;");
+  l.push("  int best = a[0];", "  for (int i = 1; i < n; i++) {", "    if (a[i] > best) {", "      best = a[i];", "    }", "  }");
+  if (has("iostream")) l.push("  cout << best << \" \" << warmSquares(best) << endl;");
+  l.push("  return warmSquares(best) > 0 ? 0 : 1;", "}", "");
+  return l.join("\n");
+}
+
+/**
+ * The programs warmUp compiles: first one with the #include lines of `source` (the program in the editor, so its PCH
+ * is ready for its first Run), then one per prelude with a different include list; at most 4.
+ * @param {string} [source] @param {ReadonlyArray<ReadonlyArray<string>>} [preludes]
+ * @returns {Array<{ includes: string[], source: string }>}
+ */
+export function warmSources(source, preludes = WARM_PRELUDES) {
+  /** @type {string[][]} */
+  const lists = [];
+  const mine = typeof source === "string" && source.length <= LIMITS.maxSourceBytes ? includeList(source) : null;
+  if (mine && mine.length) lists.push(mine);
+  for (const p of preludes || []) {
+    if (!Array.isArray(p) || !p.length || !p.every((h) => typeof h === "string" && /^[\w./+-]+$/.test(h))) continue;
+    if (!lists.some((x) => x.join("\n") === p.join("\n"))) lists.push([...p]);
+  }
+  return lists.slice(0, 4).map((includes) => ({ includes, source: warmProgram(includes) }));
+}
 
 /**
  * Structured clone (postMessage) turns null-prototype objects into ordinary ones. Every map keyed
@@ -186,6 +241,8 @@ class Engine {
     this.pipe = null;
     /** @type {Promise<void> | null} */
     this.ready = null;
+    /** Runs requested but not started yet: a warm-up stops before its next program while one waits. */
+    this.pendingRuns = 0;
   }
 
   spawnPipeline() {
@@ -272,9 +329,42 @@ class Engine {
    * @param {string} source @param {string} [stdin] @param {Record<string, any>} [opts]
    */
   runProgram(source, stdin = "", opts = {}) {
-    const run = this.queue.then(() => this._run(source, stdin, opts));
+    this.pendingRuns++;
+    const run = this.queue.then(() => { this.pendingRuns--; return this._run(source, stdin, opts); });
     this.queue = run.catch(() => {});
     return run;
+  }
+
+  /**
+   * Warm the compiler before the first Run (best effort, no output). For each program of warmSources(o.source,
+   * o.preludes): build or load the PCH of its #include list (in the browser the PCH cache is IndexedDB, shared by every
+   * page of the site) and instrument + compile + link it, so V8 has optimised clang's and lld's hot code by the time a
+   * student's program arrives. Queued like runProgram: a Run requested meanwhile waits for the program being warmed
+   * (it would build the same PCH itself) and the remaining programs are skipped. Each warm compile has the generous
+   * LIMITS.warmTimeoutMs budget, so a slow first compile never restarts the worker and throws the warm state away.
+   * @param {{ source?: string, preludes?: ReadonlyArray<ReadonlyArray<string>> }} [o]
+   * @returns {Promise<Array<{ includes: string[], ok: boolean, pchFrom: string | null, ms: number }>>}
+   */
+  warmUp(o = {}) {
+    const run = this.queue.then(() => this._warm(o || {}));
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  /** @param {{ source?: string, preludes?: ReadonlyArray<ReadonlyArray<string>> }} o */
+  async _warm(o) {
+    /** @type {Array<{ includes: string[], ok: boolean, pchFrom: string | null, ms: number }>} */
+    const out = [];
+    for (const w of warmSources(o.source, o.preludes)) {
+      if (this.pendingRuns > 0 || !this.pipe) break;
+      const t0 = performance.now();
+      const c = await this.request(
+        { type: "compile", source: w.source, opts: { std: "c++17", opt: "O1", instrument: true, pch: true, returnWasm: false, checks: true } },
+        { studentBudgetMs: LIMITS.warmTimeoutMs, pchBudgetMs: LIMITS.pchTimeoutMs },
+      );
+      out.push({ includes: w.includes, ok: c.type === "compiled" && c.ok === true, pchFrom: c.pchFrom || null, ms: Math.round(performance.now() - t0) });
+    }
+    return out;
   }
 
   /** @param {string} source @param {string} stdin @param {Record<string, any>} opts */
@@ -287,6 +377,7 @@ class Engine {
       ok: false, engine: "wasm", version: VERSION, instrumented: req.opts.instrument,
       steps: [], rawSteps: 0, decls: {}, globals: {}, functions: {}, uninitDecls: [],
       stdout: "", stderr: "", exit: null, limits, errors: [], compileLog: "", timings: {}, pchFrom: null,
+      runtimeErrors: [],
     };
     const c = await this.request({ type: "compile", source: req.source, opts: req.opts }, { studentBudgetMs: req.compileTimeoutMs, pchBudgetMs: LIMITS.pchTimeoutMs });
     result.timings.compile = performance.now() - t0;
@@ -339,6 +430,11 @@ class Engine {
         result.stepOffsets = d.stepOffsets;
         result.errors.push(...d.errors);
         if (d.limit) result.exit = { reason: "step-limit", code: result.exit && result.exit.code, message: d.limit === "steps" ? `stopped after ${LIMITS.maxSteps} recorded steps` : "trace size limit (20 MB) reached" };
+        // runtime errors (include/vgerr.h): a fatal one ended the program with exit code 134 right after its record;
+        // that exit becomes the trap LocalGdb shows as a signal stop, pointing at the error (exit.runtimeError)
+        result.runtimeErrors = d.runtimeErrors || [];
+        const rx = runtimeExit(result.runtimeErrors);
+        if (rx && result.exit && result.exit.reason === "exit" && result.exit.code === 134) result.exit = rx;
         if (d.truncated) result.errors.push({ kind: "trace-truncated", message: "the last trace record was incomplete" });
       }
     }

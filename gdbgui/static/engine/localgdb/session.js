@@ -32,6 +32,7 @@ const BREAK_HDR = [
 const SIGNALS = {
   abort: ["SIGABRT", "Aborted"], memory: ["SIGSEGV", "Segmentation fault"], "div-zero": ["SIGFPE", "Arithmetic exception"],
   other: ["SIGSEGV", "Segmentation fault"], timeout: ["SIGXCPU", "CPU time limit exceeded"], "stack-overflow": ["SIGSEGV", "Segmentation fault"],
+  illegal: ["SIGILL", "Illegal instruction"], "step-limit": ["SIGKILL", "Killed"], "trace-limit": ["SIGKILL", "Killed"],
 };
 
 /** MI commands that exist in GDB but are outside the browser engine's scope (explicit error, never fake data). */
@@ -528,16 +529,24 @@ export class LocalGdbSession {
       return o;
     };
     const tail = { "thread-id": "1", "stopped-threads": "all", core: "0" };
+    // runtime errors (runResult.runtimeErrors): the signal stop of a fatal one points at it; any other stop on a step
+    // where an error happened carries the first error of that step
+    const ex = /** @type {any} */ (this.model.exit);
+    const errIdx = info.kind === "signal" && Number.isInteger(ex.runtimeError) ? ex.runtimeError : info.kind === "exit" ? -1 : this.model.errorAt.get(info.idx) ?? -1;
+    const err = errIdx >= 0 ? this.model.runtimeErrors[errIdx] : null;
+    const rt = err ? { "runtime-error": { index: String(errIdx), kind: String(err.kind), fatal: err.fatal ? "y" : "n" } } : {};
+    const errText = () => (err ? `\n${this.gdbFilePath}:${err.line}${err.col ? ":" + err.col : ""}: runtime error: ${err.message}\n` : "");
     switch (info.kind) {
       case "breakpoint": {
         for (const b of info.hits) items.push(notifyItem("breakpoint-modified", { bkpt: this.bkpt(b) }));
         const first = info.hits[0];
         const f = this.model.chain(this.topStep())[0];
         const temp = first.disp === "del";
+        if (err && !err.fatal) items.push(consoleItem(errText()));
         items.push(consoleItem("\n"));
         items.push(consoleItem(`${temp ? "Temporary breakpoint" : "Breakpoint"} ${first.number}, ${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}\n`));
         items.push(consoleItem(`${f.line}\tin ${this.gdbFilePath}\n`));
-        items.push(notifyItem("stopped", { reason: "breakpoint-hit", disp: first.disp, bkptno: String(first.number), frame: frame(), ...tail }));
+        items.push(notifyItem("stopped", { reason: "breakpoint-hit", disp: first.disp, bkptno: String(first.number), frame: frame(), ...rt, ...tail }));
         for (const b of info.hits) if (b.disp === "del") { this.bps.remove(b.number); items.push(notifyItem("breakpoint-deleted", { id: String(b.number) })); }
         break;
       }
@@ -547,10 +556,19 @@ export class LocalGdbSession {
           if (info.frameChanged) items.push(consoleItem(`${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}\n`));
           items.push(consoleItem(`${f.line}\tin ${this.gdbFilePath}\n`));
         }
-        items.push(notifyItem("stopped", { reason: "end-stepping-range", frame: frame(), ...tail }));
+        items.push(notifyItem("stopped", { reason: "end-stepping-range", frame: frame(), ...rt, ...tail }));
         break;
+      case "runtime-error": {
+        // a recoverable runtime error (overflow, C array out of bounds, ...): the program stops here like on a
+        // breakpoint and can go on; reason "runtime-error" (not a signal: nothing killed the program)
+        const f = this.model.chain(this.topStep())[0];
+        items.push(consoleItem(errText()));
+        items.push(consoleItem(`${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}\n${f.line}\tin ${this.gdbFilePath}\n`));
+        items.push(notifyItem("stopped", { reason: "runtime-error", frame: frame(), ...rt, ...tail }));
+        break;
+      }
       case "finish":
-        items.push(notifyItem("stopped", { reason: "function-finished", frame: frame(), ...tail }));
+        items.push(notifyItem("stopped", { reason: "function-finished", frame: frame(), ...rt, ...tail }));
         break;
       case "no-history":
         items.push(consoleItem("\nNo more reverse-execution history.\n"));
@@ -559,9 +577,10 @@ export class LocalGdbSession {
       case "signal": {
         const [name, meaning] = this.signalOf();
         const f = this.model.chain(this.topStep())[0];
+        if (err) items.push(consoleItem(errText()));
         items.push(consoleItem(`\nProgram received signal ${name}, ${meaning}.\n`));
         items.push(consoleItem(`${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}\n${f.line}\tin ${this.gdbFilePath}\n`));
-        items.push(notifyItem("stopped", { reason: "signal-received", "signal-name": name, "signal-meaning": meaning, frame: frame(), ...tail }));
+        items.push(notifyItem("stopped", { reason: "signal-received", "signal-name": name, "signal-meaning": meaning, frame: frame(), ...rt, ...tail }));
         break;
       }
       case "exit": {

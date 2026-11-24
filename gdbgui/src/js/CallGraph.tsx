@@ -1,6 +1,7 @@
 import React from "react";
 import { store } from "statorgfc";
 import type { CallNode, CallEdge } from "./callTree";
+import { CALL_TREE_MAX_DEPTH } from "./callTree";
 import { layoutTree, Placed, NODE_W, NODE_H } from "./callGraphLayout";
 import { cameraTransform, ViewMode } from "./cameraTransform";
 import { resolveGuideSegments } from "./guideText";
@@ -240,6 +241,16 @@ class CallGraph extends React.Component<{}, CallGraphState> {
         const edges: CallEdge[] = gv.__call_graph_edges || [];
         const activeNodeId: number | null = gv.__active_node_id ?? null;
         const activeSet = new Set<number>(gv.__active_path || []);
+
+        // Threads sets this when the stack at this stop was too deep to fold (runaway recursion, callTree.ts).
+        const tooDeep: number = gv.__call_graph_too_deep || 0;
+        if (tooDeep > 0) {
+            return (
+                <div data-testid="cg-too-deep" style={{ padding: "12px", color: "var(--ink-soft)", fontSize: "0.9em" }}>
+                    這一步的呼叫堆疊有 {tooDeep} 層，超過 {CALL_TREE_MAX_DEPTH} 層，呼叫歷史圖畫不下，這一步先不畫。
+                </div>
+            );
+        }
 
         if (nodes.length === 0) {
             return (

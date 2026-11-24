@@ -13,6 +13,7 @@
 //   d  : name -> JSON value, only for values that differ from the last record of the same (F, name)
 //   depth/frame : call depth and a unique serial per function activation (recursion-safe)
 // Limit record: {"limit":"steps"} or {"limit":"bytes"}, then exit(124).
+// Runtime-error records ({"err":...}) come from vgerr.h, included at the end of this file.
 #pragma once
 #include "vgcompat.h"
 #include <wasi/api.h>
@@ -366,3 +367,5 @@ inline void step(int probe, int line, const char* fn, std::initializer_list<Var>
 template <class T, class F> T&& ret(T&& x, F&& f) { f(); return std::forward<T>(x); }
 
 }  // namespace __vg
+
+#include "vgerr.h"  // runtime-error reports on the same fd-3 channel (pipeline.worker.js CHECK_FLAGS turns the checks on)

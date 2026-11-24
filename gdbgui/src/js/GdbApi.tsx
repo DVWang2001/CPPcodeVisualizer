@@ -3,6 +3,7 @@
  * to send various commands to gdb, to and to dispatch gdb responses to gdbgui.
  */
 import { ensurePanelChecked } from "./sidebarSelection";
+import { resetRuntimeErrors } from "./runtimeErrorState";
 import { store } from "statorgfc";
 // @ts-ignore
 import * as _ from "lodash";
@@ -107,6 +108,8 @@ const GdbApi = {
   init: function () {
     // 瀏覽器內引擎＋LocalGdb（見 localEngine.README.md）
     socket = (localEngine.getSocket() as any) as SocketIOClient.Socket;
+    // 無感加載：頁面閒下來就在背景載入並暖機編譯器，第一次 Run 不必等下載與冷啟動
+    localEngine.prewarm();
 
     socket.on("connect", function () {
       log("connected");
@@ -453,6 +456,7 @@ const GdbApi = {
             store.set("compile_stderr", "");
             const registry = (window as any).gdbgui_collapser_registry || {};
             if (registry["compile_errors"]) registry["compile_errors"].close();
+            resetRuntimeErrors(); // 新的一次執行：上一次的執行錯誤圖解不再適用
 
             let binaryPath = null;
             let sourcePath: string | null = null;   // virtual display path (/workspace/main.cpp)
@@ -671,6 +675,7 @@ const GdbApi = {
             const errors = _parseCompileErrors(stderr);
             store.set("compile_errors", errors);
             store.set("compile_stderr", stderr);
+            resetRuntimeErrors(); // 程式改過、沒有編譯成功：上一次的執行錯誤圖解不再適用
             if (errors.length > 0) {
               const registry = (window as any).gdbgui_collapser_registry || {};
               ensurePanelChecked("compile_errors"); // 沒勾選時先勾上，否則開了也看不到
@@ -702,8 +707,10 @@ const GdbApi = {
     }
   },
   run_initial_commands: function () {
+    // Keep the lesson annotation tables that SourceCode.refreshAnnotationGlobals parses from the source, including
+    // __bug (the 錯誤診斷 note): the local engine repeats this handshake on every Run.
     Object.keys(global_variable).forEach(key => {
-      if (key !== "__line" && key !== "__tts" && key !== "__layout") {
+      if (key !== "__line" && key !== "__tts" && key !== "__layout" && key !== "__bug") {
         delete (global_variable as any)[key];
       }
     });

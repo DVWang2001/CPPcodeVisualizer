@@ -104,8 +104,9 @@ export class BreakpointTable {
 }
 
 /**
- * @typedef {{ kind: "breakpoint" | "step" | "finish" | "no-history" | "exit" | "signal", idx: number, hits: Breakpoint[],
+ * @typedef {{ kind: "breakpoint" | "step" | "finish" | "no-history" | "exit" | "signal" | "runtime-error", idx: number, hits: Breakpoint[],
  *   frameChanged: boolean }} StopInfo
+ *   runtime-error: a stop where a recoverable runtime error happened (resume commands stop there like on a breakpoint)
  */
 
 export class ExecState {
@@ -148,7 +149,8 @@ export class ExecState {
     const S = this.model.steps;
     const prevFn = this.disp >= 0 && this.disp < S.length ? S[this.disp].frame : -1;
     this.pos = idx; this.disp = idx; this.landed = false; this.selectedLevel = 0;
-    return { kind: hits.length ? "breakpoint" : kind, idx, hits, frameChanged: prevFn !== S[idx].frame };
+    const k = hits.length ? "breakpoint" : kind === "step" && this.model.recoverableErrorAt(idx) >= 0 ? "runtime-error" : kind;
+    return { kind: k, idx, hits, frameChanged: prevFn !== S[idx].frame };
   }
 
   /** Land on the caller's call line after frame `frameId` returned. @param {number} frameId @returns {StopInfo} */
@@ -206,14 +208,14 @@ export class ExecState {
       const fr = /** @type {any} */ (this.model.frames.get(F));
       for (let i = startIdx; i <= fr.last; i++) {
         const h = this.bps.hitsAt(i);
-        if (h.length) return this._stopAt(i, "step", h);
+        if (h.length || this.model.recoverableErrorAt(i) >= 0) return this._stopAt(i, "step", h);
       }
       if (fr.last >= this.n - 1 && this.model.exit.reason !== "exit") return this._exit();
       return this._landInCaller(F, "finish");
     }
     for (let i = startIdx; i < this.n; i++) {
       const h = this.bps.hitsAt(i);
-      if (h.length) return this._stopAt(i, "step", h);
+      if (h.length || this.model.recoverableErrorAt(i) >= 0) return this._stopAt(i, "step", h);
       if (how === "continue") continue;
       if (pos >= 0 && this._sameLineVisit(dispIdx, i)) continue;
       if (how === "step" || S[i].depth <= dRef) {
@@ -240,7 +242,7 @@ export class ExecState {
     }
     for (let i = base - 1; i >= 0; i--) {
       const h = this.bps.hitsAt(i);
-      if (h.length) return this._stopAt(i, "step", h);
+      if (h.length || this.model.recoverableErrorAt(i) >= 0) return this._stopAt(i, "step", h);
       if (how === "continue") continue;
       if (this._sameLineVisit(base, i)) continue;
       if (how === "step" || S[i].depth <= dRef) return this._stopAt(i, "step");

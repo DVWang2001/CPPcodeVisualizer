@@ -1,4 +1,5 @@
 import { buildGhostFromSnapshots } from "../ghostTree";
+import { CALL_TREE_MAX_DEPTH } from "../callTree";
 import type { Frame } from "../callTree";
 
 const f = (func: string, addr: string, line: number): Frame => ({ func, addr, line, args: [] });
@@ -41,4 +42,14 @@ test("fib-like snapshots build the complete tree with positions per sig", () => 
 test("malformed snapshot entries are skipped, not fatal", () => {
     const g = buildGhostFromSnapshots([[{ func: "main" } as any], "junk" as any]);
     expect(g === null || g.nodes.length >= 1).toBe(true);
+});
+
+test("a snapshot deeper than CALL_TREE_MAX_DEPTH (runaway recursion) means no ghost tree", () => {
+    const chain = (n: number): Frame[] => {
+        const s: Frame[] = [];
+        for (let i = 0; i < n - 1; i++) s.push(f("f", "0x40", 4));
+        s.push(f("main", "0x10", 8));
+        return s;
+    };
+    expect(buildGhostFromSnapshots([chain(1), chain(2), chain(CALL_TREE_MAX_DEPTH + 1)])).toBeNull();
 });

@@ -20,6 +20,23 @@ export const LINK_FLAGS = Object.freeze([
   "-Wl,--export=__stack_pointer", // exec.worker.js reads this after a memory trap to tell a real stack overflow from a bad pointer
 ]);
 export const STD_ALLOWED = Object.freeze(["c++17", "c++20", "c++23"]);
+/**
+ * Runtime checks of instrumented builds (runtime-error plan P1, docs/superpowers/plans/2026-11-23-runtime-error-viz-plan.md §3.2):
+ * UBSan, whose handlers live in include/vgerr.h (vg.h includes it; the toolchain has no compiler-rt), and libc++'s
+ * EXTENSIVE hardening, whose failures reach vgerr.h through the replacement include/c++/v1/__assertion_handler.
+ * Signed overflow, shifts, C array bounds and float->int are compiled as recoverable (vgerr.h reports them once per
+ * place and the program goes on); every other check ends the program. Left out: vptr and function (need RTTI/runtime
+ * support the toolchain lacks), and alignment, object-size, pointer-overflow and the nonnull attribute checks, which
+ * instrument every memory access or pointer step: on the 22 E3 lessons (lab-david, 2026-11-23) they took the AST +
+ * compile + link time from +36% to +11% over no checks, and none of the 48 runtime-error test programs needs them.
+ * The PCH is built with the same flags (pchKey covers them).
+ */
+export const CHECK_FLAGS = Object.freeze([
+  "-fsanitize=undefined",
+  "-fno-sanitize=vptr,function,alignment,object-size,pointer-overflow,nonnull-attribute,returns-nonnull-attribute",
+  "-fno-sanitize-recover=all", "-fsanitize-recover=signed-integer-overflow,shift,bounds,float-cast-overflow",
+  "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE",
+]);
 const PCH_USE = ["-Xclang", "-include-pch", "-Xclang", "/vg.pch", "-fpch-validate-input-files-content", "-Xclang", "-fmodules-validate-system-headers"];
 
 /** @type {Driver | null} */
@@ -47,15 +64,15 @@ export function pchIncludes(source) {
   return [...new Set(incs)];
 }
 
-/** @param {string} std @param {string[]} includes @param {(s: string) => void} stage */
-async function getPch(std, includes, stage, opt = "O1") {
-  const key = await pchKey({ std: std + "|" + opt, includes, vgSha256: hashes.vg, headersSha256: hashes.headers, clangSha256: hashes.clang, sysrootSha256: hashes.sysroot });
+/** @param {string} std @param {string[]} includes @param {(s: string) => void} stage @param {readonly string[]} checks */
+async function getPch(std, includes, stage, opt = "O1", checks = CHECK_FLAGS) {
+  const key = await pchKey({ std: std + "|" + opt + (checks.length ? "|" + checks.join(" ") : ""), includes, vgSha256: hashes.vg, headersSha256: hashes.headers, clangSha256: hashes.clang, sysrootSha256: hashes.sysroot });
   const src = "#include <vg.h>\n" + includes.map((i) => `#include <${i}>\n`).join("");
   let bytes = hotPch.get(key), from = "memory";
   if (!bytes && pchCache) { const b = await pchCache.get(key); if (b) { bytes = b; from = "cache"; } }
   if (!bytes) {
     stage("pch");
-    bytes = await /** @type {Driver} */ (driver).buildPch(src, [`-std=${std}`, "-fno-exceptions", "-" + opt]);
+    bytes = await /** @type {Driver} */ (driver).buildPch(src, [`-std=${std}`, "-fno-exceptions", "-" + opt, ...checks]);
     from = "built";
     if (pchCache) await pchCache.put(key, bytes);
   }
@@ -66,7 +83,8 @@ async function getPch(std, includes, stage, opt = "O1") {
 
 /**
  * @param {string} source
- * @param {{ std?: string, opt?: string, instrument?: boolean, pch?: boolean, returnWasm?: boolean }} opts
+ * @param {{ std?: string, opt?: string, instrument?: boolean, pch?: boolean, returnWasm?: boolean, checks?: boolean }} opts
+ *   checks: false builds an instrumented program without CHECK_FLAGS (the runtime checks are on by default)
  * @param {(s: string) => void} stage
  */
 async function compileProgram(source, opts, stage) {
@@ -79,11 +97,15 @@ async function compileProgram(source, opts, stage) {
   const T = {};
   let t0 = now();
   const doInstrument = opts.instrument !== false;
+  // instrumented builds: the runtime checks go into the PCH, the AST step and the compile alike (a PCH only loads
+  // under the flags it was built with)
+  const checks = doInstrument && opts.checks !== false ? CHECK_FLAGS : [];
+  const ibase = [...base, ...checks];
   let pch = null;
   if (doInstrument && opts.pch !== false) {
     const incs = pchIncludes(source);
     if (incs) {
-      try { pch = await getPch(std, incs, stage, opt); } catch { pch = null; /* e.g. unknown header: fall back */ }
+      try { pch = await getPch(std, incs, stage, opt, checks); } catch { pch = null; /* e.g. unknown header: fall back */ }
     }
   }
   T.pch = now() - t0;
@@ -106,7 +128,7 @@ async function compileProgram(source, opts, stage) {
   if (doInstrument) {
     stage("ast");
     t0 = now();
-    const astFlags = pch ? [...base, ...pch.flags] : [...base, "-include", "vg.h"];
+    const astFlags = pch ? [...ibase, ...pch.flags] : [...ibase, "-include", "vg.h"];
     let ins;
     try {
       ins = await instrument(d, source, { flags: astFlags, files: pch ? pch.files : {} });
@@ -122,7 +144,7 @@ async function compileProgram(source, opts, stage) {
 
   t0 = now();
   const flags = doInstrument
-    ? (pch ? [...base, ...pch.flags, ...LINK_FLAGS] : [...base, "-include", "vg.h", ...LINK_FLAGS])
+    ? (pch ? [...ibase, ...pch.flags, ...LINK_FLAGS] : [...ibase, "-include", "vg.h", ...LINK_FLAGS])
     : [...base, "-include", "vgcompat.h", ...LINK_FLAGS];
   const c = await d.compileLink(text, { flags, files: pch ? pch.files : {}, onStage: stage });
   T.compileLink = now() - t0;
