@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>執行錯誤視覺化：三個待決定的事</title>
+<style>
+.dz { max-width: 960px; color: var(--foreground); font-size: 13.5px; line-height: 1.6; container-type: inline-size; }
+.dz * { box-sizing: border-box; }
+.dz h2 { font-size: 17px; line-height: 1.4; margin: 0; font-weight: 650; }
+.dz h3 { font-size: 14px; line-height: 1.4; margin: 0; font-weight: 650; }
+.dz p { margin: 0; }
+.dz ul { margin: 0; padding-left: 18px; }
+.dz li + li { margin-top: 3px; }
+.mut { color: var(--muted-foreground); }
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-variant-ligatures: none !important; font-feature-settings: "liga" 0, "calt" 0 !important; }
+.num { font-weight: 700; font-variant-numeric: tabular-nums; }
+.nw { white-space: nowrap; }
+.dz { position: relative; }
+.tip { position: absolute; z-index: 5; max-width: 300px; background: var(--card); color: var(--foreground); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; font-size: 12px; line-height: 1.5; box-shadow: 0 4px 14px rgba(0, 0, 0, .2); pointer-events: none; }
+.tip[hidden] { display: none; }
+.tip b { font-weight: 600; }
+.top { font-size: 12.5px; color: var(--muted-foreground); margin-bottom: 10px; }
+
+/* tabs */
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab { appearance: none; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 6px 12px 8px 0; font: inherit; color: var(--muted-foreground); text-align: left; cursor: pointer; }
+.tab b { display: block; color: var(--foreground); font-size: 13.5px; font-weight: 600; }
+.tab small { font-size: 12px; }
+.tab[aria-selected="true"] { border-bottom-color: var(--accent); }
+.tab[aria-selected="true"] b { color: var(--accent); }
+.tab:focus-visible, .pick:focus-visible, .s:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.panel[hidden], .tabs[hidden] { display: none; }
+
+/* question */
+.qn { font-size: 12px; font-weight: 700; color: var(--accent); letter-spacing: .05em; }
+.ctx { margin: 6px 0 14px; color: var(--muted-foreground); font-size: 13px; max-width: 900px; }
+.ctx b { color: var(--foreground); font-weight: 600; }
+
+/* comparison: one row per attribute, one column per option */
+.cmp { display: grid; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--card); }
+.cmp.two { grid-template-columns: 92px 1fr 1fr; }
+.cmp.three { grid-template-columns: 92px 1fr 1fr 1fr; }
+.cmp > div { padding: 10px 12px; border-top: 1px solid var(--border); min-width: 0; }
+.cmp > .h { border-top: 0; padding-top: 12px; }
+.cmp > .rl { font-size: 12px; color: var(--muted-foreground); padding: 11px 8px 10px 12px; line-height: 1.45; }
+.cmp > .rl small { display: block; font-size: 11px; margin-top: 2px; }
+.cmp > .c { border-left: 1px solid var(--border); }
+.cmp > .c.rec { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.optname { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.badge { font-size: 11.5px; line-height: 18px; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 0 8px; white-space: nowrap; }
+.badge.mine { background: var(--accent); color: var(--card); }
+.lead { margin-top: 4px; color: var(--muted-foreground); font-size: 12.5px; line-height: 1.5; }
+.pick { appearance: none; font: inherit; font-size: 13px; cursor: pointer; border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 6px; padding: 4px 16px; }
+.pick:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.pick.on { background: var(--accent); color: var(--card); }
+.how { margin-top: 14px; display: grid; grid-template-columns: 92px 1fr; }
+.how h4 { margin: 0; font-size: 12px; color: var(--muted-foreground); font-weight: 500; padding: 2px 0 0 13px; }
+.how ul { padding-left: 16px; }
+.yes { color: #2f9e55; font-weight: 700; }
+.no { color: #d32f2f; font-weight: 700; }
+.meh { color: #c07d00; font-weight: 700; }
+.sub { margin-top: 8px; font-size: 12.5px; }
+.sub dt { color: var(--muted-foreground); }
+.sub dd { margin: 0 0 3px 0; }
+
+/* decision 1: the 44 error programs */
+.fams { display: flex; flex-direction: column; gap: 3px; }
+.fam { display: flex; gap: 6px; align-items: flex-start; }
+.fam .fl { flex: none; width: 86px; font-size: 11.5px; color: var(--muted-foreground); line-height: 18px; }
+.cells { display: flex; flex-wrap: wrap; gap: 3px; }
+.s { display: inline-block; position: relative; width: 16px; height: 16px; border-radius: 3px; flex: none; }
+.cells .s { cursor: pointer; }
+.s.ok { background: #2f9e55; }
+.s.sig { background: #e0a019; }
+.s.none { border: 1.5px dashed var(--muted-foreground); }
+.s.oth { background: repeating-linear-gradient(135deg, var(--muted-foreground) 0 1.5px, transparent 1.5px 4.5px); border: 1px solid var(--muted-foreground); }
+.s.nt::after, .fn i { content: ""; position: absolute; right: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--foreground); border: 1.5px solid var(--card); }
+.cells .s:hover, .cells .s.hot { outline: 2px solid var(--foreground); outline-offset: 1px; }
+.tally { display: grid; grid-template-columns: 14px 1fr auto; gap: 2px 8px; margin-top: 10px; font-size: 12.5px; align-items: center; }
+.tally .s { width: 13px; height: 13px; }
+.fn { display: flex; gap: 7px; margin-top: 8px; font-size: 11.5px; line-height: 1.5; color: var(--muted-foreground); }
+.fn i { position: static; flex: none; margin-top: 4px; }
+
+/* decision 2: the step strip */
+.code { border: 1px solid var(--border); border-radius: 8px; padding: 6px 0; background: var(--card); margin-bottom: 14px; font-size: 12.5px; line-height: 20px; max-width: 600px; overflow-x: auto; }
+.code div { padding: 0 12px; white-space: pre; }
+.code .ln { display: inline-block; width: 22px; color: var(--muted-foreground); text-align: right; margin-right: 12px; }
+.code .bad { background: rgba(211, 47, 47, .12); box-shadow: inset 3px 0 #d32f2f; }
+.strip { display: grid; grid-template-columns: 38px repeat(var(--n), minmax(13px, 20px)); gap: 3px 2px; align-items: center; font-size: 10.5px; }
+.strip .lab { font-size: 11px; color: var(--muted-foreground); }
+.stp { height: 20px; border-radius: 4px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+.stp.err { border: 2px solid #d32f2f; color: #d32f2f; font-weight: 700; }
+.ghost { opacity: .4; }
+.stp.ghost { border-style: dashed; }
+.gv { text-align: center; font-variant-numeric: tabular-nums; }
+.gv.chg { color: #d32f2f; font-weight: 700; }
+.notes { margin-top: 10px; display: grid; grid-template-columns: 24px 1fr; gap: 6px 6px; font-size: 12.5px; line-height: 1.5; align-items: start; }
+.notes .k { height: 20px; display: flex; align-items: center; justify-content: center; font-size: 10.5px; border-radius: 4px; }
+.notes .k.err { border: 2px solid #d32f2f; color: #d32f2f; font-weight: 700; }
+.notes .k.chg { color: #d32f2f; font-weight: 700; }
+.notes .k.gh { border: 1px dashed var(--muted-foreground); opacity: .5; }
+
+/* decision 3: wireframes of the IDE */
+.wf { position: relative; height: 172px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); font-size: 10.5px; line-height: 1.35; }
+.wf .bar { height: 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 5px; padding: 0 7px; }
+.wf .bar i { display: block; width: 20px; height: 10px; border-radius: 3px; background: color-mix(in srgb, var(--muted-foreground) 35%, transparent); }
+.wf .pause { margin-left: auto; font-style: normal; color: #d32f2f; font-weight: 700; white-space: nowrap; }
+.wf .body { position: absolute; top: 24px; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 56% 44%; }
+.wf .ed { padding: 9px 0; border-right: 1px solid var(--border); }
+.wf .ed i { display: block; height: 7px; margin: 0 9px 9px; border-radius: 2px; background: color-mix(in srgb, var(--muted-foreground) 28%, transparent); }
+.wf .ed i.bad { margin: -3px 0 6px; height: 13px; border-radius: 0; background: rgba(211, 47, 47, .16); box-shadow: inset 3px 0 #d32f2f; }
+.wf .sb { padding: 6px; }
+.wf .pn { border: 1px solid var(--border); border-radius: 4px; margin-bottom: 5px; padding: 2px 5px; color: var(--muted-foreground); }
+.wf .pn.open { border-color: #d32f2f; color: var(--foreground); }
+.wf .pn.open b { color: #d32f2f; }
+.wf .mini { display: flex; gap: 2px; margin: 4px 0 3px; }
+.wf .mini span { width: 12px; height: 12px; border: 1px solid var(--muted-foreground); border-radius: 2px; }
+.wf .mini span.x { border: 1.5px dashed #d32f2f; }
+.wf .veil { position: absolute; top: 24px; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, .4); }
+.wf .modal { position: absolute; left: 12%; right: 12%; top: 40px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px 7px; box-shadow: 0 6px 20px rgba(0, 0, 0, .3); }
+.wf .modal b { color: #d32f2f; }
+.wf .modal .cl { position: absolute; right: 8px; top: 5px; color: var(--muted-foreground); }
+.wf .modal .btn { display: inline-block; margin-top: 4px; border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; color: var(--muted-foreground); }
+.wf .toast { position: absolute; left: 6px; right: 46%; top: 30px; border: 1px solid #d32f2f; background: var(--card); border-radius: 4px; padding: 3px 6px; z-index: 2; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); }
+.wf .toast b { color: #d32f2f; }
+.wf .toast u { color: var(--accent); text-decoration: none; white-space: nowrap; }
+
+/* narrow chat column: options stack, each cell says which option it belongs to */
+@container (max-width: 640px) {
+  .cmp.two, .cmp.three { grid-template-columns: 1fr; }
+  .cmp > .rl:empty { display: none; }
+  .cmp > .rl { color: var(--foreground); font-weight: 600; font-size: 12.5px; padding: 12px 12px 2px; }
+  .cmp > .rl small { display: inline; margin-left: 6px; font-weight: 400; color: var(--muted-foreground); }
+  .cmp > .c { border-left: 0; border-top: 0; }
+  .cmp > .h.c + .h.c { border-top: 1px solid var(--border); }
+  .cmp > .c:not(.h)::before { content: attr(data-o); display: block; font-size: 11.5px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
+  .how { grid-template-columns: 1fr; }
+  .how h4 { padding: 0 0 4px; }
+}
+</style>
+</head>
+<body>
+<div class="dz" id="dz">
+  <div class="tip" id="tip" role="status" hidden></div>
+  <p class="top">點每題下方的「選這個」就會記下你的選擇；還沒選之前，規劃文件暫採標著「建議」的選項。決定 2 只在決定 1 選「推翻」時才需要選。</p>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t1" aria-controls="p1" aria-selected="true"><b>決定 1　要不要改引擎</b><small class="st" data-d="1"></small></button>
+    <button class="tab" role="tab" id="t2" aria-controls="p2" aria-selected="false"><b>決定 2　出錯之後怎麼走</b><small class="st" data-d="2"></small></button>
+    <button class="tab" role="tab" id="t3" aria-controls="p3" aria-selected="false"><b>決定 3　錯誤怎麼出現</b><small class="st" data-d="3"></small></button>
+  </div>
+
+  <section class="panel" id="p1" role="tabpanel" aria-labelledby="t1">
+    <div class="qn">決定 1</div>
+    <h2>要不要為了「錯誤直接跳出」修改引擎？</h2>
+    <p class="ctx">11-04／05 決定<b>不追求讓引擎崩潰</b>，也不改 <span class="mono">pipeline.worker.js</span>。當時要讓空指標崩潰，只能改連結參數和記憶體配置（會影響堆疊溢位偵測與 golden 測試），或把範例寫得不自然。這次的做法是在編譯時加檢查，連結參數和記憶體配置都不動；但仍要改 <span class="mono">pipeline.worker.js</span> 的編譯旗標，所以算推翻。</p>
+    <div class="cmp two" id="c1"></div>
+    <div class="how"><h4>怎麼選</h4><ul id="h1"></ul></div>
+  </section>
+
+  <section class="panel" id="p2" role="tabpanel" aria-labelledby="t2" hidden>
+    <div class="qn">決定 2</div>
+    <h2>錯誤發生之後，程式要不要繼續往下跑？</h2>
+    <p class="ctx">例子是錯誤教案 <span class="mono">err_array_oob.cpp</span>：<span class="mono">data</span> 只有 4 格，迴圈卻寫到 <span class="mono">i &lt;= 4</span>。下面的步驟、行號和 guard 的值都取自 S0 的實際軌跡。</p>
+    <div class="code mono" id="code2"></div>
+    <div class="cmp two" id="c2"></div>
+    <div class="how"><h4>怎麼選</h4><ul id="h2"></ul></div>
+  </section>
+
+  <section class="panel" id="p3" role="tabpanel" aria-labelledby="t3" hidden>
+    <div class="qn">決定 3</div>
+    <h2>錯誤「直接跳出」時，畫面長什麼樣子？</h2>
+    <p class="ctx">三種畫法都會在出錯那一步暫停，差別在圖解出現的位置。下面是 IDE 的示意（左邊是程式，右邊是右側欄），以同一個陣列越界為例。</p>
+    <div class="cmp three" id="c3"></div>
+    <div class="how"><h4>怎麼選</h4><ul id="h3"></ul></div>
+  </section>
+</div>
+
+<script>
+const D = {"cases": [{"id": "div0_input", "label": "整數除以零", "fam": "數值", "cur": ["sig", "停在第 6 行，只有訊號 SIGFPE（取自 smoke 那一輪；全量那一輪是冷啟動編譯逾時）"], "san": ["ok", "停在第 6 行：7 / 0"], "curNote": true}, {"id": "mod0_loop", "label": "取餘數 % 0", "fam": "數值", "cur": ["sig", "停在第 5 行，只有訊號 SIGSEGV"], "san": ["ok", "停在第 5 行：10 / 0"], "curNote": false}, {"id": "intmin_div", "label": "INT_MIN ÷ (−1)", "fam": "數值", "cur": ["sig", "停在第 6 行，只有訊號 SIGSEGV"], "san": ["ok", "停在第 6 行：-2147483648 / -1"], "curNote": false}, {"id": "ex_err_int_overflow", "label": "有號溢位（乘法）", "fam": "數值", "cur": ["none", "正常結束，沒有提示；輸出 10! = 3628800 ⏎ 13! = 1932053504"], "san": ["ok", "停在第 10 行：479,001,600 × 13"], "curNote": false}, {"id": "ovf_add", "label": "有號溢位（加法）", "fam": "數值", "cur": ["none", "正常結束，沒有提示；輸出 -2147483648"], "san": ["ok", "停在第 5 行：2,147,483,647 + 1"], "curNote": false}, {"id": "ovf_loop", "label": "靠溢位結束迴圈", "fam": "數值", "cur": ["none", "正常結束，沒有提示；輸出 31"], "san": ["ok", "停在第 5 行：1,073,741,824 × 2"], "curNote": false}, {"id": "shift_big", "label": "位移量太大", "fam": "數值", "cur": ["none", "正常結束，沒有提示；輸出 2"], "san": ["ok", "停在第 6 行：1 << 33"], "curNote": false}, {"id": "float2int", "label": "浮點數轉 int 超出範圍", "fam": "數值", "cur": ["none", "正常結束，沒有提示；輸出 2147483647"], "san": ["ok", "停在第 5 行：值 10000000000"], "curNote": false}, {"id": "div0_const", "label": "整數除以零（兩邊都是常數）", "fam": "數值", "cur": ["sig", "停在第 5 行，只有訊號 SIGFPE"], "san": ["ok", "停在第 5 行：7 / 0"], "curNote": false}, {"id": "div0_unused", "label": "整數除以零（結果沒被用到）", "fam": "數值", "cur": ["sig", "停在第 5 行，只有訊號 SIGFPE"], "san": ["ok", "停在第 5 行：7 / 0"], "curNote": false}, {"id": "mod0_input", "label": "取餘數 % 0（值來自輸入）", "fam": "數值", "cur": ["sig", "停在第 6 行，只有訊號 SIGSEGV"], "san": ["ok", "停在第 6 行：10 / 0"], "curNote": false}, {"id": "ovf_fact", "label": "有號溢位（20! 迴圈）", "fam": "數值", "cur": ["none", "正常結束，沒有提示；輸出 -2102132736"], "san": ["ok", "停在第 6 行：479,001,600 × 13"], "curNote": false}, {"id": "ex_err_array_oob", "label": "C 陣列越界", "fam": "陣列與容器", "cur": ["none", "正常結束，沒有提示；輸出 guard = 40（應為 42）"], "san": ["ok", "停在第 17 行：int[4] 的索引 4"], "curNote": false}, {"id": "arr2d_oob", "label": "二維陣列越界", "fam": "陣列與容器", "cur": ["none", "正常結束，沒有提示；輸出 9"], "san": ["ok", "停在第 6 行：int[3] 的索引 3"], "curNote": false}, {"id": "vec_oob", "label": "vector[] 越界", "fam": "陣列與容器", "cur": ["none", "正常結束，沒有提示；輸出 5"], "san": ["ok", "停在第 6 行：vector[] index out of bounds"], "curNote": false}, {"id": "vec_at", "label": "at() 越界", "fam": "陣列與容器", "cur": ["sig", "停在第 5 行，只有訊號 SIGABRT"], "san": ["ok", "停在第 5 行：out_of_range was thrown in -fno-exceptions mode with message \"vector\""], "curNote": false}, {"id": "stack_empty_top", "label": "空 stack 的 top()", "fam": "陣列與容器", "cur": ["sig", "停在第 7 行，只有訊號 SIGSEGV"], "san": ["ok", "停在第 7 行：deque::back called on an empty deque"], "curNote": false}, {"id": "queue_empty_front", "label": "空 queue 的 front()", "fam": "陣列與容器", "cur": ["none", "正常結束，沒有提示；輸出 0"], "san": ["ok", "停在第 5 行：deque::front called on an empty deque"], "curNote": false}, {"id": "vec_empty_back", "label": "空 vector 的 back()", "fam": "陣列與容器", "cur": ["sig", "停在第 5 行，只有訊號 SIGSEGV"], "san": ["ok", "停在第 5 行：back() called on an empty vector"], "curNote": false}, {"id": "str_oob", "label": "string 索引越界", "fam": "陣列與容器", "cur": ["none", "正常結束，沒有提示；輸出 \u0000"], "san": ["ok", "停在第 5 行：string index out of bounds"], "curNote": false}, {"id": "stoi_bad", "label": "stoi 轉換失敗", "fam": "陣列與容器", "cur": ["sig", "停在第 5 行，只有訊號 SIGABRT"], "san": ["ok", "停在第 5 行：invalid_argument was thrown in -fno-exceptions mode with message \"stoi"], "curNote": false}, {"id": "sort_bad_cmp", "label": "sort 的比較函式", "fam": "陣列與容器", "cur": ["sig", "停在第 5 行，只有訊號 SIGSEGV"], "san": ["ok", "停在第 5 行：Would read out of bounds, does your comparator satisfy the strict-weak"], "curNote": false}, {"id": "unsigned_wrap", "label": "size() − 1 繞回", "fam": "陣列與容器", "cur": ["oth", "步數超過上限"], "san": ["ok", "停在第 6 行：vector[] index out of bounds"], "curNote": false}, {"id": "arr_oob_write", "label": "C 陣列越界寫入（i <= 5）", "fam": "陣列與容器", "cur": ["none", "正常結束，沒有提示；輸出 0 100"], "san": ["ok", "停在第 7 行：int[5] 的索引 5"], "curNote": false}, {"id": "arr_oob_read", "label": "C 陣列越界讀取（索引 7）", "fam": "陣列與容器", "cur": ["none", "正常結束，沒有提示；輸出 0"], "san": ["ok", "停在第 7 行：int[5] 的索引 7"], "curNote": false}, {"id": "vec_pop_empty", "label": "空 vector 的 pop_back()", "fam": "陣列與容器", "cur": ["sig", "停在第 5 行，只有訊號 SIGABRT"], "san": ["ok", "停在第 5 行：vector::pop_back called on an empty vector"], "curNote": false}, {"id": "substr_throw", "label": "substr 起點超出長度", "fam": "陣列與容器", "cur": ["sig", "停在第 5 行，只有訊號 SIGABRT"], "san": ["ok", "停在第 5 行：out_of_range was thrown in -fno-exceptions mode with message \"basic_st"], "curNote": false}, {"id": "vla_neg", "label": "int a[n] 的 n 是負數", "fam": "陣列與容器", "cur": ["oth", "插樁失敗"], "san": ["oth", "編譯失敗（compile）"], "curNote": false}, {"id": "null_write", "label": "空指標", "fam": "指標與記憶體", "cur": ["none", "正常結束，沒有提示；輸出 after"], "san": ["ok", "停在第 5 行：空指標"], "curNote": false}, {"id": "ex_err_null_deref", "label": "鏈結串列走到 nullptr", "fam": "指標與記憶體", "cur": ["none", "正常結束，沒有提示；輸出 值：10，下一個值：20 ⏎ 值：20，下一個值：0"], "san": ["ok", "停在第 21 行：空指標"], "curNote": false}, {"id": "double_delete", "label": "重複 delete", "fam": "指標與記憶體", "cur": ["none", "正常結束，沒有提示；輸出 after"], "san": ["none", "正常結束，沒有提示；輸出 after"], "curNote": false}, {"id": "use_after_free", "label": "delete 後再使用", "fam": "指標與記憶體", "cur": ["none", "正常結束，沒有提示；輸出 7"], "san": ["none", "正常結束，沒有提示；輸出 7"], "curNote": false}, {"id": "iter_invalid", "label": "迭代器失效", "fam": "指標與記憶體", "cur": ["none", "正常結束，沒有提示；輸出 4"], "san": ["none", "正常結束，沒有提示；輸出 4"], "curNote": false}, {"id": "null_read", "label": "空指標讀取", "fam": "指標與記憶體", "cur": ["none", "正常結束，沒有提示；輸出 0"], "san": ["ok", "停在第 5 行：空指標"], "curNote": false}, {"id": "ex_err_dangling_ptr", "label": "懸空指標（教案範例）", "fam": "指標與記憶體", "cur": ["none", "正常結束，沒有提示；輸出 *p = 5 ⏎ after free, *p = 7"], "san": ["none", "正常結束，沒有提示；輸出 *p = 5 ⏎ after free, *p = 7"], "curNote": false}, {"id": "ex_err_double_free", "label": "淺拷貝造成重複釋放（教案範例）", "fam": "指標與記憶體", "cur": ["sig", "停在第 11 行，只有訊號 SIGSEGV"], "san": ["sig", "停在第 11 行，只有訊號 SIGSEGV"], "curNote": false}, {"id": "ex_err_iterator_invalidation", "label": "迭代器失效（教案範例）", "fam": "指標與記憶體", "cur": ["none", "正常結束，沒有提示；輸出 *it = 8410152（應為 1）"], "san": ["none", "正常結束，沒有提示；輸出 *it = 8421384（應為 1）"], "curNote": false}, {"id": "missing_return", "label": "函式沒有回傳值", "fam": "函式與流程", "cur": ["sig", "停在第 6 行，只有訊號 SIGSEGV"], "san": ["ok", "停在第 3 行：沒有回傳值"], "curNote": false}, {"id": "inf_recursion", "label": "無窮遞迴", "fam": "函式與流程", "cur": ["oth", "堆疊用完"], "san": ["oth", "堆疊用完"], "curNote": false}, {"id": "assert_fail", "label": "assert 失敗", "fam": "函式與流程", "cur": ["sig", "停在第 5 行，只有訊號 SIGABRT"], "san": ["ok", "停在第 5 行：assert(x > 0)"], "curNote": false}, {"id": "abort_call", "label": "呼叫 abort()", "fam": "函式與流程", "cur": ["sig", "停在第 5 行，只有訊號 SIGABRT"], "san": ["sig", "停在第 5 行，只有訊號 SIGABRT"], "curNote": false}, {"id": "huge_vector", "label": "記憶體不夠", "fam": "函式與流程", "cur": ["sig", "停在第 4 行，只有訊號 SIGABRT"], "san": ["sig", "停在第 4 行，只有訊號 SIGABRT"], "curNote": false}, {"id": "uninit_read", "label": "未初始化的變數", "fam": "輸入與未初始化", "cur": ["none", "正常結束，沒有提示；輸出 6"], "san": ["none", "正常結束，沒有提示；輸出 6"], "curNote": false}, {"id": "ex_err_uninit", "label": "未初始化（教案範例）", "fam": "輸入與未初始化", "cur": ["none", "正常結束，沒有提示；輸出 一開始 sum = 0（應該是 0） ⏎ 1+2+3+4+5 = 15（應為 15）"], "san": ["none", "正常結束，沒有提示；輸出 一開始 sum = 0（應該是 0） ⏎ 1+2+3+4+5 = 15（應為 15）"], "curNote": false}], "tally": {"cur": {"ok": 0, "sig": 18, "none": 23, "oth": 3}, "san": {"ok": 32, "sig": 3, "none": 7, "oth": 2}}, "cost": {"pchPlain": 1.97, "pchSan": 2.84, "pchSanMax": 6.4, "plain": 5.18, "san": 6.16, "execPlain": 53, "execSan": 53, "wasmPct": 1.2, "depthPlain1": 8612, "depthSan1": 8612}, "fid": {"total": 114, "ran": 109, "identical": 62, "valuesOnly": 42, "intended": 3, "bug": 2, "layout": 527, "members": 338, "sameStops": 104, "sameOut": 103, "quiet": 104, "outDiff": ["錯誤_迭代器失效"]}, "split": {"stop": 22, "cont": 10, "contSameOut": 10}, "strip": {"steps": [{"line": 14, "guard": null, "i": null, "g": ""}, {"line": 15, "guard": 8388580, "i": null, "g": "?"}, {"line": 16, "guard": 42, "i": null, "g": "42"}, {"line": 17, "guard": 42, "i": 0, "g": "42"}, {"line": 16, "guard": 42, "i": 0, "g": "42"}, {"line": 17, "guard": 42, "i": 1, "g": "42"}, {"line": 16, "guard": 42, "i": 1, "g": "42"}, {"line": 17, "guard": 42, "i": 2, "g": "42"}, {"line": 16, "guard": 42, "i": 2, "g": "42"}, {"line": 17, "guard": 42, "i": 3, "g": "42"}, {"line": 16, "guard": 42, "i": 3, "g": "42"}, {"line": 17, "guard": 42, "i": 4, "g": "42"}, {"line": 16, "guard": 40, "i": 4, "g": "40"}, {"line": 19, "guard": 40, "i": null, "g": "40"}, {"line": 20, "guard": 40, "i": null, "g": "40"}, {"line": 21, "guard": 40, "i": null, "g": "40"}], "errStep": 11, "change": 12, "before": 42, "after": 40, "out": "guard = 40（應為 42）", "report": {"line": 17, "array": "int[4]", "index": 4}, "code": [[13, "int main() {"], [14, "    Block b;"], [15, "    b.guard = 42;"], [16, "    for (int i = 0; i <= 4; i++) {   // BUG：應為 i < 4"], [17, "        b.data[i] = i * 10;          // i == 4 時寫進 guard"], [18, "    }"], [19, "    std::cout << \"guard = \" << b.guard << \"（應為 42）\" << std::endl;"], [20, "    return 0;"]], "stopOut": ""}, "choices": {"1": "A", "2": "A", "3": "A"}, "cold": ["整數除以零"], "notCaught": {"函式與流程": ["無窮遞迴", "呼叫 abort()", "記憶體不夠"], "指標與記憶體": ["重複 delete", "delete 後再使用", "迭代器失效", "懸空指標（教案範例）", "淺拷貝造成重複釋放（教案範例）", "迭代器失效（教案範例）"], "數值": [], "輸入與未初始化": ["未初始化的變數", "未初始化（教案範例）"], "陣列與容器": ["int a[n] 的 n 是負數"]}};
+const ONLY = 2; // 1–3: show just that decision, without the tab bar
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const REC = { 1: "A", 2: "A", 3: "A" };
+const SHORT = { 1: { A: "推翻", B: "維持" }, 2: { A: "分流", B: "一律停" }, 3: { A: "右側欄", B: "彈出視窗", C: "一行提示" } };
+
+// ── decision 1 ──────────────────────────────────────────────────────────────
+function grid(cfg) {
+  const fams = [];
+  for (const c of D.cases) {
+    let f = fams.find((x) => x.name === c.fam);
+    if (!f) fams.push((f = { name: c.fam, cs: [] }));
+    f.cs.push(c);
+  }
+  const t = D.tally[cfg];
+  const rows = fams.map((f) => `<div class="fam"><span class="fl">${esc(f.name)}</span><span class="cells">${f.cs.map((c) =>
+    `<i class="s ${c[cfg][0]} ${cfg === "cur" && c.curNote ? "nt" : ""}" tabindex="0" role="img" aria-label="${esc(c.label + "：" + c[cfg][1])}" data-t="${esc(c.label)}" data-id="${esc(c.id)}" data-d="${esc(c[cfg][1])}"></i>`).join("")}</span></div>`).join("");
+  const leg = [["ok", "停在出錯那一行，並帶出值"], ["sig", "停下，但只有訊號名稱"], ["none", "沒有任何提示，正常結束"], ["oth", "其他（堆疊用完、插樁失敗等）"]]
+    .map(([k, l]) => `<i class="s ${k}"></i><span>${l}</span><span class="num">${t[k]}</span>`).join("");
+  const fn = cfg === "cur" && D.cold.length
+    ? `<div class="fn"><i></i><span>${esc(D.cold.join("、"))}：取自同一版本的 smoke 那一輪（SIGFPE）。全量那一輪它排第一個，冷啟動建 PCH（預先編譯的標頭）時另一個實驗正好同時在跑，超過了編譯時限。</span></div>` : "";
+  return `<div class="fams">${rows}</div><div class="tally">${leg}</div>${fn}`;
+}
+
+function d1() {
+  const t = D.tally, c = D.cost, f = D.fid;
+  return {
+    opts: [
+      { id: "A", name: "推翻：在編譯時加入檢查", lead: "改編譯旗標與 PCH（pipeline.worker.js）、新增 vgerr.h、trace.js 收錯誤紀錄。連結參數、-\u2060-\u2060stack\u2060-\u2060first、守衛區都不動。", send: "決定 1 選「推翻：在編譯時加入檢查」" },
+      { id: "B", name: "維持：只做不改引擎也看得到的錯誤", lead: "引擎不動，只改前端：把現在已經會停下的錯誤（除以零、assert、堆疊溢位等）畫成圖解。", send: "決定 1 選「維持：只做不改引擎也看得到的錯誤」" },
+    ],
+    rows: [
+      ["實測結果<small>44 個錯誤程式</small><small>格子可滑過，看細節</small>", [grid("san"), grid("cur")]],
+      ["學生看到", [
+        `<span class="num">${t.san.ok}</span> 個停在出錯那一行，並帶出出錯的值，例如 7 / 0、int[5] 的索引 5、479,001,600 × 13。
+         <dl class="sub"><dt>其餘 ${44 - t.san.ok} 個（規劃中，還沒實作）</dt><dd>由 C 層補上：<span class="nw">未初始化 2</span>、<span class="nw">重複 delete 2</span>、<span class="nw">abort 與記憶體不夠 2</span>、<span class="nw">無窮遞迴 1</span>；只能部分抓到：<span class="nw">delete 後再使用 2</span>；這一版抓不到：<span class="nw">迭代器失效 2</span>；IRIS 插樁本來就不支援 <span class="nw">VLA（int a[n]）1</span>。</dd></dl>`,
+        `<span class="num">${t.cur.sig}</span> 個會停下，可以標出那一行，但只知道是哪種訊號，不知道是哪個運算、運算元是多少。<br><span class="num">${t.cur.none}</span> 個照常結束，畫面沒有任何提示，例如 13! 印出 1932053504、guard 被改成 40。`]],
+      ["代價", [
+        `編譯＋連結（有 PCH）${c.pchPlain} → <span class="num">${c.pchSan}</span> 秒，最長 ${c.pchSanMax} 秒，預算 8 秒。執行時間中位數 ${c.execPlain} → ${c.execSan} ms；wasm 大 ${c.wasmPct}%。這些是 lab-david 容器的數字，瀏覽器還要另外量。另有引擎改動與測試的工作（P1）。`,
+        `沒有引擎風險，只有前端工作。`]],
+      ["舊的顧慮", [
+        `<b>堆疊溢位偵測</b>：連結參數不動；遞迴深度 ${c.depthPlain1.toLocaleString()} → ${c.depthSan1.toLocaleString()} 層，不變（Node 1 MB 堆疊）。<br><b>軌跡</b>：${f.ran} 個教案與 E3 程式裡，${f.sameStops} 個停點完全相同；另外 ${f.intended} 個是故意寫錯的教案，${f.bug} 個是插樁原本就有的問題。<br><b>輸出</b>：沒觸發檢查的 ${f.quiet} 個程式，${f.sameOut} 個輸出相同；不同的是<span class="nw">「${esc(f.outDiff.join("、"))}」</span>，它印出的本來就是記憶體殘值。<br><b>範例</b>：不用改寫。`,
+        `不受影響。`]],
+      ["目標 1", [
+        `<span class="yes">大部分做得到</span>：${t.san.ok}/44 已實測；其餘 ${44 - t.san.ok} 個多數規劃由 C 層補上，還沒實作。`,
+        `<span class="no">做不到</span>：${t.cur.none} 個錯誤沒有任何提示。`]],
+    ],
+    how: [
+      `目標 1 要做到，只能推翻：不改引擎時，${t.cur.none} 個錯誤 IRIS 根本不知道發生過。`,
+      `想先做前端畫面、暫時不動引擎，可以先維持，之後再推翻。不過會停下的 ${t.cur.sig} 個也只知道停在哪一行、是哪種訊號，不知道是哪個運算出錯，圖解只能從軌跡的變數值去推。`,
+    ],
+  };
+}
+
+// ── decision 2 ──────────────────────────────────────────────────────────────
+function strip(mode) {
+  const s = D.strip, n = s.steps.length, e = s.errStep;
+  const vis = (k) => mode === "cont" || k <= e;
+  let h = `<div class="strip" style="--n:${n}"><span class="lab">步驟</span>`;
+  s.steps.forEach((st, k) => { h += `<span class="stp ${k === e ? "err" : ""} ${vis(k) ? "" : "ghost"}">${k}</span>`; });
+  h += `<span class="lab">行</span>`;
+  s.steps.forEach((st, k) => { h += `<span class="gv mut ${vis(k) ? "" : "ghost"}">${vis(k) ? st.line : ""}</span>`; });
+  h += `<span class="lab mono">guard</span>`;
+  s.steps.forEach((st, k) => { h += `<span class="gv ${mode === "cont" && k === s.change ? "chg" : ""}">${vis(k) ? esc(st.g) : ""}</span>`; });
+  h += `</div>`;
+  const r = s.report;
+  let notes = `<span class="k err">${e}</span><span>第 ${e} 步（第 ${r.line} 行，i = ${r.index}）：寫入 data[${r.index}]，但 ${esc(r.array)} 只有<span class="nw">索引 0～3</span>。${mode === "cont" ? "在這一步暫停，跳出圖解。" : "在這一步停止。"}</span>`;
+  if (mode === "cont") {
+    notes += `<span class="k chg">${esc(String(s.after))}</span><span>按「繼續」之後的第 ${s.change} 步：guard 從 ${s.before} 變成 ${s.after}。data[${r.index}] 和 guard 是同一個位置，這是實際執行的結果。</span>`;
+    notes += `<span></span><span>輸出：<span class="mono">${esc(s.out)}</span></span>`;
+  } else {
+    notes += `<span class="k gh"></span><span>第 ${e + 1}～${s.steps.length - 1} 步不會執行。圖解只能推算：data[${r.index}] 的位置是 guard，guard 會被蓋掉（示意）。</span>`;
+    notes += `<span></span><span>輸出：${s.stopOut ? `<span class="mono">${esc(s.stopOut)}</span>` : "沒有輸出（停在第 " + r.line + " 行，還沒執行到 cout）"}</span>`;
+  }
+  return h + `<div class="notes">${notes}</div>`;
+}
+
+function d2() {
+  const sp = D.split;
+  return {
+    opts: [
+      { id: "A", name: "照原生行為分流", lead: "原生會崩潰的錯誤停在那一行；原生常默默繼續的錯誤，在那一步暫停、跳出圖解，按「繼續」可以看到後果。", send: "決定 2 選「照原生行為分流」" },
+      { id: "B", name: "一律停在第一個錯誤", lead: "所有錯誤都停在第一個出錯的地方，程式不再往下；後果只能在圖解裡推算，標「示意」。", send: "決定 2 選「一律停在第一個錯誤」" },
+    ],
+    rows: [
+      ["這個例子", [strip("cont"), strip("stop")]],
+      ["哪些會繼續", [
+        `S0 抓到的 ${D.tally.san.ok} 個錯誤裡，<span class="num">${sp.cont}</span> 個繼續：有號溢位、位移量錯誤、C 陣列越界、浮點轉整數（指標運算溢位也算這類）。其餘 ${sp.stop} 個停下：除以零、空指標、容器越界與空容器、缺 return、assert 等。`,
+        `全部停下。`]],
+      ["S0 實測", [
+        `這 ${sp.cont} 個程式在「可繼續」模式都跑完，輸出和不加檢查時完全相同（${sp.contSameOut}/${sp.cont}）。`,
+        `S0 的「停止」模式就是這個做法：${D.tally.san.ok} 個都在出錯時停下，並回報是哪一種錯誤。`]],
+      ["要注意", [
+        `同一個位置只報一次。越界寫入之後的結果取決於變數在記憶體裡的排列：struct 成員的排列由 C++ 規定，和環境無關；各自宣告的區域變數，wasm 和 g++ 可能排得不一樣，圖解要註明。`,
+        `原生默默繼續的錯誤（例如溢位），在 IRIS 會停下，和學生在自己電腦上看到的不同；推算的後果也可能和真正的結果不同。`]],
+    ],
+    how: [
+      `想讓學生看到錯誤造成的後果（例如 guard 變成 40、輸出跟著錯），選分流。`,
+      `想讓畫面最單純、每次執行只處理一個錯誤，選一律停。`,
+    ],
+  };
+}
+
+// ── decision 3 ──────────────────────────────────────────────────────────────
+const ED = `<div class="ed"><i style="width:62%"></i><i style="width:48%"></i><i style="width:74%"></i><i class="bad"></i><i style="width:55%"></i><i style="width:68%"></i><i style="width:40%"></i></div>`;
+const MINI = `<div class="mini"><span></span><span></span><span></span><span></span><span class="x"></span></div>`;
+const BAR = `<div class="bar"><i></i><i></i><i></i><i></i><em class="pause">暫停：第 17 行</em></div>`;
+const WF = {
+  A: `<div class="wf">${BAR}<div class="body">${ED}<div class="sb"><div class="pn">變數</div><div class="pn open"><b>執行錯誤 ▾</b>${MINI}陣列越界：索引 4</div><div class="pn">呼叫歷史圖</div></div></div></div>`,
+  B: `<div class="wf">${BAR}<div class="body">${ED}<div class="sb"><div class="pn">變數</div><div class="pn">呼叫歷史圖</div></div></div><div class="veil"></div><div class="modal"><span class="cl">✕</span><b>執行錯誤：陣列越界</b>${MINI}data 只有 4 格，索引 4 在外面<br><span class="btn">關閉</span></div></div>`,
+  C: `<div class="wf">${BAR}<div class="body">${ED}<div class="sb"><div class="pn">變數</div><div class="pn">執行錯誤 ▸</div><div class="pn">呼叫歷史圖</div></div></div><div class="toast"><b>第 17 行：陣列越界</b>　<u>看圖解 ›</u></div></div>`,
+};
+function d3() {
+  return {
+    opts: [
+      { id: "A", name: "自動暫停＋右側欄展開", lead: "播到出錯那一步自動暫停，右側欄的「執行錯誤」面板自動勾選並展開，該行標紅。", send: "決定 3 選「自動暫停＋右側欄展開」" },
+      { id: "B", name: "彈出視窗", lead: "暫停，並跳出一個視窗，圖解在視窗裡。", send: "決定 3 選「彈出視窗」" },
+      { id: "C", name: "先一行提示，點了才展開", lead: "暫停，程式上方出現一行提示；點了才展開右側欄的圖解。", send: "決定 3 選「先一行提示，點了才展開」" },
+    ],
+    rows: [
+      ["畫面示意", [WF.A, WF.B, WF.C]],
+      ["會漏看嗎", [`<span class="yes">不容易</span>：暫停、該行標紅、面板展開。`, `<span class="yes">不會</span>：視窗擋在畫面中間。`, `<span class="meh">有可能</span>：只有一行字。`]],
+      ["對照程式", [`<span class="yes">可以</span>：圖在右側欄，程式和變數都看得到。`, `<span class="no">不行</span>：視窗蓋住程式，要先關掉。`, `<span class="yes">可以</span>，但要先點開。`]],
+      ["可繼續的錯誤<small>（選分流時）</small>", [`按「繼續」就往下，圖解留在右側欄。`, `每遇到一個都要關一次視窗。`, `每遇到一個就出現一行提示。`]],
+      ["跟編譯錯誤比", [`<span class="yes">一樣</span>：編譯錯誤也是自動勾選並展開右側欄面板（GdbApi.tsx:676–677）。`, `<span class="no">不一樣</span>。`, `<span class="no">不一樣</span>。`]],
+    ],
+    how: [
+      `想和編譯錯誤一致、讓學生一邊看圖一邊對照程式，選「自動暫停＋右側欄展開」。`,
+      `最擔心學生沒注意到，選「彈出視窗」，但每次都要關掉才能看程式。`,
+      `想要最不打擾，選「一行提示」，但學生要多點一次才看得到圖解。`,
+    ],
+  };
+}
+
+// ── render ──────────────────────────────────────────────────────────────────
+function render(d, spec, el, howEl) {
+  const ch = D.choices[d];
+  const hi = (o) => (ch ? ch === o.id : REC[d] === o.id);
+  let h = `<div class="h rl"></div>`;
+  spec.opts.forEach((o) => {
+    const mine = ch === o.id, rec = REC[d] === o.id;
+    const badge = mine ? `<span class="badge mine">你的選擇</span>` : rec ? `<span class="badge">${ch ? "原本建議" : "建議・目前暫採"}</span>` : "";
+    h += `<div class="h c ${hi(o) ? "rec" : ""}"><div class="optname"><h3>${esc(o.name)}</h3>${badge}</div><div class="lead">${esc(o.lead)}</div></div>`;
+  });
+  spec.rows.forEach(([label, cells]) => {
+    h += `<div class="rl">${label}</div>`;
+    cells.forEach((x, i) => { const o = spec.opts[i]; h += `<div class="c ${hi(o) ? "rec" : ""}" data-o="${esc(SHORT[d][o.id])}">${x}</div>`; });
+  });
+  h += `<div class="rl"></div>`;
+  spec.opts.forEach((o) => { const mine = ch === o.id; h += `<div class="c ${hi(o) ? "rec" : ""}" data-o="${esc(SHORT[d][o.id])}"><button class="pick ${mine ? "on" : ""}" data-hermes-send="${esc(o.send)}">${mine ? "已選" : "選這個"}</button></div>`; });
+  el.innerHTML = h;
+  howEl.innerHTML = spec.how.map((x) => `<li>${x}</li>`).join("");
+  document.querySelector(`.st[data-d="${d}"]`).textContent = ch ? `你選了：${SHORT[d][ch]}` : `暫採：${SHORT[d][REC[d]]}`;
+}
+render(1, d1(), document.getElementById("c1"), document.getElementById("h1"));
+render(2, d2(), document.getElementById("c2"), document.getElementById("h2"));
+render(3, d3(), document.getElementById("c3"), document.getElementById("h3"));
+document.getElementById("code2").innerHTML = D.strip.code.map(([n, t]) =>
+  `<div class="${n === D.strip.report.line ? "bad" : ""}"><span class="ln">${n}</span>${esc(t)}</div>`).join("");
+
+// tabs
+const tabs = [...document.querySelectorAll(".tab")];
+function openTab(t) {
+  tabs.forEach((x) => { const on = x === t; x.setAttribute("aria-selected", on); document.getElementById(x.getAttribute("aria-controls")).hidden = !on; });
+}
+tabs.forEach((t) => t.addEventListener("click", () => openTab(t)));
+if (ONLY) {
+  document.querySelector(".tabs").hidden = true;
+  openTab(document.getElementById("t" + ONLY));
+  const pre = ONLY === 2 && D.choices[1] === "A" ? "決定 1 你選了「推翻」，所以這一題要選。" : "";
+  const ch = D.choices[ONLY];
+  document.querySelector(".top").textContent = pre + (ch ? `你已選「${SHORT[ONLY][ch]}」；要改的話，點另一個選項的「選這個」。` : "點最下面的「選這個」就會記下你的選擇；還沒選之前，規劃文件暫採標著「建議」的選項。");
+} else {
+  // open on the first decision that has not been made yet
+  const pending = [1, 2, 3].find((d) => !D.choices[d]);
+  if (pending && pending !== 1) openTab(document.getElementById("t" + pending));
+}
+
+// decision 1: which program is this cell (tooltip)
+const tip = document.getElementById("tip"), dz = document.getElementById("dz");
+function show(cell) {
+  document.querySelectorAll(".s.hot").forEach((x) => x.classList.remove("hot"));
+  cell.classList.add("hot");
+  tip.innerHTML = `<b>${esc(cell.dataset.t)}</b>（<span class="mono">${esc(cell.dataset.id)}</span>）<br>${esc(cell.dataset.d)}`;
+  tip.hidden = false;
+  const a = cell.getBoundingClientRect(), z = dz.getBoundingClientRect();
+  const w = tip.offsetWidth;
+  tip.style.left = Math.max(0, Math.min(a.left - z.left - 8, z.width - w)) + "px";
+  tip.style.top = (a.bottom - z.top + 6) + "px";
+}
+function hide() { tip.hidden = true; document.querySelectorAll(".s.hot").forEach((x) => x.classList.remove("hot")); }
+const c1 = document.getElementById("c1");
+for (const ev of ["mouseover", "focusin", "click"]) c1.addEventListener(ev, (e) => { if (e.target.matches(".cells .s")) show(e.target); });
+c1.addEventListener("mouseout", (e) => { if (e.target.matches(".cells .s") && !(e.relatedTarget && e.relatedTarget.matches && e.relatedTarget.matches(".cells .s"))) hide(); });
+c1.addEventListener("focusout", (e) => { if (e.target.matches(".cells .s")) hide(); });
+</script>
+</body>
+</html>

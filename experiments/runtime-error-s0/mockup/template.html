@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>IRIS 執行錯誤視覺化・設計稿 v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* IRIS 設計方向 A 的 token（gdbgui/static/css/gdbgui.css :root，同值）。--danger-soft 是新提案。 */
+:root {
+  --paper:#f4f3f9; --surface:#ffffff; --ink:#1e1b2e; --ink-soft:#5c5873; --ink-faint:#6c6885;
+  --line:#e5e2ef; --struct-border:#c9c4dc; --accent:#4a3aa0; --accent-soft:#ece9f8;
+  --highlight:#f2be0f; --highlight-soft:#fff5cc; --highlight-strong:#b38600;
+  --ok:#2d7a4e; --ok-soft:#e5f3ea; --danger:#b42318; --visited:#a6a2bc; --empty-bg:#f1eff7;
+  --danger-soft:#fcebe9;
+  --font-display:"Space Grotesk", system-ui, sans-serif;
+  --font-body:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",Menlo,Monaco,Consolas,"Courier New",monospace;
+}
+* { box-sizing:border-box; }
+html, body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:14px; line-height:1.5; }
+.board { width:960px; padding:18px 18px 28px; }
+.mono, .code, pre, code, .cell, .bit, .tok, .diff, .tower, .expr { font-family:var(--font-mono); }
+/* 程式碼一律關掉連字：JetBrains Mono 會把 <= != << 畫成 ≤ ≠ ≪，初學者會以為要打那個字元。 */
+.mono, .mono *, .code, .code *, pre, pre *, code, .cell, .bit, .tok, .tok *, .diff, .diff *, .expr, .expr * {
+  font-variant-ligatures:none !important; font-feature-settings:"liga" 0, "calt" 0 !important; }
+button { font-family:var(--font-body); }
+nowrap, .nw { white-space:nowrap; }
+
+/* ── 頁首 ─────────────────────────────────────────── */
+.bhead { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:14px; }
+.eyebrow { font-family:var(--font-display); font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); }
+.bhead h1 { margin:2px 0 2px; font-size:22px; font-weight:700; letter-spacing:.01em; }
+.prov { font-size:12.5px; color:var(--ink-soft); }
+.views { display:flex; border:1px solid var(--struct-border); border-radius:8px; overflow:hidden; background:var(--surface); flex:none; }
+.views button { border:0; background:transparent; padding:7px 16px; font-size:13.5px; color:var(--ink-soft); cursor:pointer; }
+.views button.on { background:var(--accent); color:#fff; font-weight:600; }
+.views button:focus-visible, .fam:focus-visible, .kind:focus-visible, .btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* ── 類型選擇 ──────────────────────────────────────── */
+.picker { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:12px; }
+.fams { display:flex; gap:2px; border-bottom:1px solid var(--line); margin-bottom:9px; }
+.fam { border:0; background:transparent; padding:6px 12px 8px; font-size:13.5px; color:var(--ink-soft); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+.fam.on { color:var(--ink); font-weight:700; border-bottom-color:var(--accent); }
+.fam .cnt { font-family:var(--font-mono); font-size:11px; color:var(--ink-faint); margin-left:4px; }
+.kinds { display:flex; flex-wrap:wrap; gap:6px; }
+.kind { border:1px solid var(--struct-border); background:var(--surface); border-radius:999px; padding:4px 12px; font-size:13px; color:var(--ink); cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.kind:hover { border-color:var(--accent); }
+.kind.on { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+.kind .tag { font-size:10.5px; padding:0 6px; border-radius:999px; background:var(--empty-bg); color:var(--ink-soft); font-weight:500; }
+.kind.on .tag { background:rgba(255,255,255,.22); color:#fff; }
+
+/* ── IDE 模型 ──────────────────────────────────────── */
+.ide { display:grid; grid-template-columns:436px 488px; gap:0; background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 10px 28px rgba(74,58,160,.08), 0 2px 6px rgba(30,27,46,.04); }
+.left { border-right:1px solid var(--line); display:flex; flex-direction:column; min-width:0; }
+.toolbar { display:flex; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line); background:#f7f5fc; }
+.btn { border:1px solid var(--struct-border); background:var(--surface); color:var(--ink); border-radius:6px; padding:3px 9px; font-size:12.5px; cursor:default; }
+.btn.act { cursor:pointer; border-color:var(--accent); color:var(--accent); font-weight:600; }
+.btn.off { opacity:.42; }
+.btn.act:hover { background:var(--accent-soft); }
+.stepinfo { margin-left:auto; font-size:12px; color:var(--ink-soft); white-space:nowrap; }
+.pill { font-size:12px; font-weight:600; padding:2px 9px; border-radius:999px; white-space:nowrap; }
+.pill.stop { background:var(--danger); color:#fff; }
+.pill.cont { background:var(--danger-soft); color:var(--danger); border:1px solid var(--danger); }
+.pill.origin { background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent); }
+.pill.limit { background:var(--empty-bg); color:var(--ink-soft); border:1px solid var(--struct-border); }
+.pill.none { background:var(--empty-bg); color:var(--ink-soft); border:1px solid var(--struct-border); }
+.fname { font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); padding:6px 12px 0; }
+.code { padding:6px 0 10px; font-size:13px; line-height:21px; }
+.vars { border-top:1px solid var(--line); padding:8px 12px 10px; flex:1; }
+.vars .vh { display:flex; justify-content:space-between; font-size:12px; color:var(--ink-soft); margin-bottom:5px; }
+.vars table { border-collapse:collapse; width:100%; font-size:12.5px; }
+.vars td { padding:3px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+.vars td.n { font-family:var(--font-mono); font-weight:700; width:96px; white-space:nowrap; }
+.vars td.v { font-family:var(--font-mono); word-break:break-all; }
+.vars td.v.hl { color:var(--danger); font-weight:700; }
+.vars td.v.ho { color:var(--accent); font-weight:700; }
+.vars .tg { font-family:var(--font-body); font-size:11px; color:var(--ink-soft); border:1px solid var(--struct-border); border-radius:4px; padding:0 4px; margin-left:6px; }
+.vars .none { font-size:12.5px; color:var(--ink-faint); }
+.ln { display:flex; align-items:flex-start; min-height:21px; padding-right:8px; position:relative; }
+.ln .no { width:38px; flex:none; text-align:right; padding-right:12px; color:var(--ink-faint); font-size:12px; user-select:none; }
+.ln .tx { white-space:pre-wrap; overflow-wrap:anywhere; flex:1; min-width:0; }
+.ln.dim .tx { color:var(--ink-faint); }
+.ln.cur { background:var(--highlight-soft); box-shadow:inset 4px 0 0 var(--highlight); }
+.ln.err { background:var(--danger-soft); box-shadow:inset 4px 0 0 var(--danger); }
+.ln.origin { background:var(--accent-soft); box-shadow:inset 4px 0 0 var(--accent); }
+.ln u.bad { text-decoration:none; border-bottom:2px solid var(--danger); padding-bottom:0; }
+.ln u.org { text-decoration:none; border-bottom:2px solid var(--accent); }
+.badge { flex:none; font-family:var(--font-body); font-size:11.5px; font-weight:700; color:#fff; background:var(--danger); border-radius:4px; padding:0 6px; margin:1px 0 0 6px; line-height:18px; white-space:nowrap; }
+.badge.o { background:var(--accent); }
+.badge.v { background:var(--surface); color:var(--accent); border:1px solid var(--accent); font-weight:600; }
+.timeline { border-top:1px solid var(--line); padding:9px 12px 10px; }
+.tl-head { display:flex; justify-content:space-between; font-size:12px; color:var(--ink-soft); margin-bottom:6px; }
+.tl-track { position:relative; height:22px; }
+.tl-track .rail { position:absolute; left:0; right:0; top:10px; height:2px; background:var(--line); border-radius:2px; }
+.tl-track .tick { position:absolute; top:6px; width:2px; height:10px; background:var(--struct-border); border-radius:1px; }
+.tl-track .mk { position:absolute; top:3px; width:16px; height:16px; margin-left:-8px; border-radius:50%; border:2px solid var(--surface); box-shadow:0 0 0 1px rgba(30,27,46,.15); }
+.tl-track .mk.err { background:var(--danger); }
+.tl-track .mk.org { background:var(--accent); width:12px; height:12px; margin-left:-6px; top:5px; }
+.tl-track .mk.cur { background:var(--highlight); box-shadow:0 0 0 2px var(--highlight-strong); }
+.tl-legend { display:flex; gap:12px; font-size:11.5px; color:var(--ink-soft); margin-top:5px; }
+.tl-legend i { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:-1px; }
+.io { display:grid; grid-template-columns:1fr 1fr; border-top:1px solid var(--line); }
+.io > div { padding:8px 12px; min-width:0; }
+.io > div + div { border-left:1px solid var(--line); }
+.io b { display:block; font-size:11.5px; color:var(--ink-soft); font-weight:600; margin-bottom:2px; }
+.io .mono { font-size:12.5px; white-space:pre-wrap; word-break:break-all; }
+.io .empty { color:var(--ink-faint); font-family:var(--font-body); font-size:12.5px; }
+
+/* ── 側欄面板 ──────────────────────────────────────── */
+.side { background:var(--paper); padding:10px; display:flex; flex-direction:column; gap:10px; min-width:0; }
+.panel { background:var(--surface); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+.titlebar { display:flex; align-items:center; gap:8px; height:32px; padding:0 10px; font-family:var(--font-display); font-size:12px; font-weight:600; letter-spacing:.04em; color:var(--ink); background:var(--surface); box-shadow:inset 0 -1px 0 var(--line); border-left:3px solid var(--danger); }
+.titlebar.lim { border-left-color:var(--ink-soft); }
+.titlebar.des { border-left:3px dashed var(--struct-border); }
+.titlebar .cnt { margin-left:auto; font-family:var(--font-body); font-weight:500; letter-spacing:0; color:var(--ink-soft); }
+.panel.collapsed .titlebar { border-left-color:var(--struct-border); color:var(--ink-soft); }
+.pbody { padding:12px 14px 14px; }
+.famline { font-size:12px; color:var(--ink-soft); }
+.ktitle { font-size:16px; font-weight:700; margin:1px 0 2px; }
+.ktitle .term { font-size:12.5px; font-weight:500; color:var(--ink-soft); margin-left:4px; }
+.headline { font-size:14px; margin:4px 0 8px; }
+.headline .mono { font-size:13px; background:var(--empty-bg); border-radius:4px; padding:0 4px; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:4px; }
+.chip { font-size:12px; padding:2px 9px; border-radius:999px; border:1px solid var(--struct-border); color:var(--ink-soft); background:var(--surface); }
+.chip.stop { background:var(--danger); border-color:var(--danger); color:#fff; font-weight:600; }
+.chip.cont { border-color:var(--danger); color:var(--danger); font-weight:600; background:var(--danger-soft); }
+.chip.limit { border-color:var(--ink-soft); color:var(--ink); font-weight:600; }
+.chip.design { border-style:dashed; color:var(--ink-soft); }
+h3.sec { display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:700; margin:14px 0 8px; }
+h3.sec .n { width:20px; height:20px; border-radius:50%; background:var(--ink); color:#fff; font-family:var(--font-display); font-size:12px; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.note { font-size:12.5px; color:var(--ink-soft); margin:6px 0 0; }
+.note b { color:var(--ink); }
+.schematic { display:inline-block; font-size:11px; font-weight:600; color:var(--ink-soft); border:1px dashed var(--ink-faint); border-radius:4px; padding:0 5px; margin-left:6px; vertical-align:1px; }
+.env { margin-top:10px; font-size:12.5px; color:var(--ink); background:var(--empty-bg); border-radius:8px; padding:8px 10px; }
+.env b { font-weight:700; }
+.limitbox { border:1px solid var(--struct-border); background:var(--empty-bg); border-radius:8px; padding:8px 10px; font-size:12.5px; margin-bottom:6px; }
+
+/* 值從哪裡來 */
+.origins { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.origins li { display:grid; grid-template-columns:1fr auto; gap:4px 10px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:7px 9px; }
+.origins .what { font-size:13px; }
+.origins .what .mono { font-size:12.5px; }
+.origins .where { grid-column:1; font-size:12px; color:var(--ink-soft); }
+.origins .where .mono { color:var(--ink); background:var(--accent-soft); border-radius:3px; padding:0 4px; }
+.origins button { grid-row:1 / span 2; grid-column:2; border:1px solid var(--accent); color:var(--accent); background:var(--surface); border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.origins button:hover, .origins button.on { background:var(--accent); color:#fff; }
+
+/* 怎麼改 */
+.fixtext { font-size:13px; margin:0 0 6px; }
+.diff { font-size:12.5px; line-height:20px; border:1px solid var(--line); border-radius:8px; overflow:hidden; margin:0; }
+.diff div { white-space:pre-wrap; overflow-wrap:anywhere; padding:0 10px 0 6px; }
+.diff .m { background:var(--danger-soft); color:#7a1a12; text-decoration:line-through; text-decoration-color:rgba(180,35,24,.55); }
+.diff .p { background:var(--ok-soft); color:#1d5235; }
+.diff .c { color:var(--ink-soft); }
+.diff span.sg { display:inline-block; width:14px; color:var(--ink-faint); text-decoration:none; }
+details.raw { margin-top:12px; }
+details.raw summary { font-size:12px; color:var(--ink-soft); cursor:pointer; }
+details.raw pre { font-size:11.5px; white-space:pre-wrap; word-break:break-all; background:var(--empty-bg); border-radius:6px; padding:8px 10px; margin:6px 0 0; }
+
+/* 其他面板（收合） */
+.ghostpanels { display:flex; flex-direction:column; gap:6px; }
+.ghostpanels .titlebar { border-left-color:var(--struct-border); color:var(--ink-soft); font-weight:600; }
+.ghostpanels .panel { opacity:.85; }
+
+/* ── 圖：共用 ─────────────────────────────────────── */
+.dg { position:relative; }
+.dg .cap { font-size:12px; color:var(--ink-soft); }
+.cellrow { display:flex; align-items:flex-end; gap:4px; }
+.cell { min-width:40px; height:34px; padding:0 6px; display:flex; align-items:center; justify-content:center; border:1px solid var(--struct-border); border-radius:6px; background:var(--surface); font-size:14px; font-weight:500; color:var(--ink); }
+.cell.bad { border:2px dashed var(--danger); background:var(--danger-soft); color:var(--danger); font-weight:700; }
+.cell.badsolid { border:2px solid var(--danger); background:var(--danger-soft); color:var(--danger); font-weight:700; }
+.cell.spare { background:var(--empty-bg); border-style:dashed; color:var(--ink-faint); }
+.cell.freed { background:var(--empty-bg); color:var(--visited); border-color:var(--visited); }
+.cell.okc { border-color:var(--ok); background:var(--ok-soft); color:var(--ok); }
+.cell.org { border:2px solid var(--accent); background:var(--accent-soft); color:var(--accent); font-weight:700; }
+.cell.small { min-width:30px; height:28px; font-size:13px; padding:0 4px; }
+.idx { font-family:var(--font-mono); font-size:11px; color:var(--ink-faint); text-align:center; }
+.idx.bad { color:var(--danger); font-weight:700; }
+.colw { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.gapdots { font-family:var(--font-mono); color:var(--ink-faint); padding:0 4px; height:34px; display:flex; align-items:center; }
+.namechip { font-family:var(--font-mono); font-size:12px; font-weight:600; border-radius:4px; padding:1px 6px; background:var(--accent-soft); color:var(--accent); white-space:nowrap; }
+.namechip.bad { background:var(--danger); color:#fff; }
+.arrowdown { width:2px; height:12px; background:var(--danger); margin:0 auto; position:relative; }
+.arrowdown::after { content:""; position:absolute; left:-4px; bottom:-5px; border:5px solid transparent; border-top-color:var(--danger); border-bottom:0; }
+.bracket { border:1px solid var(--accent); border-top:0; height:7px; border-radius:0 0 4px 4px; margin-top:3px; }
+.bracketlabel { font-size:11.5px; color:var(--accent); text-align:center; white-space:nowrap; }
+.sizeline { width:0; border-left:2px solid var(--accent); height:46px; align-self:flex-start; position:relative; margin:0 2px; }
+.sizeline span { position:absolute; top:-15px; left:-28px; width:56px; text-align:center; font-size:10.5px; font-family:var(--font-mono); color:var(--accent); font-weight:600; white-space:nowrap; }
+.typechip { font-family:var(--font-mono); font-size:11.5px; color:var(--ink-soft); border:1px solid var(--line); border-radius:4px; padding:0 5px; margin-left:4px; }
+.varhead { display:flex; align-items:center; gap:2px; margin-bottom:5px; font-family:var(--font-mono); font-size:13px; font-weight:700; }
+
+/* 算式卡 */
+.expr { display:flex; align-items:flex-start; gap:10px; padding:8px 4px 4px; }
+.expr .tokc { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.expr .tname { font-size:20px; font-weight:600; line-height:28px; }
+.expr .top { font-size:22px; font-weight:600; line-height:28px; color:var(--ink-soft); }
+.expr .tnote { font-family:var(--font-body); font-size:11.5px; color:var(--danger); font-weight:700; white-space:nowrap; }
+.expr .cell { min-width:54px; height:36px; font-size:16px; }
+.eqline { font-size:13px; margin-top:8px; padding:7px 10px; border-radius:8px; background:var(--empty-bg); }
+.eqline .mono { font-weight:600; }
+
+/* 位元格 */
+.bits { display:flex; flex-direction:column; gap:4px; }
+.bitrow { display:flex; flex-direction:column; gap:3px; }
+.bitlabel { font-size:12px; color:var(--ink-soft); display:flex; gap:8px; align-items:baseline; padding-left:16px; }
+.bitlabel .mono { font-size:13px; color:var(--ink); font-weight:700; }
+.bitlabel.bad .mono { color:var(--danger); }
+.bitwrap { display:flex; align-items:center; gap:3px; }
+.frame32 { display:flex; gap:4px; border:2px solid var(--ink); border-radius:6px; padding:2px 4px; }
+.frame32.ghost { border-color:transparent; }
+.nib { display:flex; gap:1px; }
+.bit { width:10.5px; height:19px; font-size:11px; display:flex; align-items:center; justify-content:center; border-radius:2px; background:var(--empty-bg); color:var(--ink-soft); }
+.bit.one { background:var(--accent-soft); color:var(--accent); font-weight:700; }
+.bit.sign { box-shadow:0 0 0 1.5px var(--highlight-strong); }
+.bit.lost { background:var(--danger); color:#fff; font-weight:700; }
+.bit.sgnbad { background:var(--danger-soft); color:var(--danger); font-weight:700; box-shadow:0 0 0 1.5px var(--danger); }
+.bitnote { font-size:12px; color:var(--ink-soft); padding-left:16px; margin:0 0 6px; }
+.bitnote b.r { color:var(--danger); }
+
+/* 堆疊塔 */
+.towerwrap { display:flex; gap:16px; align-items:flex-end; }
+.tower { display:flex; flex-direction:column-reverse; gap:3px; width:196px; font-size:12.5px; }
+.fr { border:1px solid var(--struct-border); border-radius:6px; padding:3px 8px; background:var(--surface); display:flex; justify-content:space-between; }
+.fr .d { color:var(--ink-faint); font-size:11px; }
+.fr.main { background:var(--empty-bg); }
+.fr.basehit { border:2px solid var(--ok); background:var(--ok-soft); }
+.fr.basemiss { border:2px dashed var(--accent); }
+.fr.top { border:2px solid var(--danger); background:var(--danger-soft); color:var(--danger); font-weight:700; }
+.fr.gap { border:0; background:transparent; justify-content:center; color:var(--ink-soft); font-family:var(--font-body); font-size:12px; padding:2px 0; }
+.fr.ghostfr { border-style:dashed; color:var(--ink-faint); background:transparent; }
+.tower2 { display:flex; flex-direction:column; gap:3px; }
+.trow { display:grid; grid-template-columns:196px 1fr; gap:10px; align-items:center; font-family:var(--font-mono); font-size:12.5px; }
+.tnote { font-family:var(--font-body); font-size:12px; color:var(--ink-soft); line-height:1.35; }
+.tnote.bad { color:var(--danger); font-weight:700; }
+.tnote.ok { color:var(--ok); font-weight:700; }
+.ceiling { border-bottom:3px solid var(--danger); padding-bottom:2px; font-family:var(--font-body); font-size:11.5px; color:var(--danger); font-weight:700; text-align:center; }
+.ceiling.limit { border-bottom-color:var(--ink-soft); color:var(--ink); border-bottom-style:dashed; }
+
+/* 物件圖 */
+svg text { font-family:var(--font-body); }
+svg .m { font-family:var(--font-mono); font-variant-ligatures:none; }
+
+/* 實驗結果 */
+.exp { display:none; }
+.exp.on { display:block; }
+.viz.off { display:none; }
+.expcard { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+.expcard h2 { font-size:16px; margin:0 0 4px; }
+.expcard .sub { font-size:12.5px; color:var(--ink-soft); margin-bottom:10px; }
+table.res { width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px; }
+table.res th { text-align:left; font-weight:600; color:var(--ink-soft); font-size:12px; padding:6px 8px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--surface); }
+table.res td { padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+table.res tr.fam td { background:var(--empty-bg); font-weight:700; font-size:12px; color:var(--ink); }
+table.res .case { font-family:var(--font-mono); font-size:11.5px; color:var(--ink-faint); display:block; }
+.st { display:inline-block; border-radius:4px; padding:0 6px; font-size:12px; line-height:19px; white-space:nowrap; }
+.st.caught { background:var(--ok-soft); color:var(--ok); font-weight:600; }
+.st.trap { background:var(--highlight-soft); color:#7a5a00; font-weight:600; }
+.st.miss { background:var(--empty-bg); color:var(--ink-soft); }
+.st.limit { background:var(--empty-bg); color:var(--ink); border:1px solid var(--struct-border); }
+.st.fail { background:var(--danger-soft); color:var(--danger); }
+.st.na { color:var(--ink-faint); }
+.det { display:block; font-size:11.5px; color:var(--ink-soft); }
+.det .mono { font-size:11px; }
+.metrics { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+.metric { border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+.metric .k { font-size:12px; color:var(--ink-soft); }
+.metric .v { font-family:var(--font-mono); font-size:18px; font-weight:700; margin:2px 0; }
+.metric .v small { font-size:12px; font-weight:500; color:var(--ink-soft); }
+.metric .d2 { font-size:12px; color:var(--ink-soft); }
+.pending { color:var(--ink-faint); font-style:normal; }
+.legend { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--ink-soft); margin-bottom:8px; }
+</style>
+</head>
+<body>
+<div class="board" id="board">
+  <header class="bhead">
+    <div>
+      <div class="eyebrow">IRIS・執行錯誤視覺化・設計稿 v1</div>
+      <h1 id="h1">執行錯誤的圖解</h1>
+      <div class="prov" id="prov"></div>
+    </div>
+    <nav class="views" aria-label="檢視">
+      <button data-view="viz" class="on">圖解</button>
+      <button data-view="exp">實驗結果</button>
+    </nav>
+  </header>
+  <section class="viz" id="viz">
+    <div class="picker">
+      <div class="fams" id="fams" role="tablist"></div>
+      <div class="kinds" id="kinds"></div>
+    </div>
+    <div class="ide" id="ide"></div>
+  </section>
+  <section class="exp" id="exp"></section>
+</div>
+<script>
+/*__DATA__*/
+</script>
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (n) => (typeof n === "number" || typeof n === "bigint") ? n.toLocaleString("en-US") : String(n);
+const KINDS = DATA.kinds;
+const FAMS = DATA.families;
+const state = { fam: FAMS[0].id, kind: null, viewStep: null, after: false };
+
+/* ── 位元工具 ─────────────────────────────────────── */
+function bitsOf(v, n) { // two's complement, MSB first
+  let b = BigInt(v);
+  const mod = 1n << BigInt(n);
+  b = ((b % mod) + mod) % mod;
+  return b.toString(2).padStart(n, "0").split("");
+}
+function bitCells(bits, opt = {}) {
+  // opt.signAt: index (in bits) of the sign bit; opt.cls: per-index class function
+  let h = "", group = [];
+  const flush = () => { if (group.length) { h += `<span class="nib">${group.join("")}</span>`; group = []; } };
+  bits.forEach((b, i) => {
+    const cls = ["bit", b === "1" ? "one" : ""];
+    if (opt.cls) cls.push(opt.cls(i, b) || "");
+    group.push(`<span class="${cls.join(" ")}">${b}</span>`);
+    if ((bits.length - i - 1) % 4 === 0) flush();
+  });
+  flush();
+  return h;
+}
+function frame32(bits, opt = {}) { return `<span class="frame32 ${opt.ghost ? "ghost" : ""}">${bitCells(bits, opt)}</span>`; }
+
+/* ── 圖的種類 ─────────────────────────────────────── */
+const R = {};
+
+R.expr = (d) => {
+  const cols = d.tokens.map((t) => {
+    if (t.op) return `<div class="tokc"><div class="top">${esc(t.op)}</div></div>`;
+    if (t.lit) return `<div class="tokc"><div class="tname">${esc(t.name)}</div><div class="cell" style="visibility:hidden">0</div></div>`;
+    return `<div class="tokc"><div class="tname">${esc(t.name)}</div><div class="cell ${t.bad ? "badsolid" : ""}">${esc(t.value)}</div>${t.note ? `<div class="tnote">${esc(t.note)}</div>` : ""}</div>`;
+  }).join("");
+  return `<div class="dg"><div class="expr">${cols}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.edge = (d) => { // the last few values of a type and one beyond its end
+  const cells = d.cells.map((c) => `<div class="colw"><div class="cell ${c.bad ? "badsolid" : ""}" style="min-width:100px; font-size:13px">${esc(fmt(c.v))}</div><div class="idx ${c.bad ? "bad" : ""}">${esc(c.label || "")}</div></div>`).join("");
+  return `<div class="dg">${R.expr(d.expr)}<div class="cap" style="margin:10px 0 5px">${esc(d.caption)}</div><div class="cellrow" style="gap:6px">${cells}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.bits = (d) => {
+  let h = `<div class="dg bits">`;
+  for (const row of d.rows) {
+    const n = row.width || 32;
+    const bits = bitsOf(row.value, n);
+    let body;
+    if (row.lost) { // first `lost` bits fall outside the 32-bit frame
+      const outer = bits.slice(0, row.lost), inner = bits.slice(row.lost);
+      body = `<span class="bitwrap"><span class="nib">${outer.map((b) => `<span class="bit ${b === "1" ? "lost" : ""}">${b}</span>`).join("")}</span>${frame32(inner, { cls: (i) => (i === 0 && row.sign ? "sign" : "") })}</span>`;
+    } else {
+      const pad = row.padLeft ? `<span class="nib">${Array.from({ length: row.padLeft }, () => `<span class="bit" style="visibility:hidden">0</span>`).join("")}</span>` : "";
+      body = `<span class="bitwrap">${pad}${frame32(bits, { cls: (i) => (i === 0 && row.signBad ? "sgnbad" : i === 0 && row.sign ? "sign" : "") })}</span>`;
+    }
+    h += `<div class="bitrow"><div class="bitlabel ${row.bad ? "bad" : ""}"><span>${esc(row.label)}</span><span class="mono">${esc(row.num)}</span></div>${body}</div>`;
+    if (row.note) h += `<div class="bitnote">${row.note}</div>`;
+  }
+  if (d.eq) h += `<div class="eqline">${d.eq}</div>`;
+  return h + `</div>`;
+};
+
+R.shift = (d) => {
+  const n = 32, bits = bitsOf(d.lhs, n);
+  // the 1 would land at position d.rhs (0 = rightmost); draw ghost cells to the left of the frame
+  const extra = Math.max(0, d.rhs - (n - 1));
+  const ghosts = Array.from({ length: extra }, (_, i) => `<span class="bit ${i === 0 ? "lost" : ""}">${i === 0 ? "1" : "·"}</span>`).join("");
+  return `<div class="dg bits">
+    <div class="bitrow"><div class="bitlabel"><span>位移前</span><span class="mono">${esc(String(d.lhs))}</span></div><span class="bitwrap"><span class="nib" style="visibility:hidden">${ghosts}</span>${frame32(bits)}</span></div>
+    <div class="bitrow"><div class="bitlabel bad"><span>往左移 ${d.rhs} 格</span><span class="mono">${esc(d.lhsName)} &lt;&lt; ${esc(d.rhsName)}</span></div><span class="bitwrap"><span class="nib">${ghosts}</span>${frame32(bitsOf(0, n))}</span></div>
+    <div class="bitnote">int 只有 32 格（第 0～31 格）。往左移 ${d.rhs} 格，那個 1 會落在第 ${d.rhs} 格，已經在 int 的外面：<b class="r">位移量必須小於 32</b>。</div>
+  </div>`;
+};
+
+R.numbar = (d) => { // value far outside a range: proportional bar
+  const W = 430, x0 = 8, scale = (W - 30) / d.value;
+  const xr = x0 + d.max * scale;
+  return `<div class="dg"><svg width="${W}" height="96" viewBox="0 0 ${W} 96" role="img" aria-label="${esc(d.aria)}">
+    <rect x="${x0}" y="30" width="${xr - x0}" height="16" rx="3" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="${x0}" y="22" font-size="11.5" fill="var(--accent)">${esc(d.rangeLabel)}</text>
+    <line x1="${xr}" y1="24" x2="${xr}" y2="56" stroke="var(--accent)" stroke-width="2"/>
+    <text class="m" x="${xr}" y="70" font-size="11" text-anchor="middle" fill="var(--accent)">${esc(fmt(d.max))}</text>
+    <rect x="${x0}" y="50" width="${W - 30}" height="4" rx="2" fill="var(--danger)" opacity=".85"/>
+    <circle cx="${x0 + d.value * scale}" cy="52" r="6" fill="var(--danger)"/>
+    <text class="m" x="${x0 + d.value * scale}" y="86" font-size="11.5" text-anchor="end" fill="var(--danger)" font-weight="700">${esc(d.valueLabel)}</text>
+  </svg>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.cells = (d) => {
+  const items = [];
+  const v = d.values;
+  v.forEach((x, i) => {
+    const bad = d.badCellIndex === i;
+    items.push(`<div class="colw"><div class="cell ${bad ? "badsolid" : ""} ${d.cellCls && d.cellCls[i] ? d.cellCls[i] : ""}">${esc(x)}</div><div class="idx">${i}</div></div>`);
+  });
+  if (d.sizeLine) items.push(`<div class="sizeline"><span>${esc(d.sizeLine)}</span></div>`);
+  (d.spare || []).forEach((i) => items.push(`<div class="colw"><div class="cell spare">　</div><div class="idx">${i}</div></div>`));
+  (d.extra || []).forEach((x) => items.push(`<div class="colw"><div class="cell spare">${esc(x.text)}</div><div class="idx">${x.index}</div></div>`));
+  if (d.ghost) {
+    if (d.ghost.gap) items.push(`<div class="colw"><div class="gapdots">…</div><div class="idx">&nbsp;</div></div>`);
+    items.push(`<div class="colw" style="position:relative"><div class="namechip bad" style="position:absolute; top:-40px; left:50%; transform:translateX(-50%)">${esc(d.ghost.chip)}</div><div class="arrowdown" style="position:absolute; top:-18px; left:50%; margin-left:-1px"></div><div class="cell bad">${esc(d.ghost.value || "?")}</div><div class="idx bad">${esc(String(d.ghost.index))}</div></div>`);
+  }
+  const bracket = d.validLabel ? `<div style="width:${d.validWidth}px"><div class="bracket"></div><div class="bracketlabel">${esc(d.validLabel)}</div></div>` : "";
+  return `<div class="dg">
+    <div class="varhead">${esc(d.name)}<span class="typechip">${esc(d.typeName)}</span>${d.headNote ? `<span class="cap" style="font-family:var(--font-body); font-weight:400; margin-left:8px">${esc(d.headNote)}</span>` : ""}</div>
+    <div class="cellrow" style="margin-top:${d.ghost ? 44 : 6}px; ${v.length ? "" : "padding-left:34px"}">${items.join("")}</div>
+    ${bracket}
+    ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}
+  </div>`;
+};
+
+R.grid2d = (d) => {
+  const rows = d.values.map((r, ri) => {
+    const cells = r.map((x, ci) => `<div class="cell small ${d.mark && d.mark[0] === ri && d.mark[1] === ci ? (state.after ? "badsolid" : "org") : ""}">${esc(state.after && d.after && d.mark[0] === ri && d.mark[1] === ci ? d.after : x)}</div>`).join("");
+    const ghost = ri === d.ghost[0] ? `<div class="cell small bad" style="margin-left:6px">?</div><span class="namechip bad" style="margin-left:6px">${esc(d.ghostChip)}</span>` : "";
+    return `<div class="cellrow" style="align-items:center; gap:3px; margin-bottom:3px"><span class="idx" style="width:26px">[${ri}]</span>${cells}${ghost}</div>`;
+  }).join("");
+  const flat = [];
+  d.values.forEach((r, ri) => r.forEach((x, ci) => {
+    const isMark = d.mark && d.mark[0] === ri && d.mark[1] === ci;
+    const val = state.after && isMark && d.after ? d.after : x;
+    flat.push(`<div class="colw"><div class="cell small ${isMark ? (state.after ? "badsolid" : "org") : ""}" style="min-width:30px">${esc(val)}</div><div class="idx ${isMark ? "bad" : ""}" style="font-size:10px">${ri},${ci}</div></div>`);
+  }));
+  return `<div class="dg">
+    <div class="varhead">${esc(d.name)}<span class="typechip">${esc(d.typeName)}</span></div>
+    ${rows}
+    <div class="cap" style="margin:10px 0 4px">記憶體裡其實是一整排（一列接著一列）<span class="schematic">示意</span></div>
+    <div class="cellrow" style="gap:3px; flex-wrap:wrap">${flat.join("")}</div>
+    ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}
+  </div>`;
+};
+
+R.structrow = (d) => {
+  const cells = d.fields.map((f, i) => {
+    const isTarget = i === d.target;
+    const val = state.after && isTarget ? d.after : f.v;
+    const cls = isTarget ? (state.after ? "badsolid" : "org") : "";
+    return `<div class="colw"><div class="cell ${cls}" style="min-width:52px">${esc(val)}</div><div class="idx ${isTarget ? "bad" : ""}">${esc(f.n)}</div></div>`;
+  }).join("");
+  return `<div class="dg">
+    ${R.cells(d.arr)}
+    <div class="cap" style="margin:12px 0 4px">${esc(d.memCaption)}<span class="schematic">示意</span></div>
+    <div class="cellrow" style="gap:3px">${cells}</div>
+    <div class="note">${d.memNote}</div>
+  </div>`;
+};
+
+R.empty = (d) => {
+  const mini = (st) => {
+    if (d.shape === "stack") {
+      const els = st.items.slice().reverse().map((x) => `<div class="cell small" style="min-width:34px; height:24px">${esc(x)}</div>`).join("");
+      return `<div style="display:flex; flex-direction:column; align-items:center"><div style="height:66px; width:52px; border:2px solid var(--ink); border-top:0; border-radius:0 0 6px 6px; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:2px; padding-bottom:3px; ${st.bad ? "border-color:var(--danger); background:var(--danger-soft);" : ""}">${els || `<span style="font-size:11px; color:${st.bad ? "var(--danger)" : "var(--ink-faint)"}">空的</span>`}</div></div>`;
+    }
+    if (d.shape === "queue") {
+      const els = st.items.map((x) => `<div class="cell small" style="min-width:28px; height:24px">${esc(x)}</div>`).join("");
+      return `<div style="height:36px; min-width:84px; border-top:2px solid var(--ink); border-bottom:2px solid var(--ink); display:flex; align-items:center; justify-content:center; gap:2px; padding:0 4px; ${st.bad ? "border-color:var(--danger); background:var(--danger-soft);" : ""}">${els || `<span style="font-size:11px; color:${st.bad ? "var(--danger)" : "var(--ink-faint)"}">空的</span>`}</div>`;
+    }
+    const els = st.items.map((x) => `<div class="cell small" style="height:24px">${esc(x)}</div>`).join("");
+    return `<div style="display:flex; align-items:center; gap:2px; min-height:36px; min-width:84px; border:1px solid var(--line); border-radius:8px; padding:4px; ${st.bad ? "border:2px solid var(--danger); background:var(--danger-soft);" : ""}">${els || `<span style="font-size:11px; color:${st.bad ? "var(--danger)" : "var(--ink-faint)"}; padding:0 6px">空的（size() = 0）</span>`}</div>`;
+  };
+  const steps = d.history.map((st, i) => `
+    <div style="display:flex; flex-direction:column; align-items:center; gap:4px; min-width:96px">
+      <div style="height:${d.shape === "stack" ? 70 : 40}px; display:flex; align-items:flex-end">${mini(st)}</div>
+      <code class="mono" style="font-size:12px; ${st.bad ? "color:var(--danger); font-weight:700" : st.origin ? "color:var(--accent); font-weight:700" : ""}">${esc(st.code)}</code>
+      <span class="idx">第 ${st.line} 行</span>
+    </div>${i < d.history.length - 1 ? `<div style="align-self:center; color:var(--ink-faint); margin-top:-26px">→</div>` : ""}`).join("");
+  return `<div class="dg"><div style="display:flex; gap:6px; align-items:flex-start">${steps}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.nullsimple = (d) => `<div class="dg">
+  <svg width="430" height="104" viewBox="0 0 430 104" role="img" aria-label="${esc(d.aria)}">
+    <rect x="6" y="20" width="132" height="58" rx="8" fill="var(--surface)" stroke="var(--struct-border)"/>
+    <text class="m" x="16" y="40" font-size="13" font-weight="700" fill="var(--ink)">${esc(d.ptr)}</text>
+    <text class="m" x="${16 + d.ptr.length * 8.2 + 6}" y="40" font-size="11" fill="var(--ink-soft)">${esc(d.typeName)}</text>
+    <rect x="16" y="48" width="112" height="24" rx="5" fill="var(--danger-soft)" stroke="var(--danger)" stroke-width="2"/>
+    <text class="m" x="72" y="65" font-size="13" font-weight="700" fill="var(--danger)" text-anchor="middle">nullptr</text>
+    <line x1="132" y1="60" x2="262" y2="60" stroke="var(--danger)" stroke-width="2" stroke-dasharray="5 4"/>
+    <text x="197" y="52" font-size="11.5" fill="var(--danger)" text-anchor="middle" font-weight="700">${esc(d.op)}</text>
+    <rect x="268" y="28" width="150" height="62" rx="8" fill="var(--surface)" stroke="var(--danger)" stroke-dasharray="5 4"/>
+    <text x="343" y="54" font-size="13" fill="var(--danger)" text-anchor="middle" font-weight="700">沒有任何 ${esc(d.pointee)}</text>
+    <text x="343" y="74" font-size="11.5" fill="var(--ink-soft)" text-anchor="middle">nullptr 不指向任何東西</text>
+  </svg>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+
+R.nulllist = (d) => {
+  // fixed layout: cur on top, objects a and b in a row, b.next -> nothing
+  const obj = (x, y, o) => `
+    <rect x="${x}" y="${y}" width="118" height="70" rx="8" fill="var(--surface)" stroke="var(--struct-border)"/>
+    <rect x="${x}" y="${y}" width="118" height="22" rx="8" fill="var(--empty-bg)"/><rect x="${x}" y="${y + 14}" width="118" height="8" fill="var(--empty-bg)"/>
+    <text class="m" x="${x + 10}" y="${y + 15}" font-size="12" font-weight="700" fill="var(--ink)">${esc(o.name)}<tspan fill="var(--ink-soft)" font-weight="400"> : ${esc(o.type)}</tspan></text>
+    <text class="m" x="${x + 10}" y="${y + 40}" font-size="12" fill="var(--ink-soft)">val</text><text class="m" x="${x + 108}" y="${y + 40}" font-size="12" text-anchor="end" fill="var(--ink)" font-weight="600">${esc(o.val)}</text>
+    <text class="m" x="${x + 10}" y="${y + 60}" font-size="12" fill="var(--ink-soft)">next</text>
+    ${o.nextNull ? `<rect x="${x + 50}" y="${y + 47}" width="62" height="18" rx="4" fill="var(--danger-soft)" stroke="var(--danger)" stroke-width="1.5"/><text class="m" x="${x + 81}" y="${y + 60}" font-size="11.5" text-anchor="middle" fill="var(--danger)" font-weight="700">nullptr</text>` : `<circle cx="${x + 104}" cy="${y + 56}" r="3.5" fill="var(--accent)"/>`}`;
+  return `<div class="dg">
+  <svg width="440" height="176" viewBox="0 0 440 176" role="img" aria-label="${esc(d.aria)}">
+    <defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent)"/></marker>
+    <marker id="ahr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--danger)"/></marker></defs>
+    <rect x="150" y="6" width="128" height="26" rx="6" fill="var(--surface)" stroke="var(--struct-border)"/>
+    <text class="m" x="160" y="23" font-size="12" font-weight="700" fill="var(--ink)">${esc(d.cur)}<tspan fill="var(--ink-soft)" font-weight="400"> : Node*</tspan></text>
+    <circle cx="266" cy="19" r="3.5" fill="var(--accent)"/>
+    <path d="M266,22 C268,50 262,62 250,72" stroke="var(--accent)" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+    ${obj(30, 74, d.objs[0])}
+    ${obj(206, 74, d.objs[1])}
+    <path d="M134,130 C170,130 176,110 204,106" stroke="var(--accent)" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+    <line x1="318" y1="130" x2="370" y2="130" stroke="var(--danger)" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ahr)"/>
+    <text x="400" y="126" font-size="20" fill="var(--danger)" text-anchor="middle" font-weight="700">∅</text>
+    <text x="400" y="146" font-size="11" fill="var(--danger)" text-anchor="middle">沒有節點</text>
+  </svg>
+  <div class="expr" style="gap:0; padding:4px 0 0; align-items:flex-start">${d.chain.map((c) => `<div class="tokc" style="align-items:flex-start"><div style="font-size:16px; font-weight:600; line-height:24px; border-bottom:2px solid ${c.bad ? "var(--danger)" : "var(--accent)"}; padding:0 1px">${esc(c.text)}</div><div style="font-family:var(--font-body); font-size:11.5px; font-weight:700; color:${c.bad ? "var(--danger)" : "var(--accent)"}; white-space:nowrap; padding-top:3px">${esc(c.note)}</div></div>`).join("")}</div>
+  ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.path = (d) => {
+  const lines = d.lines.map((l) => {
+    const dot = l.visited ? `<span style="position:absolute; left:9px; top:7px; width:9px; height:9px; border-radius:50%; background:${l.bad ? "var(--danger)" : "var(--accent)"}"></span>` : "";
+    return `<div style="position:relative; display:grid; grid-template-columns:26px 22px 1fr; align-items:center; min-height:24px; ${l.bad ? "background:var(--danger-soft); border-radius:6px;" : ""}">
+      ${dot}<span class="idx" style="text-align:right; grid-column:2">${l.no}</span>
+      <span style="display:flex; justify-content:space-between; gap:8px; padding-left:8px"><code class="mono" style="font-size:12.5px; white-space:pre">${l.html || esc(l.code)}</code>${l.note ? `<span style="font-size:11.5px; font-weight:700; color:${l.bad ? "var(--danger)" : "var(--ink-soft)"}; white-space:nowrap">${esc(l.note)}</span>` : ""}</span>
+    </div>`;
+  }).join("");
+  return `<div class="dg"><div style="position:relative">
+    <div style="position:absolute; left:13px; top:${d.railTop}px; height:${d.railH}px; width:2px; background:var(--accent); opacity:.55"></div>
+    ${lines}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.tower = (d) => {
+  // d.items: bottom -> top. frame {label, depth, cls, note} | gap {gap} | line {line, cls}
+  const row = (it) => {
+    if (it.gap) return `<div class="trow"><div class="fr gap" style="grid-column:1 / -1; justify-content:flex-start; padding-left:12px">${esc(it.gap)}</div></div>`;
+    if (it.line) return `<div class="trow"><div class="ceiling ${it.cls || ""}">${esc(it.line)}</div><div class="tnote ${it.cls === "limit" ? "" : "bad"}">${esc(it.note || "")}</div></div>`;
+    return `<div class="trow"><div class="fr ${it.cls || ""}"><span>${esc(it.label)}</span><span class="d">${esc(it.depth || "")}</span></div><div class="tnote ${it.cls === "top" || it.cls === "basemiss" ? "bad" : it.cls === "basehit" ? "ok" : ""}">${esc(it.note || "")}</div></div>`;
+  };
+  return `<div class="dg"><div class="tower2">${d.items.slice().reverse().map(row).join("")}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.assert = (d) => {
+  // values under sub-expressions, positioned by character columns (monospace)
+  const notes = d.parts.map((p) => `<div style="position:absolute; left:calc(${p.col}ch + 1px); top:0; display:flex; flex-direction:column; align-items:flex-start">
+      <span style="display:block; width:2px; height:${p.depth * 22 + 4}px; background:${p.bad ? "var(--danger)" : "var(--accent)"}"></span>
+      <span class="mono" style="font-size:13px; font-weight:700; color:${p.bad ? "var(--danger)" : "var(--accent)"}; white-space:nowrap; margin-left:-1px">${esc(p.value)}</span></div>`).join("");
+  return `<div class="dg"><div class="mono" style="font-size:17px; font-weight:600; position:relative; padding:4px 0 0 6px">
+    <div>${d.html}</div>
+    <div style="position:relative; height:${(Math.max(...d.parts.map((p) => p.depth)) + 1) * 22 + 12}px">${notes}</div>
+  </div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.heap = (d) => {
+  const ev = d.events.map((e, i) => `
+    <div style="display:flex; flex-direction:column; align-items:center; gap:5px; width:128px">
+      <div class="cell ${e.cls}" style="min-width:96px; height:38px; flex-direction:column; line-height:1.15"><span style="font-size:13px">${esc(e.box)}</span><span style="font-size:10.5px; font-family:var(--font-body)">${esc(e.state)}</span></div>
+      <code class="mono" style="font-size:11.5px; ${e.bad ? "color:var(--danger); font-weight:700" : ""}">${esc(e.code)}</code>
+      <span class="idx">第 ${e.line} 行</span>
+    </div>${i < d.events.length - 1 ? `<div style="align-self:flex-start; margin-top:10px; color:var(--ink-faint)">→</div>` : ""}`).join("");
+  return `<div class="dg"><div class="cap" style="margin-bottom:6px">${esc(d.caption)}<span class="schematic">示意</span></div><div style="display:flex; gap:2px">${ev}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.realloc = (d) => {
+  const row = (vals, cls, label, note) => `<div style="display:grid; grid-template-columns:92px auto; align-items:center; gap:8px; margin-bottom:6px"><span class="cap" style="text-align:right">${esc(label)}</span><div style="display:flex; align-items:center; gap:3px">${vals.map((v) => `<div class="cell small ${cls}">${esc(v)}</div>`).join("")}${note ? `<span class="cap" style="margin-left:6px">${esc(note)}</span>` : ""}</div></div>`;
+  return `<div class="dg">
+    <div class="cap" style="margin-bottom:6px">${esc(d.caption)}<span class="schematic">示意</span></div>
+    ${row(d.old, "freed", "舊的那一塊", "push_back 時搬走，舊的已經還給系統")}
+    <div style="padding-left:100px; margin:-2px 0 4px"><span class="namechip bad">${esc(d.it)}</span> <span class="cap">還指著舊的第 0 格</span></div>
+    ${row(d.neu, "", "新的那一塊", "")}
+    ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.uninit = (d) => `<div class="dg">
+  <div style="display:flex; align-items:center; gap:14px">
+    <div class="colw"><div class="varhead" style="margin:0">${esc(d.name)}<span class="typechip">${esc(d.typeName)}</span></div><div class="cell bad" style="min-width:64px; height:40px; font-size:18px">?</div><div class="idx">第 ${d.declLine} 行宣告，沒有給值</div></div>
+    <div style="color:var(--ink-faint)">→</div>
+    <div class="colw"><code class="mono" style="font-size:13px; color:var(--danger); font-weight:700">${esc(d.readCode)}</code><div class="idx">第 ${d.readLine} 行第一次讀取</div></div>
+  </div>
+  ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+
+R.input = (d) => `<div class="dg">
+  <div class="cap" style="margin-bottom:5px">程式輸入（cin 讀的地方）</div>
+  <div style="display:flex; align-items:center; gap:3px; border:1px solid var(--struct-border); border-radius:8px; padding:6px 8px; min-height:40px">
+    ${d.chars.length ? d.chars.map((c) => `<div class="cell small freed">${esc(c)}</div>`).join("") : ""}
+    <div class="cell small bad" style="min-width:64px">${esc(d.eofLabel)}</div>
+    <span class="cap" style="margin-left:8px">← <code class="mono">${esc(d.code)}</code> 讀到這裡</span>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px; margin-top:10px"><span class="varhead" style="margin:0">${esc(d.name)}<span class="typechip">int</span></span><div class="cell badsolid">${esc(d.value)}</div><span class="cap">${esc(d.valueNote)}</span></div>
+  ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+
+R.memlimit = (d) => {
+  const W = 430, scale = (W - 20) / d.request;
+  return `<div class="dg"><svg width="${W}" height="88" viewBox="0 0 ${W} 88">
+    <rect x="10" y="18" width="${d.limit * scale}" height="18" rx="3" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="12" y="13" font-size="11.5" fill="var(--accent)">引擎的記憶體上限 ${esc(d.limitLabel)}</text>
+    <rect x="10" y="46" width="${d.request * scale}" height="18" rx="3" fill="var(--danger-soft)" stroke="var(--danger)" stroke-width="1.5"/>
+    <text x="${W - 12}" y="80" font-size="11.5" fill="var(--danger)" text-anchor="end" font-weight="700">程式要求 ${esc(d.requestLabel)}</text>
+  </svg>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.cmp = (d) => `<div class="dg">
+  <table class="res" style="width:auto"><thead><tr><th>比較</th><th>這個函式回傳</th><th>sort 需要</th></tr></thead><tbody>
+  ${d.rows.map((r) => `<tr><td class="mono">${esc(r.call)}</td><td class="mono" style="${r.bad ? "color:var(--danger); font-weight:700" : ""}">${esc(r.got)}</td><td class="mono">${esc(r.need)}</td></tr>`).join("")}
+  </tbody></table>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+
+R.chars = (d) => R.cells(d);
+
+R.ring = (d) => `<div class="dg"><div style="display:flex; gap:14px; align-items:center">
+  <svg width="176" height="158" viewBox="0 0 176 158" role="img" aria-label="${esc(d.aria)}">
+    <defs><marker id="ahr2" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--danger)"/></marker></defs>
+    <circle cx="88" cy="84" r="54" fill="none" stroke="var(--struct-border)" stroke-width="10"/>
+    <path d="M88,30 A54,54 0 0 0 53,43" fill="none" stroke="var(--danger)" stroke-width="10" opacity=".35"/>
+    <path d="M84,22 A62,62 0 0 0 52,33" fill="none" stroke="var(--danger)" stroke-width="2" marker-end="url(#ahr2)"/>
+    <text x="70" y="16" font-size="12" fill="var(--danger)" font-weight="700" text-anchor="middle">−1</text>
+    <circle cx="88" cy="30" r="6" fill="var(--ink)"/><text class="m" x="100" y="27" font-size="12" font-weight="700" fill="var(--ink)">0</text>
+    <circle cx="53" cy="43" r="6" fill="var(--danger)"/><text x="40" y="66" font-size="11" fill="var(--danger)" font-weight="700" text-anchor="middle">最大值</text>
+    <text x="88" y="88" font-size="12" text-anchor="middle" fill="var(--ink-soft)">size_t</text>
+    <text x="88" y="104" font-size="11" text-anchor="middle" fill="var(--ink-faint)">沒有負數</text>
+  </svg>
+  <div style="font-size:13px"><div class="mono" style="font-size:14px; font-weight:700">${esc(d.expr)}</div><div style="margin:4px 0">= <span class="mono" style="color:var(--danger); font-weight:700; font-size:15px">${esc(fmt(d.value))}</span></div><div class="cap">${esc(d.note)}</div></div>
+</div>${d.after ? R.cells(d.after) : ""}${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+
+R.simple = (d) => `<div class="dg"><div class="eqline" style="margin-top:0">${d.eq}</div></div>`;
+
+/* ── 版面 ─────────────────────────────────────────── */
+function renderPicker() {
+  $("#fams").innerHTML = FAMS.map((f) => `<button class="fam ${f.id === state.fam ? "on" : ""}" data-fam="${f.id}" role="tab" aria-selected="${f.id === state.fam}">${esc(f.label)}<span class="cnt">${KINDS.filter((k) => k.family === f.id).length}</span></button>`).join("");
+  $("#kinds").innerHTML = KINDS.filter((k) => k.family === state.fam).map((k) => `<button class="kind ${k.id === state.kind ? "on" : ""}" data-kind="${k.id}">${esc(k.chip)}${k.tag ? `<span class="tag">${esc(k.tag)}</span>` : ""}</button>`).join("");
+}
+
+const glue = (t) => t.replace(/->/g, "-\u2060>");
+function codeHtml(k, viewStep) {
+  const lines = k.src.split("\n").map(glue);
+  const showOrigin = viewStep != null && viewStep !== k.errStep;
+  const o = showOrigin ? k.origins.find((x) => x.step === viewStep) : null;
+  const curLine = showOrigin ? (o ? o.line : null) : k.errLine;
+  return lines.map((t, i) => {
+    const no = i + 1;
+    let cls = "", tx = esc(t), badge = "";
+    if (no >= (k.codeFrom || 1) && no <= (k.codeTo || lines.length)) {
+      if (!showOrigin && no === k.errLine) {
+        cls = k.status === "limit" ? "cur" : "err";
+        if (k.span && t.includes(glue(k.span))) tx = esc(t).replace(esc(glue(k.span)), `<u class="bad">${esc(glue(k.span))}</u>`);
+        badge = k.status === "limit" ? `<span class="badge v">${esc(k.badge)}</span>` : `<span class="badge">${esc(k.badge)}</span>`;
+      } else if (showOrigin && no === curLine) {
+        cls = "origin";
+        if (o.span && t.includes(glue(o.span))) tx = esc(t).replace(esc(glue(o.span)), `<u class="org">${esc(glue(o.span))}</u>`);
+        badge = `<span class="badge o">${esc(o.name)} = ${esc(o.value)}</span>`;
+      } else if (showOrigin && no === k.errLine) {
+        cls = "dim";
+        badge = `<span class="badge" style="opacity:.55">${esc(k.badge)}</span>`;
+      }
+      return `<div class="ln ${cls}"><span class="no">${no}</span><span class="tx">${tx}</span>${badge}</div>`;
+    }
+    return "";
+  }).join("");
+}
+
+function timelineHtml(k, viewStep) {
+  const n = k.stepCount || 1;
+  const pos = (s) => (n <= 1 ? 100 : ((s - 1) / (n - 1)) * 100);
+  const ticks = n <= 40 ? Array.from({ length: n }, (_, i) => `<span class="tick" style="left:calc(${pos(i + 1)}% - 1px)"></span>`).join("") : "";
+  const marks = [];
+  if (k.errStep) marks.push(`<span class="mk ${k.status === "limit" ? "cur" : "err"}" style="left:${pos(k.errStep)}%" title="錯誤：第 ${k.errStep} 步"></span>`);
+  const seen = new Set();
+  for (const o of k.origins) if (o.step && !seen.has(o.step)) { seen.add(o.step); marks.push(`<span class="mk org" style="left:${pos(o.step)}%; ${viewStep === o.step ? "box-shadow:0 0 0 3px var(--highlight)" : ""}" title="值的來源：第 ${o.step} 步"></span>`); }
+  const label = viewStep != null && viewStep !== k.errStep ? `正在看第 ${fmt(viewStep)} 步（值的來源）` : `第 ${fmt(k.errStep || n)} 步／共 ${fmt(n)} 步`;
+  return `<div class="timeline"><div class="tl-head"><span>步驟</span><span>${label}</span></div>
+    <div class="tl-track"><span class="rail"></span>${ticks}${marks.join("")}</div>
+    <div class="tl-legend"><span><i style="background:var(--danger)"></i>出錯的那一步</span><span><i style="background:var(--accent)"></i>出問題的值是在這一步寫進去的</span></div></div>`;
+}
+
+function fmtVal(v) {
+  if (v === "<ptr>") return "（指標：目前的軌跡沒有記錄指向哪裡）";
+  if (v === "<?>") return "（迭代器：軌跡沒有記錄）";
+  if (Array.isArray(v)) return "[" + v.map(fmtVal).join(", ") + "]";
+  if (v && typeof v === "object") return "{" + Object.entries(v).map(([a, b]) => `${a}: ${fmtVal(b)}`).join(", ") + "}";
+  if (typeof v === "string") return JSON.stringify(v);
+  return String(v);
+}
+function varsHtml(k, viewStep) {
+  const showOrigin = viewStep != null && viewStep !== k.errStep;
+  const key = showOrigin ? String(viewStep + 1) : (state.after && k.afterVars ? "after" : String(k.errStep));
+  const st = k.varsAt && k.varsAt[key];
+  const o = showOrigin ? k.origins.find((x) => x.step === viewStep) : null;
+  const head = showOrigin ? `第 ${o ? o.line : "?"} 行執行之後` : state.after && k.afterVars ? "繼續執行到程式結束" : (k.status === "stop" || k.status === "cont") ? "出錯的那一刻" : "這一步";
+  if (!st) return `<div class="vars"><div class="vh"><span>變數</span><span>${head}</span></div><div class="none">（沒有軌跡資料）</div></div>`;
+  const names = Object.keys(st.vars).filter((n) => !n.endsWith(".capacity()") && !n.endsWith(".ref()"));
+  const hlName = showOrigin && o ? o.name.split(".")[0] : null;
+  const rows = names.map((n) => {
+    const un = (st.uninit || []).includes(n);
+    const cls = hlName === n ? "ho" : (!showOrigin && (k.hlVars || []).includes(n)) ? "hl" : "";
+    return `<tr><td class="n">${esc(n)}</td><td class="v ${cls}">${esc(fmtVal(st.vars[n]))}${un ? `<span class="tg">未初始化</span>` : ""}</td></tr>`;
+  }).join("");
+  return `<div class="vars"><div class="vh"><span>變數（${esc(st.fn)}）</span><span>${head}</span></div>${rows ? `<table>${rows}</table>` : `<div class="none">（這一步還沒有變數）</div>`}</div>`;
+}
+
+function panelHtml(k) {
+  const chips = [];
+  if (k.status === "stop") chips.push(`<span class="chip stop">程式在這一行停止</span>`);
+  else if (k.status === "cont") chips.push(`<span class="chip cont">在這一步暫停，可以繼續執行</span>`);
+  else if (k.status === "limit") chips.push(`<span class="chip limit">這是瀏覽器引擎的限制，不是程式的錯</span>`);
+  else if (k.status === "design") chips.push(`<span class="chip design">設計稿：這一類還沒有偵測（${esc(k.phase)}）</span>`);
+  else if (k.status === "none") chips.push(`<span class="chip design">這一版偵測不到，只做教案用的說明圖</span>`);
+  if (k.layer) chips.push(`<span class="chip">偵測：${esc(k.layer)}</span>`);
+  const diagram = R[k.diagram.type](k.diagram);
+  const afterBtn = k.after ? `<div style="margin-top:10px"><button class="btn act" data-after="1">${state.after ? "回到出錯的那一步" : esc(k.after.button)}</button></div>${state.after ? `<div class="env" style="background:var(--danger-soft)"><b>繼續執行之後：</b>${k.after.text}</div>` : ""}` : "";
+  const origins = k.origins.length ? `<ul class="origins">${k.origins.map((o) => `<li><div class="what"><span class="mono" style="font-weight:700">${esc(o.name)} = ${esc(o.value)}</span>　${o.what ? esc(o.what) : ""}</div><div class="where">第 ${o.line} 行 <span class="mono">${esc(o.code.trim())}</span>${o.step ? `・第 ${fmt(o.step)} 步` : ""}${o.note ? `・${esc(o.note)}` : ""}</div>${o.step ? `<button data-step="${o.step}" class="${state.viewStep === o.step ? "on" : ""}">${state.viewStep === o.step ? "回到錯誤" : `跳到第 ${fmt(o.step)} 步`}</button>` : ""}</li>`).join("")}</ul>` : `<div class="note">${esc(k.originNone || "")}</div>`;
+  return `<div class="panel">
+    <div class="titlebar ${k.status === "limit" ? "lim" : k.status === "design" || k.status === "none" ? "des" : ""}">執行錯誤<span class="cnt">${k.status === "limit" ? "引擎限制" : k.status === "design" || k.status === "none" ? "設計稿" : "1 個"}</span></div>
+    <div class="pbody">
+      <div class="famline">${esc(FAMS.find((f) => f.id === k.family).label)}</div>
+      <div class="ktitle">${esc(k.title)}<span class="term">（${esc(k.term)}）</span></div>
+      <div class="headline">${k.headline}</div>
+      <div class="chips">${chips.join("")}</div>
+      <h3 class="sec"><span class="n">1</span>發生了什麼</h3>
+      ${diagram}
+      ${k.what ? `<div class="note">${k.what}</div>` : ""}
+      ${afterBtn}
+      ${k.env ? `<div class="env">${k.env}</div>` : ""}
+      <h3 class="sec"><span class="n">2</span>值從哪裡來</h3>
+      ${origins}
+      <h3 class="sec"><span class="n">3</span>怎麼改</h3>
+      <p class="fixtext">${k.fix.text}</p>
+      ${k.fix.diff ? `<pre class="diff">${k.fix.diff.map(([s, t]) => `<div class="${s === "-" ? "m" : s === "+" ? "p" : "c"}"><span class="sg">${s === " " ? "" : s}</span>${esc(t)}</div>`).join("")}</pre>` : ""}
+      <details class="raw"><summary>原始訊息與資料來源</summary><pre>${esc(k.raw)}</pre></details>
+    </div>
+  </div>
+  <div class="ghostpanels">
+    <div class="panel"><div class="titlebar">資料結構視覺化</div></div>
+    <div class="panel"><div class="titlebar">呼叫歷史圖</div></div>
+  </div>`;
+}
+
+function render() {
+  const k = KINDS.find((x) => x.id === state.kind);
+  renderPicker();
+  const viewStep = state.viewStep;
+  const stopped = k.status === "stop" || k.status === "cont";
+  const pill = viewStep != null && viewStep !== k.errStep ? `<span class="pill origin">回放到值的來源</span>`
+    : k.status === "stop" ? `<span class="pill stop">● 停在錯誤</span>`
+    : k.status === "cont" ? `<span class="pill cont">● 暫停：發生錯誤</span>`
+    : k.status === "limit" ? `<span class="pill limit">● 引擎限制</span>`
+    : `<span class="pill none">設計稿</span>`;
+  $("#ide").innerHTML = `
+    <div class="left">
+      <div class="toolbar"><span class="btn">從頭</span><span class="btn">上一步</span><span class="btn ${k.status === "stop" ? "off" : ""}">單步</span><span class="btn ${k.status === "stop" ? "off" : ""}">繼續</span>${pill}</div>
+      <div class="fname">main.cpp</div>
+      <div class="code">${codeHtml(k, viewStep)}</div>
+      ${k.errStep ? timelineHtml(k, viewStep) : ""}
+      ${k.errStep ? varsHtml(k, viewStep) : `<div class="vars"></div>`}
+      <div class="io"><div><b>程式輸入</b>${k.stdin ? `<span class="mono">${esc(k.stdin)}</span>` : `<span class="empty">（沒有輸入）</span>`}</div><div><b>程式輸出（到出錯為止）</b>${k.stdout ? `<span class="mono">${esc(k.stdout)}</span>` : `<span class="empty">（沒有輸出）</span>`}</div></div>
+    </div>
+    <aside class="side">${panelHtml(k)}</aside>`;
+}
+
+function renderExp() {
+  $("#exp").innerHTML = DATA.expHtml;
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button, [data-view]");
+  if (!t) return;
+  if (t.dataset.view) {
+    document.querySelectorAll(".views button").forEach((b) => b.classList.toggle("on", b === t));
+    $("#viz").classList.toggle("off", t.dataset.view !== "viz");
+    $("#exp").classList.toggle("on", t.dataset.view === "exp");
+    return;
+  }
+  if (t.dataset.fam) { state.fam = t.dataset.fam; state.kind = KINDS.find((k) => k.family === state.fam).id; state.viewStep = null; state.after = false; render(); }
+  else if (t.dataset.kind) { state.kind = t.dataset.kind; state.viewStep = null; state.after = false; render(); }
+  else if (t.dataset.step) { const s = Number(t.dataset.step); state.viewStep = state.viewStep === s ? null : s; render(); }
+  else if (t.dataset.after) { state.after = !state.after; state.viewStep = null; render(); }
+});
+
+$("#prov").innerHTML = DATA.prov;
+const hashKind = decodeURIComponent((location.hash || "").slice(1));
+const start = KINDS.find((k) => k.id === hashKind) || KINDS[0];
+state.fam = start.family; state.kind = start.id;
+render(); renderExp();
+</script>
+</body>
+</html>

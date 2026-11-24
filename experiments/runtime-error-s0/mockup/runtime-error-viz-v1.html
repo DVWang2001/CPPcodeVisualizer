@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>IRIS 執行錯誤視覺化・設計稿 v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* IRIS 設計方向 A 的 token（gdbgui/static/css/gdbgui.css :root，同值）。--danger-soft 是新提案。 */
+:root {
+  --paper:#f4f3f9; --surface:#ffffff; --ink:#1e1b2e; --ink-soft:#5c5873; --ink-faint:#6c6885;
+  --line:#e5e2ef; --struct-border:#c9c4dc; --accent:#4a3aa0; --accent-soft:#ece9f8;
+  --highlight:#f2be0f; --highlight-soft:#fff5cc; --highlight-strong:#b38600;
+  --ok:#2d7a4e; --ok-soft:#e5f3ea; --danger:#b42318; --visited:#a6a2bc; --empty-bg:#f1eff7;
+  --danger-soft:#fcebe9;
+  --font-display:"Space Grotesk", system-ui, sans-serif;
+  --font-body:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",Menlo,Monaco,Consolas,"Courier New",monospace;
+}
+* { box-sizing:border-box; }
+html, body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:14px; line-height:1.5; }
+.board { width:960px; padding:18px 18px 28px; }
+.mono, .code, pre, code, .cell, .bit, .tok, .diff, .tower, .expr { font-family:var(--font-mono); }
+/* 程式碼一律關掉連字：JetBrains Mono 會把 <= != << 畫成 ≤ ≠ ≪，初學者會以為要打那個字元。 */
+.mono, .mono *, .code, .code *, pre, pre *, code, .cell, .bit, .tok, .tok *, .diff, .diff *, .expr, .expr * {
+  font-variant-ligatures:none !important; font-feature-settings:"liga" 0, "calt" 0 !important; }
+button { font-family:var(--font-body); }
+nowrap, .nw { white-space:nowrap; }
+
+/* ── 頁首 ─────────────────────────────────────────── */
+.bhead { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:14px; }
+.eyebrow { font-family:var(--font-display); font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); }
+.bhead h1 { margin:2px 0 2px; font-size:22px; font-weight:700; letter-spacing:.01em; }
+.prov { font-size:12.5px; color:var(--ink-soft); }
+.views { display:flex; border:1px solid var(--struct-border); border-radius:8px; overflow:hidden; background:var(--surface); flex:none; }
+.views button { border:0; background:transparent; padding:7px 16px; font-size:13.5px; color:var(--ink-soft); cursor:pointer; }
+.views button.on { background:var(--accent); color:#fff; font-weight:600; }
+.views button:focus-visible, .fam:focus-visible, .kind:focus-visible, .btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* ── 類型選擇 ──────────────────────────────────────── */
+.picker { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:12px; }
+.fams { display:flex; gap:2px; border-bottom:1px solid var(--line); margin-bottom:9px; }
+.fam { border:0; background:transparent; padding:6px 12px 8px; font-size:13.5px; color:var(--ink-soft); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+.fam.on { color:var(--ink); font-weight:700; border-bottom-color:var(--accent); }
+.fam .cnt { font-family:var(--font-mono); font-size:11px; color:var(--ink-faint); margin-left:4px; }
+.kinds { display:flex; flex-wrap:wrap; gap:6px; }
+.kind { border:1px solid var(--struct-border); background:var(--surface); border-radius:999px; padding:4px 12px; font-size:13px; color:var(--ink); cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.kind:hover { border-color:var(--accent); }
+.kind.on { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+.kind .tag { font-size:10.5px; padding:0 6px; border-radius:999px; background:var(--empty-bg); color:var(--ink-soft); font-weight:500; }
+.kind.on .tag { background:rgba(255,255,255,.22); color:#fff; }
+
+/* ── IDE 模型 ──────────────────────────────────────── */
+.ide { display:grid; grid-template-columns:436px 488px; gap:0; background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 10px 28px rgba(74,58,160,.08), 0 2px 6px rgba(30,27,46,.04); }
+.left { border-right:1px solid var(--line); display:flex; flex-direction:column; min-width:0; }
+.toolbar { display:flex; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line); background:#f7f5fc; }
+.btn { border:1px solid var(--struct-border); background:var(--surface); color:var(--ink); border-radius:6px; padding:3px 9px; font-size:12.5px; cursor:default; }
+.btn.act { cursor:pointer; border-color:var(--accent); color:var(--accent); font-weight:600; }
+.btn.off { opacity:.42; }
+.btn.act:hover { background:var(--accent-soft); }
+.stepinfo { margin-left:auto; font-size:12px; color:var(--ink-soft); white-space:nowrap; }
+.pill { font-size:12px; font-weight:600; padding:2px 9px; border-radius:999px; white-space:nowrap; }
+.pill.stop { background:var(--danger); color:#fff; }
+.pill.cont { background:var(--danger-soft); color:var(--danger); border:1px solid var(--danger); }
+.pill.origin { background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent); }
+.pill.limit { background:var(--empty-bg); color:var(--ink-soft); border:1px solid var(--struct-border); }
+.pill.none { background:var(--empty-bg); color:var(--ink-soft); border:1px solid var(--struct-border); }
+.fname { font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); padding:6px 12px 0; }
+.code { padding:6px 0 10px; font-size:13px; line-height:21px; }
+.vars { border-top:1px solid var(--line); padding:8px 12px 10px; flex:1; }
+.vars .vh { display:flex; justify-content:space-between; font-size:12px; color:var(--ink-soft); margin-bottom:5px; }
+.vars table { border-collapse:collapse; width:100%; font-size:12.5px; }
+.vars td { padding:3px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+.vars td.n { font-family:var(--font-mono); font-weight:700; width:96px; white-space:nowrap; }
+.vars td.v { font-family:var(--font-mono); word-break:break-all; }
+.vars td.v.hl { color:var(--danger); font-weight:700; }
+.vars td.v.ho { color:var(--accent); font-weight:700; }
+.vars .tg { font-family:var(--font-body); font-size:11px; color:var(--ink-soft); border:1px solid var(--struct-border); border-radius:4px; padding:0 4px; margin-left:6px; }
+.vars .none { font-size:12.5px; color:var(--ink-faint); }
+.ln { display:flex; align-items:flex-start; min-height:21px; padding-right:8px; position:relative; }
+.ln .no { width:38px; flex:none; text-align:right; padding-right:12px; color:var(--ink-faint); font-size:12px; user-select:none; }
+.ln .tx { white-space:pre-wrap; overflow-wrap:anywhere; flex:1; min-width:0; }
+.ln.dim .tx { color:var(--ink-faint); }
+.ln.cur { background:var(--highlight-soft); box-shadow:inset 4px 0 0 var(--highlight); }
+.ln.err { background:var(--danger-soft); box-shadow:inset 4px 0 0 var(--danger); }
+.ln.origin { background:var(--accent-soft); box-shadow:inset 4px 0 0 var(--accent); }
+.ln u.bad { text-decoration:none; border-bottom:2px solid var(--danger); padding-bottom:0; }
+.ln u.org { text-decoration:none; border-bottom:2px solid var(--accent); }
+.badge { flex:none; font-family:var(--font-body); font-size:11.5px; font-weight:700; color:#fff; background:var(--danger); border-radius:4px; padding:0 6px; margin:1px 0 0 6px; line-height:18px; white-space:nowrap; }
+.badge.o { background:var(--accent); }
+.badge.v { background:var(--surface); color:var(--accent); border:1px solid var(--accent); font-weight:600; }
+.timeline { border-top:1px solid var(--line); padding:9px 12px 10px; }
+.tl-head { display:flex; justify-content:space-between; font-size:12px; color:var(--ink-soft); margin-bottom:6px; }
+.tl-track { position:relative; height:22px; }
+.tl-track .rail { position:absolute; left:0; right:0; top:10px; height:2px; background:var(--line); border-radius:2px; }
+.tl-track .tick { position:absolute; top:6px; width:2px; height:10px; background:var(--struct-border); border-radius:1px; }
+.tl-track .mk { position:absolute; top:3px; width:16px; height:16px; margin-left:-8px; border-radius:50%; border:2px solid var(--surface); box-shadow:0 0 0 1px rgba(30,27,46,.15); }
+.tl-track .mk.err { background:var(--danger); }
+.tl-track .mk.org { background:var(--accent); width:12px; height:12px; margin-left:-6px; top:5px; }
+.tl-track .mk.cur { background:var(--highlight); box-shadow:0 0 0 2px var(--highlight-strong); }
+.tl-legend { display:flex; gap:12px; font-size:11.5px; color:var(--ink-soft); margin-top:5px; }
+.tl-legend i { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:-1px; }
+.io { display:grid; grid-template-columns:1fr 1fr; border-top:1px solid var(--line); }
+.io > div { padding:8px 12px; min-width:0; }
+.io > div + div { border-left:1px solid var(--line); }
+.io b { display:block; font-size:11.5px; color:var(--ink-soft); font-weight:600; margin-bottom:2px; }
+.io .mono { font-size:12.5px; white-space:pre-wrap; word-break:break-all; }
+.io .empty { color:var(--ink-faint); font-family:var(--font-body); font-size:12.5px; }
+
+/* ── 側欄面板 ──────────────────────────────────────── */
+.side { background:var(--paper); padding:10px; display:flex; flex-direction:column; gap:10px; min-width:0; }
+.panel { background:var(--surface); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+.titlebar { display:flex; align-items:center; gap:8px; height:32px; padding:0 10px; font-family:var(--font-display); font-size:12px; font-weight:600; letter-spacing:.04em; color:var(--ink); background:var(--surface); box-shadow:inset 0 -1px 0 var(--line); border-left:3px solid var(--danger); }
+.titlebar.lim { border-left-color:var(--ink-soft); }
+.titlebar.des { border-left:3px dashed var(--struct-border); }
+.titlebar .cnt { margin-left:auto; font-family:var(--font-body); font-weight:500; letter-spacing:0; color:var(--ink-soft); }
+.panel.collapsed .titlebar { border-left-color:var(--struct-border); color:var(--ink-soft); }
+.pbody { padding:12px 14px 14px; }
+.famline { font-size:12px; color:var(--ink-soft); }
+.ktitle { font-size:16px; font-weight:700; margin:1px 0 2px; }
+.ktitle .term { font-size:12.5px; font-weight:500; color:var(--ink-soft); margin-left:4px; }
+.headline { font-size:14px; margin:4px 0 8px; }
+.headline .mono { font-size:13px; background:var(--empty-bg); border-radius:4px; padding:0 4px; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:4px; }
+.chip { font-size:12px; padding:2px 9px; border-radius:999px; border:1px solid var(--struct-border); color:var(--ink-soft); background:var(--surface); }
+.chip.stop { background:var(--danger); border-color:var(--danger); color:#fff; font-weight:600; }
+.chip.cont { border-color:var(--danger); color:var(--danger); font-weight:600; background:var(--danger-soft); }
+.chip.limit { border-color:var(--ink-soft); color:var(--ink); font-weight:600; }
+.chip.design { border-style:dashed; color:var(--ink-soft); }
+h3.sec { display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:700; margin:14px 0 8px; }
+h3.sec .n { width:20px; height:20px; border-radius:50%; background:var(--ink); color:#fff; font-family:var(--font-display); font-size:12px; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.note { font-size:12.5px; color:var(--ink-soft); margin:6px 0 0; }
+.note b { color:var(--ink); }
+.schematic { display:inline-block; font-size:11px; font-weight:600; color:var(--ink-soft); border:1px dashed var(--ink-faint); border-radius:4px; padding:0 5px; margin-left:6px; vertical-align:1px; }
+.env { margin-top:10px; font-size:12.5px; color:var(--ink); background:var(--empty-bg); border-radius:8px; padding:8px 10px; }
+.env b { font-weight:700; }
+.limitbox { border:1px solid var(--struct-border); background:var(--empty-bg); border-radius:8px; padding:8px 10px; font-size:12.5px; margin-bottom:6px; }
+
+/* 值從哪裡來 */
+.origins { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.origins li { display:grid; grid-template-columns:1fr auto; gap:4px 10px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:7px 9px; }
+.origins .what { font-size:13px; }
+.origins .what .mono { font-size:12.5px; }
+.origins .where { grid-column:1; font-size:12px; color:var(--ink-soft); }
+.origins .where .mono { color:var(--ink); background:var(--accent-soft); border-radius:3px; padding:0 4px; }
+.origins button { grid-row:1 / span 2; grid-column:2; border:1px solid var(--accent); color:var(--accent); background:var(--surface); border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.origins button:hover, .origins button.on { background:var(--accent); color:#fff; }
+
+/* 怎麼改 */
+.fixtext { font-size:13px; margin:0 0 6px; }
+.diff { font-size:12.5px; line-height:20px; border:1px solid var(--line); border-radius:8px; overflow:hidden; margin:0; }
+.diff div { white-space:pre-wrap; overflow-wrap:anywhere; padding:0 10px 0 6px; }
+.diff .m { background:var(--danger-soft); color:#7a1a12; text-decoration:line-through; text-decoration-color:rgba(180,35,24,.55); }
+.diff .p { background:var(--ok-soft); color:#1d5235; }
+.diff .c { color:var(--ink-soft); }
+.diff span.sg { display:inline-block; width:14px; color:var(--ink-faint); text-decoration:none; }
+details.raw { margin-top:12px; }
+details.raw summary { font-size:12px; color:var(--ink-soft); cursor:pointer; }
+details.raw pre { font-size:11.5px; white-space:pre-wrap; word-break:break-all; background:var(--empty-bg); border-radius:6px; padding:8px 10px; margin:6px 0 0; }
+
+/* 其他面板（收合） */
+.ghostpanels { display:flex; flex-direction:column; gap:6px; }
+.ghostpanels .titlebar { border-left-color:var(--struct-border); color:var(--ink-soft); font-weight:600; }
+.ghostpanels .panel { opacity:.85; }
+
+/* ── 圖：共用 ─────────────────────────────────────── */
+.dg { position:relative; }
+.dg .cap { font-size:12px; color:var(--ink-soft); }
+.cellrow { display:flex; align-items:flex-end; gap:4px; }
+.cell { min-width:40px; height:34px; padding:0 6px; display:flex; align-items:center; justify-content:center; border:1px solid var(--struct-border); border-radius:6px; background:var(--surface); font-size:14px; font-weight:500; color:var(--ink); }
+.cell.bad { border:2px dashed var(--danger); background:var(--danger-soft); color:var(--danger); font-weight:700; }
+.cell.badsolid { border:2px solid var(--danger); background:var(--danger-soft); color:var(--danger); font-weight:700; }
+.cell.spare { background:var(--empty-bg); border-style:dashed; color:var(--ink-faint); }
+.cell.freed { background:var(--empty-bg); color:var(--visited); border-color:var(--visited); }
+.cell.okc { border-color:var(--ok); background:var(--ok-soft); color:var(--ok); }
+.cell.org { border:2px solid var(--accent); background:var(--accent-soft); color:var(--accent); font-weight:700; }
+.cell.small { min-width:30px; height:28px; font-size:13px; padding:0 4px; }
+.idx { font-family:var(--font-mono); font-size:11px; color:var(--ink-faint); text-align:center; }
+.idx.bad { color:var(--danger); font-weight:700; }
+.colw { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.gapdots { font-family:var(--font-mono); color:var(--ink-faint); padding:0 4px; height:34px; display:flex; align-items:center; }
+.namechip { font-family:var(--font-mono); font-size:12px; font-weight:600; border-radius:4px; padding:1px 6px; background:var(--accent-soft); color:var(--accent); white-space:nowrap; }
+.namechip.bad { background:var(--danger); color:#fff; }
+.arrowdown { width:2px; height:12px; background:var(--danger); margin:0 auto; position:relative; }
+.arrowdown::after { content:""; position:absolute; left:-4px; bottom:-5px; border:5px solid transparent; border-top-color:var(--danger); border-bottom:0; }
+.bracket { border:1px solid var(--accent); border-top:0; height:7px; border-radius:0 0 4px 4px; margin-top:3px; }
+.bracketlabel { font-size:11.5px; color:var(--accent); text-align:center; white-space:nowrap; }
+.sizeline { width:0; border-left:2px solid var(--accent); height:46px; align-self:flex-start; position:relative; margin:0 2px; }
+.sizeline span { position:absolute; top:-15px; left:-28px; width:56px; text-align:center; font-size:10.5px; font-family:var(--font-mono); color:var(--accent); font-weight:600; white-space:nowrap; }
+.typechip { font-family:var(--font-mono); font-size:11.5px; color:var(--ink-soft); border:1px solid var(--line); border-radius:4px; padding:0 5px; margin-left:4px; }
+.varhead { display:flex; align-items:center; gap:2px; margin-bottom:5px; font-family:var(--font-mono); font-size:13px; font-weight:700; }
+
+/* 算式卡 */
+.expr { display:flex; align-items:flex-start; gap:10px; padding:8px 4px 4px; }
+.expr .tokc { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.expr .tname { font-size:20px; font-weight:600; line-height:28px; }
+.expr .top { font-size:22px; font-weight:600; line-height:28px; color:var(--ink-soft); }
+.expr .tnote { font-family:var(--font-body); font-size:11.5px; color:var(--danger); font-weight:700; white-space:nowrap; }
+.expr .cell { min-width:54px; height:36px; font-size:16px; }
+.eqline { font-size:13px; margin-top:8px; padding:7px 10px; border-radius:8px; background:var(--empty-bg); }
+.eqline .mono { font-weight:600; }
+
+/* 位元格 */
+.bits { display:flex; flex-direction:column; gap:4px; }
+.bitrow { display:flex; flex-direction:column; gap:3px; }
+.bitlabel { font-size:12px; color:var(--ink-soft); display:flex; gap:8px; align-items:baseline; padding-left:16px; }
+.bitlabel .mono { font-size:13px; color:var(--ink); font-weight:700; }
+.bitlabel.bad .mono { color:var(--danger); }
+.bitwrap { display:flex; align-items:center; gap:3px; }
+.frame32 { display:flex; gap:4px; border:2px solid var(--ink); border-radius:6px; padding:2px 4px; }
+.frame32.ghost { border-color:transparent; }
+.nib { display:flex; gap:1px; }
+.bit { width:10.5px; height:19px; font-size:11px; display:flex; align-items:center; justify-content:center; border-radius:2px; background:var(--empty-bg); color:var(--ink-soft); }
+.bit.one { background:var(--accent-soft); color:var(--accent); font-weight:700; }
+.bit.sign { box-shadow:0 0 0 1.5px var(--highlight-strong); }
+.bit.lost { background:var(--danger); color:#fff; font-weight:700; }
+.bit.sgnbad { background:var(--danger-soft); color:var(--danger); font-weight:700; box-shadow:0 0 0 1.5px var(--danger); }
+.bitnote { font-size:12px; color:var(--ink-soft); padding-left:16px; margin:0 0 6px; }
+.bitnote b.r { color:var(--danger); }
+
+/* 堆疊塔 */
+.towerwrap { display:flex; gap:16px; align-items:flex-end; }
+.tower { display:flex; flex-direction:column-reverse; gap:3px; width:196px; font-size:12.5px; }
+.fr { border:1px solid var(--struct-border); border-radius:6px; padding:3px 8px; background:var(--surface); display:flex; justify-content:space-between; }
+.fr .d { color:var(--ink-faint); font-size:11px; }
+.fr.main { background:var(--empty-bg); }
+.fr.basehit { border:2px solid var(--ok); background:var(--ok-soft); }
+.fr.basemiss { border:2px dashed var(--accent); }
+.fr.top { border:2px solid var(--danger); background:var(--danger-soft); color:var(--danger); font-weight:700; }
+.fr.gap { border:0; background:transparent; justify-content:center; color:var(--ink-soft); font-family:var(--font-body); font-size:12px; padding:2px 0; }
+.fr.ghostfr { border-style:dashed; color:var(--ink-faint); background:transparent; }
+.tower2 { display:flex; flex-direction:column; gap:3px; }
+.trow { display:grid; grid-template-columns:196px 1fr; gap:10px; align-items:center; font-family:var(--font-mono); font-size:12.5px; }
+.tnote { font-family:var(--font-body); font-size:12px; color:var(--ink-soft); line-height:1.35; }
+.tnote.bad { color:var(--danger); font-weight:700; }
+.tnote.ok { color:var(--ok); font-weight:700; }
+.ceiling { border-bottom:3px solid var(--danger); padding-bottom:2px; font-family:var(--font-body); font-size:11.5px; color:var(--danger); font-weight:700; text-align:center; }
+.ceiling.limit { border-bottom-color:var(--ink-soft); color:var(--ink); border-bottom-style:dashed; }
+
+/* 物件圖 */
+svg text { font-family:var(--font-body); }
+svg .m { font-family:var(--font-mono); font-variant-ligatures:none; }
+
+/* 實驗結果 */
+.exp { display:none; }
+.exp.on { display:block; }
+.viz.off { display:none; }
+.expcard { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+.expcard h2 { font-size:16px; margin:0 0 4px; }
+.expcard .sub { font-size:12.5px; color:var(--ink-soft); margin-bottom:10px; }
+table.res { width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px; }
+table.res th { text-align:left; font-weight:600; color:var(--ink-soft); font-size:12px; padding:6px 8px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--surface); }
+table.res td { padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+table.res tr.fam td { background:var(--empty-bg); font-weight:700; font-size:12px; color:var(--ink); }
+table.res .case { font-family:var(--font-mono); font-size:11.5px; color:var(--ink-faint); display:block; }
+.st { display:inline-block; border-radius:4px; padding:0 6px; font-size:12px; line-height:19px; white-space:nowrap; }
+.st.caught { background:var(--ok-soft); color:var(--ok); font-weight:600; }
+.st.trap { background:var(--highlight-soft); color:#7a5a00; font-weight:600; }
+.st.miss { background:var(--empty-bg); color:var(--ink-soft); }
+.st.limit { background:var(--empty-bg); color:var(--ink); border:1px solid var(--struct-border); }
+.st.fail { background:var(--danger-soft); color:var(--danger); }
+.st.na { color:var(--ink-faint); }
+.det { display:block; font-size:11.5px; color:var(--ink-soft); }
+.det .mono { font-size:11px; }
+.metrics { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+.metric { border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+.metric .k { font-size:12px; color:var(--ink-soft); }
+.metric .v { font-family:var(--font-mono); font-size:18px; font-weight:700; margin:2px 0; }
+.metric .v small { font-size:12px; font-weight:500; color:var(--ink-soft); }
+.metric .d2 { font-size:12px; color:var(--ink-soft); }
+.pending { color:var(--ink-faint); font-style:normal; }
+.legend { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--ink-soft); margin-bottom:8px; }
+</style>
+</head>
+<body>
+<div class="board" id="board">
+  <header class="bhead">
+    <div>
+      <div class="eyebrow">IRIS・執行錯誤視覺化・設計稿 v1</div>
+      <h1 id="h1">執行錯誤的圖解</h1>
+      <div class="prov" id="prov"></div>
+    </div>
+    <nav class="views" aria-label="檢視">
+      <button data-view="viz" class="on">圖解</button>
+      <button data-view="exp">實驗結果</button>
+    </nav>
+  </header>
+  <section class="viz" id="viz">
+    <div class="picker">
+      <div class="fams" id="fams" role="tablist"></div>
+      <div class="kinds" id="kinds"></div>
+    </div>
+    <div class="ide" id="ide"></div>
+  </section>
+  <section class="exp" id="exp"></section>
+</div>
+<script>
+const DATA = {"kinds": [{"id": "div-zero", "family": "num", "chip": "整數除以零", "title": "整數除以零", "term": "integer division by zero", "case": "div0_input", "status": "stop", "errLine": 6, "span": "a / b", "badge": "✕ 除以 0", "headline": "第 6 行算 <span class=\"mono\">a / b</span>，這時 a = 7、b = 0。", "diagram": {"type": "expr", "tokens": [{"name": "a", "value": "7"}, {"op": "/"}, {"name": "b", "value": "0", "bad": true, "note": "除數是 0"}], "eq": "7 ÷ 0 沒有答案：找不到一個整數乘以 0 會等於 7。整數除法遇到 0，程式就在這裡停止。"}, "env": "原生 Linux 也會在這一行停止（SIGFPE，Arithmetic exception）。", "origins": [{"name": "b", "value": "0", "line": 5, "code": "cin >> a >> b;", "span": "b", "step": 1, "note": "程式輸入「7 0」的第 2 個數"}], "fix": {"text": "先檢查除數，再做除法。", "diff": [[" ", "  cin >> a >> b;"], ["+", "  if (b == 0) {"], ["+", "    cout << \"除數不能是 0\" << endl;"], ["+", "    return 0;"], ["+", "  }"], [" ", "  int c = a / b;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"div-by-zero\", \"line\": 6, \"col\": 103, \"type\": \"'int'\", \"lhs\": 7, \"rhs\": 0}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：integer-divide-by-zero\n\n資料：lab-david S0，設定 san，案例 div0_input（整數除以零（值來自輸入））", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int a, b;\n  cin >> a >> b;\n  int c = a / b;\n  cout << c << endl;\n  return 0;\n}", "stdin": "7 0", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"a": 7, "b": 0}, "uninit": []}}, "hlVars": ["b"]}, {"id": "mod-zero", "family": "num", "chip": "取餘數 % 0", "title": "取餘數時除以零", "term": "remainder by zero", "case": "mod0_loop", "status": "stop", "errLine": 5, "span": "10 % i", "badge": "✕ % 0", "headline": "第 5 行算 <span class=\"mono\">10 % i</span>，這時 i = 0（迴圈的第一圈）。", "diagram": {"type": "expr", "tokens": [{"name": "10", "lit": true}, {"op": "%"}, {"name": "i", "value": "0", "bad": true, "note": "除數是 0"}], "eq": "% 是「除完以後剩多少」。除數是 0，就沒有「除完」這件事，所以和 ÷ 0 一樣會停止。"}, "env": "原生 Linux 也會停止（SIGFPE）。現在的 IRIS 把這個錯誤稱為 SIGSEGV（記憶體錯誤），名稱是錯的（實測，見「實驗結果」）；加了檢查以後會正確顯示。", "origins": [{"name": "i", "value": "0", "line": 4, "code": "for (int i = 0; i < 3; i++) {", "span": "int i = 0", "step": 1, "note": "迴圈從 0 開始"}], "fix": {"text": "迴圈從 1 開始，或在取餘數前先確認除數不是 0。", "diff": [["-", "  for (int i = 0; i < 3; i++) {"], ["+", "  for (int i = 1; i < 3; i++) {"], [" ", "    cout << 10 % i << endl;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"div-by-zero\", \"line\": 5, \"col\": 75, \"type\": \"'int'\", \"lhs\": 10, \"rhs\": 0}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：integer-divide-by-zero（% 與 / 用同一個檢查，由欄號分辨運算子）\n\n資料：lab-david S0，設定 san，案例 mod0_loop（取餘數 % 0（迴圈第一圈））", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  for (int i = 0; i < 3; i++) {\n    cout << 10 % i << endl;\n  }\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"i": 0}, "uninit": []}}, "hlVars": ["i"]}, {"id": "int-min-div", "family": "num", "chip": "INT_MIN ÷ (−1)", "title": "整數除法的答案超出 int", "term": "division overflow", "case": "intmin_div", "status": "stop", "errLine": 6, "span": "a / b", "badge": "✕ 答案放不下", "headline": "第 6 行算 <span class=\"mono\">a / b</span>，這時 a = -2,147,483,648、b = -1。", "diagram": {"type": "edge", "expr": {"tokens": [{"name": "a", "value": "-2,147,483,648"}, {"op": "/"}, {"name": "b", "value": "-1"}]}, "caption": "int 能存的最大的兩個數，和這次的答案：", "cells": [{"v": 2147483646}, {"v": 2147483647, "label": "最大值 INT_MAX"}, {"v": 2147483648, "bad": true, "label": "答案：放不下"}], "eq": "−2,147,483,648 ÷ (−1) = 2,147,483,648，比 int 的最大值多 1。"}, "env": "原生 Linux（x86）也會停止（SIGFPE）。這個錯誤即使選擇繼續也繼續不了：wasm 遇到它一定中止（實測）。", "origins": [{"name": "a", "value": "-2,147,483,648", "line": 5, "code": "cin >> a >> b;", "span": "a", "step": 1, "note": "程式輸入「-2147483648 -1」"}], "fix": {"text": "改用 long long 計算。", "diff": [["-", "  cout << a / b << endl;"], ["+", "  cout << (long long)a / b << endl;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"div-overflow\", \"line\": 6, \"col\": 103, \"type\": \"'int'\", \"lhs\": -2147483648, \"rhs\": -1}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：signed-integer-overflow（除法）\n\n資料：lab-david S0，設定 san，案例 intmin_div（INT_MIN / -1）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int a, b;\n  cin >> a >> b;\n  cout << a / b << endl;\n  return 0;\n}", "stdin": "-2147483648 -1", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"a": -2147483648, "b": -1}, "uninit": []}}, "hlVars": ["a"]}, {"id": "ovf-mul", "family": "num", "chip": "有號溢位（乘法）", "title": "有號整數溢位", "term": "signed integer overflow", "case": "ex_err_int_overflow", "status": "cont", "errLine": 10, "span": "result * i", "badge": "✕ 溢位", "codeFrom": 7, "codeTo": 19, "headline": "第 10 行算 <span class=\"mono\">result * i</span>，這時 result = 479,001,600、i = 13。", "diagram": {"type": "bits", "rows": [{"label": "數學上的答案", "num": "6,227,020,800", "value": 6227020800, "width": 33, "lost": 1, "bad": true, "note": "最左邊那一位（第 33 位）放不進 int 的 32 格，<b class=\"r\">被丟掉</b>。"}, {"label": "int 存進去的值", "num": "1,932,053,504", "value": 1932053504, "padLeft": 1, "sign": true, "note": "黃框是符號位元。它是 0，所以結果還是正數：<b>看起來正常，其實是錯的</b>。"}], "eq": "479,001,600 × 13 = 6,227,020,800，超過 int 的最大值 2,147,483,647（約 2.9 倍）。"}, "after": {"button": "繼續執行，看後果", "text": "程式印出 <span class=\"mono\">13! = 1932053504</span>（正確答案是 6227020800）。這是實測的輸出。"}, "env": "原生 Linux 不會停，會像上面這樣默默算錯。IRIS 在發生的那一步先暫停。", "origins": [{"name": "result", "value": "479,001,600", "line": 10, "code": "result = result * i;", "span": "result = result * i", "step": 47, "note": "上一圈（i = 12）算出 12!"}, {"name": "i", "value": "13", "line": 9, "code": "for (int i = 2; i <= n; i++) {", "span": "i++", "step": 48, "note": "i++ 讓 i 變成 13"}], "fix": {"text": "改用 long long，它可以存到大約 9.2 × 10¹⁸。", "diff": [["-", "int factorial(int n) {"], ["+", "long long factorial(int n) {"], ["-", "    int result = 1;"], ["+", "    long long result = 1;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"signed-overflow:*\", \"line\": 10, \"col\": 167, \"type\": \"'int'\", \"lhs\": 479001600, \"rhs\": 13}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：signed-integer-overflow（可繼續模式下回報一次後繼續）\n\n資料：lab-david S0，設定 san，案例 ex_err_int_overflow（examples/cpp/errors/err_int_overflow.cpp）", "src": "// 錯誤教案 #1：整數溢位\n// BUG：int 只能表示到 2147483647（INT_MAX），13! = 6227020800 超出範圍，溢位後數字變成怪值。\n// 學生常見想法：「階乘就是一直乘，結果一定是正的」。\n// 修正：改用 long long（或 unsigned long long，但 unsigned 不會變負，仍會繞回）。\n#include <iostream>\n\nint factorial(int n) {\n    int result = 1;\n    for (int i = 2; i <= n; i++) {\n        result = result * i;   // 溢位發生在這一行\n    }\n    return result;\n}\n\nint main() {\n    std::cout << \"10! = \" << factorial(10) << std::endl;   // 正確：3628800\n    std::cout << \"13! = \" << factorial(13) << std::endl;   // 錯誤：應為 6227020800，實際溢位\n    return 0;\n}", "stdin": "", "errStep": 49, "stepCount": 54, "stdout": "10! = 3628800\n13! = ", "tag": "", "afterVars": true, "varsAt": {"49": {"fn": "factorial", "vars": {"n": 13, "result": 479001600, "i": 13}, "uninit": []}, "48": {"fn": "factorial", "vars": {"n": 13, "result": 479001600, "i": 12}, "uninit": []}, "after": {"fn": "main", "vars": {}, "uninit": []}}, "hlVars": ["i", "result"]}, {"id": "ovf-add", "family": "num", "chip": "有號溢位（加法）", "title": "有號整數溢位", "term": "signed integer overflow", "case": "ovf_add", "status": "cont", "errLine": 5, "span": "x + 1", "badge": "✕ 溢位", "headline": "第 5 行算 <span class=\"mono\">x + 1</span>，這時 x = 2,147,483,647（int 的最大值）。", "diagram": {"type": "bits", "rows": [{"label": "x", "num": "2,147,483,647", "value": 2147483647, "sign": true}, {"label": "+ 1", "num": "1", "value": 1}, {"label": "結果", "num": "−2,147,483,648", "value": -2147483648, "signBad": true, "bad": true, "note": "進位一路往左，最後進到<b class=\"r\">符號位元</b>：最大的正數變成最小的負數。"}], "eq": "數學上 2,147,483,647 + 1 = 2,147,483,648，int 放不下。"}, "after": {"button": "繼續執行，看後果", "text": "程式印出 <span class=\"mono\">-2147483648</span>（實測輸出）。"}, "env": "原生 Linux 不會停，結果通常也是負數；但這是未定義行為，編譯器最佳化之後不保證會這樣。", "origins": [{"name": "x", "value": "2,147,483,647", "line": 4, "code": "int x = 2147483647;", "span": "int x = 2147483647", "step": 1}], "fix": {"text": "改用 long long。", "diff": [["-", "  int x = 2147483647;"], ["+", "  long long x = 2147483647;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"signed-overflow:+\", \"line\": 5, \"col\": 68, \"type\": \"'int'\", \"lhs\": 2147483647, \"rhs\": 1}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：signed-integer-overflow\n\n資料：lab-david S0，設定 san，案例 ovf_add（有號整數溢位（加法））", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int x = 2147483647;\n  x = x + 1;\n  cout << x << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 5, "stdout": "", "tag": "", "afterVars": true, "varsAt": {"2": {"fn": "main", "vars": {"x": 2147483647}, "uninit": []}, "after": {"fn": "main", "vars": {"x": -2147483648}, "uninit": []}}, "hlVars": ["x"]}, {"id": "ovf-loop", "family": "num", "chip": "靠溢位結束迴圈", "title": "用溢位讓迴圈結束", "term": "signed integer overflow", "case": "ovf_loop", "status": "cont", "errLine": 5, "span": "i * 2", "badge": "✕ 溢位", "headline": "第 5 行算 <span class=\"mono\">i * 2</span>，這時 i = 1,073,741,824（2 的 30 次方），迴圈已經跑了 30 圈。", "diagram": {"type": "bits", "rows": [{"label": "i", "num": "1,073,741,824", "value": 1073741824, "sign": true}, {"label": "i * 2", "num": "放不下", "value": 2147483648, "signBad": true, "bad": true, "note": "那個 1 移進了符號位元。程式想靠「i 變成負數」讓 i &gt; 0 不成立。"}], "eq": "有號整數溢位是未定義行為：編譯器可以假設 i 永遠是正數，把 i &gt; 0 當成永遠成立，迴圈就可能永遠不會結束。<br>實測：現在的 IRIS（-O1）印出 <span class=\"mono\">31</span>。"}, "after": {"button": "繼續執行，看後果", "text": "在這個引擎上，i 變成 −2,147,483,648，迴圈結束，印出 <span class=\"mono\">31</span>（實測）。換一個編譯器或最佳化等級，結果可能不同。"}, "origins": [{"name": "i", "value": "1,073,741,824", "line": 5, "code": "for (int i = 1; i > 0; i = i * 2) {", "span": "i = i * 2", "step": 62, "note": "上一圈的 i = i * 2"}], "fix": {"text": "用明確的次數或上限結束迴圈，不要依賴溢位。", "diff": [["-", "  for (int i = 1; i > 0; i = i * 2) {"], ["+", "  for (long long i = 1; i <= INT_MAX; i = i * 2) {"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"signed-overflow:*\", \"line\": 5, \"col\": 194, \"type\": \"'int'\", \"lhs\": 1073741824, \"rhs\": 2}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：signed-integer-overflow\n\n資料：lab-david S0，設定 san，案例 ovf_loop（溢位造成的迴圈（i *= 2 直到變負））", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int cnt = 0;\n  for (int i = 1; i > 0; i = i * 2) {\n    cnt++;\n  }\n  cout << cnt << endl;\n  return 0;\n}", "stdin": "", "errStep": 64, "stepCount": 67, "stdout": "", "tag": "", "afterVars": true, "varsAt": {"64": {"fn": "main", "vars": {"cnt": 31, "i": 1073741824}, "uninit": []}, "63": {"fn": "main", "vars": {"cnt": 30, "i": 1073741824}, "uninit": []}, "after": {"fn": "main", "vars": {"cnt": 31}, "uninit": []}}, "hlVars": ["i"]}, {"id": "shift", "family": "num", "chip": "位移量太大", "title": "位移量超過 int 的位元數", "term": "shift out of bounds", "case": "shift_big", "status": "cont", "errLine": 6, "span": "1 << s", "badge": "✕ 位移 33", "headline": "第 6 行算 <span class=\"mono\">1 &lt;&lt; s</span>，這時 s = 33。", "diagram": {"type": "shift", "lhs": 1, "rhs": 33, "lhsName": "1", "rhsName": "s"}, "after": {"button": "繼續執行，看後果", "text": "在這個引擎上印出 <span class=\"mono\">2</span>（實測）：位移量 33 被當成 33 除以 32 的餘數 1。這不是 C++ 保證的結果。"}, "env": "原生 Linux（x86）通常也是 2，同樣只取位移量的最低 5 個位元。", "origins": [{"name": "s", "value": "33", "line": 5, "code": "cin >> s;", "span": "s", "step": 1, "note": "程式輸入「33」"}], "fix": {"text": "先確認位移量在 0～31；需要更大的數就用 long long（0～63）。", "diff": [["-", "  cout << (1 << s) << endl;"], ["+", "  if (s >= 0 && s < 32) cout << (1 << s) << endl;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"shift\", \"line\": 6, \"col\": 73, \"lhs\": 1, \"rhs\": 33}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：shift-exponent\n\n資料：lab-david S0，設定 san，案例 shift_big（位移量超過 31）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int s;\n  cin >> s;\n  cout << (1 << s) << endl;\n  return 0;\n}", "stdin": "33", "errStep": 2, "stepCount": 4, "stdout": "", "tag": "", "afterVars": true, "varsAt": {"2": {"fn": "main", "vars": {"s": 33}, "uninit": []}, "after": {"fn": "main", "vars": {"s": 33}, "uninit": []}}, "hlVars": ["s"]}, {"id": "float-cast", "family": "num", "chip": "浮點數轉 int 超出範圍", "title": "浮點數轉成 int 時超出範圍", "term": "float-cast overflow", "case": "float2int", "status": "cont", "errLine": 5, "span": "d", "badge": "✕ 放不下", "headline": "第 5 行把 <span class=\"mono\">d</span> 放進 int，這時 d = 10,000,000,000。", "diagram": {"type": "numbar", "max": 2147483647, "value": 10000000000, "rangeLabel": "int 裝得下的正數：0 ～ 2,147,483,647", "valueLabel": "d = 10,000,000,000", "aria": "d 遠超過 int 的範圍", "eq": "10,000,000,000 大約是 int 最大值的 4.7 倍。"}, "after": {"button": "繼續執行，看後果", "text": "在這個引擎上 x 變成 <span class=\"mono\">2147483647</span>（最大值，實測）。原生 x86 通常得到 −2147483648。同一個錯誤，在不同環境的結果不同。"}, "origins": [{"name": "d", "value": "1e10", "line": 4, "code": "double d = 1e10;", "span": "double d = 1e10", "step": 1}], "fix": {"text": "先確認範圍，或改用 long long。", "diff": [["-", "  int x = d;"], ["+", "  long long x = d;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"float-cast-overflow\", \"line\": 5, \"col\": 70, \"from\": \"'double'\", \"to\": \"'int'\", \"value\": 10000000000}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：float-cast-overflow\n\n資料：lab-david S0，設定 san，案例 float2int（double 轉 int 超出範圍）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  double d = 1e10;\n  int x = d;\n  cout << x << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 5, "stdout": "", "tag": "", "afterVars": true, "varsAt": {"2": {"fn": "main", "vars": {"d": 10000000000}, "uninit": []}, "after": {"fn": "main", "vars": {"d": 10000000000, "x": 2147483647}, "uninit": []}}, "hlVars": ["d"]}, {"id": "arr-oob", "family": "arr", "chip": "C 陣列越界", "title": "陣列越界", "term": "array index out of bounds", "case": "ex_err_array_oob", "status": "cont", "errLine": 17, "span": "b.data[i]", "badge": "✕ 索引 4", "codeFrom": 8, "codeTo": 21, "headline": "第 17 行寫入 <span class=\"mono\">b.data[i]</span>，這時 i = 4，但 data 只有 4 格（0～3）。", "diagram": {"type": "structrow", "arr": {"name": "b.data", "values": [0, 10, 20, 30], "ghost": {"index": 4, "chip": "i = 4"}, "validLabel": "合法索引 0～3", "validWidth": 172, "typeName": "int[4]"}, "memCaption": "b 在記憶體裡的排列", "target": 4, "after": 40, "fields": [{"n": "data[0]", "v": 0}, {"n": "data[1]", "v": 10}, {"n": "data[2]", "v": 20}, {"n": "data[3]", "v": 30}, {"n": "guard", "v": 42}], "memNote": "data 的 4 格後面緊接著 guard。data[4] 其實就是 guard 的位置。"}, "after": {"button": "繼續執行，看後果", "text": "guard 從 42 變成 40，程式印出 <span class=\"mono\">guard = 40（應為 42）</span>（實測輸出）。"}, "env": "原生 Linux 不會停在這裡，guard 一樣會被默默改成 40。IRIS 在寫入之前先暫停。", "origins": [{"name": "i", "value": "4", "line": 16, "code": "for (int i = 0; i <= 4; i++) {", "span": "i <= 4", "step": 11, "note": "條件寫成 i <= 4，i = 4 也會進入迴圈"}], "fix": {"text": "把條件改成 i < 4。", "diff": [["-", "    for (int i = 0; i <= 4; i++) {   // BUG：應為 i < 4"], ["+", "    for (int i = 0; i < 4; i++) {"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"array-bounds\", \"line\": 17, \"col\": 100, \"array\": \"'int[4]'\", \"index\": 4}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：array-bounds（可繼續模式下回報一次後繼續）\n\n資料：lab-david S0，設定 san，案例 ex_err_array_oob（examples/cpp/errors/err_array_oob.cpp）", "src": "// 錯誤教案 #2：陣列越界（寫到相鄰的欄位）\n// BUG：data 只有 4 格（索引 0~3），迴圈卻寫到 i <= 4，data[4] 實際落在 guard 上，guard 被蓋掉。\n// 學生常見想法：「for (i = 0; i <= n) 才會跑完 n+1 次」。\n// 修正：把條件改成 i < 4，或改用 std::array 並用 .size() 當邊界。\n// 註：struct 內的成員記憶體連續排列，data[4] 必定與 guard 重疊（同一編譯器下可重現）。\n#include <iostream>\n\nstruct Block {\n    int data[4];\n    int guard;     // 本來應該永遠是 42\n};\n\nint main() {\n    Block b;\n    b.guard = 42;\n    for (int i = 0; i <= 4; i++) {   // BUG：應為 i < 4\n        b.data[i] = i * 10;          // i == 4 時寫進 guard\n    }\n    std::cout << \"guard = \" << b.guard << \"（應為 42）\" << std::endl;\n    return 0;\n}", "stdin": "", "errStep": 12, "stepCount": 16, "stdout": "", "tag": "", "afterVars": true, "varsAt": {"12": {"fn": "main", "vars": {"b": {"data": [0, 10, 20, 30], "guard": 42}, "i": 4}, "uninit": []}, "after": {"fn": "main", "vars": {"b": {"data": [0, 10, 20, 30], "guard": 40}}, "uninit": []}}, "hlVars": ["i"]}, {"id": "arr2d-oob", "family": "arr", "chip": "二維陣列越界", "title": "二維陣列的欄越界", "term": "array index out of bounds", "case": "arr2d_oob", "status": "cont", "errLine": 6, "span": "g[r][c]", "badge": "✕ c = 3", "headline": "第 6 行寫入 <span class=\"mono\">g[r][c]</span>，這時 r = 1、c = 3，但每一列只有 3 欄（0～2）。", "diagram": {"type": "grid2d", "name": "g", "values": [[0, 0, 0], [0, 0, 0], [0, 0, 0]], "ghost": [1, 3], "ghostChip": "g[1][3]", "mark": [2, 0], "after": 9, "eq": "g[1][3] 不存在。記憶體是一列接一列排的，第 1 列第 3 欄其實落在第 2 列第 0 格 g[2][0]。", "typeName": "int[3][3]"}, "after": {"button": "繼續執行，看後果", "text": "g[2][0] 變成 9，程式印出 <span class=\"mono\">9</span>（實測）。"}, "env": "原生 Linux 也是同樣的排列，一樣會默默改到 g[2][0]。", "origins": [{"name": "c", "value": "3", "line": 5, "code": "int r = 1, c = 3;", "span": "c = 3", "step": 2}], "fix": {"text": "欄的索引要小於 3。", "diff": [["-", "  int r = 1, c = 3;"], ["+", "  int r = 1, c = 2;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"array-bounds\", \"line\": 6, \"col\": 124, \"array\": \"'int[3]'\", \"index\": 3}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：array-bounds\n\n資料：lab-david S0，設定 san，案例 arr2d_oob（二維陣列欄越界）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int g[3][3] = {};\n  int r = 1, c = 3;\n  g[r][c] = 9;\n  cout << g[2][0] << endl;\n  return 0;\n}", "stdin": "", "errStep": 3, "stepCount": 6, "stdout": "", "tag": "", "afterVars": true, "varsAt": {"3": {"fn": "main", "vars": {"g": [[0, 0, 0], [0, 0, 0], [0, 0, 0]], "r": 1, "c": 3}, "uninit": []}, "after": {"fn": "main", "vars": {"g": [[0, 0, 0], [0, 0, 0], [9, 0, 0]], "r": 1, "c": 3}, "uninit": []}}, "hlVars": ["c"]}, {"id": "vec-oob", "family": "arr", "chip": "vector[] 越界", "title": "vector 索引越界", "term": "vector index out of bounds", "case": "vec_oob", "status": "stop", "errLine": 6, "span": "v[i]", "badge": "✕ 索引 5", "headline": "第 6 行寫入 <span class=\"mono\">v[i]</span>，這時 i = 5，但 v.size() 是 5（合法索引 0～4）。", "diagram": {"type": "cells", "name": "v", "values": [0, 1, 2, 3, 4], "sizeLine": "size() = 5", "headNote": "capacity() = 5", "ghost": {"index": 5, "chip": "i = 5"}, "validLabel": "合法索引 0～4", "validWidth": 216, "eq": "v[i] 不會檢查範圍；v.at(i) 會先檢查，超出就停止。", "typeName": "vector<int>"}, "env": "原生 Linux 通常不會停在這裡，而是默默寫到 vector 後面的記憶體，之後才在別的地方出問題。IRIS 打開了標準函式庫的檢查，所以會先停下來。", "origins": [{"name": "i", "value": "5", "line": 5, "code": "for (int i = 0; i <= 5; i++) {", "span": "i <= 5", "step": 12, "note": "條件寫成 i <= 5"}], "fix": {"text": "條件改成 i < v.size()。", "diff": [["-", "  for (int i = 0; i <= 5; i++) {"], ["+", "  for (int i = 0; i < (int)v.size(); i++) {"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"/include/c++/v1/vector:1436: assertion __n < size() failed: vector[] index out of bounds \"}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：libc++ 的檢查（_LIBCPP_HARDENING_MODE_EXTENSIVE），訊息經替換的 __assertion_handler 或 __libcpp_verbose_abort 交給 vgerr.h\n\n資料：lab-david S0，設定 san，案例 vec_oob（vector[] 越界（i <= 5））", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v(5);\n  for (int i = 0; i <= 5; i++) {\n    v[i] = i;\n  }\n  cout << v.size() << endl;\n  return 0;\n}", "stdin": "", "errStep": 13, "stepCount": 13, "stdout": "", "tag": "", "varsAt": {"13": {"fn": "main", "vars": {"v": [0, 1, 2, 3, 4], "v.capacity()": 5, "i": 5}, "uninit": []}}, "hlVars": ["i"]}, {"id": "vec-at", "family": "arr", "chip": "at() 越界", "title": "at() 的索引超出範圍", "term": "out_of_range", "case": "vec_at", "status": "stop", "errLine": 5, "span": "v.at(5)", "badge": "✕ 索引 5", "headline": "第 5 行呼叫 <span class=\"mono\">v.at(5)</span>，但 v.size() 是 3（合法索引 0～2）。", "diagram": {"type": "cells", "name": "v", "values": [0, 0, 0], "sizeLine": "size() = 3", "ghost": {"index": 5, "chip": "at(5)", "gap": true}, "validLabel": "合法索引 0～2", "validWidth": 128, "eq": "at() 會先檢查索引。原生程式超出範圍時會丟出 std::out_of_range 例外；IRIS 不支援例外，所以直接停在這一行。", "typeName": "vector<int>"}, "originNone": "索引 5 直接寫在程式裡。", "fix": {"text": "索引要小於 v.size()。", "diff": [["-", "  cout << v.at(5) << endl;"], ["+", "  cout << v.at(2) << endl;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"out_of_range was thrown in -fno-exceptions mode with message \\\"vector\\\"\"}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：libc++ 的檢查（_LIBCPP_HARDENING_MODE_EXTENSIVE），訊息經替換的 __assertion_handler 或 __libcpp_verbose_abort 交給 vgerr.h\n\n資料：lab-david S0，設定 san，案例 vec_at（vector.at() 越界）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v(3);\n  cout << v.at(5) << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 2, "stdout": "", "origins": [], "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"v": [0, 0, 0], "v.capacity()": 3}, "uninit": []}}, "hlVars": []}, {"id": "empty-stack", "family": "arr", "chip": "空 stack 的 top()", "title": "從空的 stack 取值", "term": "empty container", "case": "stack_empty_top", "status": "stop", "errLine": 7, "span": "s.top()", "badge": "✕ s 是空的", "headline": "第 7 行呼叫 <span class=\"mono\">s.top()</span>，但這時 s 是空的。", "diagram": {"type": "empty", "shape": "stack", "history": [{"line": 5, "code": "s.push(1)", "items": [1]}, {"line": 6, "code": "s.pop()", "items": [], "origin": true}, {"line": 7, "code": "s.top()", "items": [], "bad": true}], "eq": "stack 是空的，top() 沒有東西可以拿。"}, "env": "原生 Linux 不會停，可能讀到亂七八糟的值，也可能崩潰。IRIS 打開了標準函式庫的檢查，所以會先停下來。", "origins": [{"name": "s", "value": "空的", "line": 6, "code": "s.pop();", "span": "s.pop()", "step": 3, "what": "最後一個元素被拿走"}], "fix": {"text": "取值前先確認不是空的。", "diff": [["-", "  cout << s.top() << endl;"], ["+", "  if (!s.empty()) cout << s.top() << endl;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"/include/c++/v1/deque:1536: assertion !empty() failed: deque::back called on an empty deque \"}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：libc++ 的檢查（_LIBCPP_HARDENING_MODE_EXTENSIVE），訊息經替換的 __assertion_handler 或 __libcpp_verbose_abort 交給 vgerr.h（stack 的 top() 內部呼叫 deque::back()）\n\n資料：lab-david S0，設定 san，案例 stack_empty_top（空 stack 的 top()）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  stack<int> s;\n  s.push(1);\n  s.pop();\n  cout << s.top() << endl;\n  return 0;\n}", "stdin": "", "errStep": 4, "stepCount": 4, "stdout": "", "tag": "", "varsAt": {"4": {"fn": "main", "vars": {"s": []}, "uninit": []}}, "hlVars": ["s"]}, {"id": "empty-queue", "family": "arr", "chip": "空 queue 的 front()", "title": "從空的 queue 取值", "term": "empty container", "case": "queue_empty_front", "status": "stop", "errLine": 5, "span": "q.front()", "badge": "✕ q 是空的", "headline": "第 5 行呼叫 <span class=\"mono\">q.front()</span>，但 q 從建立到現在都是空的。", "diagram": {"type": "empty", "shape": "queue", "history": [{"line": 4, "code": "queue<int> q", "items": [], "origin": true}, {"line": 5, "code": "q.front()", "items": [], "bad": true}], "eq": "queue 是空的，front() 沒有東西可以拿。"}, "origins": [{"name": "q", "value": "空的", "line": 4, "code": "queue<int> q;", "span": "queue<int> q", "step": 1, "what": "建立時沒有元素"}], "fix": {"text": "取值前先確認不是空的。", "diff": [["-", "  cout << q.front() << endl;"], ["+", "  if (!q.empty()) cout << q.front() << endl;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"/include/c++/v1/deque:1524: assertion !empty() failed: deque::front called on an empty deque \"}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：libc++ 的檢查（_LIBCPP_HARDENING_MODE_EXTENSIVE），訊息經替換的 __assertion_handler 或 __libcpp_verbose_abort 交給 vgerr.h（queue 的 front() 內部呼叫 deque::front()）\n\n資料：lab-david S0，設定 san，案例 queue_empty_front（空 queue 的 front()）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  queue<int> q;\n  cout << q.front() << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"q": []}, "uninit": []}}, "hlVars": ["q"]}, {"id": "empty-vector", "family": "arr", "chip": "空 vector 的 back()", "title": "從空的 vector 取值", "term": "empty container", "case": "vec_empty_back", "status": "stop", "errLine": 5, "span": "v.back()", "badge": "✕ v 是空的", "headline": "第 5 行呼叫 <span class=\"mono\">v.back()</span>，但 v 是空的（size() = 0）。", "diagram": {"type": "empty", "shape": "vector", "history": [{"line": 4, "code": "vector<int> v", "items": [], "origin": true}, {"line": 5, "code": "v.back()", "items": [], "bad": true}], "eq": "同一類：空的 vector 呼叫 front()、pop_back()，實測也都會在那一行停下。"}, "origins": [{"name": "v", "value": "空的", "line": 4, "code": "vector<int> v;", "span": "vector<int> v", "step": 1, "what": "建立時沒有元素"}], "fix": {"text": "取值前先確認不是空的。", "diff": [["-", "  cout << v.back() << endl;"], ["+", "  if (!v.empty()) cout << v.back() << endl;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"/include/c++/v1/vector:661: assertion !empty() failed: back() called on an empty vector \"}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：libc++ 的檢查（_LIBCPP_HARDENING_MODE_EXTENSIVE），訊息經替換的 __assertion_handler 或 __libcpp_verbose_abort 交給 vgerr.h\n\n資料：lab-david S0，設定 san，案例 vec_empty_back（空 vector 的 back()）\n\n同類實測（vec_pop_empty）：{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"/include/c++/v1/vector:1568: assertion !empty() failed: vector::pop_back called on an empty vector \"}", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v;\n  cout << v.back() << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"v": [], "v.capacity()": 0}, "uninit": []}}, "hlVars": ["v"]}, {"id": "str-oob", "family": "arr", "chip": "string 索引越界", "title": "字串索引越界", "term": "string index out of bounds", "case": "str_oob", "status": "stop", "errLine": 5, "span": "s[10]", "badge": "✕ 索引 10", "headline": "第 5 行讀取 <span class=\"mono\">s[10]</span>，但 s 只有 3 個字元。", "diagram": {"type": "cells", "name": "s", "values": ["a", "b", "c"], "sizeLine": "size() = 3", "extra": [{"index": 3, "text": "\\0"}], "ghost": {"index": 10, "chip": "s[10]", "gap": true}, "validLabel": "合法索引 0～3（第 3 格是結尾的 \\0）", "validWidth": 182, "eq": "同一類：s.substr(5) 的起點超過長度，實測也會停在那一行。", "typeName": "string"}, "origins": [{"name": "s", "value": "\"abc\"", "line": 4, "code": "string s = \"abc\";", "span": "string s = \"abc\"", "step": 1}], "fix": {"text": "索引要小於 s.size()。", "diff": [["-", "  cout << s[10] << endl;"], ["+", "  if (10 < s.size()) cout << s[10] << endl;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"/include/c++/v1/string:1336: assertion __pos <= size() failed: string index out of bounds \"}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：libc++ 的檢查（_LIBCPP_HARDENING_MODE_EXTENSIVE），訊息經替換的 __assertion_handler 或 __libcpp_verbose_abort 交給 vgerr.h\n\n資料：lab-david S0，設定 san，案例 str_oob（string[] 越界）\n\n同類實測（substr_throw）：{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"out_of_range was thrown in -fno-exceptions mode with message \\\"basic_string\\\"\"}", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  string s = \"abc\";\n  cout << s[10] << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"s": "abc"}, "uninit": []}}, "hlVars": ["s"]}, {"id": "stoi", "family": "arr", "chip": "stoi 轉換失敗", "title": "字串無法轉成整數", "term": "invalid_argument", "case": "stoi_bad", "status": "stop", "errLine": 5, "span": "stoi(s)", "badge": "✕ 不是數字", "headline": "第 5 行把 <span class=\"mono\">s</span> 轉成整數，但 s = \"abc\"，開頭就不是數字。", "diagram": {"type": "cells", "name": "s", "values": ["a", "b", "c"], "badCellIndex": 0, "eq": "stoi 從第一個字元開始讀數字；第一個字元 'a' 不是數字，沒辦法轉換。", "typeName": "string"}, "env": "原生程式會丟出 std::invalid_argument 例外；IRIS 不支援例外，所以直接停在這一行。", "origins": [{"name": "s", "value": "\"abc\"", "line": 4, "code": "string s = \"abc\";", "span": "string s = \"abc\"", "step": 1}], "fix": {"text": "轉換前先確認字串是數字。", "diff": [["-", "  int x = stoi(s);"], ["+", "  int x = (!s.empty() && isdigit(s[0])) ? stoi(s) : 0;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"invalid_argument was thrown in -fno-exceptions mode with message \\\"stoi: no conversion\\\"\"}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：libc++ 的檢查（_LIBCPP_HARDENING_MODE_EXTENSIVE），訊息經替換的 __assertion_handler 或 __libcpp_verbose_abort 交給 vgerr.h\n\n資料：lab-david S0，設定 san，案例 stoi_bad（stoi 轉換非數字字串）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  string s = \"abc\";\n  int x = stoi(s);\n  cout << x << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"s": "abc"}, "uninit": []}}, "hlVars": ["s"]}, {"id": "sort-cmp", "family": "arr", "chip": "sort 的比較函式", "title": "sort 的比較函式不合法", "term": "strict weak ordering", "case": "sort_bad_cmp", "status": "stop", "errLine": 5, "span": "return a <= b;", "badge": "✕ 比較函式", "headline": "第 5 行的 sort 用 <span class=\"mono\">a &lt;= b</span> 比較 40 個 5；sort 發現自己會讀到範圍外面。", "diagram": {"type": "cmp", "rows": [{"call": "cmp(5, 5)", "got": "true（5 <= 5）", "need": "false", "bad": true}, {"call": "cmp(a, b) 和 cmp(b, a)", "got": "可能都是 true", "need": "最多一個是 true", "bad": true}], "eq": "sort 的比較要「嚴格」（strict weak ordering）：同一個值不能排在自己前面，所以 cmp(x, x) 一定要是 false。"}, "origins": [{"name": "v", "value": "40 個 5", "line": 4, "code": "vector<int> v(40, 5);", "span": "v(40, 5)", "step": 1, "what": "全部相等"}], "fix": {"text": "用 < 而不是 <=。", "diff": [["-", "  sort(v.begin(), v.end(), [](int a, int b) { return a <= b; });"], ["+", "  sort(v.begin(), v.end(), [](int a, int b) { return a < b; });"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"/include/c++/v1/__algorithm/sort.h:643: assertion __first != __end failed: Would read out of bounds, does your comparator satisfy the strict-weak ordering requirement? \"}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：libc++ 的檢查（_LIBCPP_HARDENING_MODE_EXTENSIVE），訊息經替換的 __assertion_handler 或 __libcpp_verbose_abort 交給 vgerr.h\n\n資料：lab-david S0，設定 san，案例 sort_bad_cmp（sort 比較函式用 <=）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v(40, 5);\n  sort(v.begin(), v.end(), [](int a, int b) { return a <= b; });\n  cout << v[0] << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"v": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], "v.capacity()": 40}, "uninit": []}}, "hlVars": ["v"]}, {"id": "unsigned-wrap", "family": "arr", "chip": "size() − 1 繞回", "title": "無號數 0 − 1 繞回最大值", "term": "unsigned wrap-around", "case": "unsigned_wrap", "status": "stop", "errLine": 6, "span": "v[i]", "badge": "✕ v 是空的", "headline": "第 6 行讀 <span class=\"mono\">v[i]</span>（i = 0），但 v 是空的。迴圈會進來，是因為第 5 行的 <span class=\"mono\">v.size() - 1</span> 變成了 4,294,967,295。", "diagram": {"type": "ring", "expr": "v.size() - 1", "value": 4294967295, "aria": "0 減 1 繞到最大值", "note": "size() 是無號數（size_t）。0 再減 1 不會變成 −1，而是繞到最大值，所以 i <= v.size() - 1 一開始就成立。", "after": {"name": "v", "values": [], "sizeLine": "size() = 0", "ghost": {"index": 0, "chip": "i = 0"}, "typeName": "vector<int>"}}, "env": "這個引擎的 size_t 是 32 位元（wasm32），最大值是 4,294,967,295；原生 64 位元程式是 18,446,744,073,709,551,615，一樣會繞回。", "origins": [{"name": "v", "value": "空的", "line": 4, "code": "vector<int> v;", "span": "vector<int> v", "step": 1, "what": "size() = 0"}], "fix": {"text": "不要先減 1，改成 i < v.size()。", "diff": [["-", "  for (size_t i = 0; i <= v.size() - 1; i++) {"], ["+", "  for (size_t i = 0; i < v.size(); i++) {"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"libcxx\", \"line\": 0, \"col\": 0, \"msg\": \"/include/c++/v1/vector:1436: assertion __n < size() failed: vector[] index out of bounds \"}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：libc++ 的檢查（_LIBCPP_HARDENING_MODE_EXTENSIVE），訊息經替換的 __assertion_handler 或 __libcpp_verbose_abort 交給 vgerr.h（抓到的是第 6 行的 vector 越界；第 5 行的繞回是 P3 的提醒）\n\n資料：lab-david S0，設定 san，案例 unsigned_wrap（size()-1 在空 vector 變成極大值）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v;\n  for (size_t i = 0; i <= v.size() - 1; i++) {\n    cout << v[i] << endl;\n  }\n  return 0;\n}", "stdin": "", "errStep": 3, "stepCount": 3, "stdout": "", "tag": "", "varsAt": {"3": {"fn": "main", "vars": {"v": [], "v.capacity()": 0, "i": 0}, "uninit": []}, "2": {"fn": "main", "vars": {"v": [], "v.capacity()": 0}, "uninit": []}}, "hlVars": ["v"]}, {"id": "null-ptr", "family": "ptr", "chip": "空指標", "title": "透過空指標寫入", "term": "null pointer dereference", "case": "null_write", "status": "stop", "errLine": 5, "span": "*p", "badge": "✕ p 是 nullptr", "headline": "第 5 行透過 <span class=\"mono\">*p</span> 寫入 5，但 p 是 nullptr。", "diagram": {"type": "nullsimple", "ptr": "p", "op": "*p = 5", "pointee": "int", "aria": "p 是 nullptr，沒有指向任何 int", "eq": "*p 的意思是「p 指向的那個 int」。p 是 nullptr，沒有指向任何 int，所以沒有地方可以寫。", "typeName": "int*"}, "env": "原生 Linux 會在這一行崩潰（SIGSEGV）。IRIS 的瀏覽器引擎原本不會崩潰（位址 0 可以讀寫，程式照樣往下跑）；加了檢查之後會停在這裡。", "origins": [{"name": "p", "value": "nullptr", "line": 4, "code": "int* p = nullptr;", "span": "int* p = nullptr", "step": 1}], "fix": {"text": "使用前先讓 p 指向一個變數，或先檢查 p 是不是 nullptr。", "diff": [["-", "  int* p = nullptr;"], ["+", "  int x = 0;"], ["+", "  int* p = &x;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"null-deref\", \"line\": 5, \"col\": 62, \"type\": \"'int'\", \"ptr\": 0, \"tck\": 1}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：null（寫入）\n\n資料：lab-david S0，設定 san，案例 null_write（空指標寫入）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int* p = nullptr;\n  *p = 5;\n  cout << \"after\" << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"p": 0}, "uninit": []}}, "hlVars": ["p"]}, {"id": "null-list", "family": "ptr", "chip": "鏈結串列走到 nullptr", "title": "透過空指標讀成員", "term": "null pointer dereference", "case": "ex_err_null_deref", "status": "stop", "errLine": 21, "span": "cur->next->val", "badge": "✕ next 是 nullptr", "codeFrom": 10, "codeTo": 25, "headline": "第 21 行讀 <span class=\"mono\">cur-&gt;next-&gt;val</span>：這時 cur 指向最後一個節點，它的 next 是 nullptr。", "diagram": {"type": "nulllist", "cur": "cur", "aria": "鏈結串列 a 到 b，b 的 next 是 nullptr", "objs": [{"name": "a", "type": "Node", "val": 10}, {"name": "b", "type": "Node", "val": 20, "nextNull": true}], "chain": [{"text": "cur", "note": "→ b"}, {"text": "->next", "note": "nullptr", "bad": true}, {"text": "->val", "note": "✕ 沒有節點可以讀", "bad": true}], "eq": "第一圈 cur 指向 a，讀 a.next-&gt;val = 20 沒問題（已經印出）。第二圈 cur 指向 b，b.next 是 nullptr。"}, "what": "箭頭（cur 和 a.next 指向哪個節點）目前的軌跡記錄不到：引擎還不支援指向 struct 的指標，軌跡裡只有 &lt;ptr&gt;。圖上的箭頭是依程式推得的<span class=\"schematic\">示意</span>；val、b.next = nullptr 是實測值。", "env": "原生 Linux 會在這一行崩潰（SIGSEGV）。IRIS 的瀏覽器引擎原本會讀到位址 0 附近的值而不崩潰；加了檢查之後會停在這裡。", "origins": [{"name": "b.next", "value": "nullptr", "line": 16, "code": "Node b{20, nullptr};", "span": "Node b{20, nullptr}", "step": 1}], "fix": {"text": "讀 next 之前先確認它不是 nullptr。", "diff": [["+", "        if (cur->next != nullptr)"], [" ", "        std::cout << \"值：\" << cur->val << \"，下一個值：\" << cur->next->val << std::endl;"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"null-deref\", \"line\": 21, \"col\": 209, \"type\": \"'Node'\", \"ptr\": 0, \"tck\": 3}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：null（讀成員）\n\n資料：lab-david S0，設定 san，案例 ex_err_null_deref（examples/cpp/errors/err_null_deref.cpp）", "src": "// 錯誤教案 #5：空指標解參考（走訪鏈結串列時超過最後一個節點）\n// BUG：迴圈內同時讀 cur->next->val，但最後一個節點的 next 是 nullptr，\n//      解參考 nullptr 在原生 Linux 會 SIGSEGV 崩潰。\n// 註：本專案的 wasm 引擎不會崩潰，而是讀到位址 0x00000000 的值（0）。這是環境差異，\n//     右側欄要說明，不改寫程式來追求崩潰。\n// 學生常見想法：「while (cur) 跑完就結束，印 next 的值沒問題」。\n// 修正：只在 cur->next != nullptr 時才讀 cur->next->val。\n#include <iostream>\n\nstruct Node {\n    int val;\n    Node* next;\n};\n\nint main() {\n    Node b{20, nullptr};\n    Node a{10, &b};\n    Node* cur = &a;\n    while (cur != nullptr) {\n        // BUG：最後一輪 cur->next 是 nullptr，cur->next->val 解參考空指標\n        std::cout << \"值：\" << cur->val << \"，下一個值：\" << cur->next->val << std::endl;\n        cur = cur->next;\n    }\n    return 0;\n}", "stdin": "", "errStep": 8, "stepCount": 8, "stdout": "值：10，下一個值：20", "tag": "", "varsAt": {"8": {"fn": "main", "vars": {"b": {"val": 20, "next": 0}, "a": {"val": 10, "next": "<ptr>"}, "cur": "<ptr>"}, "uninit": []}, "2": {"fn": "main", "vars": {"b": {"val": 20, "next": 0}}, "uninit": []}}, "hlVars": ["b"]}, {"id": "double-delete", "family": "ptr", "chip": "重複 delete", "tag": "P3", "title": "同一塊記憶體 delete 兩次", "term": "double delete", "case": "double_delete", "status": "design", "phase": "P3", "errLine": 6, "span": "delete p", "badge": "✕ 第二次 delete", "headline": "第 6 行再 delete 一次 p，但 p 指向的那塊記憶體在第 5 行已經還回去了。", "diagram": {"type": "heap", "caption": "p 指向的那塊記憶體", "events": [{"line": 4, "code": "new int(5)", "box": "5", "state": "使用中", "cls": "okc"}, {"line": 5, "code": "delete p", "box": "5", "state": "已釋放", "cls": "freed"}, {"line": 6, "code": "delete p", "box": "✕", "state": "已經釋放過", "cls": "badsolid", "bad": true}]}, "what": "這張圖要等 P3（IRIS 自己記錄每一次 new 和 delete）才畫得出來。現在的軌跡裡 p 只有 &lt;ptr&gt;。", "env": "S0 實測：現在的引擎和加了檢查的版本都沒有發現，程式正常結束，印出 <span class=\"mono\">after</span>。原生 Linux（glibc）通常會中止並顯示 double free detected。", "origins": [{"name": "p", "value": "已釋放", "line": 5, "code": "delete p;", "span": "delete p", "step": 2, "what": "第一次 delete"}], "fix": {"text": "delete 之後把 p 設成 nullptr（delete nullptr 什麼事都不會做）。", "diff": [[" ", "  delete p;"], ["+", "  p = nullptr;"], [" ", "  delete p;"]]}, "raw": "錯誤紀錄：無（這次執行沒有任何檢查觸發）\n\n結束狀態：{\"reason\": \"exit\", \"code\": 0}\n\n偵測方式：（S0 沒有實作；P3 取代全域 operator new/delete 後才偵測得到）\n\n資料：lab-david S0，設定 san，案例 double_delete（重複 delete）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int* p = new int(5);\n  delete p;\n  delete p;\n  cout << \"after\" << endl;\n  return 0;\n}", "stdin": "", "errStep": 3, "stepCount": 6, "stdout": "after", "varsAt": {"3": {"fn": "main", "vars": {"p": "<ptr>"}, "uninit": []}}, "hlVars": ["p"]}, {"id": "use-after-free", "family": "ptr", "chip": "delete 後再使用", "tag": "P3", "title": "delete 之後再使用", "term": "use after free", "case": "use_after_free", "status": "design", "phase": "P3", "errLine": 6, "span": "*p", "badge": "✕ 已釋放", "headline": "第 6 行透過 p 寫入 7，但 p 指向的記憶體在第 5 行已經 delete 了。", "diagram": {"type": "heap", "caption": "p 指向的那塊記憶體", "events": [{"line": 4, "code": "new int(5)", "box": "5", "state": "使用中", "cls": "okc"}, {"line": 5, "code": "delete p", "box": "5", "state": "已釋放", "cls": "freed"}, {"line": 6, "code": "*p = 7", "box": "7", "state": "寫進已釋放的地方", "cls": "badsolid", "bad": true}]}, "what": "這一類只能部分偵測：要在每次讀寫記憶體之前都檢查，這套瀏覽器工具鏈做不到（沒有 AddressSanitizer）。P3 的做法是釋放後先不重用那塊記憶體、填入特殊值，之後讀到它就標「可能」。", "env": "S0 實測：程式正常結束，印出 <span class=\"mono\">7</span>，看起來像沒事。原生 Linux 也常常印出 7，所以這種錯誤很難發現。", "origins": [{"name": "p", "value": "已釋放", "line": 5, "code": "delete p;", "span": "delete p", "step": 2, "what": "delete 之後 p 沒有改"}], "fix": {"text": "delete 之後就不要再用 p；需要的話把 p 設成 nullptr。", "diff": [[" ", "  delete p;"], ["-", "  *p = 7;"], ["-", "  cout << *p << endl;"]]}, "raw": "錯誤紀錄：無（這次執行沒有任何檢查觸發）\n\n結束狀態：{\"reason\": \"exit\", \"code\": 0}\n\n偵測方式：（S0 沒有實作）\n\n資料：lab-david S0，設定 san，案例 use_after_free（delete 後再使用）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int* p = new int(5);\n  delete p;\n  *p = 7;\n  cout << *p << endl;\n  return 0;\n}", "stdin": "", "errStep": 3, "stepCount": 6, "stdout": "7", "varsAt": {"3": {"fn": "main", "vars": {"p": "<ptr>"}, "uninit": []}}, "hlVars": ["p"]}, {"id": "iter-invalid", "family": "ptr", "chip": "迭代器失效", "tag": "偵測不到", "title": "迭代器失效", "term": "iterator invalidation", "case": "iter_invalid", "status": "none", "errLine": 6, "span": "v.push_back(4)", "badge": "迭代器失效", "headline": "第 6 行在 range-for 裡 push_back：vector 換到新的記憶體，迴圈卻還在讀舊的那一塊。", "diagram": {"type": "realloc", "caption": "放第 4 個元素時，capacity() 從 3 變成 6：換一塊更大的記憶體", "old": [1, 2, 3], "neu": [1, 2, 3, 4], "it": "迴圈的迭代器", "eq": "實測：下一圈讀到的 x 是 16，不是 3（舊的記憶體已經還回去，內容不可靠）。"}, "what": "libc++ 19 沒有追蹤迭代器失效的檢查，這一版偵測不到。這張圖只用在錯誤教案。", "env": "原生 Linux 也不會報錯，讀到的值不一定。", "origins": [{"name": "v.capacity()", "value": "6", "line": 6, "code": "if (x == 2) v.push_back(4);", "span": "v.push_back(4)", "step": 5, "what": "原本是 3"}], "fix": {"text": "迴圈中不要改變 vector 的大小：先記下要加的元素，迴圈結束後再加。", "diff": [["+", "  bool add = false;"], [" ", "  for (int x : v) {"], ["-", "    if (x == 2) v.push_back(4);"], ["+", "    if (x == 2) add = true;"], [" ", "  }"], ["+", "  if (add) v.push_back(4);"]]}, "raw": "錯誤紀錄：無（這次執行沒有任何檢查觸發）\n\n結束狀態：{\"reason\": \"exit\", \"code\": 0}\n\n偵測方式：（libc++ 19 沒有這種檢查）\n\n資料：lab-david S0，設定 san，案例 iter_invalid（range-for 中 push_back（迭代器失效））", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v = {1, 2, 3};\n  for (int x : v) {\n    if (x == 2) v.push_back(4);\n  }\n  cout << v.size() << endl;\n  return 0;\n}", "stdin": "", "errStep": 7, "stepCount": 11, "stdout": "4", "varsAt": {"7": {"fn": "main", "vars": {"v": [1, 2, 3, 4], "v.capacity()": 6, "x": 16}, "uninit": []}, "6": {"fn": "main", "vars": {"v": [1, 2, 3, 4], "v.capacity()": 6}, "uninit": []}}, "hlVars": ["v"]}, {"id": "missing-return", "family": "flow", "chip": "函式沒有回傳值", "title": "函式沒有回傳值", "term": "missing return", "case": "missing_return", "status": "stop", "errLine": 6, "span": "}", "badge": "✕ 沒有 return", "headline": "<span class=\"mono\">sign(0)</span> 走到第 6 行的結尾，途中沒有遇到任何 return。", "diagram": {"type": "path", "railTop": 36, "railH": 48, "lines": [{"no": 3, "code": "int sign(int x) {", "note": "x = 0"}, {"no": 4, "html": "  if (<b>x &gt; 0</b>) <span style=\"color:var(--ink-faint)\">return 1;</span>", "note": "x > 0 是 false", "visited": true}, {"no": 5, "html": "  if (<b>x &lt; 0</b>) <span style=\"color:var(--ink-faint)\">return -1;</span>", "note": "x < 0 是 false", "visited": true}, {"no": 6, "code": "}", "note": "沒有 return 就到了結尾", "visited": true, "bad": true}], "eq": "函式說好要回傳 int，但 x = 0 時兩個 if 都不成立，沒有任何一行給出回傳值。"}, "env": "原生程式不一定會停：可能回傳一個不確定的值，也可能崩潰（這是未定義行為）。IRIS 會停在這裡。", "origins": [{"name": "x", "value": "0", "line": 8, "code": "cout << sign(0) << endl;", "span": "sign(0)", "step": 1, "what": "呼叫時傳入 0"}], "fix": {"text": "補上 x == 0 的情況。", "diff": [[" ", "  if (x < 0) return -1;"], ["+", "  return 0;"], [" ", "}"]]}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"missing-return\", \"line\": 3, \"col\": 5}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：clang UBSan（-fsanitize=undefined），處理函式寫在 vgerr.h：return（錯誤紀錄的行號是函式開頭第 3 行，停點取軌跡的最後一步第 6 行）\n\n資料：lab-david S0，設定 san，案例 missing_return（函式沒有回傳值（x == 0））", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint sign(int x) {\n  if (x > 0) return 1;\n  if (x < 0) return -1;\n}\nint main() {\n  cout << sign(0) << endl;\n  return 0;\n}", "stdin": "", "errStep": 4, "stepCount": 4, "stdout": "", "tag": "", "varsAt": {"4": {"fn": "sign", "vars": {"x": 0}, "uninit": []}, "2": {"fn": "sign", "vars": {"x": 0}, "uninit": []}}, "hlVars": ["x"]}, {"id": "inf-rec", "family": "flow", "chip": "無窮遞迴", "title": "無窮遞迴", "term": "infinite recursion", "case": "inf_recursion", "status": "stop", "errLine": 4, "span": "f(n - 1)", "badge": "✕ 堆疊用完", "errStep": 62128, "stepCount": 62128, "headline": "f(3) 一直呼叫 f(n − 1)，n 經過 0 也沒有停，直到堆疊用完（第 62,128 層）。", "diagram": {"type": "tower", "items": [{"label": "main()", "depth": "第 1 層", "cls": "main"}, {"label": "f(3)", "depth": "第 2 層", "note": "main 呼叫 f(3)"}, {"label": "f(2)", "depth": "第 3 層"}, {"label": "f(1)", "depth": "第 4 層"}, {"label": "f(0)", "depth": "第 5 層", "cls": "basemiss", "note": "n = 0：應該在這裡停下，但程式沒有寫停止條件"}, {"label": "f(-1)", "depth": "第 6 層"}, {"gap": "⋮ 中間還有 62,119 層，每一層的 n 都比下面少 1"}, {"label": "f(-62121)", "depth": "第 62,126 層"}, {"label": "f(-62122)", "depth": "第 62,127 層"}, {"label": "f(-62123)", "depth": "第 62,128 層", "cls": "top", "note": "再呼叫一層，堆疊就用完了"}, {"line": "堆疊用完（stack overflow）"}], "eq": "每一層的 n 都比上一層少 1，經過 0 也繼續往下：程式沒有任何一層會停。"}, "what": "層數 62,128 是在 lab-david 的 Node 量的（堆疊較大）；瀏覽器的層數會少很多，見「遞迴太深」。", "env": "現在的 IRIS 把這種情況說成「瀏覽器引擎的遞迴深度不足」，而且整次執行不能回放。新的做法看軌跡判斷：n 一直往同一個方向走、從沒停下，就判定是程式的無窮遞迴，並且可以回放到最後一步。", "origins": [{"name": "n", "value": "3", "line": 7, "code": "cout << f(3) << endl;", "span": "f(3)", "step": 1, "what": "第一次呼叫"}], "fix": {"text": "加上終止條件。", "diff": [[" ", "int f(int n) {"], ["+", "  if (n == 0) return 0;"], [" ", "  return f(n - 1) + 1;"]]}, "raw": "錯誤紀錄：無（這次執行沒有任何檢查觸發）\n\n結束狀態：{\"reason\": \"stack-overflow\", \"code\": null, \"message\": \"host call stack exhausted (recursion too deep)\"}\n\n偵測方式：執行環境：wasm 呼叫堆疊用完（host call stack exhausted）；無窮遞迴的判斷由軌跡做（P1）\n\n資料：lab-david S0，設定 san，案例 inf_recursion（無窮遞迴（沒有終止條件））", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint f(int n) {\n  return f(n - 1) + 1;\n}\nint main() {\n  cout << f(3) << endl;\n  return 0;\n}", "stdin": "", "stdout": "", "tag": "", "varsAt": {"62128": {"fn": "f", "vars": {"n": -62123}, "uninit": []}, "2": {"fn": "f", "vars": {"n": 3}, "uninit": []}}, "hlVars": ["n"]}, {"id": "deep-rec", "family": "flow", "chip": "遞迴太深", "tag": "引擎限制", "title": "遞迴太深，超過瀏覽器的堆疊", "term": "engine limit", "case": "deep_recursion", "status": "limit", "errLine": 5, "span": "f(n - 1)", "badge": "瀏覽器堆疊上限", "errStep": null, "headline": "f(5000) 需要 5,001 層呼叫。程式是對的，但瀏覽器的堆疊比原生程式小。", "diagram": {"type": "tower", "items": [{"label": "main()", "depth": "第 1 層", "cls": "main"}, {"label": "f(5000)", "depth": "第 2 層", "note": "main 呼叫 f(5000)"}, {"label": "f(4999)", "depth": "第 3 層"}, {"gap": "⋮ 瀏覽器裡跑得到的層"}, {"label": "f(-3610)", "depth": "第 8,612 層"}, {"line": "瀏覽器的堆疊上限", "cls": "limit", "note": "約 8,612 層（1 MB 堆疊實測，加檢查）"}, {"label": "f(-3611)", "depth": "第 8,613 層", "cls": "ghostfr", "note": "以上這些層，瀏覽器跑不到，原生程式跑得到"}, {"gap": "⋮"}, {"label": "f(0)", "depth": "第 5,002 層", "cls": "basehit", "note": "n = 0：在這裡停下（程式是對的）"}], "eq": "這個程式有停止條件，n 會一路減到 0；只是需要的層數比瀏覽器給的多。"}, "what": "這個程式有終止條件（n == 0），在 lab-david 的 Node 實測可以跑完、印出 5000。", "env": "原生 Linux 的堆疊是 8 MB，5,000 層沒有問題。這不是程式的錯；IRIS 會這樣說明，不會當成程式錯誤。", "origins": [{"name": "n", "value": "5000", "line": 9, "code": "cin >> n;", "span": "n", "step": 1, "what": "程式輸入「5000」"}], "fix": {"text": "程式不用改。要在 IRIS 上看完整過程，改用比較小的輸入（例如 1000）。"}, "raw": "錯誤紀錄：無（這次執行沒有任何檢查觸發）\n\n結束狀態：{\"reason\": \"exit\", \"code\": 0}\n\n偵測方式：執行環境（瀏覽器堆疊上限）；這個案例在 Node 實測正常結束\n\n資料：lab-david S0，設定 san，案例 deep_recursion（合法但很深的遞迴（5000 層））\n\n1 MB 堆疊最大深度：未加檢查 8612、加檢查 8612", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint f(int n) {\n  if (n == 0) return 0;\n  return f(n - 1) + 1;\n}\nint main() {\n  int n;\n  cin >> n;\n  cout << f(n) << endl;\n  return 0;\n}", "stdin": "5000", "stepCount": 15006, "stdout": "5000", "varsAt": {"2": {"fn": "main", "vars": {"n": 5000}, "uninit": []}}, "hlVars": ["n"]}, {"id": "assert", "family": "flow", "chip": "assert 失敗", "title": "assert 的條件不成立", "term": "assertion failed", "case": "assert_fail", "status": "stop", "errLine": 5, "span": "assert(x > 0)", "badge": "✕ 條件不成立", "headline": "第 5 行的 <span class=\"mono\">assert(x &gt; 0)</span> 不成立：x = -3。", "diagram": {"type": "assert", "html": "assert(x &gt; 0);", "parts": [{"col": 7, "value": "-3", "depth": 1}, {"col": 9, "value": "false", "depth": 0, "bad": true}], "eq": "assert 的意思是「這件事一定成立」。不成立就表示程式的假設錯了，所以立刻停止。"}, "env": "原生 Linux 也會停止，並印出 Assertion `x > 0' failed。", "origins": [{"name": "x", "value": "-3", "line": 4, "code": "int x = -3;", "span": "int x = -3", "step": 1}], "fix": {"text": "找出 x 為什麼是負數；assert 本身不用改。"}, "raw": "錯誤紀錄（vgerr.h 寫出）：\n{\"vgerr\": \"assert\", \"line\": 5, \"col\": 0, \"expr\": \"x > 0\", \"func\": \"main\"}\n\n結束狀態：{\"reason\": \"exit\", \"code\": 134}\n\n偵測方式：覆寫 __assert_fail（vgerr.h），帶出條件式文字\n\n資料：lab-david S0，設定 san，案例 assert_fail（assert 失敗）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int x = -3;\n  assert(x > 0);\n  cout << \"after\" << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"x": -3}, "uninit": []}}, "hlVars": ["x"]}, {"id": "abort", "family": "flow", "chip": "呼叫 abort()", "title": "程式自己呼叫 abort()", "term": "abort", "case": "abort_call", "status": "stop", "errLine": 5, "span": "abort()", "badge": "✕ abort", "headline": "第 5 行的程式自己呼叫了 <span class=\"mono\">abort()</span>，要求立刻結束。", "diagram": {"type": "simple", "eq": "abort() 會立刻結束程式，後面的程式碼都不會執行（第 6 行的 after 沒有印出來）。"}, "env": "現在的 IRIS 已經抓得到（SIGABRT）；新的面板只是把它畫出來。", "origins": [{"name": "x", "value": "1", "line": 4, "code": "int x = 1;", "span": "int x = 1", "step": 1, "what": "所以 if (x == 1) 成立"}], "fix": {"text": "這是程式刻意的行為，不用改。"}, "raw": "錯誤紀錄：無（這次執行沒有任何檢查觸發）\n\n結束狀態：{\"reason\": \"trap\", \"code\": null, \"trap\": \"abort\", \"message\": \"program aborted (abort(), failed assertion, or out of memory: std::bad_alloc without exceptions)\"}\n\n偵測方式：wasm trap（unreachable，來自 abort()）\n\n資料：lab-david S0，設定 san，案例 abort_call（程式自己呼叫 abort()）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int x = 1;\n  if (x == 1) abort();\n  cout << \"after\" << endl;\n  return 0;\n}", "stdin": "", "errStep": 2, "stepCount": 2, "stdout": "", "tag": "", "varsAt": {"2": {"fn": "main", "vars": {"x": 1}, "uninit": []}}, "hlVars": ["x"]}, {"id": "bad-alloc", "family": "flow", "chip": "記憶體不夠", "tag": "引擎限制", "title": "要求的記憶體超過上限", "term": "bad_alloc", "case": "huge_vector", "status": "limit", "errLine": 4, "span": "v(600000000)", "badge": "記憶體上限", "headline": "第 4 行要 6 億個 int（2.4 GB），超過 IRIS 引擎的記憶體上限 512 MB。", "diagram": {"type": "memlimit", "request": 2400000000, "limit": 536870912, "requestLabel": "2,400,000,000 bytes（2.4 GB）", "limitLabel": "536,870,912 bytes（512 MiB）"}, "env": "原生 64 位元程式在記憶體夠大的電腦上可能可以執行。現在的 IRIS 只會說「程式中止（abort）」，分不出是 abort() 還是記憶體不夠；P1 改由 IRIS 自己接手 new，就能說出要了多少。", "originNone": "大小 600000000 直接寫在程式裡。", "fix": {"text": "減少資料量，或分批處理。"}, "raw": "錯誤紀錄：無（這次執行沒有任何檢查觸發）\n\n結束狀態：{\"reason\": \"trap\", \"code\": null, \"trap\": \"abort\", \"message\": \"program aborted (abort(), failed assertion, or out of memory: std::bad_alloc without exceptions)\"}\n\n偵測方式：wasm trap（abort）：libc++ 的 bad_alloc 在 -fno-exceptions 下直接 abort，S0 的覆寫沒有接到\n\n資料：lab-david S0，設定 san，案例 huge_vector（vector 要求的記憶體超過上限（bad_alloc））", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  vector<int> v(600000000);\n  cout << v.size() << endl;\n  return 0;\n}", "stdin": "", "errStep": 1, "stepCount": 1, "stdout": "", "origins": [], "varsAt": {"1": {"fn": "main", "vars": {}, "uninit": []}}, "hlVars": []}, {"id": "uninit", "family": "input", "chip": "未初始化的變數", "tag": "P4", "title": "讀取沒有初始值的變數", "term": "uninitialized read", "case": "uninit_read", "status": "design", "phase": "P4", "errLine": 6, "span": "sum += i", "badge": "✕ sum 沒有初始值", "headline": "第 6 行第一次執行 <span class=\"mono\">sum += i</span> 時，sum 從來沒有被給過值。", "diagram": {"type": "uninit", "name": "sum", "declLine": 4, "readLine": 6, "readCode": "sum += i;", "eq": "IRIS 把沒有初始值的變數顯示成 0（並標出「未初始化」），這次剛好算出 6。原生程式裡，sum 一開始可能是任何值。", "typeName": "int"}, "what": "S0 實測：沒有發現，程式印出 <span class=\"mono\">6</span>。P4 會在讀取時檢查：宣告時沒有給值、之後也還沒寫過的變數被讀取，就在那一步停下。", "origins": [{"name": "sum", "value": "（沒有值）", "line": 4, "code": "int sum;", "span": "int sum", "step": null, "what": "宣告時沒有給值（這一行沒有停點）"}], "fix": {"text": "宣告時就給初始值。", "diff": [["-", "  int sum;"], ["+", "  int sum = 0;"]]}, "raw": "錯誤紀錄：無（這次執行沒有任何檢查觸發）\n\n結束狀態：{\"reason\": \"exit\", \"code\": 0}\n\n偵測方式：（S0 沒有實作；軌跡的 uninit 欄位已經標出 sum 未初始化）\n\n資料：lab-david S0，設定 san，案例 uninit_read（使用未初始化變數）", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int sum;\n  for (int i = 1; i <= 3; i++) {\n    sum += i;\n  }\n  cout << sum << endl;\n  return 0;\n}", "stdin": "", "errStep": 6, "stepCount": 10, "stdout": "6", "varsAt": {"6": {"fn": "main", "vars": {"sum": 3, "i": 3}, "uninit": []}}, "hlVars": ["sum"]}, {"id": "cin-fail", "family": "input", "chip": "輸入讀不到", "tag": "P3 提醒", "title": "cin 沒有讀到資料", "term": "input failure", "case": "cin_fail", "status": "design", "phase": "P3", "errLine": 5, "span": "cin >> n", "badge": "提醒：沒讀到", "headline": "第 5 行要讀一個整數到 n，但程式輸入是空的。", "diagram": {"type": "input", "chars": [], "eofLabel": "輸入結束", "code": "cin >> n", "name": "n", "value": "0", "valueNote": "讀取失敗時 n 被設成 0，之後的 cin 也都會失敗"}, "what": "這不是會讓程式停止的錯誤，IRIS 只顯示提醒（S0 實測：程式印出 <span class=\"mono\">0</span>）。", "originNone": "「程式輸入」欄是空的。", "fix": {"text": "在「程式輸入」填入資料，或檢查 cin 有沒有成功。", "diff": [["-", "  cin >> n;"], ["+", "  if (!(cin >> n)) { cout << \"沒有讀到 n\" << endl; return 0; }"]]}, "raw": "錯誤紀錄：無（這次執行沒有任何檢查觸發）\n\n結束狀態：{\"reason\": \"exit\", \"code\": 0}\n\n偵測方式：（P3：vg.h 每一步檢查 cin 狀態）\n\n資料：lab-david S0，設定 san，案例 cin_fail（輸入不夠（cin 失敗））", "src": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  int n;\n  cin >> n;\n  cout << n * 2 << endl;\n  return 0;\n}", "stdin": "", "errStep": 1, "stepCount": 4, "stdout": "0", "origins": [], "varsAt": {"1": {"fn": "main", "vars": {"n": 0}, "uninit": ["n"]}}, "hlVars": []}], "families": [{"id": "num", "label": "數值"}, {"id": "arr", "label": "陣列與容器"}, {"id": "ptr", "label": "指標與記憶體"}, {"id": "flow", "label": "函式與流程"}, {"id": "input", "label": "輸入與未初始化"}], "expHtml": "\n<div class=\"expcard\"><h2>目標 1：錯誤會不會被看到</h2>\n<div class=\"sub\">每一列是一個小程式，在 lab-david 實際編譯執行。「現在」是正式機目前的引擎（-O1，沒有檢查）；「加檢查」是 S0 試作版（UBSan＋libc++ 檢查＋vgerr.h），「停止」與「可繼續」是錯誤發生後的兩種處理方式。</div>\n<div class=\"legend\"><span><span class=\"st caught\">✓</span> 停在正確的行，帶出值</span><span><span class=\"st trap\">trap</span> 停下來了，但只有訊號名稱</span><span><span class=\"st miss\">沒發現</span> 程式正常結束</span><span><span class=\"st limit\">限制</span> 堆疊、步數上限</span></div>\n<table class=\"res\"><thead><tr><th style=\"width:23%\">錯誤</th><th>現在（-O1）</th><th>改成 -O0</th><th>加檢查・停止</th><th>加檢查・可繼續</th></tr></thead><tbody>\n<tr class=\"fam\"><td colspan=\"5\">數值</td></tr><tr><td>整數除以零<span class=\"case\">div0_input</span></td><td><span class=\"st trap\">trap → SIGFPE</span><span class=\"det\">停在第 6 行；integer division by zero</span><span class=\"det\">取自同一版本的 smoke 那一輪。全量那一輪它排第一個，冷啟動建 PCH 時另一個實驗同時在跑，超過編譯時限。</span></td><td><span class=\"st trap\">trap → SIGFPE</span><span class=\"det\">停在第 6 行；integer division by zero</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">div-by-zero</span> lhs=7, rhs=0</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">div-by-zero</span> lhs=7, rhs=0</span></td></tr><tr><td>取餘數 % 0<span class=\"case\">mod0_loop</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 5 行；remainder by zero</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 5 行；remainder by zero</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">div-by-zero</span> lhs=10, rhs=0</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">div-by-zero</span> lhs=10, rhs=0</span></td></tr><tr><td>INT_MIN ÷ (−1)<span class=\"case\">intmin_div</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 6 行；divide result unrepresentable</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 6 行；divide result unrepresentable</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">div-overflow</span> lhs=-2147483648, rhs=-1</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">div-overflow</span> lhs=-2147483648, rhs=-1</span></td></tr><tr><td>有號溢位（乘法）<span class=\"case\">ex_err_int_overflow</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 10! = 3628800 ⏎ 13! = 1932053504</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 10! = 3628800 ⏎ 13! = 1932053504</span></td><td><span class=\"st caught\">✓ 第 10 行</span><span class=\"det\"><span class=\"mono\">signed-overflow:*</span> lhs=479001600, rhs=13</span></td><td><span class=\"st caught\">✓ 第 10 行</span><span class=\"det\"><span class=\"mono\">signed-overflow:*</span> lhs=479001600, rhs=13；繼續後輸出 10! = 3628800 ⏎ 13! = 1932053504</span></td></tr><tr><td>有號溢位（加法）<span class=\"case\">ovf_add</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 -2147483648</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 -2147483648</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">signed-overflow:+</span> lhs=2147483647, rhs=1</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">signed-overflow:+</span> lhs=2147483647, rhs=1；繼續後輸出 -2147483648</span></td></tr><tr><td>靠溢位結束迴圈<span class=\"case\">ovf_loop</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 31</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 31</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">signed-overflow:*</span> lhs=1073741824, rhs=2</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">signed-overflow:*</span> lhs=1073741824, rhs=2；繼續後輸出 31</span></td></tr><tr><td>位移量太大<span class=\"case\">shift_big</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 2</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 2</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">shift</span> lhs=1, rhs=33</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">shift</span> lhs=1, rhs=33；繼續後輸出 2</span></td></tr><tr><td>浮點數轉 int 超出範圍<span class=\"case\">float2int</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 2147483647</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 2147483647</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">float-cast-overflow</span> value=10000000000</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">float-cast-overflow</span> value=10000000000；繼續後輸出 2147483647</span></td></tr><tr><td>整數除以零（兩邊都是常數）<span class=\"case\">div0_const</span></td><td><span class=\"st trap\">trap → SIGFPE</span><span class=\"det\">停在第 5 行；integer division by zero</span></td><td><span class=\"st trap\">trap → SIGFPE</span><span class=\"det\">停在第 5 行；integer division by zero</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">div-by-zero</span> lhs=7, rhs=0</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">div-by-zero</span> lhs=7, rhs=0</span></td></tr><tr><td>整數除以零（結果沒被用到）<span class=\"case\">div0_unused</span></td><td><span class=\"st trap\">trap → SIGFPE</span><span class=\"det\">停在第 5 行；integer division by zero</span></td><td><span class=\"st trap\">trap → SIGFPE</span><span class=\"det\">停在第 5 行；integer division by zero</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">div-by-zero</span> lhs=7, rhs=0</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">div-by-zero</span> lhs=7, rhs=0</span></td></tr><tr><td>取餘數 % 0（值來自輸入）<span class=\"case\">mod0_input</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 6 行；remainder by zero</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 6 行；remainder by zero</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">div-by-zero</span> lhs=10, rhs=0</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">div-by-zero</span> lhs=10, rhs=0</span></td></tr><tr><td>有號溢位（20! 迴圈）<span class=\"case\">ovf_fact</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 -2102132736</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 -2102132736</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">signed-overflow:*</span> lhs=479001600, rhs=13</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">signed-overflow:*</span> lhs=479001600, rhs=13；繼續後輸出 -2102132736</span></td></tr><tr><td>對照：浮點數除以零（不是錯誤，結果 inf）<span class=\"case\">float_div_zero</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 inf</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 inf</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 inf</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 inf</span></td></tr><tr class=\"fam\"><td colspan=\"5\">陣列與容器</td></tr><tr><td>C 陣列越界<span class=\"case\">ex_err_array_oob</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 guard = 40（應為 42）</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 guard = 40（應為 42）</span></td><td><span class=\"st caught\">✓ 第 17 行</span><span class=\"det\"><span class=\"mono\">array-bounds</span> index=4</span></td><td><span class=\"st caught\">✓ 第 17 行</span><span class=\"det\"><span class=\"mono\">array-bounds</span> index=4；繼續後輸出 guard = 40（應為 42）</span></td></tr><tr><td>二維陣列越界<span class=\"case\">arr2d_oob</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 9</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 9</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">array-bounds</span> index=3</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">array-bounds</span> index=3；繼續後輸出 9</span></td></tr><tr><td>vector[] 越界<span class=\"case\">vec_oob</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 5</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 5</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> vector[] index out of bounds</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> vector[] index out of bounds</span></td></tr><tr><td>at() 越界<span class=\"case\">vec_at</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> out_of_range was thrown in -fno-exceptions mode with message &quot;vector&quot;</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> out_of_range was thrown in -fno-exceptions mode with message &quot;vector&quot;</span></td></tr><tr><td>空 stack 的 top()<span class=\"case\">stack_empty_top</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 7 行；invalid memory access (a bad pointer/index)</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 7 行；invalid memory access (a bad pointer/index)</span></td><td><span class=\"st caught\">✓ 第 7 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> deque::back called on an empty deque</span></td><td><span class=\"st caught\">✓ 第 7 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> deque::back called on an empty deque</span></td></tr><tr><td>空 queue 的 front()<span class=\"case\">queue_empty_front</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> deque::front called on an empty deque</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> deque::front called on an empty deque</span></td></tr><tr><td>空 vector 的 back()<span class=\"case\">vec_empty_back</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 5 行；invalid memory access (a bad pointer/index)</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 5 行；invalid memory access (a bad pointer/index)</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> back() called on an empty vector</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> back() called on an empty vector</span></td></tr><tr><td>string 索引越界<span class=\"case\">str_oob</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 \u0000</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 </span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> string index out of bounds</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> string index out of bounds</span></td></tr><tr><td>stoi 轉換失敗<span class=\"case\">stoi_bad</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> invalid_argument was thrown in -fno-exceptions mode with message &quot;stoi</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> invalid_argument was thrown in -fno-exceptions mode with message &quot;stoi</span></td></tr><tr><td>sort 的比較函式<span class=\"case\">sort_bad_cmp</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 5 行；invalid memory access (a bad pointer/index)</span></td><td><span class=\"st limit\">逾時</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> Would read out of bounds, does your comparator satisfy the strict-weak</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> Would read out of bounds, does your comparator satisfy the strict-weak</span></td></tr><tr><td>size() − 1 繞回<span class=\"case\">unsigned_wrap</span></td><td><span class=\"st limit\">步數上限</span><span class=\"det\">迴圈沒有結束</span></td><td><span class=\"st limit\">步數上限</span><span class=\"det\">迴圈沒有結束</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> vector[] index out of bounds</span></td><td><span class=\"st caught\">✓ 第 6 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> vector[] index out of bounds</span></td></tr><tr><td>C 陣列越界寫入（i &lt;= 5）<span class=\"case\">arr_oob_write</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0 100</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0 100</span></td><td><span class=\"st caught\">✓ 第 7 行</span><span class=\"det\"><span class=\"mono\">array-bounds</span> index=5</span></td><td><span class=\"st caught\">✓ 第 7 行</span><span class=\"det\"><span class=\"mono\">array-bounds</span> index=5；繼續後輸出 0 100</span></td></tr><tr><td>C 陣列越界讀取（索引 7）<span class=\"case\">arr_oob_read</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 8388580</span></td><td><span class=\"st caught\">✓ 第 7 行</span><span class=\"det\"><span class=\"mono\">array-bounds</span> index=7</span></td><td><span class=\"st caught\">✓ 第 7 行</span><span class=\"det\"><span class=\"mono\">array-bounds</span> index=7；繼續後輸出 0</span></td></tr><tr><td>空 vector 的 pop_back()<span class=\"case\">vec_pop_empty</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> vector::pop_back called on an empty vector</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> vector::pop_back called on an empty vector</span></td></tr><tr><td>substr 起點超出長度<span class=\"case\">substr_throw</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> out_of_range was thrown in -fno-exceptions mode with message &quot;basic_st</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">libcxx</span> out_of_range was thrown in -fno-exceptions mode with message &quot;basic_st</span></td></tr><tr><td>對照：正確的 sort 比較函式<span class=\"case\">sort_user_cmp</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 15 0</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 15 0</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 15 0</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 15 0</span></td></tr><tr><td>int a[n] 的 n 是負數<span class=\"case\">vla_neg</span></td><td><span class=\"st fail\">插樁失敗</span></td><td><span class=\"st fail\">插樁失敗</span></td><td><span class=\"st fail\">無法編譯</span><span class=\"det\">compile</span></td><td><span class=\"st fail\">無法編譯</span><span class=\"det\">compile</span></td></tr><tr class=\"fam\"><td colspan=\"5\">指標與記憶體</td></tr><tr><td>空指標<span class=\"case\">null_write</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 after</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 after</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">null-deref</span> </span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">null-deref</span> </span></td></tr><tr><td>鏈結串列走到 nullptr<span class=\"case\">ex_err_null_deref</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 值：10，下一個值：20 ⏎ 值：20，下一個值：0</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 值：10，下一個值：20 ⏎ 值：20，下一個值：0</span></td><td><span class=\"st caught\">✓ 第 21 行</span><span class=\"det\"><span class=\"mono\">null-deref</span> </span></td><td><span class=\"st caught\">✓ 第 21 行</span><span class=\"det\"><span class=\"mono\">null-deref</span> </span></td></tr><tr><td>重複 delete<span class=\"case\">double_delete</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 after</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 after</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 after</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 after</span></td></tr><tr><td>delete 後再使用<span class=\"case\">use_after_free</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 7</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 7</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 7</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 7</span></td></tr><tr><td>迭代器失效<span class=\"case\">iter_invalid</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 4</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 4</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 4</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 4</span></td></tr><tr><td>空指標讀取<span class=\"case\">null_read</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">null-deref</span> </span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">null-deref</span> </span></td></tr><tr><td>懸空指標（教案範例）<span class=\"case\">ex_err_dangling_ptr</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 *p = 5 ⏎ after free, *p = 7</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 *p = 5 ⏎ after free, *p = 7</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 *p = 5 ⏎ after free, *p = 7</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 *p = 5 ⏎ after free, *p = 7</span></td></tr><tr><td>淺拷貝造成重複釋放（教案範例）<span class=\"case\">ex_err_double_free</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 11 行；invalid memory access (a bad pointer/index)</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 b.data_[0] = 1</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 11 行；invalid memory access (a bad pointer/index)</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 11 行；invalid memory access (a bad pointer/index)</span></td></tr><tr><td>迭代器失效（教案範例）<span class=\"case\">ex_err_iterator_invalidation</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 *it = 8410152（應為 1）</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 *it = 8410168（應為 1）</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 *it = 8421384（應為 1）</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 *it = 8421960（應為 1）</span></td></tr><tr class=\"fam\"><td colspan=\"5\">函式與流程</td></tr><tr><td>函式沒有回傳值<span class=\"case\">missing_return</span></td><td><span class=\"st trap\">trap → SIGSEGV</span><span class=\"det\">停在第 6 行；invalid memory access (a bad pointer/index)</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 6 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st caught\">✓ 第 3 行</span><span class=\"det\"><span class=\"mono\">missing-return</span> </span></td><td><span class=\"st caught\">✓ 第 3 行</span><span class=\"det\"><span class=\"mono\">missing-return</span> </span></td></tr><tr><td>無窮遞迴<span class=\"case\">inf_recursion</span></td><td><span class=\"st limit\">堆疊溢位</span><span class=\"det\">說成「引擎的遞迴深度不足」，不能回放</span></td><td><span class=\"st limit\">堆疊溢位</span><span class=\"det\">說成「引擎的遞迴深度不足」，不能回放</span></td><td><span class=\"st limit\">堆疊溢位</span><span class=\"det\">說成「引擎的遞迴深度不足」，不能回放</span></td><td><span class=\"st limit\">堆疊溢位</span><span class=\"det\">說成「引擎的遞迴深度不足」，不能回放</span></td></tr><tr><td>遞迴太深<span class=\"case\">deep_recursion</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 5000</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 5000</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 5000</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 5000</span></td></tr><tr><td>assert 失敗<span class=\"case\">assert_fail</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">assert</span> expr=x &gt; 0</span></td><td><span class=\"st caught\">✓ 第 5 行</span><span class=\"det\"><span class=\"mono\">assert</span> expr=x &gt; 0</span></td></tr><tr><td>呼叫 abort()<span class=\"case\">abort_call</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 5 行；program aborted (abort(), failed assertion, or out of memory</span></td></tr><tr><td>記憶體不夠<span class=\"case\">huge_vector</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 4 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 4 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 4 行；program aborted (abort(), failed assertion, or out of memory</span></td><td><span class=\"st trap\">trap → SIGABRT</span><span class=\"det\">停在第 4 行；program aborted (abort(), failed assertion, or out of memory</span></td></tr><tr class=\"fam\"><td colspan=\"5\">輸入與未初始化</td></tr><tr><td>未初始化的變數<span class=\"case\">uninit_read</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 6</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 6</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 6</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 6</span></td></tr><tr><td>輸入讀不到<span class=\"case\">cin_fail</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 0</span></td></tr><tr><td>未初始化（教案範例）<span class=\"case\">ex_err_uninit</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 一開始 sum = 0（應該是 0） ⏎ 1+2+3+4+5 = 15（應為 15）</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 一開始 sum = 0（應該是 0） ⏎ 1+2+3+4+5 = 15（應為 15）</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 一開始 sum = 0（應該是 0） ⏎ 1+2+3+4+5 = 15（應為 15）</span></td><td><span class=\"st miss\">沒發現</span><span class=\"det\">正常結束，輸出 一開始 sum = 0（應該是 0） ⏎ 1+2+3+4+5 = 15（應為 15）</span></td></tr>\n</tbody></table></div>\n<div class=\"expcard\"><h2>代價</h2><div class=\"sub\">編譯時間是在 lab-david（容器 2 CPU）量的，不是瀏覽器的數字；瀏覽器要另外量。</div>\n<div class=\"metrics\">\n<div class=\"metric\"><div class=\"k\">編譯＋連結（沒有 PCH）</div><div class=\"d2\">未加檢查：<b class=\"mono\">5.2s</b>（最大 8.5s，47 個）</div><div class=\"d2\">加檢查：<b class=\"mono\">6.2s</b>（最大 9.5s，47 個）</div></div>\n<div class=\"metric\"><div class=\"k\">編譯＋連結（有 PCH）</div><div class=\"d2\">未加檢查：<b class=\"mono\">2.0s</b>（最大 5.7s，40 個）</div><div class=\"d2\">加檢查：<b class=\"mono\">2.8s</b>（最大 6.4s，40 個）</div><div class=d2>引擎的預算是 8 秒</div></div>\n<div class=\"metric\"><div class=\"k\">現在的引擎整次編譯（含 PCH）</div><div class=\"d2\">-O1：<b class=\"mono\">3.8s</b>（最大 13.8s，48 個）</div><div class=\"d2\">-O0：<b class=\"mono\">3.2s</b>（最大 13.4s，48 個）</div></div>\n<div class=\"metric\"><div class=\"k\">wasm 大小（中位數）</div><div class=\"v\">2.74 → 2.77<small> MB</small></div><div class=\"d2\">未加檢查 → 加檢查</div></div>\n<div class=\"metric\"><div class=\"k\">最大遞迴深度（未加檢查 → 加檢查）</div><div class=\"d2\">堆疊 1 MB：<b class=\"mono\">8,612</b> → <b class=\"mono\">8,612</b> 層</div><div class=\"d2\">堆疊 4 MB：<b class=\"mono\">41,250</b> → <b class=\"mono\">41,250</b> 層</div></div>\n<div class=\"metric\"><div class=\"k\">軌跡一致性（教案與 E3 程式）</div><div class=\"v\">104 / 109<small> 支停點相同</small></div><div class=\"d2\">62 支每一步都相同；42 支只有本來就不固定的值不同（527 筆在只移動記憶體位置、不加檢查的對照組也會變，338 筆是物件成員還沒給值前的內容）。3 支是故意寫錯的教案，在出錯處停下；2 支（CC-2607A、CC-2607B）不加檢查也跑不完，是插樁的既有問題。</div></div>\n</div></div>", "prov": "數值取自 lab-david 實測（2026-11-23，commit 42b297e9；加檢查的是 S0 試作版，引擎本身沒有改）。面板採 2026-11-23 規劃的暫定決定：出錯那一步自動暫停、右側欄自動展開、該行標紅。", "configs": ["cur", "o0", "plain", "san", "sanrec", "sandebug", "plainpch", "sanpch", "depth", "fidelity"]};
+</script>
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (n) => (typeof n === "number" || typeof n === "bigint") ? n.toLocaleString("en-US") : String(n);
+const KINDS = DATA.kinds;
+const FAMS = DATA.families;
+const state = { fam: FAMS[0].id, kind: null, viewStep: null, after: false };
+
+/* ── 位元工具 ─────────────────────────────────────── */
+function bitsOf(v, n) { // two's complement, MSB first
+  let b = BigInt(v);
+  const mod = 1n << BigInt(n);
+  b = ((b % mod) + mod) % mod;
+  return b.toString(2).padStart(n, "0").split("");
+}
+function bitCells(bits, opt = {}) {
+  // opt.signAt: index (in bits) of the sign bit; opt.cls: per-index class function
+  let h = "", group = [];
+  const flush = () => { if (group.length) { h += `<span class="nib">${group.join("")}</span>`; group = []; } };
+  bits.forEach((b, i) => {
+    const cls = ["bit", b === "1" ? "one" : ""];
+    if (opt.cls) cls.push(opt.cls(i, b) || "");
+    group.push(`<span class="${cls.join(" ")}">${b}</span>`);
+    if ((bits.length - i - 1) % 4 === 0) flush();
+  });
+  flush();
+  return h;
+}
+function frame32(bits, opt = {}) { return `<span class="frame32 ${opt.ghost ? "ghost" : ""}">${bitCells(bits, opt)}</span>`; }
+
+/* ── 圖的種類 ─────────────────────────────────────── */
+const R = {};
+
+R.expr = (d) => {
+  const cols = d.tokens.map((t) => {
+    if (t.op) return `<div class="tokc"><div class="top">${esc(t.op)}</div></div>`;
+    if (t.lit) return `<div class="tokc"><div class="tname">${esc(t.name)}</div><div class="cell" style="visibility:hidden">0</div></div>`;
+    return `<div class="tokc"><div class="tname">${esc(t.name)}</div><div class="cell ${t.bad ? "badsolid" : ""}">${esc(t.value)}</div>${t.note ? `<div class="tnote">${esc(t.note)}</div>` : ""}</div>`;
+  }).join("");
+  return `<div class="dg"><div class="expr">${cols}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.edge = (d) => { // the last few values of a type and one beyond its end
+  const cells = d.cells.map((c) => `<div class="colw"><div class="cell ${c.bad ? "badsolid" : ""}" style="min-width:100px; font-size:13px">${esc(fmt(c.v))}</div><div class="idx ${c.bad ? "bad" : ""}">${esc(c.label || "")}</div></div>`).join("");
+  return `<div class="dg">${R.expr(d.expr)}<div class="cap" style="margin:10px 0 5px">${esc(d.caption)}</div><div class="cellrow" style="gap:6px">${cells}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.bits = (d) => {
+  let h = `<div class="dg bits">`;
+  for (const row of d.rows) {
+    const n = row.width || 32;
+    const bits = bitsOf(row.value, n);
+    let body;
+    if (row.lost) { // first `lost` bits fall outside the 32-bit frame
+      const outer = bits.slice(0, row.lost), inner = bits.slice(row.lost);
+      body = `<span class="bitwrap"><span class="nib">${outer.map((b) => `<span class="bit ${b === "1" ? "lost" : ""}">${b}</span>`).join("")}</span>${frame32(inner, { cls: (i) => (i === 0 && row.sign ? "sign" : "") })}</span>`;
+    } else {
+      const pad = row.padLeft ? `<span class="nib">${Array.from({ length: row.padLeft }, () => `<span class="bit" style="visibility:hidden">0</span>`).join("")}</span>` : "";
+      body = `<span class="bitwrap">${pad}${frame32(bits, { cls: (i) => (i === 0 && row.signBad ? "sgnbad" : i === 0 && row.sign ? "sign" : "") })}</span>`;
+    }
+    h += `<div class="bitrow"><div class="bitlabel ${row.bad ? "bad" : ""}"><span>${esc(row.label)}</span><span class="mono">${esc(row.num)}</span></div>${body}</div>`;
+    if (row.note) h += `<div class="bitnote">${row.note}</div>`;
+  }
+  if (d.eq) h += `<div class="eqline">${d.eq}</div>`;
+  return h + `</div>`;
+};
+
+R.shift = (d) => {
+  const n = 32, bits = bitsOf(d.lhs, n);
+  // the 1 would land at position d.rhs (0 = rightmost); draw ghost cells to the left of the frame
+  const extra = Math.max(0, d.rhs - (n - 1));
+  const ghosts = Array.from({ length: extra }, (_, i) => `<span class="bit ${i === 0 ? "lost" : ""}">${i === 0 ? "1" : "·"}</span>`).join("");
+  return `<div class="dg bits">
+    <div class="bitrow"><div class="bitlabel"><span>位移前</span><span class="mono">${esc(String(d.lhs))}</span></div><span class="bitwrap"><span class="nib" style="visibility:hidden">${ghosts}</span>${frame32(bits)}</span></div>
+    <div class="bitrow"><div class="bitlabel bad"><span>往左移 ${d.rhs} 格</span><span class="mono">${esc(d.lhsName)} &lt;&lt; ${esc(d.rhsName)}</span></div><span class="bitwrap"><span class="nib">${ghosts}</span>${frame32(bitsOf(0, n))}</span></div>
+    <div class="bitnote">int 只有 32 格（第 0～31 格）。往左移 ${d.rhs} 格，那個 1 會落在第 ${d.rhs} 格，已經在 int 的外面：<b class="r">位移量必須小於 32</b>。</div>
+  </div>`;
+};
+
+R.numbar = (d) => { // value far outside a range: proportional bar
+  const W = 430, x0 = 8, scale = (W - 30) / d.value;
+  const xr = x0 + d.max * scale;
+  return `<div class="dg"><svg width="${W}" height="96" viewBox="0 0 ${W} 96" role="img" aria-label="${esc(d.aria)}">
+    <rect x="${x0}" y="30" width="${xr - x0}" height="16" rx="3" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="${x0}" y="22" font-size="11.5" fill="var(--accent)">${esc(d.rangeLabel)}</text>
+    <line x1="${xr}" y1="24" x2="${xr}" y2="56" stroke="var(--accent)" stroke-width="2"/>
+    <text class="m" x="${xr}" y="70" font-size="11" text-anchor="middle" fill="var(--accent)">${esc(fmt(d.max))}</text>
+    <rect x="${x0}" y="50" width="${W - 30}" height="4" rx="2" fill="var(--danger)" opacity=".85"/>
+    <circle cx="${x0 + d.value * scale}" cy="52" r="6" fill="var(--danger)"/>
+    <text class="m" x="${x0 + d.value * scale}" y="86" font-size="11.5" text-anchor="end" fill="var(--danger)" font-weight="700">${esc(d.valueLabel)}</text>
+  </svg>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.cells = (d) => {
+  const items = [];
+  const v = d.values;
+  v.forEach((x, i) => {
+    const bad = d.badCellIndex === i;
+    items.push(`<div class="colw"><div class="cell ${bad ? "badsolid" : ""} ${d.cellCls && d.cellCls[i] ? d.cellCls[i] : ""}">${esc(x)}</div><div class="idx">${i}</div></div>`);
+  });
+  if (d.sizeLine) items.push(`<div class="sizeline"><span>${esc(d.sizeLine)}</span></div>`);
+  (d.spare || []).forEach((i) => items.push(`<div class="colw"><div class="cell spare">　</div><div class="idx">${i}</div></div>`));
+  (d.extra || []).forEach((x) => items.push(`<div class="colw"><div class="cell spare">${esc(x.text)}</div><div class="idx">${x.index}</div></div>`));
+  if (d.ghost) {
+    if (d.ghost.gap) items.push(`<div class="colw"><div class="gapdots">…</div><div class="idx">&nbsp;</div></div>`);
+    items.push(`<div class="colw" style="position:relative"><div class="namechip bad" style="position:absolute; top:-40px; left:50%; transform:translateX(-50%)">${esc(d.ghost.chip)}</div><div class="arrowdown" style="position:absolute; top:-18px; left:50%; margin-left:-1px"></div><div class="cell bad">${esc(d.ghost.value || "?")}</div><div class="idx bad">${esc(String(d.ghost.index))}</div></div>`);
+  }
+  const bracket = d.validLabel ? `<div style="width:${d.validWidth}px"><div class="bracket"></div><div class="bracketlabel">${esc(d.validLabel)}</div></div>` : "";
+  return `<div class="dg">
+    <div class="varhead">${esc(d.name)}<span class="typechip">${esc(d.typeName)}</span>${d.headNote ? `<span class="cap" style="font-family:var(--font-body); font-weight:400; margin-left:8px">${esc(d.headNote)}</span>` : ""}</div>
+    <div class="cellrow" style="margin-top:${d.ghost ? 44 : 6}px; ${v.length ? "" : "padding-left:34px"}">${items.join("")}</div>
+    ${bracket}
+    ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}
+  </div>`;
+};
+
+R.grid2d = (d) => {
+  const rows = d.values.map((r, ri) => {
+    const cells = r.map((x, ci) => `<div class="cell small ${d.mark && d.mark[0] === ri && d.mark[1] === ci ? (state.after ? "badsolid" : "org") : ""}">${esc(state.after && d.after && d.mark[0] === ri && d.mark[1] === ci ? d.after : x)}</div>`).join("");
+    const ghost = ri === d.ghost[0] ? `<div class="cell small bad" style="margin-left:6px">?</div><span class="namechip bad" style="margin-left:6px">${esc(d.ghostChip)}</span>` : "";
+    return `<div class="cellrow" style="align-items:center; gap:3px; margin-bottom:3px"><span class="idx" style="width:26px">[${ri}]</span>${cells}${ghost}</div>`;
+  }).join("");
+  const flat = [];
+  d.values.forEach((r, ri) => r.forEach((x, ci) => {
+    const isMark = d.mark && d.mark[0] === ri && d.mark[1] === ci;
+    const val = state.after && isMark && d.after ? d.after : x;
+    flat.push(`<div class="colw"><div class="cell small ${isMark ? (state.after ? "badsolid" : "org") : ""}" style="min-width:30px">${esc(val)}</div><div class="idx ${isMark ? "bad" : ""}" style="font-size:10px">${ri},${ci}</div></div>`);
+  }));
+  return `<div class="dg">
+    <div class="varhead">${esc(d.name)}<span class="typechip">${esc(d.typeName)}</span></div>
+    ${rows}
+    <div class="cap" style="margin:10px 0 4px">記憶體裡其實是一整排（一列接著一列）<span class="schematic">示意</span></div>
+    <div class="cellrow" style="gap:3px; flex-wrap:wrap">${flat.join("")}</div>
+    ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}
+  </div>`;
+};
+
+R.structrow = (d) => {
+  const cells = d.fields.map((f, i) => {
+    const isTarget = i === d.target;
+    const val = state.after && isTarget ? d.after : f.v;
+    const cls = isTarget ? (state.after ? "badsolid" : "org") : "";
+    return `<div class="colw"><div class="cell ${cls}" style="min-width:52px">${esc(val)}</div><div class="idx ${isTarget ? "bad" : ""}">${esc(f.n)}</div></div>`;
+  }).join("");
+  return `<div class="dg">
+    ${R.cells(d.arr)}
+    <div class="cap" style="margin:12px 0 4px">${esc(d.memCaption)}<span class="schematic">示意</span></div>
+    <div class="cellrow" style="gap:3px">${cells}</div>
+    <div class="note">${d.memNote}</div>
+  </div>`;
+};
+
+R.empty = (d) => {
+  const mini = (st) => {
+    if (d.shape === "stack") {
+      const els = st.items.slice().reverse().map((x) => `<div class="cell small" style="min-width:34px; height:24px">${esc(x)}</div>`).join("");
+      return `<div style="display:flex; flex-direction:column; align-items:center"><div style="height:66px; width:52px; border:2px solid var(--ink); border-top:0; border-radius:0 0 6px 6px; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:2px; padding-bottom:3px; ${st.bad ? "border-color:var(--danger); background:var(--danger-soft);" : ""}">${els || `<span style="font-size:11px; color:${st.bad ? "var(--danger)" : "var(--ink-faint)"}">空的</span>`}</div></div>`;
+    }
+    if (d.shape === "queue") {
+      const els = st.items.map((x) => `<div class="cell small" style="min-width:28px; height:24px">${esc(x)}</div>`).join("");
+      return `<div style="height:36px; min-width:84px; border-top:2px solid var(--ink); border-bottom:2px solid var(--ink); display:flex; align-items:center; justify-content:center; gap:2px; padding:0 4px; ${st.bad ? "border-color:var(--danger); background:var(--danger-soft);" : ""}">${els || `<span style="font-size:11px; color:${st.bad ? "var(--danger)" : "var(--ink-faint)"}">空的</span>`}</div>`;
+    }
+    const els = st.items.map((x) => `<div class="cell small" style="height:24px">${esc(x)}</div>`).join("");
+    return `<div style="display:flex; align-items:center; gap:2px; min-height:36px; min-width:84px; border:1px solid var(--line); border-radius:8px; padding:4px; ${st.bad ? "border:2px solid var(--danger); background:var(--danger-soft);" : ""}">${els || `<span style="font-size:11px; color:${st.bad ? "var(--danger)" : "var(--ink-faint)"}; padding:0 6px">空的（size() = 0）</span>`}</div>`;
+  };
+  const steps = d.history.map((st, i) => `
+    <div style="display:flex; flex-direction:column; align-items:center; gap:4px; min-width:96px">
+      <div style="height:${d.shape === "stack" ? 70 : 40}px; display:flex; align-items:flex-end">${mini(st)}</div>
+      <code class="mono" style="font-size:12px; ${st.bad ? "color:var(--danger); font-weight:700" : st.origin ? "color:var(--accent); font-weight:700" : ""}">${esc(st.code)}</code>
+      <span class="idx">第 ${st.line} 行</span>
+    </div>${i < d.history.length - 1 ? `<div style="align-self:center; color:var(--ink-faint); margin-top:-26px">→</div>` : ""}`).join("");
+  return `<div class="dg"><div style="display:flex; gap:6px; align-items:flex-start">${steps}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.nullsimple = (d) => `<div class="dg">
+  <svg width="430" height="104" viewBox="0 0 430 104" role="img" aria-label="${esc(d.aria)}">
+    <rect x="6" y="20" width="132" height="58" rx="8" fill="var(--surface)" stroke="var(--struct-border)"/>
+    <text class="m" x="16" y="40" font-size="13" font-weight="700" fill="var(--ink)">${esc(d.ptr)}</text>
+    <text class="m" x="${16 + d.ptr.length * 8.2 + 6}" y="40" font-size="11" fill="var(--ink-soft)">${esc(d.typeName)}</text>
+    <rect x="16" y="48" width="112" height="24" rx="5" fill="var(--danger-soft)" stroke="var(--danger)" stroke-width="2"/>
+    <text class="m" x="72" y="65" font-size="13" font-weight="700" fill="var(--danger)" text-anchor="middle">nullptr</text>
+    <line x1="132" y1="60" x2="262" y2="60" stroke="var(--danger)" stroke-width="2" stroke-dasharray="5 4"/>
+    <text x="197" y="52" font-size="11.5" fill="var(--danger)" text-anchor="middle" font-weight="700">${esc(d.op)}</text>
+    <rect x="268" y="28" width="150" height="62" rx="8" fill="var(--surface)" stroke="var(--danger)" stroke-dasharray="5 4"/>
+    <text x="343" y="54" font-size="13" fill="var(--danger)" text-anchor="middle" font-weight="700">沒有任何 ${esc(d.pointee)}</text>
+    <text x="343" y="74" font-size="11.5" fill="var(--ink-soft)" text-anchor="middle">nullptr 不指向任何東西</text>
+  </svg>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+
+R.nulllist = (d) => {
+  // fixed layout: cur on top, objects a and b in a row, b.next -> nothing
+  const obj = (x, y, o) => `
+    <rect x="${x}" y="${y}" width="118" height="70" rx="8" fill="var(--surface)" stroke="var(--struct-border)"/>
+    <rect x="${x}" y="${y}" width="118" height="22" rx="8" fill="var(--empty-bg)"/><rect x="${x}" y="${y + 14}" width="118" height="8" fill="var(--empty-bg)"/>
+    <text class="m" x="${x + 10}" y="${y + 15}" font-size="12" font-weight="700" fill="var(--ink)">${esc(o.name)}<tspan fill="var(--ink-soft)" font-weight="400"> : ${esc(o.type)}</tspan></text>
+    <text class="m" x="${x + 10}" y="${y + 40}" font-size="12" fill="var(--ink-soft)">val</text><text class="m" x="${x + 108}" y="${y + 40}" font-size="12" text-anchor="end" fill="var(--ink)" font-weight="600">${esc(o.val)}</text>
+    <text class="m" x="${x + 10}" y="${y + 60}" font-size="12" fill="var(--ink-soft)">next</text>
+    ${o.nextNull ? `<rect x="${x + 50}" y="${y + 47}" width="62" height="18" rx="4" fill="var(--danger-soft)" stroke="var(--danger)" stroke-width="1.5"/><text class="m" x="${x + 81}" y="${y + 60}" font-size="11.5" text-anchor="middle" fill="var(--danger)" font-weight="700">nullptr</text>` : `<circle cx="${x + 104}" cy="${y + 56}" r="3.5" fill="var(--accent)"/>`}`;
+  return `<div class="dg">
+  <svg width="440" height="176" viewBox="0 0 440 176" role="img" aria-label="${esc(d.aria)}">
+    <defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent)"/></marker>
+    <marker id="ahr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--danger)"/></marker></defs>
+    <rect x="150" y="6" width="128" height="26" rx="6" fill="var(--surface)" stroke="var(--struct-border)"/>
+    <text class="m" x="160" y="23" font-size="12" font-weight="700" fill="var(--ink)">${esc(d.cur)}<tspan fill="var(--ink-soft)" font-weight="400"> : Node*</tspan></text>
+    <circle cx="266" cy="19" r="3.5" fill="var(--accent)"/>
+    <path d="M266,22 C268,50 262,62 250,72" stroke="var(--accent)" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+    ${obj(30, 74, d.objs[0])}
+    ${obj(206, 74, d.objs[1])}
+    <path d="M134,130 C170,130 176,110 204,106" stroke="var(--accent)" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+    <line x1="318" y1="130" x2="370" y2="130" stroke="var(--danger)" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ahr)"/>
+    <text x="400" y="126" font-size="20" fill="var(--danger)" text-anchor="middle" font-weight="700">∅</text>
+    <text x="400" y="146" font-size="11" fill="var(--danger)" text-anchor="middle">沒有節點</text>
+  </svg>
+  <div class="expr" style="gap:0; padding:4px 0 0; align-items:flex-start">${d.chain.map((c) => `<div class="tokc" style="align-items:flex-start"><div style="font-size:16px; font-weight:600; line-height:24px; border-bottom:2px solid ${c.bad ? "var(--danger)" : "var(--accent)"}; padding:0 1px">${esc(c.text)}</div><div style="font-family:var(--font-body); font-size:11.5px; font-weight:700; color:${c.bad ? "var(--danger)" : "var(--accent)"}; white-space:nowrap; padding-top:3px">${esc(c.note)}</div></div>`).join("")}</div>
+  ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.path = (d) => {
+  const lines = d.lines.map((l) => {
+    const dot = l.visited ? `<span style="position:absolute; left:9px; top:7px; width:9px; height:9px; border-radius:50%; background:${l.bad ? "var(--danger)" : "var(--accent)"}"></span>` : "";
+    return `<div style="position:relative; display:grid; grid-template-columns:26px 22px 1fr; align-items:center; min-height:24px; ${l.bad ? "background:var(--danger-soft); border-radius:6px;" : ""}">
+      ${dot}<span class="idx" style="text-align:right; grid-column:2">${l.no}</span>
+      <span style="display:flex; justify-content:space-between; gap:8px; padding-left:8px"><code class="mono" style="font-size:12.5px; white-space:pre">${l.html || esc(l.code)}</code>${l.note ? `<span style="font-size:11.5px; font-weight:700; color:${l.bad ? "var(--danger)" : "var(--ink-soft)"}; white-space:nowrap">${esc(l.note)}</span>` : ""}</span>
+    </div>`;
+  }).join("");
+  return `<div class="dg"><div style="position:relative">
+    <div style="position:absolute; left:13px; top:${d.railTop}px; height:${d.railH}px; width:2px; background:var(--accent); opacity:.55"></div>
+    ${lines}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.tower = (d) => {
+  // d.items: bottom -> top. frame {label, depth, cls, note} | gap {gap} | line {line, cls}
+  const row = (it) => {
+    if (it.gap) return `<div class="trow"><div class="fr gap" style="grid-column:1 / -1; justify-content:flex-start; padding-left:12px">${esc(it.gap)}</div></div>`;
+    if (it.line) return `<div class="trow"><div class="ceiling ${it.cls || ""}">${esc(it.line)}</div><div class="tnote ${it.cls === "limit" ? "" : "bad"}">${esc(it.note || "")}</div></div>`;
+    return `<div class="trow"><div class="fr ${it.cls || ""}"><span>${esc(it.label)}</span><span class="d">${esc(it.depth || "")}</span></div><div class="tnote ${it.cls === "top" || it.cls === "basemiss" ? "bad" : it.cls === "basehit" ? "ok" : ""}">${esc(it.note || "")}</div></div>`;
+  };
+  return `<div class="dg"><div class="tower2">${d.items.slice().reverse().map(row).join("")}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.assert = (d) => {
+  // values under sub-expressions, positioned by character columns (monospace)
+  const notes = d.parts.map((p) => `<div style="position:absolute; left:calc(${p.col}ch + 1px); top:0; display:flex; flex-direction:column; align-items:flex-start">
+      <span style="display:block; width:2px; height:${p.depth * 22 + 4}px; background:${p.bad ? "var(--danger)" : "var(--accent)"}"></span>
+      <span class="mono" style="font-size:13px; font-weight:700; color:${p.bad ? "var(--danger)" : "var(--accent)"}; white-space:nowrap; margin-left:-1px">${esc(p.value)}</span></div>`).join("");
+  return `<div class="dg"><div class="mono" style="font-size:17px; font-weight:600; position:relative; padding:4px 0 0 6px">
+    <div>${d.html}</div>
+    <div style="position:relative; height:${(Math.max(...d.parts.map((p) => p.depth)) + 1) * 22 + 12}px">${notes}</div>
+  </div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.heap = (d) => {
+  const ev = d.events.map((e, i) => `
+    <div style="display:flex; flex-direction:column; align-items:center; gap:5px; width:128px">
+      <div class="cell ${e.cls}" style="min-width:96px; height:38px; flex-direction:column; line-height:1.15"><span style="font-size:13px">${esc(e.box)}</span><span style="font-size:10.5px; font-family:var(--font-body)">${esc(e.state)}</span></div>
+      <code class="mono" style="font-size:11.5px; ${e.bad ? "color:var(--danger); font-weight:700" : ""}">${esc(e.code)}</code>
+      <span class="idx">第 ${e.line} 行</span>
+    </div>${i < d.events.length - 1 ? `<div style="align-self:flex-start; margin-top:10px; color:var(--ink-faint)">→</div>` : ""}`).join("");
+  return `<div class="dg"><div class="cap" style="margin-bottom:6px">${esc(d.caption)}<span class="schematic">示意</span></div><div style="display:flex; gap:2px">${ev}</div>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.realloc = (d) => {
+  const row = (vals, cls, label, note) => `<div style="display:grid; grid-template-columns:92px auto; align-items:center; gap:8px; margin-bottom:6px"><span class="cap" style="text-align:right">${esc(label)}</span><div style="display:flex; align-items:center; gap:3px">${vals.map((v) => `<div class="cell small ${cls}">${esc(v)}</div>`).join("")}${note ? `<span class="cap" style="margin-left:6px">${esc(note)}</span>` : ""}</div></div>`;
+  return `<div class="dg">
+    <div class="cap" style="margin-bottom:6px">${esc(d.caption)}<span class="schematic">示意</span></div>
+    ${row(d.old, "freed", "舊的那一塊", "push_back 時搬走，舊的已經還給系統")}
+    <div style="padding-left:100px; margin:-2px 0 4px"><span class="namechip bad">${esc(d.it)}</span> <span class="cap">還指著舊的第 0 格</span></div>
+    ${row(d.neu, "", "新的那一塊", "")}
+    ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.uninit = (d) => `<div class="dg">
+  <div style="display:flex; align-items:center; gap:14px">
+    <div class="colw"><div class="varhead" style="margin:0">${esc(d.name)}<span class="typechip">${esc(d.typeName)}</span></div><div class="cell bad" style="min-width:64px; height:40px; font-size:18px">?</div><div class="idx">第 ${d.declLine} 行宣告，沒有給值</div></div>
+    <div style="color:var(--ink-faint)">→</div>
+    <div class="colw"><code class="mono" style="font-size:13px; color:var(--danger); font-weight:700">${esc(d.readCode)}</code><div class="idx">第 ${d.readLine} 行第一次讀取</div></div>
+  </div>
+  ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+
+R.input = (d) => `<div class="dg">
+  <div class="cap" style="margin-bottom:5px">程式輸入（cin 讀的地方）</div>
+  <div style="display:flex; align-items:center; gap:3px; border:1px solid var(--struct-border); border-radius:8px; padding:6px 8px; min-height:40px">
+    ${d.chars.length ? d.chars.map((c) => `<div class="cell small freed">${esc(c)}</div>`).join("") : ""}
+    <div class="cell small bad" style="min-width:64px">${esc(d.eofLabel)}</div>
+    <span class="cap" style="margin-left:8px">← <code class="mono">${esc(d.code)}</code> 讀到這裡</span>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px; margin-top:10px"><span class="varhead" style="margin:0">${esc(d.name)}<span class="typechip">int</span></span><div class="cell badsolid">${esc(d.value)}</div><span class="cap">${esc(d.valueNote)}</span></div>
+  ${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+
+R.memlimit = (d) => {
+  const W = 430, scale = (W - 20) / d.request;
+  return `<div class="dg"><svg width="${W}" height="88" viewBox="0 0 ${W} 88">
+    <rect x="10" y="18" width="${d.limit * scale}" height="18" rx="3" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="12" y="13" font-size="11.5" fill="var(--accent)">引擎的記憶體上限 ${esc(d.limitLabel)}</text>
+    <rect x="10" y="46" width="${d.request * scale}" height="18" rx="3" fill="var(--danger-soft)" stroke="var(--danger)" stroke-width="1.5"/>
+    <text x="${W - 12}" y="80" font-size="11.5" fill="var(--danger)" text-anchor="end" font-weight="700">程式要求 ${esc(d.requestLabel)}</text>
+  </svg>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+};
+
+R.cmp = (d) => `<div class="dg">
+  <table class="res" style="width:auto"><thead><tr><th>比較</th><th>這個函式回傳</th><th>sort 需要</th></tr></thead><tbody>
+  ${d.rows.map((r) => `<tr><td class="mono">${esc(r.call)}</td><td class="mono" style="${r.bad ? "color:var(--danger); font-weight:700" : ""}">${esc(r.got)}</td><td class="mono">${esc(r.need)}</td></tr>`).join("")}
+  </tbody></table>${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+
+R.chars = (d) => R.cells(d);
+
+R.ring = (d) => `<div class="dg"><div style="display:flex; gap:14px; align-items:center">
+  <svg width="176" height="158" viewBox="0 0 176 158" role="img" aria-label="${esc(d.aria)}">
+    <defs><marker id="ahr2" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--danger)"/></marker></defs>
+    <circle cx="88" cy="84" r="54" fill="none" stroke="var(--struct-border)" stroke-width="10"/>
+    <path d="M88,30 A54,54 0 0 0 53,43" fill="none" stroke="var(--danger)" stroke-width="10" opacity=".35"/>
+    <path d="M84,22 A62,62 0 0 0 52,33" fill="none" stroke="var(--danger)" stroke-width="2" marker-end="url(#ahr2)"/>
+    <text x="70" y="16" font-size="12" fill="var(--danger)" font-weight="700" text-anchor="middle">−1</text>
+    <circle cx="88" cy="30" r="6" fill="var(--ink)"/><text class="m" x="100" y="27" font-size="12" font-weight="700" fill="var(--ink)">0</text>
+    <circle cx="53" cy="43" r="6" fill="var(--danger)"/><text x="40" y="66" font-size="11" fill="var(--danger)" font-weight="700" text-anchor="middle">最大值</text>
+    <text x="88" y="88" font-size="12" text-anchor="middle" fill="var(--ink-soft)">size_t</text>
+    <text x="88" y="104" font-size="11" text-anchor="middle" fill="var(--ink-faint)">沒有負數</text>
+  </svg>
+  <div style="font-size:13px"><div class="mono" style="font-size:14px; font-weight:700">${esc(d.expr)}</div><div style="margin:4px 0">= <span class="mono" style="color:var(--danger); font-weight:700; font-size:15px">${esc(fmt(d.value))}</span></div><div class="cap">${esc(d.note)}</div></div>
+</div>${d.after ? R.cells(d.after) : ""}${d.eq ? `<div class="eqline">${d.eq}</div>` : ""}</div>`;
+
+R.simple = (d) => `<div class="dg"><div class="eqline" style="margin-top:0">${d.eq}</div></div>`;
+
+/* ── 版面 ─────────────────────────────────────────── */
+function renderPicker() {
+  $("#fams").innerHTML = FAMS.map((f) => `<button class="fam ${f.id === state.fam ? "on" : ""}" data-fam="${f.id}" role="tab" aria-selected="${f.id === state.fam}">${esc(f.label)}<span class="cnt">${KINDS.filter((k) => k.family === f.id).length}</span></button>`).join("");
+  $("#kinds").innerHTML = KINDS.filter((k) => k.family === state.fam).map((k) => `<button class="kind ${k.id === state.kind ? "on" : ""}" data-kind="${k.id}">${esc(k.chip)}${k.tag ? `<span class="tag">${esc(k.tag)}</span>` : ""}</button>`).join("");
+}
+
+const glue = (t) => t.replace(/->/g, "-\u2060>");
+function codeHtml(k, viewStep) {
+  const lines = k.src.split("\n").map(glue);
+  const showOrigin = viewStep != null && viewStep !== k.errStep;
+  const o = showOrigin ? k.origins.find((x) => x.step === viewStep) : null;
+  const curLine = showOrigin ? (o ? o.line : null) : k.errLine;
+  return lines.map((t, i) => {
+    const no = i + 1;
+    let cls = "", tx = esc(t), badge = "";
+    if (no >= (k.codeFrom || 1) && no <= (k.codeTo || lines.length)) {
+      if (!showOrigin && no === k.errLine) {
+        cls = k.status === "limit" ? "cur" : "err";
+        if (k.span && t.includes(glue(k.span))) tx = esc(t).replace(esc(glue(k.span)), `<u class="bad">${esc(glue(k.span))}</u>`);
+        badge = k.status === "limit" ? `<span class="badge v">${esc(k.badge)}</span>` : `<span class="badge">${esc(k.badge)}</span>`;
+      } else if (showOrigin && no === curLine) {
+        cls = "origin";
+        if (o.span && t.includes(glue(o.span))) tx = esc(t).replace(esc(glue(o.span)), `<u class="org">${esc(glue(o.span))}</u>`);
+        badge = `<span class="badge o">${esc(o.name)} = ${esc(o.value)}</span>`;
+      } else if (showOrigin && no === k.errLine) {
+        cls = "dim";
+        badge = `<span class="badge" style="opacity:.55">${esc(k.badge)}</span>`;
+      }
+      return `<div class="ln ${cls}"><span class="no">${no}</span><span class="tx">${tx}</span>${badge}</div>`;
+    }
+    return "";
+  }).join("");
+}
+
+function timelineHtml(k, viewStep) {
+  const n = k.stepCount || 1;
+  const pos = (s) => (n <= 1 ? 100 : ((s - 1) / (n - 1)) * 100);
+  const ticks = n <= 40 ? Array.from({ length: n }, (_, i) => `<span class="tick" style="left:calc(${pos(i + 1)}% - 1px)"></span>`).join("") : "";
+  const marks = [];
+  if (k.errStep) marks.push(`<span class="mk ${k.status === "limit" ? "cur" : "err"}" style="left:${pos(k.errStep)}%" title="錯誤：第 ${k.errStep} 步"></span>`);
+  const seen = new Set();
+  for (const o of k.origins) if (o.step && !seen.has(o.step)) { seen.add(o.step); marks.push(`<span class="mk org" style="left:${pos(o.step)}%; ${viewStep === o.step ? "box-shadow:0 0 0 3px var(--highlight)" : ""}" title="值的來源：第 ${o.step} 步"></span>`); }
+  const label = viewStep != null && viewStep !== k.errStep ? `正在看第 ${fmt(viewStep)} 步（值的來源）` : `第 ${fmt(k.errStep || n)} 步／共 ${fmt(n)} 步`;
+  return `<div class="timeline"><div class="tl-head"><span>步驟</span><span>${label}</span></div>
+    <div class="tl-track"><span class="rail"></span>${ticks}${marks.join("")}</div>
+    <div class="tl-legend"><span><i style="background:var(--danger)"></i>出錯的那一步</span><span><i style="background:var(--accent)"></i>出問題的值是在這一步寫進去的</span></div></div>`;
+}
+
+function fmtVal(v) {
+  if (v === "<ptr>") return "（指標：目前的軌跡沒有記錄指向哪裡）";
+  if (v === "<?>") return "（迭代器：軌跡沒有記錄）";
+  if (Array.isArray(v)) return "[" + v.map(fmtVal).join(", ") + "]";
+  if (v && typeof v === "object") return "{" + Object.entries(v).map(([a, b]) => `${a}: ${fmtVal(b)}`).join(", ") + "}";
+  if (typeof v === "string") return JSON.stringify(v);
+  return String(v);
+}
+function varsHtml(k, viewStep) {
+  const showOrigin = viewStep != null && viewStep !== k.errStep;
+  const key = showOrigin ? String(viewStep + 1) : (state.after && k.afterVars ? "after" : String(k.errStep));
+  const st = k.varsAt && k.varsAt[key];
+  const o = showOrigin ? k.origins.find((x) => x.step === viewStep) : null;
+  const head = showOrigin ? `第 ${o ? o.line : "?"} 行執行之後` : state.after && k.afterVars ? "繼續執行到程式結束" : (k.status === "stop" || k.status === "cont") ? "出錯的那一刻" : "這一步";
+  if (!st) return `<div class="vars"><div class="vh"><span>變數</span><span>${head}</span></div><div class="none">（沒有軌跡資料）</div></div>`;
+  const names = Object.keys(st.vars).filter((n) => !n.endsWith(".capacity()") && !n.endsWith(".ref()"));
+  const hlName = showOrigin && o ? o.name.split(".")[0] : null;
+  const rows = names.map((n) => {
+    const un = (st.uninit || []).includes(n);
+    const cls = hlName === n ? "ho" : (!showOrigin && (k.hlVars || []).includes(n)) ? "hl" : "";
+    return `<tr><td class="n">${esc(n)}</td><td class="v ${cls}">${esc(fmtVal(st.vars[n]))}${un ? `<span class="tg">未初始化</span>` : ""}</td></tr>`;
+  }).join("");
+  return `<div class="vars"><div class="vh"><span>變數（${esc(st.fn)}）</span><span>${head}</span></div>${rows ? `<table>${rows}</table>` : `<div class="none">（這一步還沒有變數）</div>`}</div>`;
+}
+
+function panelHtml(k) {
+  const chips = [];
+  if (k.status === "stop") chips.push(`<span class="chip stop">程式在這一行停止</span>`);
+  else if (k.status === "cont") chips.push(`<span class="chip cont">在這一步暫停，可以繼續執行</span>`);
+  else if (k.status === "limit") chips.push(`<span class="chip limit">這是瀏覽器引擎的限制，不是程式的錯</span>`);
+  else if (k.status === "design") chips.push(`<span class="chip design">設計稿：這一類還沒有偵測（${esc(k.phase)}）</span>`);
+  else if (k.status === "none") chips.push(`<span class="chip design">這一版偵測不到，只做教案用的說明圖</span>`);
+  if (k.layer) chips.push(`<span class="chip">偵測：${esc(k.layer)}</span>`);
+  const diagram = R[k.diagram.type](k.diagram);
+  const afterBtn = k.after ? `<div style="margin-top:10px"><button class="btn act" data-after="1">${state.after ? "回到出錯的那一步" : esc(k.after.button)}</button></div>${state.after ? `<div class="env" style="background:var(--danger-soft)"><b>繼續執行之後：</b>${k.after.text}</div>` : ""}` : "";
+  const origins = k.origins.length ? `<ul class="origins">${k.origins.map((o) => `<li><div class="what"><span class="mono" style="font-weight:700">${esc(o.name)} = ${esc(o.value)}</span>　${o.what ? esc(o.what) : ""}</div><div class="where">第 ${o.line} 行 <span class="mono">${esc(o.code.trim())}</span>${o.step ? `・第 ${fmt(o.step)} 步` : ""}${o.note ? `・${esc(o.note)}` : ""}</div>${o.step ? `<button data-step="${o.step}" class="${state.viewStep === o.step ? "on" : ""}">${state.viewStep === o.step ? "回到錯誤" : `跳到第 ${fmt(o.step)} 步`}</button>` : ""}</li>`).join("")}</ul>` : `<div class="note">${esc(k.originNone || "")}</div>`;
+  return `<div class="panel">
+    <div class="titlebar ${k.status === "limit" ? "lim" : k.status === "design" || k.status === "none" ? "des" : ""}">執行錯誤<span class="cnt">${k.status === "limit" ? "引擎限制" : k.status === "design" || k.status === "none" ? "設計稿" : "1 個"}</span></div>
+    <div class="pbody">
+      <div class="famline">${esc(FAMS.find((f) => f.id === k.family).label)}</div>
+      <div class="ktitle">${esc(k.title)}<span class="term">（${esc(k.term)}）</span></div>
+      <div class="headline">${k.headline}</div>
+      <div class="chips">${chips.join("")}</div>
+      <h3 class="sec"><span class="n">1</span>發生了什麼</h3>
+      ${diagram}
+      ${k.what ? `<div class="note">${k.what}</div>` : ""}
+      ${afterBtn}
+      ${k.env ? `<div class="env">${k.env}</div>` : ""}
+      <h3 class="sec"><span class="n">2</span>值從哪裡來</h3>
+      ${origins}
+      <h3 class="sec"><span class="n">3</span>怎麼改</h3>
+      <p class="fixtext">${k.fix.text}</p>
+      ${k.fix.diff ? `<pre class="diff">${k.fix.diff.map(([s, t]) => `<div class="${s === "-" ? "m" : s === "+" ? "p" : "c"}"><span class="sg">${s === " " ? "" : s}</span>${esc(t)}</div>`).join("")}</pre>` : ""}
+      <details class="raw"><summary>原始訊息與資料來源</summary><pre>${esc(k.raw)}</pre></details>
+    </div>
+  </div>
+  <div class="ghostpanels">
+    <div class="panel"><div class="titlebar">資料結構視覺化</div></div>
+    <div class="panel"><div class="titlebar">呼叫歷史圖</div></div>
+  </div>`;
+}
+
+function render() {
+  const k = KINDS.find((x) => x.id === state.kind);
+  renderPicker();
+  const viewStep = state.viewStep;
+  const stopped = k.status === "stop" || k.status === "cont";
+  const pill = viewStep != null && viewStep !== k.errStep ? `<span class="pill origin">回放到值的來源</span>`
+    : k.status === "stop" ? `<span class="pill stop">● 停在錯誤</span>`
+    : k.status === "cont" ? `<span class="pill cont">● 暫停：發生錯誤</span>`
+    : k.status === "limit" ? `<span class="pill limit">● 引擎限制</span>`
+    : `<span class="pill none">設計稿</span>`;
+  $("#ide").innerHTML = `
+    <div class="left">
+      <div class="toolbar"><span class="btn">從頭</span><span class="btn">上一步</span><span class="btn ${k.status === "stop" ? "off" : ""}">單步</span><span class="btn ${k.status === "stop" ? "off" : ""}">繼續</span>${pill}</div>
+      <div class="fname">main.cpp</div>
+      <div class="code">${codeHtml(k, viewStep)}</div>
+      ${k.errStep ? timelineHtml(k, viewStep) : ""}
+      ${k.errStep ? varsHtml(k, viewStep) : `<div class="vars"></div>`}
+      <div class="io"><div><b>程式輸入</b>${k.stdin ? `<span class="mono">${esc(k.stdin)}</span>` : `<span class="empty">（沒有輸入）</span>`}</div><div><b>程式輸出（到出錯為止）</b>${k.stdout ? `<span class="mono">${esc(k.stdout)}</span>` : `<span class="empty">（沒有輸出）</span>`}</div></div>
+    </div>
+    <aside class="side">${panelHtml(k)}</aside>`;
+}
+
+function renderExp() {
+  $("#exp").innerHTML = DATA.expHtml;
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button, [data-view]");
+  if (!t) return;
+  if (t.dataset.view) {
+    document.querySelectorAll(".views button").forEach((b) => b.classList.toggle("on", b === t));
+    $("#viz").classList.toggle("off", t.dataset.view !== "viz");
+    $("#exp").classList.toggle("on", t.dataset.view === "exp");
+    return;
+  }
+  if (t.dataset.fam) { state.fam = t.dataset.fam; state.kind = KINDS.find((k) => k.family === state.fam).id; state.viewStep = null; state.after = false; render(); }
+  else if (t.dataset.kind) { state.kind = t.dataset.kind; state.viewStep = null; state.after = false; render(); }
+  else if (t.dataset.step) { const s = Number(t.dataset.step); state.viewStep = state.viewStep === s ? null : s; render(); }
+  else if (t.dataset.after) { state.after = !state.after; state.viewStep = null; render(); }
+});
+
+$("#prov").innerHTML = DATA.prov;
+const hashKind = decodeURIComponent((location.hash || "").slice(1));
+const start = KINDS.find((k) => k.id === hashKind) || KINDS[0];
+state.fam = start.family; state.kind = start.id;
+render(); renderExp();
+</script>
+</body>
+</html>

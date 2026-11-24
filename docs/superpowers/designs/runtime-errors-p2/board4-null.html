@@ -1,0 +1,211 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<title>執行錯誤圖解・設計稿 4／5：空指標</title><style>
+:root{
+  --paper:#f4f3f9;--surface:#ffffff;--ink:#1e1b2e;--ink-soft:#5c5873;--ink-faint:#6c6885;--line:#e5e2ef;
+  --struct-border:#c9c4dc;--accent:#4a3aa0;--accent-soft:#ece9f8;--highlight:#f2be0f;--highlight-soft:#fff5cc;
+  --highlight-strong:#b38600;--ok:#2d7a4e;--ok-soft:#e5f3ea;--danger:#b42318;--danger-soft:#fdecea;--empty-bg:#f1eff7;
+  --ide-line:#e3dff3;--ide-title:#f7f5fc;--ide-ink:#4a3aa0;
+  --font-body:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",Menlo,Monaco,Consolas,"Courier New",monospace;
+}
+.board{width:840px;box-sizing:border-box;padding:4px 0 8px;font-family:var(--font-body);}
+.board-head{margin:0 0 10px;color:var(--foreground,#1e1b2e);}
+.board-head .t{font-size:15px;font-weight:700;}
+.board-head .s{font-size:12px;color:var(--muted-foreground,#5c5873);margin-top:2px;}
+.cards{display:grid;grid-template-columns:380px 380px;gap:24px;align-items:start;}
+.collapser{width:380px;box-sizing:border-box;border:1px solid var(--ide-line);border-radius:14px;overflow:hidden;background:var(--surface);
+  box-shadow:0 2px 8px rgba(74,58,160,.06);color:var(--ink);}
+.titlebar{min-height:34px;display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--ide-title);color:var(--ide-ink);font-size:13px;}
+.titlebar .chev{color:#8e97ff;font-size:10px;}
+.titlebar .lt{font-weight:700;}
+.titlebar .count{margin-left:auto;font-size:12px;color:var(--danger);font-weight:700;}
+.body{padding:12px 12px 14px;display:flex;flex-direction:column;gap:10px;}
+.meta{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--ink-soft);}
+.chip{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;}
+.chip.stop{color:var(--danger);background:var(--danger-soft);}
+.chip.pause{color:#7a5c00;background:var(--highlight-soft);box-shadow:inset 0 0 0 1px var(--highlight-strong);}
+h3{margin:0;font-size:15px;font-weight:700;line-height:1.35;}
+h3 .en{font-weight:500;color:var(--ink-soft);font-size:13px;}
+.code{margin:0;padding:8px 10px;background:#1F2328;color:#E6EDF3;border-radius:6px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;word-break:break-all;}
+.code .ln{color:#8b949e;user-select:none;}
+.code .bad{color:#ffb4a9;text-decoration:underline wavy #ff7b6b;text-underline-offset:3px;}
+.mono,.mono *{font-family:var(--font-mono);font-variant-ligatures:none!important;font-feature-settings:"liga" 0,"calt" 0!important;}
+.sec{border-top:1px solid var(--line);padding-top:9px;display:flex;flex-direction:column;gap:7px;}
+.sec>.h{font-size:12px;font-weight:700;color:var(--ink-soft);letter-spacing:.02em;}
+.sec>.h b{color:var(--accent);margin-right:4px;}
+.p{font-size:13px;line-height:1.6;margin:0;}
+.p .v{font-family:var(--font-mono);font-weight:700;}
+.p .red{color:var(--danger);font-weight:700;}
+.cap{font-size:12px;color:var(--ink-soft);line-height:1.5;margin:0;}
+.link{font-size:13px;color:var(--accent);font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer;white-space:nowrap;}
+.origin{display:grid;grid-template-columns:auto 1fr;gap:4px 8px;align-items:baseline;font-size:13px;}
+.origin .var{font-family:var(--font-mono);font-weight:700;white-space:nowrap;}
+.origin .var.red{color:var(--danger);}
+.fix{margin:0;padding:7px 10px;background:var(--ok-soft);border:1px solid #b9dcc6;border-radius:6px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;color:#173b27;}
+.fix .add{background:#c9ebd5;border-radius:3px;}
+.native{font-size:12.5px;line-height:1.55;color:var(--ink-soft);}
+.native b{color:var(--ink);}
+details{font-size:12px;color:var(--ink-soft);}
+details summary{cursor:pointer;}
+details pre{margin:6px 0 0;white-space:pre-wrap;font-size:12px;color:var(--ink);}
+/* containers (ContainerVisualizer vocabulary) */
+.frame{display:flex;gap:4px;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--paper);align-items:stretch;}
+.cell{min-width:34px;height:38px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:1px solid var(--struct-border);
+  border-radius:6px;background:var(--surface);font-family:var(--font-mono);font-size:14px;font-weight:500;}
+.cell.out{border:2px dashed var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.cell.hit{border:1px solid var(--danger);box-shadow:0 0 0 1px var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.idx{display:flex;gap:4px;padding:0 6px;}
+.idx span{min-width:34px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--ink-faint);}
+.idx span.red{color:var(--danger);font-weight:700;}
+
+.board{width:840px;}
+.origin{display:flex;flex-direction:column;gap:7px;}
+.origin .it{display:flex;flex-direction:column;gap:1px;}
+.origin .it .v{font-family:var(--font-mono);font-weight:700;font-size:13px;}
+.origin .it .v.red{color:var(--danger);}
+.origin .it .d{font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
+.after{border:1px dashed var(--struct-border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:7px;background:#fbfaff;}
+.after .tag{font-size:11.5px;font-weight:700;color:var(--accent);}
+.notes{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;font-size:12.5px;line-height:1.6;color:var(--foreground,#1e1b2e);}
+.notes h4{margin:0 0 4px;font-size:12.5px;}
+.notes ul{margin:0;padding-left:18px;}
+.notes li{margin:0 0 3px;}
+.notes .q{color:var(--foreground,#1e1b2e);}
+/* array grid */
+.ag{display:grid;column-gap:4px;row-gap:3px;align-items:center;justify-items:center;padding:6px 6px 0;width:max-content;}
+.ag .fbg{grid-row:2;align-self:stretch;justify-self:stretch;margin:-6px;border:1px solid var(--line);border-radius:10px;background:var(--paper);}
+.ag .c{grid-row:2;width:44px;height:40px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:1px solid var(--struct-border);border-radius:6px;background:var(--surface);font-family:var(--font-mono);font-size:15px;font-weight:500;}
+.ag .c.mem{border-style:solid;}
+.ag .c.out{border:2px dashed var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.ag .c.hit{border:1px solid var(--danger);box-shadow:0 0 0 1px var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.ag .c.dim{color:var(--ink-faint);}
+.ag .ix{grid-row:3;font-family:var(--font-mono);font-size:11px;color:var(--ink-faint);}
+.ag .ix.red{color:var(--danger);font-weight:700;}
+.ag .pt{grid-row:4;font-family:var(--font-mono);font-size:12px;color:var(--danger);font-weight:700;white-space:nowrap;}
+.ag .top{grid-row:1;font-size:11px;color:var(--ink-soft);white-space:nowrap;}
+.ag .top.mono{font-family:var(--font-mono);}
+.ag .edge{grid-row:1 / span 3;width:2px;align-self:stretch;background:var(--ink-soft);margin:0 2px;}
+.ag .gap{grid-row:2;width:6px;}
+/* expression breakdown */
+.expr{display:flex;align-items:flex-start;font-family:var(--font-mono);font-size:15px;font-weight:700;}
+.expr .seg{display:inline-flex;flex-direction:column;align-items:center;}
+.expr .seg .t{padding:0 1px;}
+.expr .seg.bad .t{color:var(--danger);text-decoration:underline wavy var(--danger);text-underline-offset:4px;}
+.expr .seg .l{margin-top:4px;padding-top:3px;border-top:1.5px solid var(--ink-soft);font-family:var(--font-body);font-size:11.5px;font-weight:700;color:var(--ink-soft);white-space:nowrap;align-self:stretch;text-align:center;}
+.expr .seg.bad .l{border-top-color:var(--danger);color:var(--danger);}
+/* path through function */
+.path{display:grid;grid-template-columns:22px 18px max-content 1fr;align-items:center;font-size:12.5px;border-radius:6px;background:#1F2328;color:#E6EDF3;padding:6px 8px 6px 4px;column-gap:4px;}
+.path .ln{color:#8b949e;text-align:right;font-family:var(--font-mono);}
+.path .g{position:relative;height:26px;width:18px;}
+.path .g::before{content:"";position:absolute;left:8px;width:2px;background:#8e97ff;top:0;bottom:0;}
+.path .g.first::before{top:50%;}
+.path .g.last::before{bottom:50%;}
+.path .g.none::before{display:none;}
+.path .g i{position:absolute;left:4px;top:9px;width:10px;height:10px;border-radius:50%;background:#8e97ff;}
+.path .g.x i{background:#ff7b6b;box-shadow:0 0 0 3px rgba(255,123,107,.3);}
+.path .code{font-family:var(--font-mono);white-space:pre;}
+.path .code .skip{opacity:.42;text-decoration:line-through;text-decoration-color:#8b949e;}
+.path .code .red{color:#ffb4a9;}
+.path .nt{font-size:11.5px;color:#c9d1d9;white-space:nowrap;padding-left:6px;}
+.path .nt.red{color:#ffb4a9;font-weight:700;}
+/* recursion tower */
+.tower{display:grid;grid-template-columns:168px 1fr;row-gap:3px;column-gap:8px;align-items:center;}
+.tower .fr{height:24px;box-sizing:border-box;border:1px solid var(--struct-border);border-radius:5px;background:var(--surface);font-family:var(--font-mono);font-size:12.5px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;}
+.tower .fr .dp{font-family:var(--font-body);font-size:11px;color:var(--ink-faint);}
+.tower .fr.top{border:1px solid var(--danger);box-shadow:0 0 0 1px var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.tower .fr.main{background:var(--paper);}
+.tower .fr.zero{box-shadow:inset 0 0 0 1px var(--highlight-strong);background:var(--highlight-soft);}
+.tower .gapr{height:30px;border:1px dashed var(--struct-border);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--ink-soft);background:var(--empty-bg);}
+.tower .an{font-size:11.5px;color:var(--ink-soft);line-height:1.35;}
+.tower .an.red{color:var(--danger);font-weight:700;}
+/* containers */
+.stackbox{width:78px;height:96px;border:2px solid var(--struct-border);border-top:none;border-radius:0 0 8px 8px;background:var(--empty-bg);display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:12px;font-style:italic;position:relative;}
+.op{font-family:var(--font-mono);font-weight:700;color:var(--danger);font-size:15px;}
+.row{display:flex;align-items:center;gap:12px;}
+.variants{margin-top:12px;width:380px;box-sizing:border-box;border:1px dashed var(--struct-border);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:10px;color:var(--foreground,#1e1b2e);}
+.variants .vh{font-size:12px;font-weight:700;}
+.variants .vr{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;font-size:12px;line-height:1.5;}
+.variants .mini{background:var(--surface);border:1px solid var(--ide-line);border-radius:8px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--ink);}
+.emptyrow{display:flex;align-items:center;justify-content:center;width:120px;height:30px;border:1px dashed var(--struct-border);border-radius:6px;background:var(--empty-bg);font-size:11px;font-style:italic;color:var(--ink-faint);}
+.qtube{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--ink-faint);}
+.qtube .tube{width:84px;height:28px;border-top:2px solid var(--struct-border);border-bottom:2px solid var(--struct-border);background:var(--empty-bg);display:flex;align-items:center;justify-content:center;font-style:italic;}
+
+.eq{display:flex;align-items:flex-start;gap:8px;}
+.opnd{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.opnd .cell{min-width:48px;height:44px;font-size:20px;}
+.nm{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
+.nm.red{color:var(--danger);font-weight:700;font-family:var(--font-body);}
+.op{font-family:var(--font-mono);font-size:20px;line-height:44px;color:var(--ink-soft);}
+.input{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);}
+.tok{font-family:var(--font-mono);font-size:13px;padding:2px 8px;border:1px solid var(--struct-border);border-radius:5px;background:var(--surface);color:var(--ink);}
+.tok.red{border-color:var(--danger);color:var(--danger);font-weight:700;background:var(--danger-soft);}
+.bits{display:flex;flex-direction:column;gap:3px;}
+.bits .lab{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+.bits .lab .v{font-family:var(--font-mono);font-weight:700;color:var(--ink);}
+.brow{display:flex;align-items:center;}
+.brow .ovf{width:8px;height:15px;margin-right:10px;}
+.brow .nib{display:flex;gap:1px;margin-right:4px;}
+.brow .nib:last-child{margin-right:0;}
+.b{width:8px;height:15px;box-sizing:border-box;border:1px solid var(--struct-border);border-radius:2px;background:var(--surface);
+  font-family:var(--font-mono);font-size:9px;line-height:13px;text-align:center;color:var(--ink);}
+.b.one{background:#e7e4f5;}
+.b.cut{border:1.5px dashed var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.b.sign{box-shadow:0 0 0 1px var(--ink-soft);}
+.intframe{display:flex;align-items:center;font-size:11px;color:var(--ink-soft);}
+
+.objs{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;}
+.obj{border:1px solid var(--struct-border);border-radius:6px;background:var(--surface);min-width:96px;font-family:var(--font-mono);font-size:12px;color:var(--ink);overflow:hidden;}
+.obj .oh{background:var(--ide-title);padding:3px 8px;text-decoration:underline;text-align:center;border-bottom:1px solid var(--struct-border);}
+.obj .orow{display:flex;justify-content:space-between;gap:8px;padding:3px 8px;}
+.obj .orow span{color:var(--ink-soft);}
+.obj .orow.bad{background:var(--danger-soft);color:var(--danger);font-weight:700;box-shadow:inset 0 0 0 1.5px var(--danger);}
+.obj .orow.bad span{color:var(--danger);}
+.obj .orow .np{font-family:var(--font-body);font-size:11px;color:var(--ink-soft);}
+
+.board,.board *{font-variant-ligatures:none!important;font-feature-settings:"liga" 0,"calt" 0!important;}
+.notes.full{grid-template-columns:1fr;}
+.notes.one{grid-template-columns:1fr;width:380px;margin-top:12px;}
+.path{grid-template-columns:22px 18px max-content minmax(0,1fr);}
+.path .nt{white-space:normal;line-height:1.3;}
+.tower{grid-template-columns:200px 1fr;}
+.tower .fr span{white-space:nowrap;}
+.variants .mono{white-space:nowrap;}</style></head><body><div class="board"><div class="board-head"><div class="t">執行錯誤圖解・設計稿 4／5：空指標</div><div class="s">卡片寬 380px，和 IDE 右欄的面板同寬。圖上的值全部來自 lab-david 用 P1 引擎實際執行的結果；「和原生 Linux 比較」是同一台機器上 g++ 14.4.0（不加最佳化）實際執行的結果（2026-11-24）。</div></div><div class="cards"><div class="col"><div class="collapser"><div class="titlebar"><span class="chev">▼</span><span class="lt">執行錯誤</span><span class="count">1 個</span></div>
+<div class="body"><div class="meta"><span>家族 3・指標與記憶體</span><span class="chip stop">程式在這裡結束</span></div>
+<h3>透過空指標存取成員 <span class="en">（null pointer）</span></h3>
+<pre class="code mono"><span class="ln">21 </span>std::cout &lt;&lt; "值：" &lt;&lt; cur-&gt;val &lt;&lt; "，下一個值：" &lt;&lt; <span class="bad">cur-&gt;next-&gt;val</span> &lt;&lt; std::endl;</pre><div class="sec"><div class="h"><b>1</b>發生了什麼</div><svg style="width:100%;height:auto;display:block" viewBox="0 0 354 146" role="img" aria-label="物件圖：a 的 next 指向 b，b 的 next 是 nullptr，cur 指向 b">
+<defs><marker id="ap" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#4a3aa0"/></marker></defs>
+<text x="186" y="23" font-size="13" text-anchor="end" fill="#1e1b2e" font-weight="700" font-family="JetBrains Mono,Consolas,monospace">cur</text>
+<rect x="192" y="8" width="28" height="22" rx="4" fill="#fff" stroke="#c9c4dc"/><circle cx="206" cy="19" r="3.5" fill="#4a3aa0"/>
+<path d="M206,19 C236,19 262,26 266,52" fill="none" stroke="#4a3aa0" stroke-width="1.5" marker-end="url(#ap)"/>
+<rect x="8" y="56" width="130" height="84" rx="6" fill="#fff" stroke="#c9c4dc"/>
+<rect x="8" y="56" width="130" height="24" rx="6" fill="#f7f5fc" stroke="#c9c4dc"/>
+<text x="73" y="73" font-size="12.5" text-anchor="middle" fill="#1e1b2e" text-decoration="underline" font-family="JetBrains Mono,Consolas,monospace">a : Node</text>
+<line x1="8" y1="110" x2="138" y2="110" stroke="#e5e2ef"/>
+<text x="18" y="100" font-size="12.5" fill="#5c5873" font-family="JetBrains Mono,Consolas,monospace">val</text><text x="128" y="100" font-size="13" text-anchor="end" fill="#1e1b2e" font-weight="700" font-family="JetBrains Mono,Consolas,monospace">10</text>
+<text x="18" y="130" font-size="12.5" fill="#5c5873" font-family="JetBrains Mono,Consolas,monospace">next</text><circle cx="122" cy="125" r="3.5" fill="#4a3aa0"/>
+<path d="M122,125 C166,125 168,96 196,96" fill="none" stroke="#4a3aa0" stroke-width="1.5" marker-end="url(#ap)"/>
+<rect x="200" y="56" width="146" height="84" rx="6" fill="#fff" stroke="#c9c4dc"/>
+<rect x="200" y="56" width="146" height="24" rx="6" fill="#f7f5fc" stroke="#c9c4dc"/>
+<text x="273" y="73" font-size="12.5" text-anchor="middle" fill="#1e1b2e" text-decoration="underline" font-family="JetBrains Mono,Consolas,monospace">b : Node</text>
+<text x="210" y="100" font-size="12.5" fill="#5c5873" font-family="JetBrains Mono,Consolas,monospace">val</text><text x="336" y="100" font-size="13" text-anchor="end" fill="#1e1b2e" font-weight="700" font-family="JetBrains Mono,Consolas,monospace">20</text>
+<rect x="201.5" y="111" width="143" height="27.5" rx="4" fill="#fdecea" stroke="#b42318" stroke-width="1.5"/>
+<text x="210" y="130" font-size="12.5" fill="#b42318" font-family="JetBrains Mono,Consolas,monospace">next</text><text x="336" y="130" font-size="13" text-anchor="end" fill="#b42318" font-weight="700" font-family="JetBrains Mono,Consolas,monospace">nullptr</text>
+</svg><div class="expr"><span class="seg"><span class="t">cur-&gt;next</span><span class="l">是 nullptr</span></span><span class="seg bad"><span class="t">-&gt;val</span><span class="l">✕ 沒有節點可以讀</span></span></div>
+<p class="p">第 2 圈時 <span class="v">cur</span> 指向 <span class="v">b</span>。b 是最後一個節點，<span class="v red">b.next</span> 是 <span class="v red">nullptr</span>（沒有指向任何節點），所以 <span class="v">cur-&gt;next-&gt;val</span> 沒有東西可以讀。</p>
+<p class="cap">這一行已經印出「值：20，下一個值：」，印到一半就停了。</p></div><div class="sec"><div class="h"><b>2</b>值從哪裡來</div><div class="origin"><div class="it"><span class="v red">b.next = nullptr</span><span class="d">第 16 行 <span class="mono">Node b{20, nullptr};</span>　<span class="link">跳到那一步</span></span></div>
+<div class="it"><span class="v">cur 指向 b</span><span class="d">第 1 圈結束時，第 22 行 <span class="mono">cur = cur-&gt;next;</span>　<span class="link">跳到那一步</span></span></div></div></div><div class="sec"><div class="h"><b>3</b>怎麼改</div><p class="p">讀 <span class="v">cur-&gt;next-&gt;val</span> 之前，先確認 <span class="v">cur-&gt;next</span> 不是 nullptr。</p>
+<pre class="fix mono">std::cout &lt;&lt; "值：" &lt;&lt; cur-&gt;val;
+<span class="add">if (cur-&gt;next != nullptr) {</span>
+    std::cout &lt;&lt; "，下一個值："
+              &lt;&lt; cur-&gt;next-&gt;val;
+<span class="add">}</span>
+std::cout &lt;&lt; std::endl;</pre></div>
+<div class="native"><b>和原生 Linux 比較：</b>g++ 編譯的程式會在這一行崩潰（Segmentation fault），而且只印出第 1 行：第 2 行印到一半的字還在緩衝區，來不及印出來。</div>
+<details><summary>原始錯誤訊息（第 21 行第 65 個字）</summary><pre class="mono">member access within null pointer of type &#x27;Node&#x27;</pre></details>
+</div></div></div><div class="col"><div class="variants"><div class="vh">不改引擎時能畫的版本（沒有箭頭）</div>
+<div class="objs"><div class="obj"><div class="oh">a : Node</div><div class="orow"><span>val</span><b>10</b></div><div class="orow"><span>next</span><b class="np">不是 nullptr</b></div></div>
+<div class="obj"><div class="oh">b : Node</div><div class="orow"><span>val</span><b>20</b></div><div class="orow bad"><span>next</span><b>nullptr</b></div></div>
+<div class="obj"><div class="oh">cur</div><div class="orow"><b class="np">不是 nullptr</b></div></div></div>
+<div style="font-size:12px;line-height:1.55">現在的軌跡只記得指標是不是 nullptr（是：0；不是：<span class="mono">"&lt;ptr&gt;"</span>），不記得指向誰。這個例子的 cur 指向具名變數 b，軌跡一樣只記成 <span class="mono">"&lt;ptr&gt;"</span>。要畫出左邊卡片裡的箭頭，引擎得多記指標的位址，再對到變數。</div></div><div class="notes one"><div><h4>實作時要注意（從這次的實測資料看到的）</h4><ul><li>錯誤紀錄的欄位是 UTF-8 的位元組位置：第 21 行 col 81，換成字元是第 65 個字，正好是 cur-&gt;next-&gt;val 的 val。行裡有中文時一定要換算，不然底線會畫錯地方。</li><li>指標箭頭：vg.h 只有「指向已登記變數的指標變數」會記下指向誰（<span class='mono'>__vgp</span>）；struct 變數、struct 裡的指標欄位、new 出來的節點都不在內（engine/localgdb/types.js 的註解）。</li></ul></div><div class="q"><h4>要請你決定</h4><ul><li>物件圖要不要畫箭頭？要畫，就得在 P2 一起改引擎，讓它記下指標指向誰；不改的話，P2 先用上面「沒有箭頭」的版本。</li></ul></div></div></div></div></div></body></html>

@@ -1,0 +1,37 @@
+== run-p2fix start 2026-11-23T22:21:43+00:00
+live StartedAt: 2026-11-10T23:05:45.370754512Z  login: 200  online: 0
+mounted 30 files:
+d3e17a5a2ceb  gdbgui/src/js/GdbApi.tsx
+c4975129f5f8  gdbgui/src/js/localEngine.README.md
+e7fa4578441e  gdbgui/src/js/localEngine.ts
+2ca440aa9df2  gdbgui/src/js/process_gdb_response.tsx
+c130960afcc0  gdbgui/src/js/tests/annotationGlobals.jest.ts
+5ea6a0e1c5a0  gdbgui/src/js/tests/localEngine.jest.ts
+6a2ee974a3d7  gdbgui/src/js/tests/localEnginePrewarm.jest.ts
+945502302e1b  gdbgui/src/js/tests/runtimeErrorStop.jest.ts
+06ca0a77e711  gdbgui/static/engine/exec.worker.js
+ae3c327da8c0  gdbgui/static/engine/include/c++/v1/__assertion_handler
+811953afda21  gdbgui/static/engine/include/vgerr.h
+64319ba62bd6  gdbgui/static/engine/index.js
+ab0015ba6d9e  gdbgui/static/engine/instrument.js
+c0e367e4e903  gdbgui/static/engine/localgdb/exec.js
+8dfa63b6b303  gdbgui/static/engine/localgdb/model.js
+3cbf5628d7e1  gdbgui/static/engine/localgdb/session.js
+dc187e84012c  gdbgui/static/engine/pch.js
+42c1bc361b90  gdbgui/static/engine/pipeline.worker.js
+b2c27e41aefc  gdbgui/static/engine/prewarm.js
+445b76a6bb4f  gdbgui/static/engine/README.md
+66f4e3bf998a  gdbgui/static/engine/trace.js
+c4c8b9250268  gdbgui/static/engine/vg.h
+fd9d46bd123e  gdbgui/templates/_auth_base.html
+7dd30f9f484b  tests/engine/localgdb/runtime_errors.test.mjs
+addb994b0f7a  tests/engine/runtime_errors/cases.mjs
+7a0094599bb2  tests/engine/runtime_errors/cases_s0.mjs
+6eab9a6f25f5  tests/engine/runtime_errors/expected.json
+2a08dd62066a  tests/engine/runtime_errors.test.mjs
+3c6bf431ce79  tests/engine/runtime_errors_trace.test.mjs
+fa26b5fe47ef  tests/engine/warmup.test.mjs
+script suite-p2fix.sh 6c647aa97e8e
+run p2fix rc=0 146 s: 
+live StartedAt: 2026-11-10T23:05:45.370754512Z  login: 200  online: 0
+EXIT=0

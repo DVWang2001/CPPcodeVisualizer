@@ -1,0 +1,5 @@
+== fid2 start 2026-11-23T09:31:36+00:00
+live StartedAt: 2026-11-10T23:05:45.370754512Z  login: 200  online: 0
+fid2 rc=0 1086 s: wrote results-fid2.json diag 2 cmp 42
+live StartedAt: 2026-11-10T23:05:45.370754512Z  login: 200  online: 0
+EXIT=0

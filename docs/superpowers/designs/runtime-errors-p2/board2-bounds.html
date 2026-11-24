@@ -1,0 +1,202 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<title>執行錯誤圖解・設計稿 2／5：陣列與容器的越界</title><style>
+:root{
+  --paper:#f4f3f9;--surface:#ffffff;--ink:#1e1b2e;--ink-soft:#5c5873;--ink-faint:#6c6885;--line:#e5e2ef;
+  --struct-border:#c9c4dc;--accent:#4a3aa0;--accent-soft:#ece9f8;--highlight:#f2be0f;--highlight-soft:#fff5cc;
+  --highlight-strong:#b38600;--ok:#2d7a4e;--ok-soft:#e5f3ea;--danger:#b42318;--danger-soft:#fdecea;--empty-bg:#f1eff7;
+  --ide-line:#e3dff3;--ide-title:#f7f5fc;--ide-ink:#4a3aa0;
+  --font-body:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",Menlo,Monaco,Consolas,"Courier New",monospace;
+}
+.board{width:840px;box-sizing:border-box;padding:4px 0 8px;font-family:var(--font-body);}
+.board-head{margin:0 0 10px;color:var(--foreground,#1e1b2e);}
+.board-head .t{font-size:15px;font-weight:700;}
+.board-head .s{font-size:12px;color:var(--muted-foreground,#5c5873);margin-top:2px;}
+.cards{display:grid;grid-template-columns:380px 380px;gap:24px;align-items:start;}
+.collapser{width:380px;box-sizing:border-box;border:1px solid var(--ide-line);border-radius:14px;overflow:hidden;background:var(--surface);
+  box-shadow:0 2px 8px rgba(74,58,160,.06);color:var(--ink);}
+.titlebar{min-height:34px;display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--ide-title);color:var(--ide-ink);font-size:13px;}
+.titlebar .chev{color:#8e97ff;font-size:10px;}
+.titlebar .lt{font-weight:700;}
+.titlebar .count{margin-left:auto;font-size:12px;color:var(--danger);font-weight:700;}
+.body{padding:12px 12px 14px;display:flex;flex-direction:column;gap:10px;}
+.meta{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--ink-soft);}
+.chip{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;}
+.chip.stop{color:var(--danger);background:var(--danger-soft);}
+.chip.pause{color:#7a5c00;background:var(--highlight-soft);box-shadow:inset 0 0 0 1px var(--highlight-strong);}
+h3{margin:0;font-size:15px;font-weight:700;line-height:1.35;}
+h3 .en{font-weight:500;color:var(--ink-soft);font-size:13px;}
+.code{margin:0;padding:8px 10px;background:#1F2328;color:#E6EDF3;border-radius:6px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;word-break:break-all;}
+.code .ln{color:#8b949e;user-select:none;}
+.code .bad{color:#ffb4a9;text-decoration:underline wavy #ff7b6b;text-underline-offset:3px;}
+.mono,.mono *{font-family:var(--font-mono);font-variant-ligatures:none!important;font-feature-settings:"liga" 0,"calt" 0!important;}
+.sec{border-top:1px solid var(--line);padding-top:9px;display:flex;flex-direction:column;gap:7px;}
+.sec>.h{font-size:12px;font-weight:700;color:var(--ink-soft);letter-spacing:.02em;}
+.sec>.h b{color:var(--accent);margin-right:4px;}
+.p{font-size:13px;line-height:1.6;margin:0;}
+.p .v{font-family:var(--font-mono);font-weight:700;}
+.p .red{color:var(--danger);font-weight:700;}
+.cap{font-size:12px;color:var(--ink-soft);line-height:1.5;margin:0;}
+.link{font-size:13px;color:var(--accent);font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer;white-space:nowrap;}
+.origin{display:grid;grid-template-columns:auto 1fr;gap:4px 8px;align-items:baseline;font-size:13px;}
+.origin .var{font-family:var(--font-mono);font-weight:700;white-space:nowrap;}
+.origin .var.red{color:var(--danger);}
+.fix{margin:0;padding:7px 10px;background:var(--ok-soft);border:1px solid #b9dcc6;border-radius:6px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;color:#173b27;}
+.fix .add{background:#c9ebd5;border-radius:3px;}
+.native{font-size:12.5px;line-height:1.55;color:var(--ink-soft);}
+.native b{color:var(--ink);}
+details{font-size:12px;color:var(--ink-soft);}
+details summary{cursor:pointer;}
+details pre{margin:6px 0 0;white-space:pre-wrap;font-size:12px;color:var(--ink);}
+/* containers (ContainerVisualizer vocabulary) */
+.frame{display:flex;gap:4px;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--paper);align-items:stretch;}
+.cell{min-width:34px;height:38px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:1px solid var(--struct-border);
+  border-radius:6px;background:var(--surface);font-family:var(--font-mono);font-size:14px;font-weight:500;}
+.cell.out{border:2px dashed var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.cell.hit{border:1px solid var(--danger);box-shadow:0 0 0 1px var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.idx{display:flex;gap:4px;padding:0 6px;}
+.idx span{min-width:34px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--ink-faint);}
+.idx span.red{color:var(--danger);font-weight:700;}
+
+.board{width:840px;}
+.origin{display:flex;flex-direction:column;gap:7px;}
+.origin .it{display:flex;flex-direction:column;gap:1px;}
+.origin .it .v{font-family:var(--font-mono);font-weight:700;font-size:13px;}
+.origin .it .v.red{color:var(--danger);}
+.origin .it .d{font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
+.after{border:1px dashed var(--struct-border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:7px;background:#fbfaff;}
+.after .tag{font-size:11.5px;font-weight:700;color:var(--accent);}
+.notes{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;font-size:12.5px;line-height:1.6;color:var(--foreground,#1e1b2e);}
+.notes h4{margin:0 0 4px;font-size:12.5px;}
+.notes ul{margin:0;padding-left:18px;}
+.notes li{margin:0 0 3px;}
+.notes .q{color:var(--foreground,#1e1b2e);}
+/* array grid */
+.ag{display:grid;column-gap:4px;row-gap:3px;align-items:center;justify-items:center;padding:6px 6px 0;width:max-content;}
+.ag .fbg{grid-row:2;align-self:stretch;justify-self:stretch;margin:-6px;border:1px solid var(--line);border-radius:10px;background:var(--paper);}
+.ag .c{grid-row:2;width:44px;height:40px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:1px solid var(--struct-border);border-radius:6px;background:var(--surface);font-family:var(--font-mono);font-size:15px;font-weight:500;}
+.ag .c.mem{border-style:solid;}
+.ag .c.out{border:2px dashed var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.ag .c.hit{border:1px solid var(--danger);box-shadow:0 0 0 1px var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.ag .c.dim{color:var(--ink-faint);}
+.ag .ix{grid-row:3;font-family:var(--font-mono);font-size:11px;color:var(--ink-faint);}
+.ag .ix.red{color:var(--danger);font-weight:700;}
+.ag .pt{grid-row:4;font-family:var(--font-mono);font-size:12px;color:var(--danger);font-weight:700;white-space:nowrap;}
+.ag .top{grid-row:1;font-size:11px;color:var(--ink-soft);white-space:nowrap;}
+.ag .top.mono{font-family:var(--font-mono);}
+.ag .edge{grid-row:1 / span 3;width:2px;align-self:stretch;background:var(--ink-soft);margin:0 2px;}
+.ag .gap{grid-row:2;width:6px;}
+/* expression breakdown */
+.expr{display:flex;align-items:flex-start;font-family:var(--font-mono);font-size:15px;font-weight:700;}
+.expr .seg{display:inline-flex;flex-direction:column;align-items:center;}
+.expr .seg .t{padding:0 1px;}
+.expr .seg.bad .t{color:var(--danger);text-decoration:underline wavy var(--danger);text-underline-offset:4px;}
+.expr .seg .l{margin-top:4px;padding-top:3px;border-top:1.5px solid var(--ink-soft);font-family:var(--font-body);font-size:11.5px;font-weight:700;color:var(--ink-soft);white-space:nowrap;align-self:stretch;text-align:center;}
+.expr .seg.bad .l{border-top-color:var(--danger);color:var(--danger);}
+/* path through function */
+.path{display:grid;grid-template-columns:22px 18px max-content 1fr;align-items:center;font-size:12.5px;border-radius:6px;background:#1F2328;color:#E6EDF3;padding:6px 8px 6px 4px;column-gap:4px;}
+.path .ln{color:#8b949e;text-align:right;font-family:var(--font-mono);}
+.path .g{position:relative;height:26px;width:18px;}
+.path .g::before{content:"";position:absolute;left:8px;width:2px;background:#8e97ff;top:0;bottom:0;}
+.path .g.first::before{top:50%;}
+.path .g.last::before{bottom:50%;}
+.path .g.none::before{display:none;}
+.path .g i{position:absolute;left:4px;top:9px;width:10px;height:10px;border-radius:50%;background:#8e97ff;}
+.path .g.x i{background:#ff7b6b;box-shadow:0 0 0 3px rgba(255,123,107,.3);}
+.path .code{font-family:var(--font-mono);white-space:pre;}
+.path .code .skip{opacity:.42;text-decoration:line-through;text-decoration-color:#8b949e;}
+.path .code .red{color:#ffb4a9;}
+.path .nt{font-size:11.5px;color:#c9d1d9;white-space:nowrap;padding-left:6px;}
+.path .nt.red{color:#ffb4a9;font-weight:700;}
+/* recursion tower */
+.tower{display:grid;grid-template-columns:168px 1fr;row-gap:3px;column-gap:8px;align-items:center;}
+.tower .fr{height:24px;box-sizing:border-box;border:1px solid var(--struct-border);border-radius:5px;background:var(--surface);font-family:var(--font-mono);font-size:12.5px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;}
+.tower .fr .dp{font-family:var(--font-body);font-size:11px;color:var(--ink-faint);}
+.tower .fr.top{border:1px solid var(--danger);box-shadow:0 0 0 1px var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.tower .fr.main{background:var(--paper);}
+.tower .fr.zero{box-shadow:inset 0 0 0 1px var(--highlight-strong);background:var(--highlight-soft);}
+.tower .gapr{height:30px;border:1px dashed var(--struct-border);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--ink-soft);background:var(--empty-bg);}
+.tower .an{font-size:11.5px;color:var(--ink-soft);line-height:1.35;}
+.tower .an.red{color:var(--danger);font-weight:700;}
+/* containers */
+.stackbox{width:78px;height:96px;border:2px solid var(--struct-border);border-top:none;border-radius:0 0 8px 8px;background:var(--empty-bg);display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:12px;font-style:italic;position:relative;}
+.op{font-family:var(--font-mono);font-weight:700;color:var(--danger);font-size:15px;}
+.row{display:flex;align-items:center;gap:12px;}
+.variants{margin-top:12px;width:380px;box-sizing:border-box;border:1px dashed var(--struct-border);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:10px;color:var(--foreground,#1e1b2e);}
+.variants .vh{font-size:12px;font-weight:700;}
+.variants .vr{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;font-size:12px;line-height:1.5;}
+.variants .mini{background:var(--surface);border:1px solid var(--ide-line);border-radius:8px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--ink);}
+.emptyrow{display:flex;align-items:center;justify-content:center;width:120px;height:30px;border:1px dashed var(--struct-border);border-radius:6px;background:var(--empty-bg);font-size:11px;font-style:italic;color:var(--ink-faint);}
+.qtube{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--ink-faint);}
+.qtube .tube{width:84px;height:28px;border-top:2px solid var(--struct-border);border-bottom:2px solid var(--struct-border);background:var(--empty-bg);display:flex;align-items:center;justify-content:center;font-style:italic;}
+
+.eq{display:flex;align-items:flex-start;gap:8px;}
+.opnd{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.opnd .cell{min-width:48px;height:44px;font-size:20px;}
+.nm{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
+.nm.red{color:var(--danger);font-weight:700;font-family:var(--font-body);}
+.op{font-family:var(--font-mono);font-size:20px;line-height:44px;color:var(--ink-soft);}
+.input{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);}
+.tok{font-family:var(--font-mono);font-size:13px;padding:2px 8px;border:1px solid var(--struct-border);border-radius:5px;background:var(--surface);color:var(--ink);}
+.tok.red{border-color:var(--danger);color:var(--danger);font-weight:700;background:var(--danger-soft);}
+.bits{display:flex;flex-direction:column;gap:3px;}
+.bits .lab{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+.bits .lab .v{font-family:var(--font-mono);font-weight:700;color:var(--ink);}
+.brow{display:flex;align-items:center;}
+.brow .ovf{width:8px;height:15px;margin-right:10px;}
+.brow .nib{display:flex;gap:1px;margin-right:4px;}
+.brow .nib:last-child{margin-right:0;}
+.b{width:8px;height:15px;box-sizing:border-box;border:1px solid var(--struct-border);border-radius:2px;background:var(--surface);
+  font-family:var(--font-mono);font-size:9px;line-height:13px;text-align:center;color:var(--ink);}
+.b.one{background:#e7e4f5;}
+.b.cut{border:1.5px dashed var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.b.sign{box-shadow:0 0 0 1px var(--ink-soft);}
+.intframe{display:flex;align-items:center;font-size:11px;color:var(--ink-soft);}
+
+.objs{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;}
+.obj{border:1px solid var(--struct-border);border-radius:6px;background:var(--surface);min-width:96px;font-family:var(--font-mono);font-size:12px;color:var(--ink);overflow:hidden;}
+.obj .oh{background:var(--ide-title);padding:3px 8px;text-decoration:underline;text-align:center;border-bottom:1px solid var(--struct-border);}
+.obj .orow{display:flex;justify-content:space-between;gap:8px;padding:3px 8px;}
+.obj .orow span{color:var(--ink-soft);}
+.obj .orow.bad{background:var(--danger-soft);color:var(--danger);font-weight:700;box-shadow:inset 0 0 0 1.5px var(--danger);}
+.obj .orow.bad span{color:var(--danger);}
+.obj .orow .np{font-family:var(--font-body);font-size:11px;color:var(--ink-soft);}
+
+.board,.board *{font-variant-ligatures:none!important;font-feature-settings:"liga" 0,"calt" 0!important;}
+.notes.full{grid-template-columns:1fr;}
+.notes.one{grid-template-columns:1fr;width:380px;margin-top:12px;}
+.path{grid-template-columns:22px 18px max-content minmax(0,1fr);}
+.path .nt{white-space:normal;line-height:1.3;}
+.tower{grid-template-columns:200px 1fr;}
+.tower .fr span{white-space:nowrap;}
+</style></head><body><div class="board"><div class="board-head"><div class="t">執行錯誤圖解・設計稿 2／5：陣列與容器的越界</div><div class="s">卡片寬 380px，和 IDE 右欄的面板同寬。圖上的值全部來自 lab-david 用 P1 引擎實際執行的結果；「和原生 Linux 比較」是同一台機器上 g++ 14.4.0（不加最佳化）實際執行的結果（2026-11-24）。</div></div><div class="cards"><div class="col"><div class="collapser"><div class="titlebar"><span class="chev">▼</span><span class="lt">執行錯誤</span><span class="count">1 個</span></div>
+<div class="body"><div class="meta"><span>家族 2・陣列與容器</span><span class="chip pause">已暫停，可以按「繼續」</span></div>
+<h3>陣列索引超出範圍 <span class="en">（array index out of bounds）</span></h3>
+<pre class="code mono"><span class="ln">17 </span>        <span class="bad">b.data[i]</span> = i * 10;</pre><div class="sec"><div class="h"><b>1</b>發生了什麼</div><div class="ag " style="grid-template-columns:repeat(4, 44px) 6px 44px"><div class="fbg" style="grid-column:1 / span 4"></div><div class="top mono" style="grid-column:1 / span 4;justify-self:start">b.data（int[4]）</div><div class="c" style="grid-column:1">0</div><div class="ix" style="grid-column:1">0</div><div class="c" style="grid-column:2">10</div><div class="ix" style="grid-column:2">1</div><div class="c" style="grid-column:3">20</div><div class="ix" style="grid-column:3">2</div><div class="c" style="grid-column:4">30</div><div class="ix" style="grid-column:4">3</div><div class="c out" style="grid-column:6">？</div><div class="ix red" style="grid-column:6">4</div><div class="pt" style="grid-column:6">↑ i = 4</div></div>
+<p class="p"><span class="v">b.data</span> 只有 4 格，索引是 0～3。現在 <span class="v red">i = 4</span>，已經超出最後一格。</p>
+<div class="after"><span class="tag">按「繼續」之後，這裡會多一張圖：記憶體排列（示意）</span><div class="ag" style="grid-template-columns:repeat(4, 44px) 4px 52px">
+<div class="fbg" style="grid-column:1 / span 6"></div>
+<div class="top mono" style="grid-column:1 / span 4;justify-self:start">b.data[0]～[3]</div><div class="top mono" style="grid-column:6">b.guard</div>
+<div class="c" style="grid-column:1">0</div><div class="c" style="grid-column:2">10</div><div class="c" style="grid-column:3">20</div><div class="c" style="grid-column:4">30</div>
+<div class="c hit" style="grid-column:6;width:52px">40</div>
+<div class="ix" style="grid-column:1">[0]</div><div class="ix" style="grid-column:2">[1]</div><div class="ix" style="grid-column:3">[2]</div><div class="ix" style="grid-column:4">[3]</div>
+<div class="ix red" style="grid-column:6">也是 [4]</div>
+<div class="pt" style="grid-column:5 / span 2;justify-self:end;font-weight:500">原本 42</div>
+</div>
+<p class="cap">struct 的成員照宣告的順序排在記憶體裡，<span class="mono">data</span> 後面緊接著 <span class="mono">guard</span>。寫進 <span class="mono">data[4]</span> 的 40 蓋掉了 guard 原本的 42，所以第 19 行印出「guard = 40（應為 42）」。</p></div></div><div class="sec"><div class="h"><b>2</b>值從哪裡來</div><div class="origin"><div class="it"><span class="v red">i = 4</span><span class="d">第 16 行 for 的 <span class="mono">i++</span> 把 i 從 3 變成 4；條件 <span class="mono">i &lt;= 4</span> 還成立，所以又進了迴圈　<span class="link">跳到那一步</span></span></div></div></div><div class="sec"><div class="h"><b>3</b>怎麼改</div><p class="p">data 有 4 格，條件要寫 <span class="v">i &lt; 4</span>，i 就只會是 0～3。</p>
+<pre class="fix mono">for (int i = 0; <span class="add">i &lt; 4</span>; i++) {</pre></div>
+<div class="native"><b>和原生 Linux 比較：</b>g++ 編譯的程式不會報錯，一樣印出「guard = 40（應為 42）」；改用 -O2 編譯則印出 42。越界寫入的結果不可靠。</div>
+<details><summary>原始錯誤訊息（第 17 行第 9 欄）</summary><pre class="mono">index 4 out of bounds for type &#x27;int[4]&#x27;</pre></details>
+</div></div></div><div class="col"><div class="collapser"><div class="titlebar"><span class="chev">▼</span><span class="lt">執行錯誤</span><span class="count">1 個</span></div>
+<div class="body"><div class="meta"><span>家族 2・陣列與容器</span><span class="chip stop">程式在這裡結束</span></div>
+<h3>vector 索引超出範圍 <span class="en">（out of range）</span></h3>
+<pre class="code mono"><span class="ln"> 6 </span>    <span class="bad">v[i]</span> = i;</pre><div class="sec"><div class="h"><b>1</b>發生了什麼</div><div class="ag " style="grid-template-columns:repeat(5, 44px) 6px 6px 44px"><div class="fbg" style="grid-column:1 / span 5"></div><div class="top mono" style="grid-column:1 / span 5;justify-self:start">v（vector&lt;int&gt;，capacity = 5）</div><div class="c" style="grid-column:1">0</div><div class="ix" style="grid-column:1">0</div><div class="c" style="grid-column:2">1</div><div class="ix" style="grid-column:2">1</div><div class="c" style="grid-column:3">2</div><div class="ix" style="grid-column:3">2</div><div class="c" style="grid-column:4">3</div><div class="ix" style="grid-column:4">3</div><div class="c" style="grid-column:5">4</div><div class="ix" style="grid-column:5">4</div><div class="edge" style="grid-column:6"></div><div class="top" style="grid-column:5 / span 2;justify-self:end;grid-row:4;color:var(--ink-soft)">size = 5</div><div class="c out" style="grid-column:8">？</div><div class="ix red" style="grid-column:8">5</div><div class="pt" style="grid-column:8">↑ i = 5</div></div>
+<p class="p"><span class="v">v</span> 有 5 個元素，索引是 0～4。現在 <span class="v red">i = 5</span>，超出範圍。</p>
+<p class="cap"><span class="mono">v.at(i)</span> 會先檢查索引，超出就報錯；<span class="mono">v[i]</span> 不檢查。IRIS 替 <span class="mono">v[i]</span> 加了檢查，所以停在這一行。</p></div><div class="sec"><div class="h"><b>2</b>值從哪裡來</div><div class="origin"><div class="it"><span class="v red">i = 5</span><span class="d">第 5 行 for 的 <span class="mono">i++</span> 把 i 從 4 變成 5；條件 <span class="mono">i &lt;= 5</span> 還成立　<span class="link">跳到那一步</span></span></div>
+<div class="it"><span class="v">v 有 5 格</span><span class="d">第 4 行 <span class="mono">vector&lt;int&gt; v(5);</span>　<span class="link">跳到第 4 行</span></span></div></div></div><div class="sec"><div class="h"><b>3</b>怎麼改</div><p class="p">v 有 5 格，條件要寫 <span class="v">i &lt; 5</span>（或 <span class="v">i &lt; v.size()</span>）。</p>
+<pre class="fix mono">for (int i = 0; <span class="add">i &lt; 5</span>; i++) {</pre></div>
+<div class="native"><b>和原生 Linux 比較：</b>g++ 編譯的程式不會報錯，跑完並印出 5；寫進 v[5] 的值落在 vector 的範圍外。</div>
+<details><summary>原始錯誤訊息（第 6 行）</summary><pre class="mono">vector[] index out of bounds</pre><p class="cap" style="margin-top:6px">這個訊息來自 C++ 標準函式庫（libc++）的檢查，只有行號。</p></details>
+</div></div></div></div><div class="notes full"><div><h4>實作時要注意（從這次的實測資料看到的）</h4><ul><li>C 陣列越界：索引和陣列大小來自錯誤紀錄（index 4、int[4]）；格子裡的值來自軌跡那一步的 b.data。</li><li>vector 越界：錯誤紀錄只有行號和 libc++ 的訊息，values 是空的。i = 5、v 的內容和 capacity 都要從軌跡那一步取；一行裡有好幾個 <span class='mono'>[]</span> 時，要等 P4 的「容器下標精確定位」才能確定是哪一個。</li><li>capacity 比 size 大時，size 線右邊加畫虛線格（已配置、還沒用的空間）；這個例子兩個都是 5，所以沒有虛線格。</li><li>記憶體排列圖在按「繼續」、那次寫入真的發生之後才出現。越界寫到各自宣告的區域變數時，排列會因環境不同，圖上要註明（11-05 決定）；struct 成員的排列由 C++ 規則決定，不必註明。</li></ul></div></div></div></body></html>

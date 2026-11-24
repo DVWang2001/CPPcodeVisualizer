@@ -1,0 +1,7 @@
+== native start 2026-11-23T21:55:34+00:00
+core_pattern: |/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -F%F -- %E
+live StartedAt: 2026-11-10T23:05:45.370754512Z  login: 200  online: 0
+cases: 10  inner 0c45b6542b4d
+native rc=0 47 s, 20 results
+live StartedAt: 2026-11-10T23:05:45.370754512Z  login: 200  online: 0
+EXIT=0

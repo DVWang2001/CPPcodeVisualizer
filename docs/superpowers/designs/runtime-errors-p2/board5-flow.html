@@ -1,0 +1,202 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<title>執行錯誤圖解・設計稿 5／5：函式與流程</title><style>
+:root{
+  --paper:#f4f3f9;--surface:#ffffff;--ink:#1e1b2e;--ink-soft:#5c5873;--ink-faint:#6c6885;--line:#e5e2ef;
+  --struct-border:#c9c4dc;--accent:#4a3aa0;--accent-soft:#ece9f8;--highlight:#f2be0f;--highlight-soft:#fff5cc;
+  --highlight-strong:#b38600;--ok:#2d7a4e;--ok-soft:#e5f3ea;--danger:#b42318;--danger-soft:#fdecea;--empty-bg:#f1eff7;
+  --ide-line:#e3dff3;--ide-title:#f7f5fc;--ide-ink:#4a3aa0;
+  --font-body:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",Menlo,Monaco,Consolas,"Courier New",monospace;
+}
+.board{width:840px;box-sizing:border-box;padding:4px 0 8px;font-family:var(--font-body);}
+.board-head{margin:0 0 10px;color:var(--foreground,#1e1b2e);}
+.board-head .t{font-size:15px;font-weight:700;}
+.board-head .s{font-size:12px;color:var(--muted-foreground,#5c5873);margin-top:2px;}
+.cards{display:grid;grid-template-columns:380px 380px;gap:24px;align-items:start;}
+.collapser{width:380px;box-sizing:border-box;border:1px solid var(--ide-line);border-radius:14px;overflow:hidden;background:var(--surface);
+  box-shadow:0 2px 8px rgba(74,58,160,.06);color:var(--ink);}
+.titlebar{min-height:34px;display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--ide-title);color:var(--ide-ink);font-size:13px;}
+.titlebar .chev{color:#8e97ff;font-size:10px;}
+.titlebar .lt{font-weight:700;}
+.titlebar .count{margin-left:auto;font-size:12px;color:var(--danger);font-weight:700;}
+.body{padding:12px 12px 14px;display:flex;flex-direction:column;gap:10px;}
+.meta{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--ink-soft);}
+.chip{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;}
+.chip.stop{color:var(--danger);background:var(--danger-soft);}
+.chip.pause{color:#7a5c00;background:var(--highlight-soft);box-shadow:inset 0 0 0 1px var(--highlight-strong);}
+h3{margin:0;font-size:15px;font-weight:700;line-height:1.35;}
+h3 .en{font-weight:500;color:var(--ink-soft);font-size:13px;}
+.code{margin:0;padding:8px 10px;background:#1F2328;color:#E6EDF3;border-radius:6px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;word-break:break-all;}
+.code .ln{color:#8b949e;user-select:none;}
+.code .bad{color:#ffb4a9;text-decoration:underline wavy #ff7b6b;text-underline-offset:3px;}
+.mono,.mono *{font-family:var(--font-mono);font-variant-ligatures:none!important;font-feature-settings:"liga" 0,"calt" 0!important;}
+.sec{border-top:1px solid var(--line);padding-top:9px;display:flex;flex-direction:column;gap:7px;}
+.sec>.h{font-size:12px;font-weight:700;color:var(--ink-soft);letter-spacing:.02em;}
+.sec>.h b{color:var(--accent);margin-right:4px;}
+.p{font-size:13px;line-height:1.6;margin:0;}
+.p .v{font-family:var(--font-mono);font-weight:700;}
+.p .red{color:var(--danger);font-weight:700;}
+.cap{font-size:12px;color:var(--ink-soft);line-height:1.5;margin:0;}
+.link{font-size:13px;color:var(--accent);font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer;white-space:nowrap;}
+.origin{display:grid;grid-template-columns:auto 1fr;gap:4px 8px;align-items:baseline;font-size:13px;}
+.origin .var{font-family:var(--font-mono);font-weight:700;white-space:nowrap;}
+.origin .var.red{color:var(--danger);}
+.fix{margin:0;padding:7px 10px;background:var(--ok-soft);border:1px solid #b9dcc6;border-radius:6px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;color:#173b27;}
+.fix .add{background:#c9ebd5;border-radius:3px;}
+.native{font-size:12.5px;line-height:1.55;color:var(--ink-soft);}
+.native b{color:var(--ink);}
+details{font-size:12px;color:var(--ink-soft);}
+details summary{cursor:pointer;}
+details pre{margin:6px 0 0;white-space:pre-wrap;font-size:12px;color:var(--ink);}
+/* containers (ContainerVisualizer vocabulary) */
+.frame{display:flex;gap:4px;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--paper);align-items:stretch;}
+.cell{min-width:34px;height:38px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:1px solid var(--struct-border);
+  border-radius:6px;background:var(--surface);font-family:var(--font-mono);font-size:14px;font-weight:500;}
+.cell.out{border:2px dashed var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.cell.hit{border:1px solid var(--danger);box-shadow:0 0 0 1px var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.idx{display:flex;gap:4px;padding:0 6px;}
+.idx span{min-width:34px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--ink-faint);}
+.idx span.red{color:var(--danger);font-weight:700;}
+
+.board{width:840px;}
+.origin{display:flex;flex-direction:column;gap:7px;}
+.origin .it{display:flex;flex-direction:column;gap:1px;}
+.origin .it .v{font-family:var(--font-mono);font-weight:700;font-size:13px;}
+.origin .it .v.red{color:var(--danger);}
+.origin .it .d{font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
+.after{border:1px dashed var(--struct-border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:7px;background:#fbfaff;}
+.after .tag{font-size:11.5px;font-weight:700;color:var(--accent);}
+.notes{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;font-size:12.5px;line-height:1.6;color:var(--foreground,#1e1b2e);}
+.notes h4{margin:0 0 4px;font-size:12.5px;}
+.notes ul{margin:0;padding-left:18px;}
+.notes li{margin:0 0 3px;}
+.notes .q{color:var(--foreground,#1e1b2e);}
+/* array grid */
+.ag{display:grid;column-gap:4px;row-gap:3px;align-items:center;justify-items:center;padding:6px 6px 0;width:max-content;}
+.ag .fbg{grid-row:2;align-self:stretch;justify-self:stretch;margin:-6px;border:1px solid var(--line);border-radius:10px;background:var(--paper);}
+.ag .c{grid-row:2;width:44px;height:40px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:1px solid var(--struct-border);border-radius:6px;background:var(--surface);font-family:var(--font-mono);font-size:15px;font-weight:500;}
+.ag .c.mem{border-style:solid;}
+.ag .c.out{border:2px dashed var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.ag .c.hit{border:1px solid var(--danger);box-shadow:0 0 0 1px var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.ag .c.dim{color:var(--ink-faint);}
+.ag .ix{grid-row:3;font-family:var(--font-mono);font-size:11px;color:var(--ink-faint);}
+.ag .ix.red{color:var(--danger);font-weight:700;}
+.ag .pt{grid-row:4;font-family:var(--font-mono);font-size:12px;color:var(--danger);font-weight:700;white-space:nowrap;}
+.ag .top{grid-row:1;font-size:11px;color:var(--ink-soft);white-space:nowrap;}
+.ag .top.mono{font-family:var(--font-mono);}
+.ag .edge{grid-row:1 / span 3;width:2px;align-self:stretch;background:var(--ink-soft);margin:0 2px;}
+.ag .gap{grid-row:2;width:6px;}
+/* expression breakdown */
+.expr{display:flex;align-items:flex-start;font-family:var(--font-mono);font-size:15px;font-weight:700;}
+.expr .seg{display:inline-flex;flex-direction:column;align-items:center;}
+.expr .seg .t{padding:0 1px;}
+.expr .seg.bad .t{color:var(--danger);text-decoration:underline wavy var(--danger);text-underline-offset:4px;}
+.expr .seg .l{margin-top:4px;padding-top:3px;border-top:1.5px solid var(--ink-soft);font-family:var(--font-body);font-size:11.5px;font-weight:700;color:var(--ink-soft);white-space:nowrap;align-self:stretch;text-align:center;}
+.expr .seg.bad .l{border-top-color:var(--danger);color:var(--danger);}
+/* path through function */
+.path{display:grid;grid-template-columns:22px 18px max-content 1fr;align-items:center;font-size:12.5px;border-radius:6px;background:#1F2328;color:#E6EDF3;padding:6px 8px 6px 4px;column-gap:4px;}
+.path .ln{color:#8b949e;text-align:right;font-family:var(--font-mono);}
+.path .g{position:relative;height:26px;width:18px;}
+.path .g::before{content:"";position:absolute;left:8px;width:2px;background:#8e97ff;top:0;bottom:0;}
+.path .g.first::before{top:50%;}
+.path .g.last::before{bottom:50%;}
+.path .g.none::before{display:none;}
+.path .g i{position:absolute;left:4px;top:9px;width:10px;height:10px;border-radius:50%;background:#8e97ff;}
+.path .g.x i{background:#ff7b6b;box-shadow:0 0 0 3px rgba(255,123,107,.3);}
+.path .code{font-family:var(--font-mono);white-space:pre;}
+.path .code .skip{opacity:.42;text-decoration:line-through;text-decoration-color:#8b949e;}
+.path .code .red{color:#ffb4a9;}
+.path .nt{font-size:11.5px;color:#c9d1d9;white-space:nowrap;padding-left:6px;}
+.path .nt.red{color:#ffb4a9;font-weight:700;}
+/* recursion tower */
+.tower{display:grid;grid-template-columns:168px 1fr;row-gap:3px;column-gap:8px;align-items:center;}
+.tower .fr{height:24px;box-sizing:border-box;border:1px solid var(--struct-border);border-radius:5px;background:var(--surface);font-family:var(--font-mono);font-size:12.5px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;}
+.tower .fr .dp{font-family:var(--font-body);font-size:11px;color:var(--ink-faint);}
+.tower .fr.top{border:1px solid var(--danger);box-shadow:0 0 0 1px var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.tower .fr.main{background:var(--paper);}
+.tower .fr.zero{box-shadow:inset 0 0 0 1px var(--highlight-strong);background:var(--highlight-soft);}
+.tower .gapr{height:30px;border:1px dashed var(--struct-border);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--ink-soft);background:var(--empty-bg);}
+.tower .an{font-size:11.5px;color:var(--ink-soft);line-height:1.35;}
+.tower .an.red{color:var(--danger);font-weight:700;}
+/* containers */
+.stackbox{width:78px;height:96px;border:2px solid var(--struct-border);border-top:none;border-radius:0 0 8px 8px;background:var(--empty-bg);display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:12px;font-style:italic;position:relative;}
+.op{font-family:var(--font-mono);font-weight:700;color:var(--danger);font-size:15px;}
+.row{display:flex;align-items:center;gap:12px;}
+.variants{margin-top:12px;width:380px;box-sizing:border-box;border:1px dashed var(--struct-border);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:10px;color:var(--foreground,#1e1b2e);}
+.variants .vh{font-size:12px;font-weight:700;}
+.variants .vr{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;font-size:12px;line-height:1.5;}
+.variants .mini{background:var(--surface);border:1px solid var(--ide-line);border-radius:8px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--ink);}
+.emptyrow{display:flex;align-items:center;justify-content:center;width:120px;height:30px;border:1px dashed var(--struct-border);border-radius:6px;background:var(--empty-bg);font-size:11px;font-style:italic;color:var(--ink-faint);}
+.qtube{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--ink-faint);}
+.qtube .tube{width:84px;height:28px;border-top:2px solid var(--struct-border);border-bottom:2px solid var(--struct-border);background:var(--empty-bg);display:flex;align-items:center;justify-content:center;font-style:italic;}
+
+.eq{display:flex;align-items:flex-start;gap:8px;}
+.opnd{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.opnd .cell{min-width:48px;height:44px;font-size:20px;}
+.nm{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
+.nm.red{color:var(--danger);font-weight:700;font-family:var(--font-body);}
+.op{font-family:var(--font-mono);font-size:20px;line-height:44px;color:var(--ink-soft);}
+.input{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);}
+.tok{font-family:var(--font-mono);font-size:13px;padding:2px 8px;border:1px solid var(--struct-border);border-radius:5px;background:var(--surface);color:var(--ink);}
+.tok.red{border-color:var(--danger);color:var(--danger);font-weight:700;background:var(--danger-soft);}
+.bits{display:flex;flex-direction:column;gap:3px;}
+.bits .lab{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+.bits .lab .v{font-family:var(--font-mono);font-weight:700;color:var(--ink);}
+.brow{display:flex;align-items:center;}
+.brow .ovf{width:8px;height:15px;margin-right:10px;}
+.brow .nib{display:flex;gap:1px;margin-right:4px;}
+.brow .nib:last-child{margin-right:0;}
+.b{width:8px;height:15px;box-sizing:border-box;border:1px solid var(--struct-border);border-radius:2px;background:var(--surface);
+  font-family:var(--font-mono);font-size:9px;line-height:13px;text-align:center;color:var(--ink);}
+.b.one{background:#e7e4f5;}
+.b.cut{border:1.5px dashed var(--danger);background:var(--danger-soft);color:var(--danger);font-weight:700;}
+.b.sign{box-shadow:0 0 0 1px var(--ink-soft);}
+.intframe{display:flex;align-items:center;font-size:11px;color:var(--ink-soft);}
+
+.objs{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;}
+.obj{border:1px solid var(--struct-border);border-radius:6px;background:var(--surface);min-width:96px;font-family:var(--font-mono);font-size:12px;color:var(--ink);overflow:hidden;}
+.obj .oh{background:var(--ide-title);padding:3px 8px;text-decoration:underline;text-align:center;border-bottom:1px solid var(--struct-border);}
+.obj .orow{display:flex;justify-content:space-between;gap:8px;padding:3px 8px;}
+.obj .orow span{color:var(--ink-soft);}
+.obj .orow.bad{background:var(--danger-soft);color:var(--danger);font-weight:700;box-shadow:inset 0 0 0 1.5px var(--danger);}
+.obj .orow.bad span{color:var(--danger);}
+.obj .orow .np{font-family:var(--font-body);font-size:11px;color:var(--ink-soft);}
+
+.board,.board *{font-variant-ligatures:none!important;font-feature-settings:"liga" 0,"calt" 0!important;}
+.notes.full{grid-template-columns:1fr;}
+.notes.one{grid-template-columns:1fr;width:380px;margin-top:12px;}
+.path{grid-template-columns:22px 18px max-content minmax(0,1fr);}
+.path .nt{white-space:normal;line-height:1.3;}
+.tower{grid-template-columns:200px 1fr;}
+.tower .fr span{white-space:nowrap;}
+</style></head><body><div class="board"><div class="board-head"><div class="t">執行錯誤圖解・設計稿 5／5：函式與流程</div><div class="s">卡片寬 380px，和 IDE 右欄的面板同寬。圖上的值全部來自 lab-david 用 P1 引擎實際執行的結果；「和原生 Linux 比較」是同一台機器上 g++ 14.4.0（不加最佳化）實際執行的結果（2026-11-24）。</div></div><div class="cards"><div class="col"><div class="collapser"><div class="titlebar"><span class="chev">▼</span><span class="lt">執行錯誤</span><span class="count">1 個</span></div>
+<div class="body"><div class="meta"><span>家族 4・函式與流程</span><span class="chip stop">程式在這裡結束</span></div>
+<h3>函式走到結尾都沒有 return <span class="en">（missing return）</span></h3>
+<pre class="code mono"><span class="ln"> 6 </span><span class="bad">}</span>          <span class="ln">// int sign(int x) 的結尾</span></pre><div class="sec"><div class="h"><b>1</b>發生了什麼</div><div class="path">
+<span class="ln"> 3</span><span class="g none"></span><span class="code">int sign(int x) {</span><span class="nt">x = 0</span>
+<span class="ln"> 4</span><span class="g first"><i></i></span><span class="code">  if (x &gt; 0) <span class="skip">return 1;</span></span><span class="nt">0 &gt; 0 不成立</span>
+<span class="ln"> 5</span><span class="g"><i></i></span><span class="code">  if (x &lt; 0) <span class="skip">return -1;</span></span><span class="nt">0 &lt; 0 不成立</span>
+<span class="ln"> 6</span><span class="g last x"><i></i></span><span class="code"><span class="red">}</span></span><span class="nt red">到了結尾，沒有 return</span>
+</div>
+<p class="p"><span class="v">sign(0)</span> 依序走過第 4、5 行，兩個 if 都不成立，兩個 return 都沒有執行，就走到第 6 行的 <span class="v red">}</span>。int 函式結束前一定要 return 一個值，這裡沒有，所以 sign(0) 沒有答案。</p></div><div class="sec"><div class="h"><b>2</b>值從哪裡來</div><div class="origin"><div class="it"><span class="v">x = 0</span><span class="d">第 8 行 <span class="mono">sign(0)</span> 傳進來的　<span class="link">跳到那一步</span></span></div></div></div><div class="sec"><div class="h"><b>3</b>怎麼改</div><p class="p">補上 x 等於 0 的情況。</p>
+<pre class="fix mono">int sign(int x) {
+  if (x &gt; 0) return 1;
+  if (x &lt; 0) return -1;
+  <span class="add">return 0;   // x == 0</span>
+}</pre></div>
+<div class="native"><b>和原生 Linux 比較：</b>g++ 編譯的程式也在這裡中止（Illegal instruction）。g++ 編譯時其實已經警告：control reaches end of non-void function（第 6 行）。</div>
+<details><summary>原始錯誤訊息（第 3 行第 5 欄）</summary><pre class="mono">execution reached the end of a value-returning function without returning a value</pre><p class="cap" style="margin-top:6px">錯誤紀錄的位置是函式名稱 sign（第 3 行）；軌跡的最後一步在第 6 行的 }。</p></details>
+</div></div></div><div class="col"><div class="collapser"><div class="titlebar"><span class="chev">▼</span><span class="lt">執行錯誤</span><span class="count">1 個</span></div>
+<div class="body"><div class="meta"><span>家族 4・函式與流程</span><span class="chip stop">程式在這裡結束</span></div>
+<h3>遞迴停不下來，堆疊用完了 <span class="en">（stack overflow）</span></h3>
+<pre class="code mono"><span class="ln"> 4 </span>  return <span class="bad">f(n - 1)</span> + 1;</pre><div class="sec"><div class="h"><b>1</b>發生了什麼</div><div class="tower"><div class="fr top"><span>f(n = −62123)</span><span class="dp">第 62128 層</span></div><div class="an red">堆疊在這一層用完</div><div class="fr "><span>f(n = −62122)</span><span class="dp">第 62127 層</span></div><div class="an "></div><div class="fr "><span>f(n = −62121)</span><span class="dp">第 62126 層</span></div><div class="an "></div><div class="gapr">⋮　中間 62119 層，每層 n 少 1</div><div class="an"></div><div class="fr "><span>f(n = −1)</span><span class="dp">第 6 層</span></div><div class="an "></div><div class="fr zero"><span>f(n = 0)</span><span class="dp">第 5 層</span></div><div class="an ">n 經過 0，繼續變成負數</div><div class="fr "><span>f(n = 1)</span><span class="dp">第 4 層</span></div><div class="an "></div><div class="fr "><span>f(n = 2)</span><span class="dp">第 3 層</span></div><div class="an "></div><div class="fr "><span>f(n = 3)</span><span class="dp">第 2 層</span></div><div class="an ">第 7 行呼叫 f(3)</div><div class="fr main"><span>main</span><span class="dp">第 1 層</span></div><div class="an "></div></div>
+<p class="p">f 的每一層都再呼叫 <span class="v">f(n − 1)</span>。函式裡沒有「不呼叫自己就 return」的路，所以永遠停不下來；呼叫到第 <span class="v red">62128</span> 層時，堆疊空間用完了。</p></div><div class="sec"><div class="h"><b>2</b>值從哪裡來</div><div class="origin"><div class="it"><span class="v">第一次呼叫 f(3)</span><span class="d">第 7 行 <span class="mono">cout &lt;&lt; f(3)</span>　<span class="link">跳到那一步</span></span></div></div></div><div class="sec"><div class="h"><b>3</b>怎麼改</div><p class="p">加上停止條件：n 到 0 時直接 return，不再呼叫自己。</p>
+<pre class="fix mono">int f(int n) {
+  <span class="add">if (n == 0) return 0;</span>
+  return f(n - 1) + 1;
+}</pre></div>
+<div class="native"><b>和原生 Linux 比較：</b>g++ 編譯的程式也會崩潰（Segmentation fault）。</div>
+<details><summary>原始錯誤訊息（引擎回報）</summary><pre class="mono">host call stack exhausted (recursion too deep)</pre><p class="cap" style="margin-top:6px">這種錯誤沒有錯誤紀錄（runtimeErrors 是空的），是引擎回報堆疊用完（stack-overflow）。</p></details>
+</div></div></div></div><div class="notes "><div><h4>實作時要注意（從這次的實測資料看到的）</h4><ul><li>缺 return 的錯誤紀錄位置是函式名稱（第 3 行第 5 欄）；學生要看的是第 6 行的 }，也就是軌跡的最後一步，g++ 的警告也指這一行。</li><li>無窮遞迴沒有錯誤紀錄，只有 exit 的 stack-overflow；塔上每一層的參數從軌跡取。62128 層是 lab-david 上用 Node 跑出來的，瀏覽器裡的層數會不同，要另外量。</li><li>「函式裡沒有不呼叫自己的 return」可以從程式結構判斷。如果有停止條件、只是一直沒成立，第一段的句子要改成「停止條件 n == 0 一直沒有成立」。</li></ul></div><div class="q"><h4>要請你決定</h4><ul><li>缺 return 時，編輯器要標紅哪一行？建議第 6 行的 }；錯誤紀錄記的是第 3 行。</li><li>堆疊用完時，怎麼分辨學生的錯和瀏覽器引擎的限制（後者要用「這不是程式的錯」那種標題）？建議：只有「函式裡沒有不呼叫自己的 return」才直接說是無窮遞迴；其他情況用中性的標題，兩種可能都列出來。</li></ul></div></div></div></body></html>
