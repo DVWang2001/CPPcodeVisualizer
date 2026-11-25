@@ -18,12 +18,14 @@ const assignRe = (v) => new RegExp(`\\b${v}\\s*\\[([^\\]]+)\\]\\s*\\[([^\\]]+)\\
 export function findCellLastWrite(s, name, row, col, before) {
   const S = s.model.steps, src = String(s.opts.source || "").split("\n");
   const re = assignRe(name);
-  const ex = s.exec, keep = { pos: ex.pos, disp: ex.disp, landed: ex.landed, selectedLevel: ex.selectedLevel };
+  const ex = s.exec, keep = { pos: ex.pos, disp: ex.disp, landed: ex.landed, selectedLevel: ex.selectedLevel, afterView: ex.afterView };
   const evalIn = (e) => {
     const r = s.vars.evaluate(e, null);
     return r.message === "done" ? Number(r.payload.value) : NaN;
   };
   try {
+    // the index expressions are evaluated as the line saw them, i.e. before it ran (display "after" would value them after)
+    ex.afterView = false;
     for (let j = Math.min(before, S.length) - 1; j >= 0; j--) {
       const m = re.exec((src[S[j].line - 1] || "").replace(/\/\/.*$/, ""));
       if (!m) continue;

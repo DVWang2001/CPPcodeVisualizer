@@ -21,6 +21,12 @@ export interface LineAfterPayload {
   after: AfterState;
   stdout: string | null;
   stderr: string | null;
+  /**
+   * display "after" only: what the panels show at this stop. "after" the state after the line ran; "call" the moment
+   * the line calls a function the player is about to enter (the line's result is not shown yet); "end" the line ends
+   * its function or the run, so the panels keep the state before it.
+   */
+  view?: "after" | "call" | "end" | "before";
 }
 
 /** A value as the student should read it; a variable that did not exist yet is spelled out. */
@@ -37,6 +43,12 @@ export function fmtOutput(text: string): string {
 /** The lines of text the panel shows for one stop. */
 export function describeLineAfter(p: LineAfterPayload): string[] {
   const lines: string[] = [];
+  if (p.view === "call") {
+    // the panels show the moment of the call: telling the line's result here would give away what the callee computes
+    lines.push(`第 ${p.line} 行正在呼叫函式`);
+    lines.push("畫面顯示呼叫當下的狀態；這一行的結果要等被呼叫的函式執行完才會出現。");
+    return lines;
+  }
   lines.push(`第 ${p.line} 行執行後`);
 
   if (p.after.changed.length === 0) {

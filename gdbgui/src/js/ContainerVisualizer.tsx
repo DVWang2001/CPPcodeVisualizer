@@ -13,6 +13,7 @@ import { highlightStyle } from "./highlightColors";
 import type { HighlightPaint } from "./highlightColors";
 import { computePullOffsets, formatPullPreview, resolveCrossPull, CrossPullToken } from "./pullAnim";
 import { delay } from "./anim";
+import { displayMode } from "./localEngine";
 
 // Register all plugins once at module load.
 // To add a new container type: create a plugin file and call registerPlugin() here.
@@ -171,7 +172,8 @@ class ContainerVisualizer extends React.Component<{}, State> {
             const [rA, cA] = offsets.aKey.split(",").map(Number);
             const [rB, cB] = offsets.bKey.split(",").map(Number);
             const [rT, cT] = offsets.targetKey.split(",").map(Number);
-            const preview = formatPullPreview(String(data.values[rA][cA]), String(data.values[rB][cB]));
+            // 顯示「這一行執行後」時目標格已經是新值：不再疊暫時的計算結果，只播來源格飛入、目標格亮一下
+            const preview = displayMode() === "after" ? null : formatPullPreview(String(data.values[rA][cA]), String(data.values[rB][cB]));
             const beforeValue = String(data.values[rT][cT]);
 
             if (!prefersReducedMotion()) {
@@ -222,7 +224,8 @@ class ContainerVisualizer extends React.Component<{}, State> {
 
             // 暫時結果：停在賦值那一行時 GDB 還沒把值寫進目標格，先把兩個來源值相加
             // 蓋在目標格裡，直到目標格的真實值變了才收掉（見 _pollContainers）。
-            const preview = formatPullPreview(valueAt(plan.a), valueAt(plan.b));
+            // 顯示「這一行執行後」時目標格已經是新值，不疊暫時結果（同 gdbgui_trigger_pull）
+            const preview = displayMode() === "after" ? null : formatPullPreview(valueAt(plan.a), valueAt(plan.b));
             const targetKey = `${plan.target.row},${plan.target.col}`;
             const beforeValue = valueAt(plan.target);
             if (!prefersReducedMotion()) {

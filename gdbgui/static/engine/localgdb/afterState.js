@@ -58,17 +58,20 @@ function slice(bytes, from, to) {
 
 /**
  * Per stop: what its line changed and printed.
- * @param {{ steps: Step[], stepOffsets: Offset[], stdout: Uint8Array, stderr: Uint8Array, exit: { reason: string } | null }} run
+ * @param {{ steps: Step[], stepOffsets: Offset[], stdout: Uint8Array, stderr: Uint8Array, exit: { reason: string } | null,
+ *   next?: ArrayLike<number> }} run  `next` (optional): next stop of the same activation per stop, -1 for none
+ *   (TraceModel.nextInFrame); without it each stop scans forward (quadratic on traces with many returns)
  * @returns {LineResult[]}
  */
 export function afterStates(run) {
-  const { steps, stepOffsets, stdout, stderr, exit } = run;
+  const { steps, stepOffsets, stdout, stderr, exit, next: nextOf } = run;
   const n = steps.length;
+  const known = !!nextOf && nextOf.length === n;
   /** @type {LineResult[]} */
   const out = [];
   for (let k = 0; k < n; k++) {
     const s = steps[k];
-    const j = nextInFrame(steps, k);
+    const j = known ? /** @type {ArrayLike<number>} */ (nextOf)[k] : nextInFrame(steps, k);
     /** @type {AfterState} */
     let after;
     if (j !== -1) {

@@ -78,6 +78,12 @@ export class BreakpointTable {
 
   clear() { this.list = []; }
 
+  /** Whether breakpoint `b`'s condition holds at step `idx` (true when it cannot be evaluated, like hitsAt). No side effects. @param {Breakpoint} b @param {number} idx */
+  condHolds(b, idx) {
+    if (!b.cond) return true;
+    try { return !!evalExpr(b.cond, this.model.steps[idx].vars); } catch { return true; }
+  }
+
   /**
    * Breakpoints that stop the program at step `idx`: enabled, on that line, condition true, ignore count
    * spent. Hit counts are updated (GDB counts a hit when the condition is true, even if it is ignored).
@@ -110,10 +116,17 @@ export class BreakpointTable {
  */
 
 export class ExecState {
-  /** @param {import("./model.js").TraceModel} model @param {BreakpointTable} bps */
-  constructor(model, bps) {
+  /**
+   * @param {import("./model.js").TraceModel} model @param {BreakpointTable} bps
+   * @param {{ after?: boolean, callEntryLines?: Iterable<number> }} [view] display options (see viewOf)
+   */
+  constructor(model, bps, view = {}) {
     this.model = model;
     this.bps = bps;
+    /** display "after": frame 0 shows the state after the highlighted line ran (false: GDB's state before it) */
+    this.afterView = !!view.after;
+    /** lines whose stops show the moment of the call when the line enters a callee next (a lesson's [step-in] lines) */
+    this.callEntry = new Set(view.callEntryLines || []);
     this.reset();
   }
 
@@ -131,6 +144,51 @@ export class ExecState {
 
   get running() { return this.started && !this.exited; }
   get n() { return this.model.steps.length; }
+
+  /** Highlighted stop of frame 0 (differs from pos right after `finish` landed in the caller). */
+  dispStep() { return this.landed ? this.disp : this.pos; }
+
+  /**
+   * Which recorded step the display reads for frame 0 when stop `d` is highlighted. The stops themselves never change; only the
+   * state shown at them does:
+   *   "before"  display "before" (GDB): step d itself, the state before line d ran
+   *   "after"   the frame's next step: line d has run completely (callees included)
+   *   "call"    line d enters a callee next (step d+1 is deeper) and the player will see the callee before the line ends: the
+   *             line is a [step-in] line (callEntry), or a breakpoint / recoverable runtime error inside the call stops
+   *             any resume command there. Shows the moment of the call, i.e. step d (stepping into the call must not show
+   *             its result first); `finish` back to that line (landed) shows "after"
+   *   "end"     the frame or the run ends before its next stop (a function's `}`, a fatal error on line d): step d
+   * @param {number} d @param {boolean} [landed] @returns {{ kind: "before" | "after" | "call" | "end", idx: number }}
+   */
+  viewOf(d, landed = false) {
+    const S = this.model.steps;
+    if (!this.afterView || d < 0 || d >= S.length) return { kind: "before", idx: d };
+    const j = this.model.nextInFrame[d];
+    if (j < 0) return { kind: "end", idx: d };
+    if (!landed && d + 1 < j && S[d + 1].depth > S[d].depth && (this.callEntry.has(S[d].line) || this._stopsInside(d + 1, j))) return { kind: "call", idx: d };
+    return { kind: "after", idx: j };
+  }
+
+  /**
+   * Whether a resume command from a stop before step `lo` stops somewhere in [lo, hi): an enabled breakpoint whose line runs
+   * there with its condition true (ignore counts are not consulted), or a recoverable runtime error. Pure (no hit counts).
+   * @param {number} lo @param {number} hi
+   */
+  _stopsInside(lo, hi) {
+    if (this.model.recoverableErrorIn(lo, hi)) return true;
+    for (const b of this.bps.list) {
+      if (!b.enabled || b.pending || b.line < 0) continue;
+      let k = this.model.firstStopOnLine(b.line, lo, hi);
+      for (let tries = 0; k >= 0; tries++) {
+        if (tries >= 64 || this.bps.condHolds(b, k)) return true; // many candidates left unchecked: assume one stops
+        k = this.model.firstStopOnLine(b.line, k + 1, hi);
+      }
+    }
+    return false;
+  }
+
+  /** Step whose recorded values the display shows for frame 0 (= dispStep() in display "before"). */
+  viewStep() { return this.viewOf(this.dispStep(), this.landed).idx; }
 
   /** @returns {StopInfo} */
   _exit() {

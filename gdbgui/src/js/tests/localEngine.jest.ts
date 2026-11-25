@@ -128,7 +128,7 @@ describe("LocalSocket", () => {
     const g = fakeGdb();
     s.attach(g);
     const got: any[] = [];
-    ["gdb_response", "program_pty_response", "user_pty_response", "error_running_gdb_command", "connect", "debug_session_connection_event"].forEach((ev) =>
+    ["gdb_response", "program_pty_response", "user_pty_response", "error_running_gdb_command", "connect", "debug_session_connection_event", "vg_program_output"].forEach((ev) =>
       s.on(ev, (p: any) => got.push([ev, p]))
     );
     s.emit("run_gdb_command", { cmd: ["-list-features"], run_token: null, request_id: 7 });
@@ -137,8 +137,10 @@ describe("LocalSocket", () => {
     g.fire("error_running_gdb_command", { message: "bad" });
     g.fire("connect", undefined);
     g.fire("debug_session_connection_event", { ok: true });
-    expect(got.map((x) => x[0])).toEqual(["gdb_response", "program_pty_response", "error_running_gdb_command"]);
+    g.fire("vg_program_output", { run_token: null, text: "y=9\r\n" });
+    expect(got.map((x) => x[0])).toEqual(["gdb_response", "program_pty_response", "error_running_gdb_command", "vg_program_output"]);
     expect(got[0][1].request_id).toBe(7);
+    expect(got[3][1].text).toBe("y=9\r\n");
   });
 
   test("announce：先 connect 再 debug_session_connection_event（started_new_gdb_process:true），connected 為真", () => {
@@ -315,6 +317,27 @@ describe("模擬 /create_and_upload", () => {
     await localEngine.createAndUpload({ code: "int main(){}\n" }, (m) => progress.push(m));
     expect(f.mods.engine.loadEngine).toHaveBeenCalledTimes(1);
     expect(progress.length).toBe(1);
+  });
+
+  test("顯示執行後：createLocalGdb 收到 display \"after\" 與教案標 [step-in] 的行；?display=before 或 localStorage 可切回執行前", async () => {
+    const f = fakeModules(okRun());
+    _test.setModules(f.mods as any);
+    localEngine.getSocket();
+    await flush();
+    const code =
+      "int f(int n) {\n  return n;\n}\nint main() {\n" +
+      "  int a = f(1);  //@ @tts [step-in] 進去看看 | @2 [next] 跳過\n" +
+      "  int b = f(2);  //@ @guide 第二次 @tts [next] 跳過\n" +
+      "  return 0;\n}\n";
+    await localEngine.createAndUpload({ code });
+    expect(f.created[1].opts).toMatchObject({ display: "after", callEntryLines: [5] });
+    window.history.pushState({}, "", "/?display=before");
+    await localEngine.createAndUpload({ code });
+    expect(f.created[2].opts.display).toBe("before");
+    window.history.pushState({}, "", "/");
+    window.localStorage.setItem("vgdb_display", "before");
+    await localEngine.createAndUpload({ code });
+    expect(f.created[3].opts.display).toBe("before");
   });
 
   test("程式輸入為空時沿用 localStorage gdbgui_program_input（與 doInject 相同），再補換行", () => {

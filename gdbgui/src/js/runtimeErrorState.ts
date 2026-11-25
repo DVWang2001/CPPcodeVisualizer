@@ -5,7 +5,7 @@
 // 程式跑完（exited 停點）時記下 ended：回到編輯模式面板仍在（RightSidebar 不鎖這個面板），陣列越界畫出寫出去之後的圖。
 import { store } from "statorgfc";
 import { diagnose, RtDiag, RtWhich } from "./runtimeDiag";
-import { runtimeErrorRun, currentStepIndex } from "./localEngine";
+import { runtimeErrorRun, currentViewStep } from "./localEngine";
 import { ensurePanelChecked } from "./sidebarSelection";
 
 export interface RuntimeErrorState {
@@ -13,7 +13,10 @@ export interface RuntimeErrorState {
   diag: RtDiag;
   /** 播放器現在是不是停在出錯的那一步 */
   here: boolean;
-  /** 播放器現在停在第幾步 */
+  /**
+   * 畫面顯示的是軌跡第幾步的狀態：顯示「這一行執行後」時是這一行執行完的那一步（停在錯誤那一行時，
+   * 已經在錯誤那一步之後），顯示執行前時就是停的那一步
+   */
   stepNow: number | null;
   /** 錯誤之後程式跑到結束了（停點 reason 是 exited…）：那一行已經執行過，回到編輯模式也照樣顯示 */
   ended?: boolean;
@@ -39,7 +42,7 @@ function whichAt(payload: any): RtWhich | null {
 
 export function noteRuntimeStop(payload: any): void {
   const which = whichAt(payload);
-  const stepNow = currentStepIndex();
+  const stepNow = currentViewStep();
   const prev: RuntimeErrorState | null = store.get("runtime_error");
   if (which === null) {
     // 程式跑完（exited-normally、exited、exited-signalled）：圖解留著，記下錯誤那一行已經執行過了

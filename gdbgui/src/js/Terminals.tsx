@@ -198,5 +198,10 @@ export class Terminals extends React.Component<any, { programOutput: string; pro
       const cleanText = pty_response.replace(ansiRegex, '');
       this.setState(prev => ({ programOutput: prev.programOutput + cleanText }));
     });
+    // ── vg_program_output（停下來時顯示「這一行執行後」的狀態）：到目前為止的完整輸出，整段取代 ──
+    GdbApi.getSocket().on("vg_program_output", (payload: { text?: string }) => {
+      const text = payload && typeof payload.text === "string" ? payload.text : "";
+      this.setState({ programOutput: text.replace(ansiRegex, '') });
+    });
   }
 }

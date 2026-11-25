@@ -8,6 +8,7 @@
  * student data, or touches the lesson APIs. Every HTML-bound string (/read_file) is escaped.
  */
 import { store } from "statorgfc";
+import { parseAnnotations } from "./sourceAnnotations";
 
 // ---------------------------------------------------------------------------------------------
 // constants shared with the simulated endpoints
@@ -130,6 +131,8 @@ const FORWARDED_EVENTS = [
   "error_running_gdb_command",
   // S4 side event: what the line at this stop did; GdbApi re-dispatches it for LineAfterPanel.
   "vg_line_after",
+  // display "after" (D3): the program's output up to the state a stop shows; replaces the Standard Output pane.
+  "vg_program_output",
 ];
 
 /** Minimal shape of what createLocalGdb returns that the facade relies on. */
@@ -139,7 +142,7 @@ export interface LocalGdbLike {
     emit: (ev: string, p: any) => any;
     close: () => any;
   };
-  session?: { pid?: number; model?: any; opts?: any; dispatch?: (cmd: string) => any[]; hasStack?: () => boolean; topStep?: () => number };
+  session?: { pid?: number; model?: any; opts?: any; dispatch?: (cmd: string) => any[]; hasStack?: () => boolean; topStep?: () => number; viewStep?: () => number };
   idle: () => Promise<void>;
   setRunToken: (t: string | null) => void;
   close: () => void;
@@ -657,6 +660,8 @@ export function createAndUpload(
             sourcePath: SOURCE_PATH,
             gdbFilePath: GDB_SOURCE_PATH,
             autoConnect: false,
+            display: displayMode(),
+            callEntryLines: callEntryLines(code),
           });
           const token = randomToken();
           gdb.setRunToken(token);
@@ -754,6 +759,41 @@ export function lineVisitCount(line: number): number | null {
 export function currentStepIndex(): number | null {
   const s = _socket && _socket.currentGdb && _socket.currentGdb.session;
   return s && s.hasStack && s.topStep && s.hasStack() ? s.topStep() : null;
+}
+
+/**
+ * Step index whose recorded state the panels show at the current stop: with display "after" the state after the
+ * highlighted line ran (LocalGdb ExecState.viewOf), else the stop itself. null when nothing is running.
+ */
+export function currentViewStep(): number | null {
+  const s = _socket && _socket.currentGdb && _socket.currentGdb.session;
+  if (!s || !s.hasStack || !s.hasStack()) return null;
+  return s.viewStep ? s.viewStep() : s.topStep ? s.topStep() : null;
+}
+
+/**
+ * What a stop shows: "after" (default) the state after the highlighted line ran; "before" the state before it, as GDB
+ * shows it (for comparison: `?display=before` in the page URL, or localStorage `vgdb_display` = "before").
+ */
+export function displayMode(): "before" | "after" {
+  try {
+    const q = new URLSearchParams(window.location.search).get("display");
+    if (q === "before" || q === "after") return q;
+    const v = window.localStorage.getItem("vgdb_display");
+    if (v === "before" || v === "after") return v;
+  } catch (e) {
+    /* no URL / storage: the default */
+  }
+  return "after";
+}
+
+/** Lines whose @tts (any visit variant) issues [step-in]: with display "after" their stops show the moment of the call. */
+export function callEntryLines(code: string): number[] {
+  const tts = parseAnnotations(code).tts;
+  return Object.keys(tts)
+    .filter((n) => /\[step-in\]/.test(tts[n]))
+    .map(Number)
+    .sort((a, b) => a - b);
 }
 
 /** Text of source line `n` (1-based) of the program being debugged, or "". */

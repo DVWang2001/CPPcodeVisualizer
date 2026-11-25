@@ -68,7 +68,8 @@ export class LocalGdbSession {
     this.now = opts.now || (() => 0);
     this.model = new TraceModel({ ...opts.runResult, source: opts.source });
     this.bps = new BreakpointTable(this.model);
-    this.exec = new ExecState(this.model, this.bps);
+    // display "after" (opts.display): frame 0 shows the state after the highlighted line ran; see ExecState.viewOf
+    this.exec = new ExecState(this.model, this.bps, { after: opts.display === "after", callEntryLines: opts.callEntryLines });
     this.vars = new VarObjs(/** @type {any} */ ({ model: this.model, exec: this.exec }));
     this.seq = 0;
     this.lastRequestId = 0;
@@ -138,8 +139,23 @@ export class LocalGdbSession {
       // S4: a side event (not part of gdb_response, so the golden protocol is unchanged): what the line at
       // the stop we just reached did — variables it changed and the output it printed (S3 after-state).
       if (this.hasStack() && items.some((x) => x && x.type === "notify" && x.message === "stopped")) {
-        const la = this.lineAfterOf(this.topStep());
-        if (la) this.after.push(["vg_line_after", { run_token: job.runToken, request_id: this.lastRequestId, ...la }]);
+        let la = this.lineAfterOf(this.topStep());
+        // display "after": `view` says what the panels show at this stop ("after", "call": a [step-in] line at the moment of
+        // its call, "end": the line's own state) — see ExecState.viewOf
+        const v = this.exec.afterView ? this.exec.viewOf(this.exec.dispStep(), this.exec.landed) : null;
+        // the panels show the whole line's result there, callees included: so does the line's printed output (S3 cuts it
+        // at the very next stop, which for a call line is the callee's first stop)
+        if (la && v && v.kind === "after") la = { ...la, ...this.outputBetween(this.exec.dispStep(), v.idx) };
+        const view = v ? { view: v.kind } : {};
+        if (la) this.after.push(["vg_line_after", { run_token: job.runToken, request_id: this.lastRequestId, ...la, ...view }]);
+        // D3: the program's output up to the state shown, replacing the output pane (only when it changed)
+        if (this.exec.afterView) {
+          const text = this.programOutputShown();
+          if (text !== null && text !== this._outputSent) {
+            this._outputSent = text;
+            this.after.push(["vg_program_output", { run_token: job.runToken, text }]);
+          }
+        }
       }
       const after = this.after;
       this.after = [];
@@ -157,7 +173,7 @@ export class LocalGdbSession {
     if (!r || !Array.isArray(r.stepOffsets)) return null;
     if (!this._afterCache) {
       const enc = new TextEncoder();
-      this._afterCache = afterStates({ steps: r.steps, stepOffsets: r.stepOffsets, stdout: enc.encode(r.stdout || ""), stderr: enc.encode(r.stderr || ""), exit: r.exit || null });
+      this._afterCache = afterStates({ steps: r.steps, stepOffsets: r.stepOffsets, stdout: enc.encode(r.stdout || ""), stderr: enc.encode(r.stderr || ""), exit: r.exit || null, next: this.model.nextInFrame });
     }
     return this._afterCache[idx] || null;
   }
@@ -257,7 +273,19 @@ export class LocalGdbSession {
   hasStack() { return this.exec.running && this.exec.pos >= 0; }
   /** display step index of frame 0 */
   topStep() { return this.exec.landed ? this.exec.disp : this.exec.pos; }
+  /** step whose recorded values frame 0 shows (display "after": the state after the highlighted line ran) */
+  viewStep() { return this.exec.viewStep(); }
   frames() { return this.hasStack() ? this.model.chain(this.topStep()) : []; }
+
+  /**
+   * Variables of stack level `level` whose step is `stepIdx`: level 0 is valued at the view step in display "after".
+   * @param {number} stepIdx @param {number} level
+   */
+  levelVars(stepIdx, level) {
+    if (!this.exec.afterView) return this.model.visibleVars(stepIdx);
+    const view = this.viewStep();
+    return level === 0 && view !== stepIdx ? this.model.visibleVarsView(stepIdx, view, view) : this.model.visibleVars(stepIdx, view);
+  }
 
   /** GDB `value` string of a variable entry. @param {import("./model.js").VarEntry} e */
   entryValue(e) { return printEntry(this.model, e); }
@@ -275,7 +303,7 @@ export class LocalGdbSession {
     if (withLevel) o.level = String(level);
     o.addr = hex16(addr);
     o.func = this.model.dn(f.fn);
-    if (argMode !== "none") o.args = this.frameArgs(f.stepIdx, argMode);
+    if (argMode !== "none") o.args = this.frameArgs(f.stepIdx, argMode, level);
     o.file = this.gdbFilePath;
     o.fullname = this.sourcePath;
     o.line = String(f.line);
@@ -292,9 +320,9 @@ export class LocalGdbSession {
     return this.model.stepAddr(f.stepIdx);
   }
 
-  /** @param {number} stepIdx @param {"scalars" | "all"} mode */
-  frameArgs(stepIdx, mode) {
-    return this.model.visibleVars(stepIdx).filter((e) => e.isArg).map((e) => ({ name: e.name, value: mode === "scalars" && !isSimple(e.cls) ? "..." : this.entryValue(e) }));
+  /** @param {number} stepIdx @param {"scalars" | "all"} mode @param {number} [level] stack level of that step (0 = innermost) */
+  frameArgs(stepIdx, mode, level = -1) {
+    return this.levelVars(stepIdx, level).filter((e) => e.isArg).map((e) => ({ name: e.name, value: mode === "scalars" && !isSimple(e.cls) ? "..." : this.entryValue(e) }));
   }
 
   threadInfo() {
@@ -322,7 +350,10 @@ export class LocalGdbSession {
     const a = splitArgs(c.rest).map((x) => x.value);
     const mode = a.includes("--all-values") ? "all" : a.includes("--simple-values") ? "simple" : "none";
     const f = this.frames()[Math.min(this.exec.selectedLevel, this.frames().length - 1)];
-    const variables = this.model.visibleVars(f.stepIdx, this.topStep()).map((e) => {
+    // display "after": level 0 lists the highlighted line's variables valued after the line ran (TraceModel.visibleVarsView)
+    const view = this.viewStep();
+    const ents = this.exec.afterView && f.level === 0 && view !== f.stepIdx ? this.model.visibleVarsView(f.stepIdx, view, view) : this.model.visibleVars(f.stepIdx, this.exec.afterView ? view : this.topStep());
+    const variables = ents.map((e) => {
       /** @type {any} */
       const o = { name: e.name };
       if (e.isArg) o.arg = "1";
@@ -343,7 +374,7 @@ export class LocalGdbSession {
     const lo = nums.length >= 2 ? nums[0] : 0, hi = nums.length >= 2 ? nums[1] : all.length - 1;
     const out = [];
     for (let l = lo; l <= Math.min(hi, all.length - 1); l++) {
-      const args = this.model.visibleVars(all[l].stepIdx).filter((e) => e.isArg).map((e) => (pv === 0 ? { name: e.name } : pv === 2 && !isSimple(e.cls) ? { name: e.name } : { name: e.name, value: this.entryValue(e) }));
+      const args = this.levelVars(all[l].stepIdx, l).filter((e) => e.isArg).map((e) => (pv === 0 ? { name: e.name } : pv === 2 && !isSimple(e.cls) ? { name: e.name } : { name: e.name, value: this.entryValue(e) }));
       out.push({ level: String(l), args });
     }
     return [resultItem({ "stack-args": out }, c.token)];
@@ -476,7 +507,7 @@ export class LocalGdbSession {
   runTillExit(reverse) {
     const ch = this.frames();
     const f = ch[Math.min(this.exec.selectedLevel, ch.length - 1)];
-    return `${reverse ? "Run back to call of" : "Run till exit from"} #${f ? f.level : 0}  ${f ? `${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx)}) at ${this.gdbFilePath}:${f.line}` : ""}\n`;
+    return `${reverse ? "Run back to call of" : "Run till exit from"} #${f ? f.level : 0}  ${f ? `${this.model.dn(f.fn)} (${this.frameArgsText(f.stepIdx, f.level)}) at ${this.gdbFilePath}:${f.line}` : ""}\n`;
   }
 
   /** `-vg-seek-step INDEX`: jump to trace step INDEX; answers like a step stop (live-quiz "jump to the step that filled this cell"). @param {ReturnType<typeof parseCommand>} c */
@@ -496,16 +527,18 @@ export class LocalGdbSession {
     const a = splitArgs(c.rest).map((x) => x.value);
     if (a.length < 3 || a.length > 4 || !/^[A-Za-z_]\w*$/.test(a[0]) || !a.slice(1).every((x) => /^\d+$/.test(x))) return [errorItem(usage, c.token)];
     const [row, col] = [Number(a[1]), Number(a[2])];
-    const before = a[3] === undefined ? this.topStep() : Number(a[3]);
+    // BEFORE is the stop the player was on; display "after" showed the cells as of that stop's view step (ExecState.viewOf),
+    // so the writes of the stop's own line count too
+    const before = a[3] === undefined ? this.viewStep() : this.exec.viewOf(Number(a[3])).idx;
     const g = this.model.steps[Math.min(before, this.model.steps.length - 1)].vars[a[0]];
     if (!Array.isArray(g) || !Array.isArray(g[0])) return [errorItem(`${a[0]} is not a visible 2-D container at step ${before}`, c.token)];
     const r = findCellLastWrite(this, a[0], row, col, before);
     return [r ? resultItem({ step: String(r.step), line: String(r.line), how: r.how }, c.token) : errorItem(`no step before ${before} wrote ${a[0]}[${row}][${col}]`, c.token)];
   }
 
-  /** @param {number} stepIdx */
-  frameArgsText(stepIdx) {
-    return this.frameArgs(stepIdx, "scalars").map((a) => `${a.name}=${a.value}`).join(", ");
+  /** @param {number} stepIdx @param {number} [level] stack level of that step (the console lines name the innermost frame) */
+  frameArgsText(stepIdx, level = 0) {
+    return this.frameArgs(stepIdx, "scalars", level).map((a) => `${a.name}=${a.value}`).join(", ");
   }
 
   /**
@@ -620,8 +653,59 @@ export class LocalGdbSession {
   deliverProgramOutput() {
     const r = this.opts.runResult;
     const text = String(r.stdout || "") + String(r.stderr || "");
-    if (text) this.after.push(["program_pty_response", text.replace(/\r?\n/g, "\r\n")]);
+    if (this.exec.afterView) {
+      // D3: the pane already shows the output up to the last stop; replace it with the complete output
+      const all = text.replace(/\r?\n/g, "\r\n");
+      if (all !== this._outputSent) { this._outputSent = all; this.after.push(["vg_program_output", { run_token: this.runToken, text: all }]); }
+    } else if (text) this.after.push(["program_pty_response", text.replace(/\r?\n/g, "\r\n")]);
     this.stdoutDelivered = true;
+  }
+
+  /**
+   * D3 (display "after"): stdout + stderr the program had written by the state the display shows, pty line endings; null when
+   * the run has no host stamps (S1) to cut the output at a step. Step k's stamp counts the bytes written before step k was
+   * recorded (S2 flushes the C++ streams there), so the output after line d is the stamp of the view step.
+   */
+  programOutputShown() {
+    const r = this.opts.runResult;
+    const offs = r && Array.isArray(r.stepOffsets) ? r.stepOffsets : null;
+    if (!offs || !this.hasStack()) return null;
+    const d = this.exec.dispStep();
+    const { kind, idx } = this.exec.viewOf(d, this.exec.landed);
+    const n = this.model.steps.length;
+    const B = this.outBytes();
+    let o, e;
+    if (kind === "end" && d + 1 >= n) { o = B.out.length; e = B.err.length; } // the run's last step: everything it wrote
+    else {
+      const at = offs[kind === "after" ? idx : d];
+      if (!at || typeof at.out !== "number" || typeof at.err !== "number") return null;
+      o = at.out; e = at.err;
+    }
+    const dec = new TextDecoder();
+    return (dec.decode(B.out.subarray(0, o)) + dec.decode(B.err.subarray(0, e))).replace(/\r?\n/g, "\r\n");
+  }
+
+  /** The run's stdout / stderr as bytes (the S1 stamps count bytes). */
+  outBytes() {
+    if (!this._outBytes) {
+      const r = this.opts.runResult, enc = new TextEncoder();
+      this._outBytes = { out: enc.encode(String(r.stdout || "")), err: enc.encode(String(r.stderr || "")) };
+    }
+    return this._outBytes;
+  }
+
+  /**
+   * What the program printed between stop `a` and stop `b` (b > a), as the S3 line result spells it ({stdout, stderr},
+   * null where the run has no stamps).
+   * @param {number} a @param {number} b
+   */
+  outputBetween(a, b) {
+    const r = this.opts.runResult;
+    const offs = r && Array.isArray(r.stepOffsets) ? r.stepOffsets : null;
+    const from = offs && offs[a], to = offs && offs[b];
+    const B = this.outBytes(), dec = new TextDecoder();
+    const cut = (/** @type {Uint8Array} */ buf, /** @type {any} */ x, /** @type {any} */ y) => (typeof x === "number" && typeof y === "number" ? dec.decode(buf.subarray(x, y)) : null);
+    return { stdout: cut(B.out, from && from.out, to && to.out), stderr: cut(B.err, from && from.err, to && to.err) };
   }
 
   // ---- variable objects ----------------------------------------------------------------------

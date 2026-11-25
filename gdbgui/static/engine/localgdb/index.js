@@ -20,6 +20,10 @@ export { buildPrerunSnapshots } from "./ghostSnapshots.js";
  *   now?: () => number,             reserved: no packet field carries a timestamp
  *   recordSubcommands?: boolean,    keep `session.subcommandLog` (one entry per MI/CLI command; used by the replay test)
  *   autoConnect?: boolean,          default true: emit `connect` + `debug_session_connection_event` on the next tick
+ *   display?: "before" | "after",   what a stop shows for the innermost frame: "before" (default, GDB) the state before
+ *                                   the highlighted line ran; "after" the state after it ran (ExecState.viewOf)
+ *   callEntryLines?: number[],      display "after": lines whose stops show the moment of the call when they enter a
+ *                                   callee next (a lesson's [step-in] lines)
  * }} opts
  */
 export function createLocalGdb(opts) {

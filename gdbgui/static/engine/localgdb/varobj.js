@@ -92,12 +92,18 @@ export class VarObjs {
   /** Frame chain of the current display position (cached per position). @returns {import("./model.js").FrameRec[]} */
   _frames() {
     const ex = this.host.exec;
-    const key = `${ex.pos}|${ex.disp}|${ex.landed}|${ex.running}`;
+    const key = `${ex.pos}|${ex.disp}|${ex.landed}|${ex.running}|${ex.afterView}`;
     if (this._ck !== key) {
       const idx = ex.landed ? ex.disp : ex.pos;
       this._cc = ex.running && idx >= 0 && idx < this._model.steps.length ? this._model.chain(idx) : [];
-      this._cur = idx;
+      // display "after": frame 0 is valued at the view step (ExecState.viewOf), and callees' writes through pointers /
+      // references count up to that step; in display "before" the view step is the highlighted stop itself
+      const view = this._cc.length ? ex.viewStep() : idx;
+      this._view = view;
+      this._cur = view;
       this._cm = new Map(this._cc.map((f) => [f.frameId, f]));
+      /** @type {Set<string> | null} `${blockId}:${name}` of frame 0's variables traced at the view step (lazy) */
+      this._viewKeys = null;
       this._ck = key;
     }
     return this._cc;
@@ -108,6 +114,33 @@ export class VarObjs {
     this._frames();
     const f = frameId === null ? null : this._cm.get(frameId);
     return f ? f.stepIdx : -1;
+  }
+
+  /**
+   * Step whose recorded value of variable `name` (declared in block `blockId`) frame `frameId` shows: the view step for the
+   * innermost frame when the same declaration is traced there (see TraceModel.visibleVarsView), else the frame's own step.
+   * @param {number | null} frameId @param {string} name @param {number} blockId
+   */
+  _valueStep(frameId, name, blockId) {
+    this._frames();
+    const f = frameId === null ? null : this._cm.get(frameId);
+    if (!f) return -1;
+    if (f.level !== 0 || this._view === f.stepIdx) return f.stepIdx;
+    if (!this._viewKeys) {
+      this._viewKeys = new Set();
+      for (const e of this._model.visibleVars(this._view, this._cur)) if (e.present) this._viewKeys.add(`${e.blockId}:${e.name}`);
+    }
+    return this._viewKeys.has(`${blockId}:${name}`) ? this._view : f.stepIdx;
+  }
+
+  /** Step whose global variables the display shows (display "after": the view step when it traces `name`). @param {string} name */
+  _globalStep(name) {
+    this._frames();
+    const ex = this.host.exec;
+    const disp = Math.min(Math.max(ex.landed ? ex.disp : ex.pos, 0), this._model.steps.length - 1);
+    if (!ex.afterView || !this._cc.length) return disp;
+    const s = this._model.steps[this._view];
+    return s && own(s.vars, name) ? this._view : disp;
   }
 
   /**
@@ -148,8 +181,11 @@ export class VarObjs {
   /** Lookup function of the frame a varobj expression lives in. @param {number | null} frameId */
   _lookup(frameId) {
     const model = this._model;
-    const si = frameId === null ? -1 : this._frameStep(frameId);
-    const ents = si >= 0 ? model.visibleVars(si, this._cur) : [];
+    this._frames();
+    const f = frameId === null ? null : this._cm.get(frameId) || null;
+    const si = f ? f.stepIdx : -1;
+    // display "after": the innermost frame's variables are valued at the view step (same listing rules as -stack-list-variables)
+    const ents = si < 0 ? [] : f && f.level === 0 && this._view !== si ? model.visibleVarsView(si, this._view, this._cur) : model.visibleVars(si, this._cur);
     const cur = this.host.exec;
     const gi = Math.min(Math.max(cur.landed ? cur.disp : cur.pos, 0), model.steps.length - 1);
     return (/** @type {string} */ n) => {
@@ -157,7 +193,7 @@ export class VarObjs {
       if (e) return { cls: e.cls, raw: e.raw };
       if (own(model.globals, n)) {
         const ti = model.typeInfo(model.globals[n]);
-        const s = model.steps[si >= 0 ? si : gi];
+        const s = model.steps[cur.afterView ? this._globalStep(n) : si >= 0 ? si : gi];
         return { cls: ti.cls, raw: s && own(s.vars, n) ? s.vars[n] : 0 };
       }
       return null;
@@ -296,12 +332,10 @@ export class VarObjs {
   _rawRoot(vo) {
     const model = this._model;
     if (vo.global) {
-      const ex = this.host.exec;
-      const i = Math.min(Math.max(ex.landed ? ex.disp : ex.pos, 0), model.steps.length - 1);
-      const s = model.steps[i];
+      const s = model.steps[this._globalStep(vo.varName)];
       return s && own(s.vars, vo.varName) ? s.vars[vo.varName] : 0;
     }
-    const si = this._frameStep(vo.frameId);
+    const si = this._valueStep(vo.frameId, vo.varName, vo.blockId);
     if (si < 0) return undefined;
     const s = model.steps[si];
     if (own(s.vars, vo.varName)) {
@@ -351,7 +385,7 @@ export class VarObjs {
   /** @param {VarObj} vo */
   _capacityOf(vo) {
     if (vo.parent) { const r = this._raw(vo); return Array.isArray(r) ? r.length : 0; }
-    const si = this._frameStep(vo.frameId);
+    const si = vo.global ? -1 : this._valueStep(vo.frameId, vo.varName, vo.blockId);
     const s = si >= 0 ? this._model.steps[si] : null;
     const c = s && own(s.vars, vo.varName + ".capacity()") ? s.vars[vo.varName + ".capacity()"] : undefined;
     const r = this._rawRoot(vo);
@@ -772,7 +806,7 @@ export class VarObjs {
       const t = this._resolve(dm[1]);
       if ("error" in t) return errorItem(t.error, token);
       if (!isScalarPtr(t.cls)) return errorItem(t.cls.kind === "ptr" ? unsupportedMsg(`type '${t.gdbType}'`) : "Attempt to take contents of a non-pointer value.", token);
-      return resultItem({ value: `(${t.gdbType}) ${this._ptrText(this._rawRoot(/** @type {any} */ ({ varName: dm[1], frameId: t.frameId, global: t.global, ti: { cls: t.cls } })))}` }, token);
+      return resultItem({ value: `(${t.gdbType}) ${this._ptrText(this._rawRoot(/** @type {any} */ ({ varName: dm[1], frameId: t.frameId, blockId: t.blockId, global: t.global, ti: { cls: t.cls } })))}` }, token);
     }
     if (!/^[A-Za-z_]\w*$/.test(e) || e === "true" || e === "false") {
       let val;
@@ -786,7 +820,7 @@ export class VarObjs {
     }
     const r = this._resolve(e);
     if ("error" in r) return errorItem(r.error, token);
-    if (isScalarPtr(r.cls.kind === "ref" ? r.cls.to : r.cls)) return resultItem({ value: `(${r.cls.kind === "ref" ? gdbType(r.node.to) : r.gdbType}) ${this._ptrText(this._rawRoot(/** @type {any} */ ({ varName: e, frameId: r.frameId, global: r.global, ti: { cls: r.cls } })))}` }, token);
+    if (isScalarPtr(r.cls.kind === "ref" ? r.cls.to : r.cls)) return resultItem({ value: `(${r.cls.kind === "ref" ? gdbType(r.node.to) : r.gdbType}) ${this._ptrText(this._rawRoot(/** @type {any} */ ({ varName: e, frameId: r.frameId, blockId: r.blockId, global: r.global, ti: { cls: r.cls } })))}` }, token);
     const thisPtr = isThisPtr(e, r.cls);
     if (!isSupported(r.cls) && !thisPtr) return errorItem(unsupportedMsg(`type '${r.gdbType}'`), token);
     // `this` evaluates to its own pseudo-address, same as var-create's value for it — ground truth:

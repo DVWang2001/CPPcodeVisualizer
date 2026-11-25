@@ -79,6 +79,17 @@ export class TraceModel {
       }
       lastOf.set(s.frame, i);
     });
+    /** next step of the same frame, or -1 when the frame (or the run) ends before its next stop. A frame id belongs to one
+     *  activation only, so one backward pass finds them all: step i's line has run completely by step nextInFrame[i]. */
+    this.nextInFrame = new Int32Array(this.steps.length).fill(-1);
+    {
+      const nextOf = new Map();
+      for (let i = this.steps.length - 1; i >= 0; i--) {
+        const f = this.steps[i].frame;
+        if (nextOf.has(f)) this.nextInFrame[i] = nextOf.get(f);
+        nextOf.set(f, i);
+      }
+    }
     // Reference aliases (`a.ref()` = "frame:name" of the variable a reference binds to) and pointer values
     // (`{__vgp:"frame:name", __vgv: pointee}`, see vg.h): turned into pseudo addresses, so that `&(a)` of a reference
     // is its referent's address and a pointer prints as the address of the variable it points to.
@@ -122,6 +133,32 @@ export class TraceModel {
   recoverableErrorAt(idx) {
     const i = this.errorAt.get(idx);
     return i !== undefined && !this.runtimeErrors[i].fatal ? i : -1;
+  }
+
+  /** Whether a recoverable runtime error happened on a stop in [lo, hi) (resume commands stop there). @param {number} lo @param {number} hi */
+  recoverableErrorIn(lo, hi) {
+    for (const [step, i] of this.errorAt) if (step >= lo && step < hi && !this.runtimeErrors[i].fatal) return true;
+    return false;
+  }
+
+  /**
+   * First step in [lo, hi) on source line `line` that a breakpoint on that line can stop at (a loop header's revisit never
+   * stops, see isLoopRevisit), or -1.
+   * @param {number} line @param {number} lo @param {number} hi
+   */
+  firstStopOnLine(line, lo, hi) {
+    if (!this._byLine) {
+      /** @type {Map<number, number[]>} */
+      const m = new Map();
+      this.steps.forEach((s, i) => { const a = m.get(s.line); if (a) a.push(i); else m.set(s.line, [i]); });
+      this._byLine = m;
+    }
+    const a = this._byLine.get(line);
+    if (!a) return -1;
+    let l = 0, h = a.length;
+    while (l < h) { const m = (l + h) >> 1; if (a[m] < lo) l = m + 1; else h = m; }
+    for (let k = l; k < a.length && a[k] < hi; k++) if (!this.isLoopRevisit(a[k])) return a[k];
+    return -1;
   }
 
   /** @param {number} frameId @param {number} idx  latest step of that frame at or before idx, or -1 */
@@ -298,6 +335,30 @@ export class TraceModel {
       };
       if (present && own(step.vars, capKey) && typeof step.vars[capKey] === "number") entry.capacity = step.vars[capKey];
       return entry;
+    });
+  }
+
+  /**
+   * Variables of the frame whose highlighted stop is `scopeIdx`, valued as at step `valueIdx` of the same frame (the state after
+   * the highlighted line ran, see ExecState.viewOf). The highlighted line's blocks decide WHICH variables are listed; a variable
+   * takes `valueIdx`'s value when the same declaration (name and block) is traced there, and keeps its value at `scopeIdx`
+   * otherwise (it went out of scope before the frame's next stop, e.g. a `for` variable after the loop's last increment).
+   * @param {number} scopeIdx @param {number} valueIdx @param {number} [cur] execution position for overlays (default valueIdx)
+   * @returns {VarEntry[]}
+   */
+  visibleVarsView(scopeIdx, valueIdx, cur = valueIdx) {
+    const base = this.visibleVars(scopeIdx, cur);
+    if (valueIdx === scopeIdx || valueIdx < 0 || valueIdx >= this.steps.length || this.steps[valueIdx].frame !== this.steps[scopeIdx].frame) return base;
+    /** @type {Map<string, VarEntry>} */
+    const at = new Map();
+    for (const e of this.visibleVars(valueIdx, cur)) if (e.present) at.set(`${e.blockId}:${e.name}`, e);
+    return base.map((e) => {
+      const v = at.get(`${e.blockId}:${e.name}`);
+      if (!v) return e;
+      /** @type {VarEntry} */
+      const out = { ...e, raw: v.raw, present: true, uninit: v.uninit };
+      if (v.capacity !== undefined) out.capacity = v.capacity; else delete out.capacity;
+      return out;
     });
   }
 

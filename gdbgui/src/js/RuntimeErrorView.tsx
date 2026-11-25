@@ -316,9 +316,11 @@ function bitsExplain(p: any): string {
   return head + `${what}代表 ${p.wrapAmount}，所以存進去的是 ${p.exact} − ${p.wrapAmount} = ${p.stored}。` + sign;
 }
 
-function OverflowPic({ d, status }: { d: RtDiag; status: RtStatus }) {
+function OverflowPic({ d, status, stepNow }: { d: RtDiag; status: RtStatus; stepNow: number | null }) {
   const p = d.pic;
   const cut = p.exactBits ? Math.max(0, p.exactBits.length - p.width) : 0;
+  // 畫面已經是這一行執行完的狀態（程式結束、停止，或停在錯誤那一行但顯示的是執行後）：照實說存進去的值
+  const ran = status !== "paused" || (stepNow !== null && stepNow > d.step);
   return (
     <>
       <NumLine p={p} />
@@ -356,9 +358,9 @@ function OverflowPic({ d, status }: { d: RtDiag; status: RtStatus }) {
       ) : null}
       {p.assignTo && !d.fatal ? (
         <p className="rt-p">
-          {status === "paused" ? "按「繼續」之後，" : "這一行執行完，"}
+          {ran ? "這一行執行完，" : "按「繼續」之後，"}
           <code>{nb(p.assignTo)}</code>
-          {status === "paused" ? " 就是 " : " 存進去的值是 "}
+          {ran ? " 存進去的值是 " : " 就是 "}
           {minus(p.stored)}。
         </p>
       ) : null}
@@ -613,7 +615,7 @@ function Picture({ d, stepNow, status }: { d: RtDiag; stepNow: number | null; st
     case "div-by-zero":
       return <DivPic d={d} />;
     case "signed-overflow":
-      return <OverflowPic d={d} status={status} />;
+      return <OverflowPic d={d} status={status} stepNow={stepNow} />;
     case "array-bounds":
       return <ArrayPic d={d} />;
     case "container-index":

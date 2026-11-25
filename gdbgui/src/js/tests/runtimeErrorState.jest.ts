@@ -4,7 +4,11 @@
 jest.mock("../SourceCode", () => ({ __esModule: true, default: {} }));
 jest.mock("../Visualizer", () => ({ __esModule: true, default: {} }));
 jest.mock("../VisualizerHelper", () => ({ __esModule: true, default: {} }));
-jest.mock("../localEngine", () => ({ __esModule: true, runtimeErrorRun: jest.fn(), currentStepIndex: jest.fn() }));
+jest.mock("../localEngine", () => {
+  // 面板用的是「畫面顯示哪一步」（currentViewStep）；這裡兩個用同一個假函式，各測試照舊只設一個值
+  const step = jest.fn();
+  return { __esModule: true, runtimeErrorRun: jest.fn(), currentStepIndex: step, currentViewStep: step };
+});
 
 import * as React from "react";
 import * as ReactDOM from "react-dom";

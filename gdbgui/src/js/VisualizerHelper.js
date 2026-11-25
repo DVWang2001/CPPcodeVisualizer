@@ -28,6 +28,7 @@ import { resolve2DHighlightIndex } from "./gridHighlightIndex";
 import { parseSwapCall } from "./swapDetect";
 import { effectiveTtsRate } from "./ttsSpeed";
 import { applyTtsVolume } from "./ttsVolume";
+import { engineQuery } from "./localEngine";
 
 // ── TTS 播放狀態（模組級）────────────────────────────────────────────
 let _tts_task_id = 0;           // 每次 play_tts 遞增，舊任務比對不符就自動放棄
@@ -290,13 +291,47 @@ window._tts_api = {
 };
 
 class VisualizerHelper {
+  /**
+   * 容器面板上已經畫出來、但這一行的指導（content 的 {…} token）沒有提到的容器名稱：每一站都重讀，
+   * 讓面板跟著程式狀態走——以前只有指導寫了 {容器名} 的那一行才重讀，其他行改了容器（push、pop……）
+   * 面板要等到下一個寫了 {容器名} 的行才跟上。只挑目前這一層求得到值的名字（直接問引擎），
+   * 求不到的（不在這一層）留著上一次的內容，免得它的 token 一直等到逾時、拖住自動播放。
+   */
+  static containers_to_refresh(content) {
+    const latest = global_variable.__latest_containers;
+    if (!latest || latest.size === 0) return [];
+    const named = new Set();
+    for (const inst of content || []) {
+      if (!(inst.startsWith('{') && inst.endsWith('}'))) continue;
+      const m = inst.slice(1, -1).trim().match(/^([^\[\]:]+)/);
+      if (m) named.add(m[1].trim());
+    }
+    const out = [];
+    for (const key of Array.from(latest.keys())) {
+      if (!/^[A-Za-z_]\w*$/.test(key) || named.has(key)) continue;
+      const r = engineQuery(`-data-evaluate-expression ${key}`);
+      if (r && r.ok) out.push(key);
+    }
+    return out;
+  }
+
   static processing_guide(frame_line, funcName) {
-    if (!('__line' in global_variable)) return;
     const lineNum = parseInt(frame_line);
     if (isNaN(lineNum)) return;
     // 同時支援數字 key 與字串 key（localStorage 儲存的 key 是字串，handleInputChange 是數字）
-    const guideContent = global_variable.__line[lineNum] || global_variable.__line[String(lineNum)];
-    if (!guideContent) return;
+    const guideContent = ('__line' in global_variable)
+      ? (global_variable.__line[lineNum] || global_variable.__line[String(lineNum)])
+      : null;
+    if (!guideContent) {
+      // 這一行沒有指導：已經畫出來的容器照樣重讀（這一行可能改了它們）
+      const refresh = VisualizerHelper.containers_to_refresh([]);
+      if (refresh.length) {
+        window.gdbgui_graphics_done = Promise.resolve(
+          VisualizerHelper.graphics_instruction([], frame_line, funcName, refresh, true)
+        ).catch(() => {});
+      }
+      return;
+    }
 
     // --- 攔截 [speed:N] 語法，設定 TTS 播放速度 ---
     const speedRegex = /\[speed:([\d.]+)\]/g;
@@ -366,12 +401,13 @@ class VisualizerHelper {
     // ----------------------------------------------------
 
     const content = VisualizerHelper.extractBalancedBraces(graphicsContent);
+    const refresh = VisualizerHelper.containers_to_refresh(content);
     // 自動播放要等這一行的視覺化（高亮索引、容器資料）算完才送下一步：
     // 這些要向 GDB 來回好幾次，旁白很短（例如迴圈第二次進來只講「比一比」）時，
     // 下一步會搶在算完之前送出，舊任務被取代、高亮就停在上一次的格子。
     // 見 GdbApi.tsx 的 gdbgui_execute_autoplay_command。
     window.gdbgui_graphics_done = Promise.resolve(
-      VisualizerHelper.graphics_instruction(content, frame_line, funcName)
+      VisualizerHelper.graphics_instruction(content, frame_line, funcName, refresh)
     ).catch(() => {});
   }
 
@@ -763,7 +799,7 @@ class VisualizerHelper {
     checkStore();
   }
 
-  static async graphics_instruction(instruction, frame_line, funcName) {
+  static async graphics_instruction(instruction, frame_line, funcName, refresh = [], refreshOnly = false) {
     const myGraphicsTaskId = ++_graphics_task_id; // 新任務 ID，舊任務自動放棄
     // 清空前一個任務遺留、但「還沒送出」的 VarCreator / ChildVarFetcher 排隊項目，
     // 讓新任務的 varobj 建立和子節點抓取能立即排在最前面。
@@ -806,7 +842,10 @@ class VisualizerHelper {
     // 延後到全部 token 都跑完（或逾時放棄）之後、在下面 Promise.all 後一次
     // 算——那時候 __latest_containers 已經是這次停駐點能拿到的最終狀態。
     const _pending2DHighlights = [];
-    const outputArray = await Promise.all(instruction.map((inst) => {
+    // refresh：容器面板上已經畫出來、但這一行的指導沒提到的容器（見 containers_to_refresh），
+    // 跟這一行自己的 token 走同一條抓取路徑一起重讀；它們的文字不進指導欄（下面只取前 instruction.length 個）。
+    const _tokens = refresh.length ? instruction.concat(refresh.map((n) => `{${n}}`)) : instruction;
+    const _outputAll = await Promise.all(_tokens.map((inst) => {
       if (!(inst.startsWith('{') && inst.endsWith('}'))) {
         return Promise.resolve(inst);
       }
@@ -1238,7 +1277,12 @@ class VisualizerHelper {
         }
       }
       _hlStage.flush();
+      // 容器資料到齊就立刻重畫，不等容器面板每秒一次的輪詢（以前停下來後要等將近一秒才更新）
+      window.gdbgui_request_render?.();
     }
+    // 這一行沒有指導、只是重讀容器時，指導欄不動
+    if (refreshOnly) return;
+    const outputArray = _outputAll.slice(0, instruction.length);
     const outputString = outputArray.join('');
     // 將字面上的 \n 替換為實際的換行符 \n
     const processedString = outputString.replace(/\\n/g, '\n');

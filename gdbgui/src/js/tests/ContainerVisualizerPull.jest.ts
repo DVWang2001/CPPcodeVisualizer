@@ -63,9 +63,15 @@ const flushAll = async (ms = 500, step = 50) => {
   }
 };
 
-describe("pull:dp:orange,lime->lightblue", () => {
-  beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
+describe("pull:dp:orange,lime->lightblue（顯示執行前：vgdb_display=before）", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    window.localStorage.setItem("vgdb_display", "before");
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    window.localStorage.removeItem("vgdb_display");
+  });
 
   it("觸發時只有數字飛出去，目標格浮出兩數相加的暫時結果；450ms 飛行動畫結束後暫時結果還在（真實值沒變）", async () => {
     seedDp();
@@ -167,6 +173,43 @@ describe("pull:dp:orange,lime->lightblue", () => {
     await act(async () => {
       await flushAll();
     });
+    act(() => {
+      renderer.unmount();
+    });
+  });
+});
+
+// 預設顯示「這一行執行後」：停在賦值那一行時目標格已經是新值（引擎給的就是執行後的狀態），
+// 所以不再疊「暫時的計算結果」，只播來源格飛入（目標格亮一下用 pop 機制，這裡不驗）。
+describe("pull:dp:orange,lime->lightblue（預設：顯示執行後）", () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it("數字照樣飛出去，但目標格不浮出暫時結果", async () => {
+    // 執行後的狀態：dp[1][1] 已經是 3 + 5 = 8
+    (global_variable as any).__latest_containers = new Map([
+      ["dp", { name: "dp", type: "vector", isContainer: true, values: [[0, 3, 0], [5, 8, 0], [0, 0, 0]] }],
+    ]);
+    (global_variable as any).__latest_highlights = new Map([
+      ["dp", [{ index: 1, color: "orange" }, { index: 3, color: "lime" }, { index: 4, color: "lightblue" }]],
+    ]);
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(ContainerVisualizer as any));
+    });
+
+    act(() => {
+      (window as any).gdbgui_trigger_pull("dp", "orange", "lime", "lightblue");
+    });
+
+    expect(findFlyingNumbers(renderer.toJSON())).toHaveLength(2);
+    expect(findPreviewBadge(renderer.toJSON())).toBeNull();
+
+    await act(async () => {
+      await flushAll();
+    });
+    expect(findFlyingNumbers(renderer.toJSON())).toHaveLength(0);
+    expect(findPreviewBadge(renderer.toJSON())).toBeNull();
     act(() => {
       renderer.unmount();
     });

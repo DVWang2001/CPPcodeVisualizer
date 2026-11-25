@@ -135,6 +135,15 @@ describe("RuntimeErrorView", () => {
     expect(host.textContent).toContain("這一行執行完");
   });
 
+  test("溢位：停在錯誤那一行，但畫面顯示的是這一行執行後（stepNow 在錯誤那一步之後）：說存進去的值，不叫人按「繼續」", () => {
+    const d = diagnose(runOf("ex_err_int_overflow"), 0);
+    const atStop = render(d, d.step, () => undefined, "paused");
+    expect(atStop.textContent).toContain("按「繼續」之後");
+    const shownAfter = render(d, d.step + 1, () => undefined, "paused");
+    expect(shownAfter.textContent).not.toContain("按「繼續」之後"); // 狀態標籤「已暫停，可以按「繼續」」照舊
+    expect(shownAfter.textContent).toContain("這一行執行完");
+  });
+
   test("會讓程式結束的錯誤：程式結束後標籤仍是「程式在這裡結束」", () => {
     const host = render(diagnose(runOf("div0_input"), 0), null, () => undefined, "ended");
     expect(q(host, '[data-testid="rt-chip"]').textContent).toBe("程式在這裡結束");

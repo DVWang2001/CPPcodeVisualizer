@@ -59,4 +59,13 @@ describe("describeLineAfter", () => {
     expect(describeLineAfter(base({ stderr: "warn\n" }))).toContain("錯誤輸出：「warn⏎」");
     expect(describeLineAfter(base({ stderr: null })).some((l) => l.startsWith("錯誤輸出"))).toBe(false);
   });
+
+  test("a call line shown at the moment of the call does not give away the line's result", () => {
+    const lines = describeLineAfter(
+      base({ view: "call", stdout: "8\n", after: { kind: "stop", line: 6, changed: [{ name: "a", from: undefined, to: 8, existed: false }] } })
+    );
+    expect(lines[0]).toBe("第 5 行正在呼叫函式");
+    expect(lines.join("")).not.toContain("8");
+    expect(describeLineAfter(base({ view: "after" }))[0]).toBe("第 5 行執行後");
+  });
 });
