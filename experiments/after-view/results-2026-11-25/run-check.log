@@ -1,0 +1,51 @@
+== check start 2026-11-24T23:58:33+00:00
+live StartedAt: 2026-11-24T19:32:10.082737363Z  online: 0
+mounted 21 files:
+6759742c160e  gdbgui/src/js/ContainerVisualizer.tsx
+6aebfa027bea  gdbgui/src/js/lineAfterText.ts
+3ac6e89abac5  gdbgui/src/js/localEngine.ts
+a2df1fb2dc47  gdbgui/src/js/runtimeErrorState.ts
+8934ff8d45f0  gdbgui/src/js/RuntimeErrorView.tsx
+2bdc16862614  gdbgui/src/js/Terminals.tsx
+d956c675993a  gdbgui/src/js/tests/containerRefresh.jest.ts
+294308ffb863  gdbgui/src/js/tests/ContainerVisualizerPull.jest.ts
+4a2f38ef36cd  gdbgui/src/js/tests/lineAfterText.jest.ts
+301a1bdac75e  gdbgui/src/js/tests/localEngine.jest.ts
+2617d0d33efc  gdbgui/src/js/tests/runtimeErrorState.jest.ts
+7e2045c3ea69  gdbgui/src/js/tests/RuntimeErrorView.jest.ts
+7be81bf91eaf  gdbgui/src/js/VisualizerHelper.js
+64b17bf223dc  gdbgui/static/engine/localgdb/afterState.js
+fa594fa375c8  gdbgui/static/engine/localgdb/cellWrite.js
+07b4a8d0b257  gdbgui/static/engine/localgdb/exec.js
+019f4595b0ff  gdbgui/static/engine/localgdb/index.js
+a0e77275d0c1  gdbgui/static/engine/localgdb/model.js
+94ee1c0da8fe  gdbgui/static/engine/localgdb/session.js
+0dc696ebb606  gdbgui/static/engine/localgdb/varobj.js
+705a47d35be6  tests/engine/localgdb/after_view.test.mjs
+jest rc=0 in 38 s | Test Suites: 91 passed, 91 total Tests:       1 skipped, 1156 passed, 1157 total 
+tsc base: tsc rc=2 in 13 s
+tsc new:  tsc rc=2 in 14 s
+tsc error lines: base 10, new 10
+== tsc errors only with the change:
+worktree changes:  M gdbgui/src/js/ContainerVisualizer.tsx  M gdbgui/src/js/RuntimeErrorView.tsx  M gdbgui/src/js/Terminals.tsx  M gdbgui/src/js/VisualizerHelper.js  M gdbgui/src/js/lineAfterText.ts  M gdbgui/src/js/localEngine.ts  M gdbgui/src/js/runtimeErrorState.ts  M gdbgui/src/js/tests/ContainerVisualizerPull.jest.ts  M gdbgui/src/js/tests/RuntimeErrorView.jest.ts  M gdbgui/src/js/tests/lineAfterText.jest.ts  M gdbgui/src/js/tests/localEngine.jest.ts  M gdbgui/src/js/tests/runtimeErrorState.jest.ts  M gdbgui/static/engine/localgdb/afterState.js  M gdbgui/static/engine/localgdb/cellWrite.js  M gdbgui/static/engine/localgdb/exec.js  M gdbgui/static/engine/localgdb/index.js  M gdbgui/static/engine/localgdb/model.js  M gdbgui/static/engine/localgdb/session.js  M gdbgui/static/engine/localgdb/varobj.js ?? gdbgui/src/js/tests/containerRefresh.jest.ts ?? tests/engine/localgdb/after_view.test.mjs 
+built iris-preview:after-view rc=0 in 45 s
+worktree restored: [] at af03b477
+5002 /login: 200
+5003 /login: 200
+5002: aftervie648475002 -> 302 http://127.0.0.1:5002/u/aftervie648475002; session cookie lines: 1
+5003: aftervie648475003 -> 302 http://127.0.0.1:5003/u/aftervie648475003; session cookie lines: 1
+5002 stack經典_Rails: {"changed":true,"forked":false,"id":1,"version":1} HTTP 201
+5003 stack經典_Rails: {"changed":true,"forked":false,"id":1,"version":1} HTTP 201
+5002 函式_SWAP寫法: {"changed":true,"forked":false,"id":2,"version":1} HTTP 201
+5003 函式_SWAP寫法: {"changed":true,"forked":false,"id":2,"version":1} HTTP 201
+5002 走方格_AtCoder_Grid1: {"changed":true,"forked":false,"id":3,"version":1} HTTP 201
+5003 走方格_AtCoder_Grid1: {"changed":true,"forked":false,"id":3,"version":1} HTTP 201
+5002 遞迴_費氏數列_記憶化TopDown: {"changed":true,"forked":false,"id":4,"version":1} HTTP 201
+5003 遞迴_費氏數列_記憶化TopDown: {"changed":true,"forked":false,"id":4,"version":1} HTTP 201
+served main.js: 1032672 bytes
+  must be present: 1 x vg_program_output
+  must be present: 1 x containers_to_refresh
+  must be present: 1 x vgdb_display
+  must be present: 1 x 正在呼叫函式
+live StartedAt: 2026-11-24T19:32:10.082737363Z  online: 0
+EXIT=0

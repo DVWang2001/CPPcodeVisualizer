@@ -1,0 +1,11 @@
+== chain6 start 2026-11-25T08:46:07+00:00  online: 0  live StartedAt: 2026-11-24T19:32:10.082737363Z
+124fa657ab36  gdbgui/static/tutorial/chapters.json
+eac8caf4945b  gdbgui/static/tutorial/tutorial_c4.json
+9dddca14120e  gdbgui/static/tutorial/tutorial_l2.json
+e857013b382f  gdbgui/static/tutorial/tutorial_t2.json
+452668ae82d2  scripts/gen_tutorial.py
+tokens rc=0
+wrote /out/lesson_tokens_tut3.json: 3 bundles
+gen rc=0 ok 25 lessons
+diff rc=0 lines=0
+CHAIN6-EXIT=0

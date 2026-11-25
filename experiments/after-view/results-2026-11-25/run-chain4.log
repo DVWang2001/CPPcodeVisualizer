@@ -1,0 +1,28 @@
+== chain4 start 2026-11-25T00:55:02+00:00  online: 0
+build rc=0
+tokens rc=0 in 66 s
+deepseek生成的教案: 14 steps, 6 annotated stop lines, 1 with token changes, 3090 ms
+wrote /out/lesson_tokens_new.json: 9 bundles
+test image rc=0 in 43 s
+pytest image rc=0
+python mounts: 9
+f7d16e7512ab  AUTHORING_GUIDE.md
+505e745e2e93  examples/lessons/deque經典_BrokenKeyboard/broken_keyboard.json
+f61cf5a5a402  examples/lessons/vector經典_排序/bubble_sort.cpp
+06425ccfd0a3  examples/lessons/vector經典_排序/bubble_sort.json
+9ef41074ea7a  examples/lessons/while迴圈_貪婪找零/greedy_coin_change.json
+6356f6a62774  examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp
+266dc03e1c68  examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.json
+effe7149be4a  scripts/check_lesson.py
+73acc678bcb3  tests/test_dp_course_lessons.py
+pytest base in 82 s: 1 failed, 472 passed in 80.33s (0:01:20)
+pytest new in 82 s: 5 failed, 469 passed in 80.63s (0:01:20)
+== pytest FAILED only with the change:
+FAILED tests/test_generate_lesson_flow.py::test_checker_failure_triggers_one_repair_round_with_the_checker_output
+FAILED tests/test_generate_lesson_flow.py::test_unrepaired_declaration_reference_is_removed_deterministically
+FAILED tests/test_lesson_gen.py::test_drop_unset_refs_removes_only_the_offending_token_and_its_label
+FAILED tests/test_lesson_gen.py::test_find_problems_flags_ref_to_variable_declared_on_the_same_line
+== pytest FAILED only at base:
+== check_lesson diff (base -> change):
+online: 0
+CHAIN4-EXIT=0

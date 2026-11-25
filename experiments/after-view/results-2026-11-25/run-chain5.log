@@ -1,0 +1,34 @@
+== chain5 start 2026-11-25T08:39:54+00:00  online: 0  live StartedAt: 2026-11-24T19:32:10.082737363Z
+worktree at af03b477
+engine mounts: 21  python/lesson mounts: 17  token bundles: 32
+f7d16e7512ab  AUTHORING_GUIDE.md
+505e745e2e93  examples/lessons/deque經典_BrokenKeyboard/broken_keyboard.json
+1f2cb3821186  examples/lessons/stack經典_Rails/stack_rails.json
+f61cf5a5a402  examples/lessons/vector經典_排序/bubble_sort.cpp
+06425ccfd0a3  examples/lessons/vector經典_排序/bubble_sort.json
+db50d2206196  examples/lessons/while迴圈_考拉斯猜想/collatz.json
+9ef41074ea7a  examples/lessons/while迴圈_貪婪找零/greedy_coin_change.json
+a516e18ff6ec  examples/lessons/函式_SWAP寫法/swap_pointer.json
+6356f6a62774  examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.cpp
+266dc03e1c68  examples/lessons/技巧一_環狀最小成本_UVA116/tsp_uva116.json
+4dcd9b3277da  gdbgui/server/lesson_gen.py
+124fa657ab36  gdbgui/static/tutorial/chapters.json
+307bdcae1529  scripts/check_lesson.py
+f84716111548  scripts/gen_tutorial.py
+73acc678bcb3  tests/test_dp_course_lessons.py
+7f03da32585a  tests/test_generate_lesson_flow.py
+8aa0596a2764  tests/test_lesson_gen.py
+tokens rc=0 in 149 s
+tut: 9 steps, 5 annotated stop lines, 0 with token changes, 3233 ms
+wrote /out/lesson_tokens_tutorial.json: 32 bundles
+pytest new in 81 s: 1 failed, 474 passed in 79.56s (0:01:19)
+pytest base (chain4, same image): 1 failed, 472 passed in 80.33s (0:01:20)
+== pytest FAILED only with the change:
+== pytest FAILED only at base:
+check_lesson base log: 54 bundles, 40 passed, 3 with problems
+check_lesson new log:  54 bundles, 40 passed, 3 with problems
+== check_lesson diff (base -> change):
+gen_tutorial base: gen rc=0 ok 25 lessons diff rc=0 lines=0 
+gen_tutorial new: gen rc=0 ok 25 lessons diff rc=0 lines=0 
+online: 0  live StartedAt: 2026-11-24T19:32:10.082737363Z
+CHAIN5-EXIT=0

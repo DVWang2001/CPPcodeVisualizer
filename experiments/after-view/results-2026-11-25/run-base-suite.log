@@ -1,0 +1,55 @@
+== base-suite start 2026-11-25T00:00:48+00:00
+live StartedAt: 2026-11-24T19:32:10.082737363Z  online: 0
+test files: tests/engine/localgdb/addresses.test.mjs tests/engine/localgdb/arrays.test.mjs tests/engine/localgdb/cell_jump.test.mjs tests/engine/localgdb/class_support.test.mjs tests/engine/localgdb/commands.test.mjs tests/engine/localgdb/compare.test.mjs tests/engine/localgdb/container_refs.test.mjs tests/engine/localgdb/containers.test.mjs tests/engine/localgdb/expr.test.mjs tests/engine/localgdb/fastforward_template.test.mjs tests/engine/localgdb/ghostSnapshots.test.mjs tests/engine/localgdb/lessons_corpus.test.mjs tests/engine/localgdb/lines.test.mjs tests/engine/localgdb/pointers.test.mjs tests/engine/localgdb/protocol.test.mjs tests/engine/localgdb/real_gdb_refs.test.mjs tests/engine/localgdb/replay.test.mjs tests/engine/localgdb/runtime_errors.test.mjs tests/engine/localgdb/s4_line_after.test.mjs tests/engine/localgdb/types_scopes.test.mjs tests/engine/s1_stamps.test.mjs tests/engine/s2_flush.test.mjs tests/engine/s3_after.test.mjs
+rc=1 in 583 s: # tests 281 # pass 224 # fail 48 # cancelled 0 # skipped 9 
+-- not ok:
+15:not ok 1 - /app/tests/engine/localgdb/addresses.test.mjs
+436:not ok 84 - engine run of the fixture compiles and reaches every line
+459:not ok 85 - -var-create: deque — value, type, displayhint array, flat .[i] children
+479:not ok 86 - -var-create: list — value/type carry the __cxx11 tag, no count, no displayhint at all
+499:not ok 87 - -var-create: stack — 'wrapping: std::deque with N elements', children bottom-to-top (push order)
+519:not ok 88 - -var-create: queue — 'wrapping: std::deque with N elements', children front-to-back (push order)
+539:not ok 89 - -var-create: empty deque — 'with 0 elements', has_more 0, no children
+559:not ok 90 - -var-create: empty list — 'empty std::__cxx11::list' (not 'with 0 elements'), has_more 0
+594:not ok 94 - -var-create: singular 'element' for a 1-element container
+613:not ok 95 - -var-update: growth after push_back/push/pop is reflected (numchild via var-list-children, value text, no crash)
+632:not ok 96 - -data-evaluate-expression: GDB print format with children (deque/stack plain, list index-labelled)
+651:not ok 97 - -var-create: priority_queue — value/type match real GDB, displayhint array; children are OUR priority-drain order, not GDB's raw heap array (documented divergence)
+670:not ok 98 - -var-create: set — value/type/children match real GDB exactly, NO displayhint (like list)
+689:not ok 99 - -var-create: map — value/type/children (flat alternating key,value, numchild 2×N) match real GDB exactly
+708:not ok 100 - -var-update: priority_queue/set/map growth after push/insert/[]= is reflected (new_num_children, values)
+877:not ok 131 - lesson 11 vector經典_快速排序/quick_sort.json
+1310:not ok 210 - engine run of the golden program succeeds and its stdout equals the pty output
+1323:not ok 211 - replay: zero differences outside the allow list
+1336:not ok 212 - replay coverage: the replay compared the core commands, and every not-tested item has one of the documented reasons
+1349:not ok 213 - replay: program output arrives once, after the exit packet, CRLF like the pty
+1362:not ok 214 - replay: packet_seq_num strictly increases and request_id is the session-level last request id
+1375:not ok 215 - comparator fails on an altered golden: stop line of a next
+1388:not ok 216 - comparator fails on an altered golden: stop reason
+1401:not ok 217 - comparator fails on an altered golden: child value of a vector varobj
+1414:not ok 218 - comparator fails on an altered golden: token of a result
+1427:not ok 219 - comparator fails on an altered golden: missing token key on a result
+1440:not ok 220 - comparator fails on an altered golden: extra token key on a console item
+1453:not ok 221 - comparator fails on an altered golden: fast-forward blob counts
+1466:not ok 222 - comparator fails on an altered golden: fast-forward landed flag
+1479:not ok 223 - comparator fails on an altered golden: variable type string
+1492:not ok 224 - comparator fails on an altered golden: vector value string
+1505:not ok 225 - comparator fails on an altered golden: breakpoint line
+1518:not ok 226 - comparator fails on an altered golden: message done -> error
+1531:not ok 227 - comparator fails on an altered golden: error text of the inlined-method error
+1544:not ok 228 - comparator fails on an altered golden: extra item in a response
+1557:not ok 229 - comparator fails on an altered golden: program output
+1570:not ok 230 - comparator fails on an altered golden: changelist value
+1583:not ok 231 - comparator fails on an altered golden: packet run_token
+1596:not ok 232 - comparator fails on an altered golden: packet run_token null vs set
+1609:not ok 233 - comparator fails on an altered golden: uninitialised variable: garbage replaced by a non-number
+1622:not ok 234 - comparator fails on an altered golden: uninitialised variable: type differs
+1635:not ok 235 - comparator fails on an altered golden: pointer value that is not an address
+1648:not ok 236 - comparator fails on an altered golden: pointer varobj type
+1661:not ok 237 - comparator fails on an altered golden: pointer child value
+1674:not ok 238 - comparator fails on an altered golden: integer expression value (w - 1)
+1687:not ok 239 - comparator fails on an altered golden: initialised inner r shadowing an uninitialised outer r (A1)
+1700:not ok 240 - comparator fails on an altered golden: null pointer vs address (A2)
+1713:not ok 241 - comparator fails on an altered golden: features list
+live StartedAt: 2026-11-24T19:32:10.082737363Z  online: 0
+EXIT=1
