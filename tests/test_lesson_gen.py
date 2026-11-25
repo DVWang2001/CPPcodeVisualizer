@@ -124,10 +124,14 @@ def test_code_unchanged_rejects_edit_and_line_count():
 
 
 _ROOT = __import__("pathlib").Path(__file__).resolve().parent.parent
+# 停下來時畫面顯示這一行執行後的值，一般的行引用它剛賦值的變數是對的；
+# 標了 [step-in] 的呼叫行例外：停在呼叫當下、這一行還沒執行，同一行的 {n} 是垃圾值。
 _DECL_BUG = (
-    "#include <iostream>\n"
+    "int twice(int x) {\n"
+    "   return 2 * x;  //@ @tts [next] 回傳兩倍\n"
+    "}\n"
     "int main() {\n"
-    "   int n = 5;  //@ @guide n={n} @tts [next] 宣告 n\n"
+    "   int n = twice(5);  //@ @guide n={n} @tts [step-in] 進去算 n\n"
     "   int s = 0;  //@ @guide {n} @tts [next] 開始\n"
     "}  //@ @tts [continue] 結束\n"
 )
@@ -136,16 +140,18 @@ _DECL_BUG = (
 def test_find_problems_flags_ref_to_variable_declared_on_the_same_line():
     check = lesson_gen.load_checker(_ROOT)
     problems = lesson_gen.find_problems(check, _DECL_BUG)
-    assert [n for n, _ in problems] == [3]
+    assert [n for n, _ in problems] == [5]
+    # 同一行改用 [next] 跨過呼叫：停下來時這一行已經執行完，{n} 是算好的值
+    assert lesson_gen.find_problems(check, _DECL_BUG.replace("[step-in] 進去算 n", "[next] 算好 n")) == []
 
 
 def test_drop_unset_refs_removes_only_the_offending_token_and_its_label():
     check = lesson_gen.load_checker(_ROOT)
     problems = lesson_gen.find_problems(check, _DECL_BUG)
     fixed_code, fixed = lesson_gen.drop_unset_refs(_DECL_BUG, problems)
-    assert fixed == [(3, "n")]
-    assert "n={n}" not in fixed_code.split("\n")[2]
-    assert "{n}" in fixed_code.split("\n")[3]  # 下一行的 {n} 是合法的，不能動
+    assert fixed == [(5, "n")]
+    assert "n={n}" not in fixed_code.split("\n")[4]
+    assert "{n}" in fixed_code.split("\n")[5]  # 下一行的 {n} 是合法的，不能動
     assert lesson_gen.find_problems(check, fixed_code) == []
 
 

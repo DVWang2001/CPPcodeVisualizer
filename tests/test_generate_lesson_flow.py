@@ -18,8 +18,21 @@ GOOD = (
     "   int s = 0;  //@ @guide {n} @tts [next] 開始\n"
     "}  //@ @tts [continue] 結束\n"
 )
-G5 = GOOD.replace("@tts [next] 宣告 n", "@guide n={n} @tts [next] 宣告 n")  # 宣告行引用剛宣告的 n
 EDITED = GOOD.replace("n = 5", "n = 6")
+# 檢查器擋的寫法：[step-in] 的呼叫行停在呼叫當下、這一行還沒執行，同一行引用它才宣告的 n 會讀到垃圾值。
+# 其他行停下來時顯示的是這一行執行後的值，`int n = 5;` 的註解寫 {n} 是對的。
+CALL_SRC = "int twice(int x) {\n   return 2 * x;\n}\nint main() {\n   int n = twice(5);\n   int s = 0;\n}\n"
+CALL_GOOD = (
+    "int twice(int x) {\n"
+    "   return 2 * x;  //@ @tts [next] 回傳兩倍\n"
+    "}\n"
+    "int main() {\n"
+    "   int n = twice(5);  //@ @tts [step-in] 進去算 n\n"
+    "   int s = 0;  //@ @guide {n} @tts [next] 開始\n"
+    "}  //@ @tts [continue] 結束\n"
+)
+G5 = CALL_GOOD.replace("@tts [step-in] 進去算 n", "@guide n={n} @tts [step-in] 進去算 n")  # 呼叫行引用剛宣告的 n
+CALL_EDITED = CALL_GOOD.replace("twice(5)", "twice(6)")
 
 
 class _FakeUpstream:
@@ -78,25 +91,35 @@ def test_good_first_pass_is_one_call_with_thinking_disabled(flask_app, upstream)
     assert payloads[0]["chat_template_kwargs"] == {"thinking": False}
 
 
+def test_a_line_may_show_the_value_it_assigns_without_a_repair_round(flask_app, upstream):
+    # 停下來時顯示這一行執行後的值：`int n = 5;` 的註解寫 n={n}，看到的就是 5，不必修
+    scripted, payloads = upstream
+    shows_n = GOOD.replace("@tts [next] 宣告 n", "@guide n={n} @tts [next] 宣告 n")
+    scripted.append(shows_n)
+    done = _last(_generate(flask_app))
+    assert done["code"] == shows_n.strip() and not done["repaired"] and done["warnings"] == []
+    assert len(payloads) == 1
+
+
 def test_checker_failure_triggers_one_repair_round_with_the_checker_output(flask_app, upstream):
     scripted, payloads = upstream
-    scripted += [G5, GOOD]
-    events = _generate(flask_app)
+    scripted += [G5, CALL_GOOD]
+    events = _generate(flask_app, source=CALL_SRC)
     assert {"reset": True} in events
     done = _last(events)
-    assert done["code"] == GOOD.strip() and done["repaired"] is True and done["warnings"] == []
+    assert done["code"] == CALL_GOOD.strip() and done["repaired"] is True and done["warnings"] == []
     assert len(payloads) == 2
     followup = payloads[1]["messages"]
     assert followup[-2] == {"role": "assistant", "content": G5.strip()}
-    assert "沒通過檢查器" in followup[-1]["content"] and "第 3 行" in followup[-1]["content"]
+    assert "沒通過檢查器" in followup[-1]["content"] and "第 5 行" in followup[-1]["content"]
 
 
 def test_unrepaired_declaration_reference_is_removed_deterministically(flask_app, upstream):
     scripted, _ = upstream
     scripted += [G5, G5]
-    done = _last(_generate(flask_app))
+    done = _last(_generate(flask_app, source=CALL_SRC))
     assert done["done"] and "n={n}" not in done["code"]
-    assert any("已自動移除第 3 行" in w for w in done["warnings"])
+    assert any("已自動移除第 5 行" in w for w in done["warnings"])
 
 
 def test_edited_source_that_stays_edited_after_repair_is_rejected(flask_app, upstream):
@@ -108,9 +131,9 @@ def test_edited_source_that_stays_edited_after_repair_is_rejected(flask_app, ups
 
 def test_failed_repair_falls_back_to_the_first_pass(flask_app, upstream):
     scripted, _ = upstream
-    scripted += [G5, EDITED]  # 修正回合反而改了程式 → 退回第一份，再做確定性修復
-    done = _last(_generate(flask_app))
-    assert done["done"] and done["repaired"] is False and "n = 5" in done["code"]
+    scripted += [G5, CALL_EDITED]  # 修正回合反而改了程式 → 退回第一份，再做確定性修復
+    done = _last(_generate(flask_app, source=CALL_SRC))
+    assert done["done"] and done["repaired"] is False and "twice(5)" in done["code"]
 
 
 def test_custom_base_url_does_not_get_the_nvidia_only_parameter(flask_app, upstream):

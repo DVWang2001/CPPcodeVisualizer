@@ -112,7 +112,7 @@ lesson("t2", "tts", "tts 停頓",
        ["在 `sum += i` 那行按 **Enter**，聽旁白中間的停頓。",
         "把 `[pause:1]` 改成 `[pause:3]`，再按 **Enter** 比較差別。"],
        "`[wait:N]` 的效果相同。",
-       prog(body_note="@tts [next] i 是 {i}。[pause:1] 接下來把它加進 sum"))
+       prog(body_note="@tts [next] i 是 {i}。[pause:1] 把它加進 sum"))
 lesson("t3", "tts", "tts 多次拜訪",
        "`| @2` 之後的話，從第 2 次停到這一行才會說，同一行可以每次講不同的話。",
        ["在 `for` 那行按 **Enter**：第 1 次進入說「開始迴圈」。",
@@ -213,7 +213,7 @@ lesson("l2", "layout", "layout：格子跳一下 pop",
        simple(
            "    vector<int> arr = {3, 1, 4};   //@ @tts [next] 準備一個有三個數字的陣列\n"
            "    for (int i = 0; i < 3; i++) {   //@ @tts [next] 一格一格處理 | @2 [next] 看看還有沒有下一格\n"
-           "        arr[i] = arr[i] * 2;   //@ @guide {arr[i]:orange} @tts [next] 第 {i} 格要乘以二 @layout pop:arr\n"
+           "        arr[i] = arr[i] * 2;   //@ @guide {arr[i]:orange} @tts [next] 第 {i} 格乘以二 @layout pop:arr\n"
            "    }\n"
            "    cout << arr[0] << endl;   //@ @guide {arr} @tts [next] 全部乘完了\n"
            "    return 0;   //@ @tts [continue] 程式結束\n",
@@ -250,7 +250,7 @@ lesson("c1", "container", "容器：vector",
        "guide 寫 `{v}`，容器面板就畫出 `vector`；放進、拿掉元素的動畫是自動的，不用另外寫。",
        ["按上方的 **從頭**，看元素一個一個淡入，最後一個被拿掉時淡出。",
         "在 `push_back` 那幾行連按 **Enter**，一行一行看。"],
-       "`{v}` 顯示的是「這一行執行前」的內容，所以旁白講的是接下來要發生的事。",
+       "`{v}` 顯示的是「這一行執行後」的內容：停在 `push_back(3)` 這一行時，3 已經放進去了。",
        simple(
            "    vector<int> v;   //@ @tts [next] 從空的 vector 開始\n"
            "    v.push_back(3);   //@ @guide {v} @tts [next] 放進三\n"
@@ -304,7 +304,7 @@ lesson("c4", "container", "容器：map",
            "    m[\"apple\"] = 3;   //@ @guide {m} @tts [next] 放進蘋果，數量三\n"
            "    m[\"pear\"] = 5;   //@ @guide {m} @tts [next] 放進梨子，數量五\n"
            "    m[\"fig\"] = 2;   //@ @guide {m} @tts [next] 放進無花果，數量二\n"
-           "    m[\"apple\"] = 4;   //@ @guide {m} @tts [next] 蘋果已經有了，這一行會把它改成四\n"
+           "    m[\"apple\"] = 4;   //@ @guide {m} @tts [next] 蘋果已經有了，這一行把它改成四\n"
            "    cout << m.size() << endl;   //@ @guide {m} @tts [next] 還是三組，因為蘋果只是被改掉\n"
            "    return 0;   //@ @tts [continue] 程式結束\n",
            includes="#include <map>\n#include <string>\n", layout="open:container"))

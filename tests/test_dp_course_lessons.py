@@ -139,3 +139,18 @@ def test_lines_skipped_by_continue_need_no_tts_but_the_landing_line_needs_a_brea
     assert [n for n, _ in problems] == [6] and "中斷點" in problems[0][1]
     # 沒有 [continue] 的話，中間的行照樣是缺 @tts 的停駐點。
     assert check_lesson.check(source.replace("[continue]\n", "[next]\n", 1).replace("@tts [continue]\n", "@tts [next]\n", 1))[0]
+
+
+def test_a_line_may_name_what_it_assigns_except_a_step_in_call_line():
+    """§2.2：停下來時畫面顯示這一行執行後的狀態，{row}、{a} 看到的是這一行算好的值；
+    [step-in] 的呼叫行停在呼叫當下（這一行還沒執行），同樣的寫法會讀到垃圾值。"""
+    source = "\n".join([
+        "int main() {",
+        "    std::vector<int> row(7, 0);   //@ @guide {row} @tts [next] 建好一排",
+        "    int a = f(3);                 //@ @guide a={a} @tts [next] 算好了",
+        "    return 0;                     //@ @tts [continue] 結束",
+        "}",
+    ])
+    assert check_lesson.check(source) == ([], [])
+    problems, _ = check_lesson.check(source.replace("[next] 算好了", "[step-in] 進去算"))
+    assert [n for n, _ in problems] == [3] and "[step-in]" in problems[0][1]
