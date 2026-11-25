@@ -19,7 +19,7 @@
       "layout": "sidebar:50 open:container,locals"
     },
     "12": {
-      "guide": "[扣除金額] {amount} -> {amount - coin}\n[放入結果] result = {result}",
+      "guide": "[扣除金額] 扣掉 {coin} 元，剩下 {amount} 元\n[放入結果] 下一行把 {coin} 放進 result（目前 {result}）",
       "tts": "[next] 足夠支付！扣掉 {coin} 元，並將這枚硬幣存入結果清單。 | @3 繼續扣除同面額硬幣...",
       "layout": "sidebar:55 open:container,locals"
     }

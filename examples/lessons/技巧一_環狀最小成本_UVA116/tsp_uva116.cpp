@@ -57,7 +57,7 @@ int main() {
     int r = start;                               //@ @guide 課堂題目：請算出 nxt 表；最右欄沒有下一步，填負一\n{nxt} @tts [next] 接著請大家算出 nxt 表。最右欄沒有下一步，填負一 @layout open:live_quiz close:container
     for (int j = 0; j < w; ++j) {                //@ @guide 揭曉兩張表；從起點開始，每一欄查 nxt 表，就能把路線走出來\n{dp}\n{nxt} @tts [next] 兩張表現在打開了，大家對一下答案。有了 nxt 表，就能從起點一欄一欄把最佳路線走出來 | @2 [next] 下一欄 @layout sidebar:60 open:container close:live_quiz pair:dp,nxt
         std::cout << r + 1 << (j + 1 < w ? " " : "\n");  //@ @guide 印出第 j 欄走的列（輸出從 1 算起，所以印 r 加一）\n{nxt[r][j]:orange} @tts [next] [anim]第 {j} 欄走第 {r} 列，輸出從一開始算，所以印的是 r 加一 | @2 [next] [anim]第 {j} 欄走第 {r} 列 @layout pop:nxt:orange
-        r = nxt[r][j];                           //@ @guide 查 nxt 表，把 r 更新成下一欄要走的列\n{nxt[r][j]:orange} @tts [next] [anim]查 nxt 表，看下一欄要走第幾列 | @2 [next] [anim]再查 nxt 表 @layout pop:nxt:orange
+        r = nxt[r][j];                           //@ @guide 查 nxt 表（上一行標出的那一格），r 換成下一欄要走的列：r={r}（最右欄查完是 -1） @tts [next] 查 nxt 表，下一欄要走第 {r} 列 | @2 [next] 再查 nxt 表，下一欄走第 {r} 列 | @4 [next] 最右欄的 nxt 是負一，r 變成負一，路線走完了
     }
     std::cout << dp[start][0] << "\n";           //@ @guide 印出最小總成本，就是起點那一格的 dp\n{dp[start][0]:orange} @tts [next] 最小總成本，就是[anim]起點那一格的 dp @layout pop:dp:orange
     return 0;                                    //@ @tts [continue] 原題只問走法數，這一課多了兩個條件：環狀相鄰，讓列號要取餘數；最小成本，讓每一格要比較三個候選，並用 nxt 表記下最好的下一步。教案播放完畢

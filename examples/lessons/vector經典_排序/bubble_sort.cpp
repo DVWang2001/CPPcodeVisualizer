@@ -13,7 +13,7 @@ void bubbleSort(vector<int>& arr) {
     for (int i = 0; i < n; i++) {                 //@ @guide 外層迴圈：第幾輪；每一輪會把一個最大的數推到最右邊\n{arr} @tts [next] 總共 {n} 個數字，開始第一輪 | @2 [next] 這一輪走完了，看還有沒有下一輪
         for (int j = 0; j < n - i - 1; j++) {     //@ @guide 內層迴圈比對相鄰兩格，由左往右一格一格比\n{arr} @tts [next] 由左往右比對相鄰的兩格 | @2 [next] 往右移一格，繼續比
             if (arr[j] > arr[j + 1]) {            //@ @guide 比較相鄰兩格：前面的比後面的大嗎\n{arr[j]:orange}\n{arr[j + 1]:lime} @tts [next] 比一比這兩格，前面比後面大嗎 | @2 [next] 再比這兩格
-                swap(arr[j], arr[j + 1]);         //@ @guide 前面比較大時交換這兩格，大的往右移\n{arr[j]:orange}\n{arr[j + 1]:lime} @tts [next] 前面比較大，交換這兩格 | @2 [next] 交換
+                swap(arr[j], arr[j + 1]);         //@ @guide 前面比較大時交換這兩格，大的往右移\n{arr[j]:orange}\n{arr[j + 1]:lime} @tts [next] 前面比較大，所以把這兩格換過來 | @2 [next] 交換
             }
         }
     }

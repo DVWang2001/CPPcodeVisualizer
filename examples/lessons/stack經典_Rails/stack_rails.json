@@ -19,7 +19,7 @@
       "layout": ""
     },
     "26": {
-      "guide": "[進站{i}號#blue] index={index} {order}",
+      "guide": "[進站{i}號#blue] index={index} {order} {train}",
       "tts": "[next] 火車 {i} 號進入車站，推入 stack。目前 stack 由底到頂依序堆疊，等待與出站期望順序比對。",
       "layout": "sidebar:50 open:container"
     },
@@ -30,7 +30,7 @@
     },
     "28": {
       "guide": "[出站！index={index}#green] {order}",
-      "tts": "[next] 條件成立！stack 頂端與期望號碼相符，執行 pop 讓火車離站，index 前進一格，繼續檢查下一個期望號碼。",
+      "tts": "[next] 條件成立！stack 頂端與期望號碼相符，執行 pop 讓火車離站；下一行 index 再前進一格，繼續檢查下一個期望號碼。",
       "layout": "sidebar:50 open:container"
     },
     "29": {
